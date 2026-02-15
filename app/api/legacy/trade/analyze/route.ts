@@ -2513,6 +2513,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
     }).catch(() => {})
 
     let engineAnalysis: any = null
+    let engineReqSaved: any = null
     try {
       const mapAssets = (assets: TradeAsset[]): TradeAssetUnion[] =>
         assets.map(a => {
@@ -2561,6 +2562,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         tradeGoal: body.tradeGoal ?? undefined,
         options: { explainLevel: 'full', counterCount: 3 },
       }
+      engineReqSaved = engineReq
       engineAnalysis = await runTradeAnalysis(engineReq)
     } catch {}
 
@@ -2589,7 +2591,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         explanation: crResult.explanation,
       },
       ...(analyticsEnhanced ? { analytics: analyticsEnhanced } : {}),
-      ...(engineAnalysis ? { engineAnalysis } : {}),
+      ...(engineAnalysis ? { engineAnalysis, engineRequest: engineReqSaved } : {}),
       validated: true,
       rate_limit: { remaining: rlPair.remaining, retryAfterSec: rlPair.retryAfterSec },
     })

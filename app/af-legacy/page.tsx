@@ -1597,7 +1597,10 @@ function AFLegacyContent() {
       })
       if (!ok) return
 
-      setInlineTradeResult({ ...data, confidenceRisk })
+      const engineCounters = rawResponse.engineAnalysis?.counters || data.counters
+      const engineChampEq = rawResponse.engineAnalysis?.championshipEquity || data.championshipEquity
+      const engineReqForSim = rawResponse.engineRequest || undefined
+      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters || data.counters, championshipEquity: engineChampEq, engineRequest: engineReqForSim })
       setLastTradeResult({
         sideA: sideAPlayers.map(name => ({ name })),
         sideB: sideBPlayers.map(name => ({ name })),
@@ -1972,7 +1975,10 @@ function AFLegacyContent() {
       })
       if (!ok) return
 
-      setInlineTradeResult({ ...data, confidenceRisk })
+      const engineCounters2 = rawResponse.engineAnalysis?.counters || data.counters
+      const engineChampEq2 = rawResponse.engineAnalysis?.championshipEquity || data.championshipEquity
+      const engineReqForSim2 = rawResponse.engineRequest || undefined
+      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters2 || data.counters, championshipEquity: engineChampEq2, engineRequest: engineReqForSim2 })
       setLastTradeResult({
         sideA: sideA.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
         sideB: sideB.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
@@ -7150,6 +7156,8 @@ function AFLegacyContent() {
                             counters={inlineTradeResult?.counters}
                             onAddCandidateToGive={addCounterCandidateToGive}
                             onAddCandidateToGet={addCounterCandidateToGet}
+                            engineRequest={inlineTradeResult?.engineRequest}
+                            championshipEquity={inlineTradeResult?.championshipEquity}
                           />
 
                           {/* Share for Token CTA */}

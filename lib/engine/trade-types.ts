@@ -214,6 +214,19 @@ export interface TradeEngineResponse {
     whyItHelpsYou: string[]
   }>
 
+  championshipEquity?: {
+    teamA: {
+      oddsBefore: number
+      oddsAfter: number
+      delta: number
+    }
+    teamB: {
+      oddsBefore: number
+      oddsAfter: number
+      delta: number
+    }
+  }
+
   multiLegImpact?: {
     yourRankDelta?: number
     theirRankDelta?: number

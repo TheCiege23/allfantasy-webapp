@@ -9,6 +9,7 @@ import { ENGINE_FLAGS } from './flags'
 import { computeLiquidity } from './liquidity'
 import { computeAcceptanceProbability } from './acceptance'
 import { enrichDevy, devyValueMultiplier } from './devy'
+import { computeChampionshipDelta, type TeamProjection } from '@/lib/monte-carlo'
 
 import { priceAssets } from '@/lib/hybrid-valuation'
 
@@ -35,6 +36,65 @@ function uniq(arr: string[]) {
     out.push(String(a).trim())
   }
   return out
+}
+
+function buildLeagueProjections(args: {
+  numTeams: number
+  teamAImpactPre: number
+  teamBImpactPre: number
+  teamAImpactPost: number
+  teamBImpactPost: number
+  teamAVol: number
+  teamBVol: number
+}): {
+  teamA: { oddsBefore: number; oddsAfter: number; delta: number }
+  teamB: { oddsBefore: number; oddsAfter: number; delta: number }
+} {
+  const { numTeams, teamAImpactPre, teamBImpactPre, teamAImpactPost, teamBImpactPost, teamAVol, teamBVol } = args
+
+  const allKnown = [teamAImpactPre, teamBImpactPre].filter(v => v > 0)
+  const avgImpact = allKnown.length > 0
+    ? allKnown.reduce((a, b) => a + b, 0) / allKnown.length
+    : 15000
+
+  const impactToMean = (imp: number) => {
+    const base = 100
+    const diff = (imp - avgImpact) / Math.max(avgImpact, 1)
+    return base + diff * 15
+  }
+
+  const baseStdDev = 22
+
+  const teams: TeamProjection[] = []
+  for (let i = 0; i < numTeams; i++) {
+    const spread = (i - Math.floor(numTeams / 2)) * 1.5
+    teams.push({
+      teamId: `team_${i}`,
+      mean: 100 + spread,
+      stdDev: baseStdDev + Math.random() * 4,
+    })
+  }
+
+  const meanA = impactToMean(teamAImpactPre > 0 ? teamAImpactPre : avgImpact)
+  const meanB = impactToMean(teamBImpactPre > 0 ? teamBImpactPre : avgImpact)
+
+  teams[0] = { teamId: 'teamA', mean: meanA, stdDev: baseStdDev + teamAVol * 8 }
+  if (numTeams > 1) {
+    teams[1] = { teamId: 'teamB', mean: meanB, stdDev: baseStdDev + teamBVol * 8 }
+  }
+
+  const meanDeltaA = impactToMean(teamAImpactPost > 0 ? teamAImpactPost : teamAImpactPre) - meanA
+  const meanDeltaB = impactToMean(teamBImpactPost > 0 ? teamBImpactPost : teamBImpactPre) - meanB
+
+  const champA = computeChampionshipDelta(teams, 0, meanDeltaA, 0, 1000)
+  const champB = numTeams > 1
+    ? computeChampionshipDelta(teams, 1, meanDeltaB, 0, 1000)
+    : { oddsBefore: 0, oddsAfter: 0, delta: 0 }
+
+  return {
+    teamA: champA,
+    teamB: champB,
+  }
 }
 
 function scoreLeagueAdjustments(req: TradeEngineRequest) {
@@ -805,6 +865,21 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
 
   const liquidity = ENGINE_FLAGS.enableLiquidityModel ? computeLiquidity(req.marketContext?.liquidity) : null
 
+  let championshipEquity: TradeEngineResponse['championshipEquity'] = undefined
+  {
+    try {
+      championshipEquity = buildLeagueProjections({
+        numTeams,
+        teamAImpactPre: startersPreA.totalImpact,
+        teamBImpactPre: startersPreB.totalImpact,
+        teamAImpactPost: startersPostA.totalImpact,
+        teamBImpactPost: startersPostB.totalImpact,
+        teamAVol: startersPostA.avgVol,
+        teamBVol: startersPostB.avgVol,
+      })
+    } catch (_) {}
+  }
+
   return {
     verdict,
     fairness: {
@@ -827,6 +902,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     risk,
     acceptanceProbability: acceptance,
     counters,
+    championshipEquity,
     evidence: {
       leagueContextUsed,
       nflContextUsed,
