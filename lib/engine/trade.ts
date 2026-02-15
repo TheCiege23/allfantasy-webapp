@@ -296,6 +296,19 @@ function rosterCfgFromLeague(req: TradeEngineRequest): RosterCfg {
   }
 }
 
+function volatilityPreference(direction?: TeamContext['direction']) {
+  switch (direction) {
+    case 'FRAGILE_CONTEND':
+      return { volWeight: 0.30, label: 'stability_strong' }
+    case 'CONTEND':
+      return { volWeight: 0.18, label: 'stability' }
+    case 'REBUILD':
+      return { volWeight: -0.10, label: 'ceiling' }
+    default:
+      return { volWeight: 0.0, label: 'neutral' }
+  }
+}
+
 function buildPostRosterPlayers(args: {
   preRoster: TradePlayerAsset[]
   receivedAssets: Asset[]
@@ -333,26 +346,33 @@ function startersFromRoster(args: {
   roster: TradePlayerAsset[]
   cfg: RosterCfg
   impactMap: Record<string, { impact: number; vorp: number; vol: number }>
+  direction?: TeamContext['direction']
 }) {
-  const { roster, cfg, impactMap } = args
+  const { roster, cfg, impactMap, direction } = args
+  const pref = volatilityPreference(direction)
 
   const impactOf = (p: TradePlayerAsset) => impactMap[p.name]?.impact ?? 0
+  const volOf = (p: TradePlayerAsset) => impactMap[p.name]?.vol ?? 0
+  const scoreOf = (p: TradePlayerAsset) => impactOf(p) - pref.volWeight * volOf(p)
 
   const byPos = (pos: string) =>
     roster
       .filter(p => String(p.pos || '').toUpperCase() === pos)
       .slice()
-      .sort((a, b) => impactOf(b) - impactOf(a))
+      .sort((a, b) => scoreOf(b) - scoreOf(a))
 
-  const starters: { slot: string; name: string; pos: string; impact: number }[] = []
+  const starters: { slot: string; name: string; pos: string; impact: number; vol: number; score: number }[] = []
   const used = new Set<string>()
 
   const takeN = (arr: TradePlayerAsset[], n: number, slot: string) => {
     for (const p of arr) {
-      if (starters.length && n <= 0) break
+      if (n <= 0) break
       const k = normName(p.name)
       if (!k || used.has(k)) continue
-      starters.push({ slot, name: p.name, pos: String(p.pos || ''), impact: impactOf(p) })
+      const imp = impactOf(p)
+      const vol = volOf(p)
+      const sc = scoreOf(p)
+      starters.push({ slot, name: p.name, pos: String(p.pos || ''), impact: imp, vol, score: sc })
       used.add(k)
       n--
       if (n <= 0) break
@@ -371,13 +391,15 @@ function startersFromRoster(args: {
       return pos === 'RB' || pos === 'WR' || pos === 'TE'
     })
     .slice()
-    .sort((a, b) => impactOf(b) - impactOf(a))
+    .sort((a, b) => scoreOf(b) - scoreOf(a))
 
   takeN(flexEligible, cfg.startingFlex, cfg.superflex ? 'FLEX/SF' : 'FLEX')
 
   const totalImpact = starters.reduce((acc, s) => acc + (s.impact || 0), 0)
+  const avgVol =
+    starters.length > 0 ? starters.reduce((acc, s) => acc + (s.vol || 0), 0) / starters.length : 0
 
-  return { starters, totalImpact }
+  return { starters, totalImpact, prefLabel: pref.label, avgVol }
 }
 
 function computeNeedsFitFromRosterConfig(args: {
@@ -551,11 +573,31 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const impactMapA = pricedItemsToImpactMap(pricedRosterA.items as any)
   const impactMapB = pricedItemsToImpactMap(pricedRosterB.items as any)
 
-  const startersPreA = startersFromRoster({ roster: preRosterA, cfg, impactMap: impactMapA })
-  const startersPostA = startersFromRoster({ roster: postRosterA, cfg, impactMap: impactMapA })
+  const startersPreA = startersFromRoster({
+    roster: preRosterA,
+    cfg,
+    impactMap: impactMapA,
+    direction: teamA.direction,
+  })
+  const startersPostA = startersFromRoster({
+    roster: postRosterA,
+    cfg,
+    impactMap: impactMapA,
+    direction: teamA.direction,
+  })
 
-  const startersPreB = startersFromRoster({ roster: preRosterB, cfg, impactMap: impactMapB })
-  const startersPostB = startersFromRoster({ roster: postRosterB, cfg, impactMap: impactMapB })
+  const startersPreB = startersFromRoster({
+    roster: preRosterB,
+    cfg,
+    impactMap: impactMapB,
+    direction: teamB.direction,
+  })
+  const startersPostB = startersFromRoster({
+    roster: postRosterB,
+    cfg,
+    impactMap: impactMapB,
+    direction: teamB.direction,
+  })
 
   const netStarterImpactA = startersPostA.totalImpact - startersPreA.totalImpact
   const netStarterImpactB = startersPostB.totalImpact - startersPreB.totalImpact
@@ -604,7 +646,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     },
     lineupImpact: {
       starterDeltaPts: starterDeltaPtsA,
-      note: `StarterImpact(A): ${Math.round(startersPreA.totalImpact)} \u2192 ${Math.round(startersPostA.totalImpact)} (net ${Math.round(netStarterImpactA)}). StarterImpact(B): ${Math.round(startersPreB.totalImpact)} \u2192 ${Math.round(startersPostB.totalImpact)} (net ${Math.round(netStarterImpactB)}).`,
+      note: `A(${teamA.direction}:${startersPreA.prefLabel}) impact ${Math.round(startersPreA.totalImpact)}\u2192${Math.round(startersPostA.totalImpact)} net ${Math.round(netStarterImpactA)} | avgVol ${startersPostA.avgVol.toFixed(1)}. B(${teamB.direction}:${startersPreB.prefLabel}) impact ${Math.round(startersPreB.totalImpact)}\u2192${Math.round(startersPostB.totalImpact)} net ${Math.round(netStarterImpactB)} | avgVol ${startersPostB.avgVol.toFixed(1)}.`,
     },
     risk,
     acceptanceProbability: acceptance,
@@ -632,6 +674,10 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       needsFitScore,
       starterImpact: {
         teamA: {
+          direction: teamA.direction,
+          preference: startersPreA.prefLabel,
+          avgVolPre: Number(startersPreA.avgVol.toFixed(2)),
+          avgVolPost: Number(startersPostA.avgVol.toFixed(2)),
           pre: Math.round(startersPreA.totalImpact),
           post: Math.round(startersPostA.totalImpact),
           net: Math.round(netStarterImpactA),
@@ -640,6 +686,10 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
           startersPost: startersPostA.starters,
         },
         teamB: {
+          direction: teamB.direction,
+          preference: startersPreB.prefLabel,
+          avgVolPre: Number(startersPreB.avgVol.toFixed(2)),
+          avgVolPost: Number(startersPostB.avgVol.toFixed(2)),
           pre: Math.round(startersPreB.totalImpact),
           post: Math.round(startersPostB.totalImpact),
           net: Math.round(netStarterImpactB),
