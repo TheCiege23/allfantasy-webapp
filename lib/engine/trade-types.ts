@@ -47,6 +47,8 @@ export type TradeAssetUnion =
   | { type: 'pick'; pick: TradePickAsset }
   | { type: 'faab'; faab: { amount: number } }
 
+export type Asset = TradeAssetUnion
+
 export interface TradePlayerAsset {
   id: string
   name: string

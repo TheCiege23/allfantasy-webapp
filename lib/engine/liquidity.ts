@@ -1,4 +1,4 @@
-export function computeEngineLiquidity(metrics?: {
+export function computeLiquidity(metrics?: {
   tradesLast30?: number
   activeManagers?: number
   totalManagers?: number

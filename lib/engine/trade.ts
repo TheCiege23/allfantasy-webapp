@@ -1,14 +1,16 @@
 import type {
-  TradeAssetUnion,
+  Asset,
   TeamContext,
   TradeEngineRequest,
   TradeEngineResponse,
   TradePlayerAsset,
 } from './trade-types'
 import { ENGINE_FLAGS } from './flags'
-import { computeEngineLiquidity } from './engine-liquidity'
-import { computeAcceptanceProbability } from './engine-acceptance'
+import { computeLiquidity } from './liquidity'
+import { computeAcceptanceProbability } from './acceptance'
 import { enrichDevy, devyValueMultiplier } from './devy'
+
+import * as Hybrid from '@/lib/hybrid-valuation'
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -16,6 +18,73 @@ function clamp(n: number, min: number, max: number) {
 
 function normalizePos(pos?: string) {
   return (pos || '').toUpperCase()
+}
+
+function hashSafeString(x: any) {
+  try {
+    return JSON.stringify(x)
+  } catch {
+    return String(x)
+  }
+}
+
+async function safePriceAssets(args: {
+  assets: Asset[]
+  ctx: any
+}): Promise<{
+  totalValue: number
+  sources?: Record<string, string>
+  breakdown?: any
+}> {
+  const { assets, ctx } = args
+  const fn: any = (Hybrid as any).priceAssets
+
+  if (typeof fn !== 'function') {
+    return { totalValue: 0, sources: { _engine: 'hybrid_missing' } }
+  }
+
+  const normalize = (out: any) => {
+    if (!out) return { totalValue: 0 }
+
+    if (typeof out === 'number') return { totalValue: out }
+
+    const totalValue =
+      typeof out.totalValue === 'number'
+        ? out.totalValue
+        : typeof out.total === 'number'
+          ? out.total
+          : typeof out.value === 'number'
+            ? out.value
+            : typeof out.sum === 'number'
+              ? out.sum
+              : 0
+
+    const sources =
+      out.valuationSources && typeof out.valuationSources === 'object'
+        ? out.valuationSources
+        : out.sources && typeof out.sources === 'object'
+          ? out.sources
+          : undefined
+
+    return { totalValue, sources, breakdown: out }
+  }
+
+  const attempts: Array<() => Promise<any> | any> = [
+    () => fn(assets, ctx),
+    () => fn({ assets, ctx }),
+    () => fn(ctx, assets),
+  ]
+
+  for (const attempt of attempts) {
+    try {
+      const out = await attempt()
+      return normalize(out)
+    } catch {
+      // continue
+    }
+  }
+
+  return { totalValue: 0, sources: { _engine: 'hybrid_failed' } }
 }
 
 function scoreLeagueAdjustments(req: TradeEngineRequest) {
@@ -75,47 +144,7 @@ function inferTeamDirection(team: TeamContext): TeamContext {
   return { ...team, direction, directionConfidence }
 }
 
-function basePlayerValue(p: TradePlayerAsset) {
-  if (p.league === 'NCAA' && p.devyEligible && !p.graduatedToNFL) {
-    const enriched = enrichDevy(p)
-    return enriched.draftProjectionScore ?? 50
-  }
-
-  const pos = normalizePos(p.pos)
-  if (pos === 'QB') return 70
-  if (pos === 'RB') return 65
-  if (pos === 'WR') return 62
-  if (pos === 'TE') return 55
-  return 50
-}
-
-function sumAssetsValue(assets: TradeAssetUnion[], teamDirection?: string) {
-  let total = 0
-  const notes: string[] = []
-
-  for (const a of assets) {
-    if (a.type === 'faab') total += clamp(a.faab.amount / 10, 0, 25)
-    if (a.type === 'pick') {
-      const base =
-        a.pick.round === 1 ? 80 :
-        a.pick.round === 2 ? 55 :
-        a.pick.round === 3 ? 35 :
-        20
-      total += base
-    }
-    if (a.type === 'player') {
-      const p0 = enrichDevy(a.player)
-      const mult = p0.league === 'NCAA' ? devyValueMultiplier(teamDirection) : 1.0
-      const v = basePlayerValue(p0) * mult
-      total += v
-      if (p0.league === 'NCAA') notes.push(`Devy timeline multiplier applied (${mult.toFixed(2)})`)
-    }
-  }
-
-  return { total, notes }
-}
-
-function computeRisk(req: TradeEngineRequest, assetsA: TradeAssetUnion[], assetsB: TradeAssetUnion[]) {
+function computeRisk(req: TradeEngineRequest, assetsA: Asset[], assetsB: Asset[]) {
   const ctx = req.nflContext?.players || {}
   const touchedIds = new Set<string>()
   for (const a of [...assetsA, ...assetsB]) {
@@ -210,7 +239,38 @@ function buildCounters(baseFairness: number, acceptProb: number) {
   return counters.slice(0, 3)
 }
 
+function splitDevyAssets(assets: Asset[]) {
+  const devyPlayers: TradePlayerAsset[] = []
+  const marketAssets: Asset[] = []
+
+  for (const a of assets) {
+    if (a.type === 'player') {
+      const p = enrichDevy(a.player)
+      if (p.league === 'NCAA' && p.devyEligible && !p.graduatedToNFL) {
+        devyPlayers.push(p)
+        continue
+      }
+      marketAssets.push({ type: 'player', player: p })
+      continue
+    }
+    marketAssets.push(a)
+  }
+
+  return { devyPlayers, marketAssets }
+}
+
+function devySideValue(devyPlayers: TradePlayerAsset[], teamDirection?: string) {
+  const mult = devyValueMultiplier(teamDirection)
+  let total = 0
+  for (const p of devyPlayers) {
+    const score = p.draftProjectionScore ?? 50
+    total += score * mult
+  }
+  return { total, mult }
+}
+
 export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEngineResponse> {
+  const leagueId = req.leagueId || req.league_id || req.leagueContext?.leagueId || ''
   const leagueContextUsed = !!req.leagueContext
   const nflContextUsed = !!req.nflContext
 
@@ -226,8 +286,27 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     roster: req.rosterB ?? [],
   })
 
-  const { total: vA, notes: devyNotesA } = sumAssetsValue(req.assetsA, teamA.direction)
-  const { total: vB, notes: devyNotesB } = sumAssetsValue(req.assetsB, teamB.direction)
+  const hvCtx: any = {
+    sport: String(req.sport || 'NFL').toLowerCase(),
+    format: req.format || 'dynasty',
+    numTeams: req.numTeams ?? req.leagueContext?.numTeams ?? 12,
+    qbFormat: req.leagueContext?.scoring?.qbFormat || '1QB',
+    scoring: req.leagueContext?.scoring || undefined,
+    roster: req.leagueContext?.roster || undefined,
+    leagueId,
+  }
+
+  const splitA = splitDevyAssets(req.assetsA)
+  const splitB = splitDevyAssets(req.assetsB)
+
+  const pricedA = await safePriceAssets({ assets: splitA.marketAssets, ctx: hvCtx })
+  const pricedB = await safePriceAssets({ assets: splitB.marketAssets, ctx: hvCtx })
+
+  const devyA = devySideValue(splitA.devyPlayers, teamA.direction)
+  const devyB = devySideValue(splitB.devyPlayers, teamB.direction)
+
+  const vA = pricedA.totalValue + devyA.total
+  const vB = pricedB.totalValue + devyB.total
 
   const total = vA + vB || 1
   const delta = vA - vB
@@ -240,25 +319,37 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       ? ('MODERATE' as const)
       : ('LEARNING' as const)
 
+  const pricingSources: Record<string, string> = {
+    ...(pricedA.sources || {}),
+    ...(pricedB.sources || {}),
+  }
+
   const fairnessDrivers = [
-    { key: 'market_value', delta: clamp(delta / 25, -20, 20), note: 'Net value difference between sides.' },
-    ...(devyNotesA.length || devyNotesB.length
-      ? [{ key: 'devy_timeline', delta: 2, note: 'Devy timeline multipliers applied based on team direction.' }]
+    {
+      key: 'hybrid_value_delta',
+      delta: clamp(delta / 25, -20, 20),
+      note: `Hybrid valuation delta (market assets) + Devy projection delta. vA=${Math.round(vA)} vB=${Math.round(vB)}`,
+    },
+    ...(splitA.devyPlayers.length || splitB.devyPlayers.length
+      ? [
+          {
+            key: 'devy_projection_layer',
+            delta: 2,
+            note: `Devy assets priced via DraftProjectionScore (multA=${devyA.mult.toFixed(2)} multB=${devyB.mult.toFixed(2)})`,
+          },
+        ]
       : []),
   ]
 
   const leagueAdj = scoreLeagueAdjustments(req)
-
   const needsFitScore = estimateNeedsFitScore(req)
   const risk = computeRisk(req, req.assetsA, req.assetsB)
-
   const volatilityDelta = risk.volatility
 
   const partnerRosterId = 'B'
-
   const offeredToPartner: TradePlayerAsset[] = req.assetsA
     .filter(a => a.type === 'player')
-    .map(a => (a as Extract<TradeAssetUnion, { type: 'player' }>).player)
+    .map(a => (a as any).player)
 
   const acceptance = computeAcceptanceProbability({
     req,
@@ -280,13 +371,11 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const lineupImpact = {
     starterDeltaPts: clamp(Math.round((needsFitScore - 50) / 8), -8, 8),
     note: leagueContextUsed
-      ? 'League settings applied; replace-level modeling can be upgraded with full slot map.'
+      ? 'League settings applied; replacement-level slot modeling can be upgraded with full slot map.'
       : 'Limited league settings; provide roster/scoring for highest accuracy.',
   }
 
-  const liquidity = ENGINE_FLAGS.enableLiquidityModel ? computeEngineLiquidity(req.marketContext?.liquidity) : null
-
-  const leagueId = req.leagueId || req.league_id || req.leagueContext?.leagueId || ''
+  const liquidity = ENGINE_FLAGS.enableLiquidityModel ? computeLiquidity(req.marketContext?.liquidity) : null
 
   return {
     verdict,
@@ -312,15 +401,21 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       nflContextUsed,
       partnerModelUsed: !!req.marketContext?.partnerTendencies,
       liquidityUsed: !!liquidity,
-      devyUsed:
-        [...req.assetsA, ...req.assetsB].some(a => a.type === 'player' && a.player?.league === 'NCAA'),
-      pricingSources: {},
+      devyUsed: (splitA.devyPlayers.length + splitB.devyPlayers.length) > 0,
+      pricingSources,
     },
     meta: {
       leagueId,
+      hvCtx: hashSafeString(hvCtx),
       teamA: { direction: teamA.direction, confidence: teamA.directionConfidence },
       teamB: { direction: teamB.direction, confidence: teamB.directionConfidence },
       liquidity,
+      hybridA: pricedA.breakdown ? { ok: true } : { ok: false },
+      hybridB: pricedB.breakdown ? { ok: true } : { ok: false },
+      devy: {
+        sideA: { count: splitA.devyPlayers.length, mult: devyA.mult },
+        sideB: { count: splitB.devyPlayers.length, mult: devyB.mult },
+      },
     },
   }
 }
