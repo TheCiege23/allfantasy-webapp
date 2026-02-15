@@ -256,8 +256,8 @@ function HomeContent() {
 
         {/* Announcement Badge */}
         <div className="mx-auto w-fit mb-6 sm:mb-10">
-          <div className="px-4 sm:px-6 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-purple-600/30 via-pink-500/25 to-cyan-500/30 border border-white/20 shadow-lg shadow-purple-500/10">
-            <span className="text-xs sm:text-sm font-semibold tracking-wide bg-gradient-to-r from-purple-200 via-pink-200 to-cyan-200 bg-clip-text text-transparent">
+          <div className="px-4 sm:px-6 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-purple-600/30 via-pink-500/25 to-cyan-500/30 shadow-lg shadow-purple-500/10" style={{ border: '1px solid var(--border)' }}>
+            <span className="text-xs sm:text-sm font-semibold tracking-wide bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--heading-to), var(--heading-via), var(--heading-from))` }}>
               AllFantasy App Launching 2026 - Early Access Open
             </span>
           </div>
@@ -270,10 +270,10 @@ function HomeContent() {
           <div className="text-center lg:text-left space-y-5 sm:space-y-6">
             <div className="space-y-2 sm:space-y-3">
               <h1 className="text-3xl sm:text-5xl md:text-6xl xl:text-7xl font-black tracking-tight leading-[1.05]">
-                <span className="block bg-gradient-to-r from-white via-cyan-100 to-white bg-clip-text text-transparent drop-shadow-[0_0_60px_rgba(34,211,238,0.4)]">
+                <span className="block bg-clip-text text-transparent drop-shadow-[0_0_60px_rgba(34,211,238,0.4)]" style={{ backgroundImage: `linear-gradient(to right, var(--hero-from), var(--hero-via), var(--hero-to))` }}>
                   Stop guessing in
                 </span>
-                <span className="block bg-gradient-to-r from-cyan-300 via-purple-300 to-cyan-300 bg-[length:200%_auto] animate-gradient-x bg-clip-text text-transparent">
+                <span className="block bg-[length:200%_auto] animate-gradient-x bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--heading-from), var(--heading-to), var(--heading-from))` }}>
                   fantasy football.
                 </span>
               </h1>
@@ -287,7 +287,7 @@ function HomeContent() {
             </p>
 
             <div className="space-y-1">
-              <p className="text-sm font-medium text-cyan-400">Built by real fantasy players — not a corporation.</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--accent-cyan-strong)' }}>Built by real fantasy players — not a corporation.</p>
               <p className="text-xs" style={{ color: 'var(--muted2)' }}>We built the tools we always wished existed.</p>
             </div>
 
@@ -322,7 +322,7 @@ function HomeContent() {
               <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-3">
                 <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-amber-500/15 border border-amber-400/30">
                   <span className="text-amber-400">🎁</span>
-                  <span className="text-[11px] sm:text-xs font-medium text-amber-200">Founding users get 10 days of AF Pro free</span>
+                  <span className="text-[11px] sm:text-xs font-medium" style={{ color: 'var(--badge-text-amber)' }}>Founding users get 10 days of AF Pro free</span>
                 </div>
                 <p className="text-xs" style={{ color: 'var(--muted2)' }}>
                   {error ? <span className="text-red-400">{error}</span> : 'No spam · Cancel anytime'}
@@ -334,13 +334,14 @@ function HomeContent() {
             <Link 
               href="/af-legacy" 
               className="inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 rounded-xl text-sm sm:text-base font-semibold w-full sm:w-auto min-h-[48px]
-                         text-white bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20
+                         bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20
                          border border-cyan-400/40 shadow-lg shadow-cyan-500/10
                          hover:from-cyan-500/30 hover:via-purple-500/30 hover:to-cyan-500/30
                          hover:border-cyan-400/60 hover:shadow-cyan-500/20
                          active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition-all duration-300 group"
+              style={{ color: 'var(--text)' }}
             >
-              <span className="text-cyan-400 text-lg">⚡</span>
+              <span style={{ color: 'var(--accent-cyan-strong)' }} className="text-lg">⚡</span>
               <span>See the AI in action with AF Legacy</span>
               <span className="group-hover:translate-x-1.5 transition-transform duration-300">→</span>
             </Link>
@@ -362,7 +363,7 @@ function HomeContent() {
                     <div className="text-[11px]" style={{ color: 'var(--muted2)' }}>Paste your trade. Get a real verdict.</div>
                   </div>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium">Free</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 font-medium" style={{ color: 'var(--accent-cyan)' }}>Free</span>
               </div>
 
               <textarea
@@ -406,7 +407,7 @@ function HomeContent() {
                         ? 'bg-cyan-400 text-black'
                         : ''
                       }`}
-                    style={leagueSize !== size ? { background: 'rgba(255,255,255,0.1)', color: 'var(--muted)' } : undefined}
+                    style={leagueSize !== size ? { background: 'var(--subtle-bg)', color: 'var(--muted)' } : undefined}
                   >
                     {size}-team
                   </button>
@@ -432,10 +433,10 @@ function HomeContent() {
                         : 'bg-gradient-to-r from-red-500/15 to-red-400/5 border-red-500/25'
                   }`}>
                     <div className="text-[10px] uppercase tracking-widest font-semibold mb-1" style={{ color: 'var(--muted2)' }}>Verdict</div>
-                    <div className={`text-xl sm:text-2xl font-black ${
-                      tradeResult.lean === 'You' ? 'text-emerald-300' :
-                      tradeResult.lean === 'Even' ? 'text-amber-300' : 'text-red-300'
-                    }`}>
+                    <div className="text-xl sm:text-2xl font-black" style={{
+                      color: tradeResult.lean === 'You' ? 'var(--accent-emerald)' :
+                      tradeResult.lean === 'Even' ? 'var(--accent-amber)' : 'var(--accent-red)'
+                    }}>
                       {tradeResult.verdict}
                     </div>
                   </div>
@@ -443,26 +444,26 @@ function HomeContent() {
                   {tradeResult.values && (
                     <div className="grid grid-cols-2 gap-2">
                       <div className="p-2.5 rounded-lg bg-red-500/5" style={{ border: '1px solid var(--border)' }}>
-                        <div className="text-[10px] text-red-300/70 font-medium mb-1">You Give</div>
+                        <div className="text-[10px] font-medium mb-1" style={{ color: 'var(--accent-red)', opacity: 0.8 }}>You Give</div>
                         {tradeResult.values.youGive.map((a, i) => (
                           <div key={i} className="flex items-center justify-between text-xs">
                             <span className="truncate mr-1" style={{ color: 'var(--muted)' }}>{a.name}</span>
                             <span className="shrink-0" style={{ color: 'var(--muted2)' }}>{a.value.toLocaleString()}</span>
                           </div>
                         ))}
-                        <div className="mt-1 pt-1 text-xs font-bold text-red-300/80 text-right" style={{ borderTop: '1px solid var(--border)' }}>
+                        <div className="mt-1 pt-1 text-xs font-bold text-right" style={{ borderTop: '1px solid var(--border)', color: 'var(--accent-red)', opacity: 0.85 }}>
                           {tradeResult.values.youGiveTotal.toLocaleString()}
                         </div>
                       </div>
                       <div className="p-2.5 rounded-lg bg-emerald-500/5" style={{ border: '1px solid var(--border)' }}>
-                        <div className="text-[10px] text-emerald-300/70 font-medium mb-1">You Get</div>
+                        <div className="text-[10px] font-medium mb-1" style={{ color: 'var(--accent-emerald)', opacity: 0.8 }}>You Get</div>
                         {tradeResult.values.youGet.map((a, i) => (
                           <div key={i} className="flex items-center justify-between text-xs">
                             <span className="truncate mr-1" style={{ color: 'var(--muted)' }}>{a.name}</span>
                             <span className="shrink-0" style={{ color: 'var(--muted2)' }}>{a.value.toLocaleString()}</span>
                           </div>
                         ))}
-                        <div className="mt-1 pt-1 text-xs font-bold text-emerald-300/80 text-right" style={{ borderTop: '1px solid var(--border)' }}>
+                        <div className="mt-1 pt-1 text-xs font-bold text-right" style={{ borderTop: '1px solid var(--border)', color: 'var(--accent-emerald)', opacity: 0.85 }}>
                           {tradeResult.values.youGetTotal.toLocaleString()}
                         </div>
                       </div>
@@ -472,7 +473,7 @@ function HomeContent() {
                   <div className="space-y-1.5">
                     {tradeResult.bullets.map((b, i) => (
                       <div key={i} className="flex items-start gap-2">
-                        <span className="text-cyan-400 mt-0.5 text-xs shrink-0">•</span>
+                        <span className="mt-0.5 text-xs shrink-0" style={{ color: 'var(--accent-cyan-strong)' }}>•</span>
                         <span className="text-xs" style={{ color: 'var(--muted)' }}>{b}</span>
                       </div>
                     ))}
@@ -481,14 +482,14 @@ function HomeContent() {
                   {tradeResult.sensitivity && (
                     <div className="p-2.5 rounded-lg bg-purple-500/10 border border-purple-500/20">
                       <div className="flex items-start gap-2">
-                        <span className="text-purple-400 text-sm shrink-0">💡</span>
+                        <span className="text-sm shrink-0" style={{ color: 'var(--accent-purple)' }}>💡</span>
                         <span className="text-xs" style={{ color: 'var(--muted)' }}>{tradeResult.sensitivity}</span>
                       </div>
                     </div>
                   )}
 
                   {tradeResult.detectedLeagueSize && (
-                    <p className="text-[11px] text-cyan-300">
+                    <p className="text-[11px]" style={{ color: 'var(--accent-cyan)' }}>
                       League size detected from text: {tradeResult.detectedLeagueSize}-team
                     </p>
                   )}
@@ -510,9 +511,10 @@ function HomeContent() {
                       href="/af-legacy"
                       onClick={() => track('early_access_cta_clicked')}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold
-                                 text-white bg-gradient-to-r from-purple-500/20 to-cyan-500/20
+                                 bg-gradient-to-r from-purple-500/20 to-cyan-500/20
                                  border border-purple-400/40 hover:border-purple-400/60
                                  hover:from-purple-500/30 hover:to-cyan-500/30 transition-all"
+                      style={{ color: 'var(--text)' }}
                     >
                       <span>Unlock Deep Analysis</span>
                       <span>→</span>
@@ -549,11 +551,11 @@ function HomeContent() {
                   <div className="text-[10px]" style={{ color: 'var(--muted2)' }}>See where your team really stands.</div>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">AI Generated</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20" style={{ color: 'var(--accent-amber)' }}>AI Generated</span>
             </div>
             <div className="flex items-center gap-4 mb-3">
               <div className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25">
-                <span className="text-sm font-bold text-amber-300">Contender</span>
+                <span className="text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>Contender</span>
               </div>
               <span className="text-lg font-bold" style={{ color: 'var(--text)' }}>#3 <span className="text-sm" style={{ color: 'var(--muted2)' }}>of 12</span></span>
             </div>
@@ -572,15 +574,15 @@ function HomeContent() {
                   <div className="text-[10px]" style={{ color: 'var(--muted2)' }}>Start the right players. Every week.</div>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">AI Generated</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20" style={{ color: 'var(--accent-emerald)' }}>AI Generated</span>
             </div>
             <div className="flex items-center gap-3 mb-3 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <span className="text-emerald-400 text-xs font-medium">Start:</span>
+              <span className="text-xs font-medium" style={{ color: 'var(--accent-emerald-strong)' }}>Start:</span>
               <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>James Conner</span>
-              <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden">
+              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
                 <div className="h-full w-4/5 bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full" />
               </div>
-              <span className="text-xs text-emerald-400">82%</span>
+              <span className="text-xs" style={{ color: 'var(--accent-emerald-strong)' }}>82%</span>
             </div>
             <p className="text-xs" style={{ color: 'var(--muted2)' }}>The AI breaks down matchups, projections, and risk to help you lock in lineups with confidence.</p>
           </div>
@@ -609,7 +611,7 @@ function HomeContent() {
         {/* AF LEAGUE TRANSFER SECTION */}
         <div className="space-y-6 sm:space-y-8">
           <div className="text-center max-w-2xl mx-auto space-y-2 sm:space-y-3 px-1">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-300 via-white to-purple-300 bg-clip-text text-transparent">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--heading-from), var(--heading-via), var(--heading-to))` }}>
               Bring Your League With You. No Reset Required.
             </h2>
             <p className="text-sm sm:text-base md:text-lg" style={{ color: 'var(--muted)' }}>
@@ -624,7 +626,7 @@ function HomeContent() {
             <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-transparent p-5">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-3 h-3 rounded-full bg-emerald-400" />
-                <span className="text-sm font-bold text-emerald-300">Full Transfer</span>
+                <span className="text-sm font-bold" style={{ color: 'var(--accent-emerald)' }}>Full Transfer</span>
               </div>
               <div className="space-y-2 mb-4">
                 <div className="flex items-center gap-2">
@@ -643,7 +645,7 @@ function HomeContent() {
             <div className="rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 to-transparent p-5">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-3 h-3 rounded-full bg-amber-400" />
-                <span className="text-sm font-bold text-amber-300">Guided Transfer</span>
+                <span className="text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>Guided Transfer</span>
               </div>
               <div className="space-y-2 mb-4">
                 <div className="flex items-center gap-2">
@@ -666,7 +668,7 @@ function HomeContent() {
             <div className="rounded-2xl border border-red-500/20 bg-gradient-to-br from-red-500/10 to-transparent p-5">
               <div className="flex items-center gap-2 mb-4">
                 <span className="w-3 h-3 rounded-full bg-red-400" />
-                <span className="text-sm font-bold text-red-300">Manual Import</span>
+                <span className="text-sm font-bold" style={{ color: 'var(--accent-red)' }}>Manual Import</span>
               </div>
               <div className="space-y-2 mb-4">
                 <div className="flex items-center gap-2">
@@ -693,7 +695,7 @@ function HomeContent() {
         {/* WHAT THE AI HELPS WITH */}
         <div className="space-y-6 sm:space-y-8">
           <div className="text-center px-1">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-300 via-white to-purple-300 bg-clip-text text-transparent mb-2">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-clip-text text-transparent mb-2" style={{ backgroundImage: `linear-gradient(to right, var(--heading-from), var(--heading-via), var(--heading-to))` }}>
               What the AI helps with
             </h2>
             <p className="text-sm sm:text-base" style={{ color: 'var(--muted2)' }}>Three tools. One smarter fantasy experience.</p>
@@ -717,12 +719,12 @@ function HomeContent() {
         </div>
 
         {/* DIVIDER */}
-        <div className="my-10 sm:my-16 md:my-20 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        <div className="my-10 sm:my-16 md:my-20 h-px" style={{ background: 'linear-gradient(to right, transparent, var(--border), transparent)' }} />
 
         {/* AF LEGACY CTA */}
         <div className="space-y-6 sm:space-y-8">
           <div className="text-center max-w-xl mx-auto px-1">
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-300 via-white to-purple-300 bg-clip-text text-transparent mb-2 sm:mb-3">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-clip-text text-transparent mb-2 sm:mb-3" style={{ backgroundImage: `linear-gradient(to right, var(--heading-from), var(--heading-via), var(--heading-to))` }}>
               See the AI work on real leagues
             </h2>
             <p className="text-sm sm:text-base" style={{ color: 'var(--muted2)' }}>Import your Sleeper leagues and watch the AI analyze trades, rosters, and dynasty trends instantly.</p>
@@ -763,7 +765,7 @@ function HomeContent() {
 
         {/* FINAL CTA */}
         <div className="max-w-lg mx-auto text-center space-y-4 sm:space-y-5 px-1">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-cyan-300 via-white to-purple-300 bg-clip-text text-transparent">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, var(--heading-from), var(--heading-via), var(--heading-to))` }}>
             Be there when AllFantasy launches
           </h2>
           <p className="text-sm sm:text-base" style={{ color: 'var(--muted2)' }}>Early access members get priority features, Pro trials, and early league tools.</p>
