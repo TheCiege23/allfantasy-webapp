@@ -7,6 +7,7 @@ import {
   getLatestDemandSnapshot,
 } from '@/lib/rankings-engine/ldi-persistence'
 import { hardenLdiResponse } from "@/lib/ldi/harden-ldi"
+import { hardenPartnerTendenciesResponse } from "@/lib/partner/harden-partner-tendencies"
 
 export const GET = withApiUsage({ endpoint: "/api/leagues/demand-index", tool: "LeaguesDemandIndex" })(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams
@@ -49,6 +50,25 @@ export const GET = withApiUsage({ endpoint: "/api/leagues/demand-index", tool: "
     const now = new Date()
     const month = now.getMonth()
     const isOffseason = month >= 2 && month <= 8
+
+    if (includeManagers && basePayload.perManager) {
+      const hardenedPartners = hardenPartnerTendenciesResponse({
+        raw: { partnerTendencies: basePayload.perManager, tradesAnalyzed: basePayload.tradesAnalyzed },
+        leagueId,
+        leagueName: basePayload?.leagueName,
+        season: basePayload?.season,
+        week: basePayload?.week ?? null,
+        isOffseason,
+      })
+      basePayload.partnerMeta = {
+        fallbackMode: hardenedPartners.fallbackMode,
+        rankingSource: hardenedPartners.rankingSource,
+        rankingSourceNote: hardenedPartners.rankingSourceNote,
+        partnersAnalyzed: hardenedPartners.partnersAnalyzed,
+        partnerPosCounts: hardenedPartners.partnerPosCounts,
+        warnings: hardenedPartners.warnings,
+      }
+    }
 
     const hardened = hardenLdiResponse({
       raw: basePayload,
