@@ -12875,6 +12875,20 @@ function AFLegacyContent() {
                                         }`}>
                                           Confidence: {devyBoardData.confidence}
                                         </span>
+                                        {devyBoardData.dataSource && (
+                                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-medium ${
+                                            devyBoardData.dataSource === 'database' ? 'bg-cyan-500/20 text-cyan-300' :
+                                            devyBoardData.dataSource === 'hybrid' ? 'bg-violet-500/20 text-violet-300' :
+                                            'bg-slate-600/50 text-slate-300'
+                                          }`}>
+                                            {devyBoardData.dataSource === 'hybrid' ? 'CFBD + AI' : devyBoardData.dataSource === 'database' ? 'CFBD Data' : 'AI Only'}
+                                          </span>
+                                        )}
+                                        {devyBoardData.totalClassifiedPlayers && (
+                                          <span className="px-2.5 py-1 rounded-lg bg-slate-700/60 text-[10px] font-medium text-slate-300">
+                                            {devyBoardData.totalClassifiedPlayers} Players Classified
+                                          </span>
+                                        )}
                                       </>
                                     )}
                                     <span className="px-2.5 py-1 rounded-lg bg-slate-700/60 text-[10px] font-medium text-slate-400">Read-only</span>
@@ -12954,13 +12968,24 @@ function AFLegacyContent() {
                                                 <div className="flex items-center gap-1.5 font-semibold text-white text-sm"><MiniPlayerImg sleeperId={player.id} name={player.name} size={18} />{player.name}</div>
                                                 <div className="text-xs text-white/50">{player.position} • {player.school}</div>
                                               </div>
-                                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                                player.tier === 'Tier 1' ? 'bg-amber-500/30 text-amber-200' :
-                                                player.tier === 'Tier 2' ? 'bg-slate-600/50 text-slate-200' :
-                                                'bg-purple-500/30 text-purple-200'
-                                              }`}>
-                                                {player.tier}
-                                              </span>
+                                              <div className="flex flex-col items-end gap-1">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                  player.tier === 'Tier 1' ? 'bg-amber-500/30 text-amber-200' :
+                                                  player.tier === 'Tier 2' ? 'bg-slate-600/50 text-slate-200' :
+                                                  'bg-purple-500/30 text-purple-200'
+                                                }`}>
+                                                  {player.tier}
+                                                </span>
+                                                {player.badge && (
+                                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                                                    player.badge === 'NCAA' ? 'bg-blue-500/20 text-blue-300' :
+                                                    player.badge === 'Graduated' ? 'bg-emerald-500/20 text-emerald-300' :
+                                                    'bg-orange-500/20 text-orange-300'
+                                                  }`}>
+                                                    {player.badge}
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
                                             
                                             {/* Draft Value Meter */}

@@ -73,6 +73,16 @@ const syncTasks: SyncTask[] = [
     lastRun: 0,
     running: false,
   },
+  {
+    name: 'Devy Player Sync',
+    url: `${BASE_URL}/api/admin/devy-sync`,
+    method: 'POST' as const,
+    intervalMs: 24 * 60 * 60 * 1000,
+    body: {},
+    requiresAuth: true,
+    lastRun: 0,
+    running: false,
+  },
 ];
 
 async function runTask(task: SyncTask): Promise<void> {

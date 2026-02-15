@@ -1,6 +1,8 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { getEligibleDevyPlayers, computeAvailabilityPct } from '@/lib/devy-classification'
+import { prisma } from '@/lib/prisma'
 
 const openai = new OpenAI()
 
@@ -22,7 +24,7 @@ interface DevyBoardRequest {
   team_record?: { wins: number; losses: number }
 }
 
-interface DevyPlayer {
+interface DevyPlayerResult {
   name: string
   position: string
   school: string
@@ -31,11 +33,24 @@ interface DevyPlayer {
   availabilityPct: number
   whyBullets: string[]
   needMatch: 'Strong' | 'Medium' | 'Low'
+  classYear?: number | null
+  conference?: string | null
+  devyEligible?: boolean
+  graduatedToNFL?: boolean
+  nflTeam?: string | null
+  sleeperId?: string | null
+  badge?: 'NCAA' | 'NFL' | 'Graduated'
+  statSeason?: number | null
+  passingYards?: number | null
+  rushingYards?: number | null
+  receivingYards?: number | null
+  receivingTDs?: number | null
 }
 
 interface DevyBoardResponse {
   updatedAt: string
   confidence: 'High' | 'Learning' | 'Evolving'
+  dataSource: 'database' | 'ai_only' | 'hybrid'
   leagueContext: {
     format: string
     teams: number
@@ -44,10 +59,34 @@ interface DevyBoardResponse {
     teamDirection: string
     biggestNeed: string
   }
-  topTargets: DevyPlayer[]
-  fallbacks: DevyPlayer[]
+  topTargets: DevyPlayerResult[]
+  fallbacks: DevyPlayerResult[]
   projectedPicksAhead: Array<{ name: string; pct: number }>
   updateReasons: string[]
+  totalClassifiedPlayers?: number
+}
+
+function assignTier(devyValue: number): 'Tier 1' | 'Tier 2' | 'Sleeper' {
+  if (devyValue >= 7000) return 'Tier 1'
+  if (devyValue >= 4000) return 'Tier 2'
+  return 'Sleeper'
+}
+
+function assignNeedMatch(position: string, biggestNeed: string, secondaryNeed: string): 'Strong' | 'Medium' | 'Low' {
+  if (position === biggestNeed) return 'Strong'
+  if (position === secondaryNeed) return 'Medium'
+  return 'Low'
+}
+
+function computeSecondaryNeed(rosterPositions: string[], isSF: boolean, isTEP: boolean, biggestNeed: string): string {
+  const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0 }
+  for (const p of rosterPositions) if (counts[p] !== undefined) counts[p]++
+
+  const needs = Object.entries(counts)
+    .filter(([pos]) => pos !== biggestNeed)
+    .sort(([, a], [, b]) => a - b)
+
+  return needs[0]?.[0] || 'WR'
 }
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "LegacyDevyBoard" })(async (req: NextRequest) => {
@@ -63,92 +102,134 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "Le
     const isSF = league_settings?.is_superflex || false
     const isTEP = league_settings?.te_premium || false
     const leagueType = league_settings?.league_type || 'dynasty'
-    
+
     const userPicks = roster?.picks || []
-    const firstPick = userPicks.length > 0 
+    const firstPick = userPicks.length > 0
       ? `${userPicks[0].round}.${String(userPicks[0].pick).padStart(2, '0')}`
       : '1.08'
-    
+    const pickNumber = Math.max(1, userPicks.length > 0 ? userPicks[0].pick : 8)
+
     const record = team_record || { wins: 5, losses: 7 }
     const isContender = record.wins > record.losses
     const teamDirection = isContender ? 'Contender' : 'Rebuilder'
-    
+
     const rosterPositions = roster?.players?.map(p => p.position) || []
     const qbCount = rosterPositions.filter(p => p === 'QB').length
     const rbCount = rosterPositions.filter(p => p === 'RB').length
     const wrCount = rosterPositions.filter(p => p === 'WR').length
     const teCount = rosterPositions.filter(p => p === 'TE').length
-    
+
     let biggestNeed = 'WR'
     if (isSF && qbCount < 2) biggestNeed = 'QB'
     else if (rbCount < 3) biggestNeed = 'RB'
     else if (teCount < 1 && isTEP) biggestNeed = 'TE'
 
-    // Current date context for accurate recommendations
-    const currentYear = new Date().getFullYear() // 2026
-    const currentMonth = new Date().getMonth() + 1 // February
-    
-    const prompt = `You are a fantasy football devy draft expert. Today is ${currentMonth}/${currentYear}. Generate draft recommendations for a ${leagueType} league.
+    const secondaryNeed = computeSecondaryNeed(rosterPositions, isSF, isTEP, biggestNeed)
 
-CRITICAL: The 2024 and 2025 NFL Drafts have already occurred. DO NOT recommend any players who were drafted in 2024 or 2025 NFL drafts. These players are now in the NFL:
-- 2024 Draft: Caleb Williams, Jayden Daniels, Drake Maye, Marvin Harrison Jr., Malik Nabers, Rome Odunze, Brock Bowers, Brian Thomas Jr., Xavier Worthy, Keon Coleman, Ladd McConkey, Trey Benson, Jaylen Wright, Bucky Irving, Blake Corum, MarShawn Lloyd, Jonathon Brooks, Braelon Allen, Ray Davis, Audric Estime, Will Shipley, etc.
-- 2025 Draft: Travis Hunter, Ashton Jeanty, Cam Ward, Shedeur Sanders, Tetairoa McMillan, Luther Burden III, Emeka Egbuka, Matthew Golden, Quinshon Judkins, Omarion Hampton, Kalel Mullings, TreVeyon Henderson, etc.
+    const dbPlayerCount = await prisma.devyPlayer.count({ where: { devyEligible: true } })
+    const hasDBData = dbPlayerCount >= 20
 
-Only recommend college players who are CURRENTLY still in college for the ${currentYear} season and will be draft-eligible in 2026 or later.
+    let dataSource: 'database' | 'ai_only' | 'hybrid' = 'ai_only'
+    let topTargets: DevyPlayerResult[] = []
+    let fallbacks: DevyPlayerResult[] = []
+    let projectedPicksAhead: Array<{ name: string; pct: number }> = []
+    let updateReasons: string[] = []
 
-League Context:
-- Format: ${leagueType} (${isSF ? 'Superflex' : '1QB'})
-- Teams: ${totalTeams}
-- TE Premium: ${isTEP ? 'Yes' : 'No'}
-- User's Pick: ${firstPick}
-- Team Direction: ${teamDirection}
-- Biggest Roster Need: ${biggestNeed}
+    if (hasDBData) {
+      dataSource = 'hybrid'
 
-Generate exactly this JSON structure with CURRENT ${currentYear}-${currentYear + 1} devy prospects still in college:
-{
-  "topTargets": [
-    {
-      "name": "Player Name",
-      "position": "QB/RB/WR/TE",
-      "school": "University Name",
-      "tier": "Tier 1" or "Tier 2" or "Sleeper",
-      "draftValue": 85,
-      "availabilityPct": 70,
-      "whyBullets": ["Reason 1 about roster fit", "Reason 2 about production/upside"],
-      "needMatch": "Strong" or "Medium" or "Low"
-    }
-  ],
-  "fallbacks": [3 backup options with same structure],
-  "projectedPicksAhead": [{"name": "Player", "pct": 85}],
-  "updateReasons": ["Reason 1 for board changes", "Reason 2", "Reason 3"]
-}
+      const needPlayers = await getEligibleDevyPlayers({ position: biggestNeed, limit: 10, minValue: 3000 })
+      const secondaryPlayers = await getEligibleDevyPlayers({ position: secondaryNeed, limit: 5, minValue: 3000 })
+      const otherPositions = ['QB', 'RB', 'WR', 'TE'].filter(p => p !== biggestNeed && p !== secondaryNeed)
+      const otherPlayers = await getEligibleDevyPlayers({ limit: 10, minValue: 5000 })
 
-Provide 6 topTargets, 3 fallbacks, and 4-6 projectedPicksAhead names.
-Consider: ${teamDirection === 'Contender' ? 'More production-ready players' : 'Higher upside, younger prospects'}.
-Position priority based on need: ${biggestNeed}.
-Return ONLY valid JSON, no markdown.`
+      const allCandidates = [...needPlayers, ...secondaryPlayers, ...otherPlayers.filter(p =>
+        !needPlayers.find(n => n.id === p.id) && !secondaryPlayers.find(s => s.id === p.id)
+      )]
 
-    let aiResponse: any = null
-    
-    try {
-      const completion = await openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
-        max_tokens: 2000,
+      allCandidates.sort((a, b) => {
+        const aNeedBoost = a.position === biggestNeed ? 2000 : a.position === secondaryNeed ? 1000 : 0
+        const bNeedBoost = b.position === biggestNeed ? 2000 : b.position === secondaryNeed ? 1000 : 0
+        return (b.devyValue + bNeedBoost) - (a.devyValue + aNeedBoost)
       })
-      
-      const content = completion.choices[0]?.message?.content || ''
-      const cleanedContent = content.replace(/```json\n?|\n?```/g, '').trim()
-      aiResponse = JSON.parse(cleanedContent)
-    } catch (aiError) {
-      console.error('AI generation failed, using fallback data:', aiError)
-      aiResponse = generateFallbackData(biggestNeed, teamDirection, isSF)
+
+      const toResult = (p: any): DevyPlayerResult => ({
+        name: p.name,
+        position: p.position,
+        school: p.school,
+        tier: assignTier(p.devyValue),
+        draftValue: Math.round(p.devyValue / 100),
+        availabilityPct: computeAvailabilityPct(p.devyValue, p.draftEligibleYear || 2028, pickNumber, totalTeams),
+        whyBullets: generateWhyBullets(p, biggestNeed, teamDirection),
+        needMatch: assignNeedMatch(p.position, biggestNeed, secondaryNeed),
+        classYear: p.classYear,
+        conference: p.conference,
+        devyEligible: p.devyEligible,
+        graduatedToNFL: p.graduatedToNFL,
+        nflTeam: p.nflTeam,
+        sleeperId: p.sleeperId,
+        badge: p.graduatedToNFL ? 'Graduated' : p.devyEligible ? 'NCAA' : 'NFL',
+        statSeason: p.statSeason,
+        passingYards: p.passingYards,
+        rushingYards: p.rushingYards,
+        receivingYards: p.receivingYards,
+        receivingTDs: p.receivingTDs,
+      })
+
+      topTargets = allCandidates.slice(0, 6).map(toResult)
+      fallbacks = allCandidates.slice(6, 9).map(toResult)
+
+      const topProspects = allCandidates.slice(0, pickNumber - 1)
+      projectedPicksAhead = topProspects.map(p => ({
+        name: p.name,
+        pct: Math.min(95, Math.round(p.devyValue / 100)),
+      }))
+
+      updateReasons = [
+        `${dbPlayerCount} classified college players in database`,
+        `${biggestNeed} prioritized based on roster analysis`,
+        `${teamDirection} strategy applied to rankings`,
+        isSF ? 'Superflex QB premium factored in' : 'Standard QB valuation applied',
+      ]
+
+      try {
+        const playerSummary = topTargets.slice(0, 3).map(p =>
+          `${p.name} (${p.position}, ${p.school}, value: ${p.draftValue})`
+        ).join(', ')
+
+        const narrativePrompt = `Generate 2-sentence "why" bullets for these top devy prospects for a ${teamDirection} in a ${isSF ? 'Superflex' : '1QB'} dynasty league needing ${biggestNeed}:\n${playerSummary}\n\nReturn JSON array of objects: [{"name": "...", "bullets": ["...", "..."]}]. Return ONLY valid JSON.`
+
+        const completion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: narrativePrompt }],
+          temperature: 0.6,
+          max_tokens: 600,
+        })
+
+        const content = completion.choices[0]?.message?.content || ''
+        const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+        const narratives = JSON.parse(cleaned)
+
+        for (const n of narratives) {
+          const target = topTargets.find(t => t.name === n.name)
+          if (target && Array.isArray(n.bullets)) {
+            target.whyBullets = n.bullets.slice(0, 3)
+          }
+        }
+      } catch {
+      }
+    } else {
+      const aiResult = await generateFromAI(biggestNeed, teamDirection, isSF, isTEP, totalTeams, firstPick, leagueType)
+      topTargets = aiResult.topTargets
+      fallbacks = aiResult.fallbacks
+      projectedPicksAhead = aiResult.projectedPicksAhead
+      updateReasons = aiResult.updateReasons
     }
 
     const response: DevyBoardResponse = {
       updatedAt: new Date().toISOString(),
-      confidence: aiResponse ? 'High' : 'Learning',
+      confidence: hasDBData ? 'High' : 'Learning',
+      dataSource,
       leagueContext: {
         format: `${leagueType.charAt(0).toUpperCase() + leagueType.slice(1)}${leagueType.includes('devy') ? '' : '/Devy'}`,
         teams: totalTeams,
@@ -157,14 +238,11 @@ Return ONLY valid JSON, no markdown.`
         teamDirection,
         biggestNeed,
       },
-      topTargets: aiResponse.topTargets || [],
-      fallbacks: aiResponse.fallbacks || [],
-      projectedPicksAhead: aiResponse.projectedPicksAhead || [],
-      updateReasons: aiResponse.updateReasons || [
-        'Initial board generation',
-        'Roster needs analyzed',
-        'League settings applied',
-      ],
+      topTargets,
+      fallbacks,
+      projectedPicksAhead,
+      updateReasons,
+      totalClassifiedPlayers: hasDBData ? dbPlayerCount : undefined,
     }
 
     return NextResponse.json(response)
@@ -177,35 +255,91 @@ Return ONLY valid JSON, no markdown.`
   }
 })
 
+function generateWhyBullets(player: any, biggestNeed: string, teamDirection: string): string[] {
+  const bullets: string[] = []
+  const pos = player.position
+
+  if (pos === biggestNeed) bullets.push(`Fills your biggest roster need at ${pos}`)
+  if (player.classYear && player.classYear <= 2) bullets.push('Young prospect with years of college production ahead')
+  if (player.devyValue >= 7000) bullets.push('Elite prospect with top-tier dynasty value')
+  else if (player.devyValue >= 5000) bullets.push('Strong prospect with solid production profile')
+
+  if (pos === 'QB' && player.passingYards && player.passingYards > 2000) bullets.push(`${player.passingYards} passing yards show pro-ready arm`)
+  if (pos === 'RB' && player.rushingYards && player.rushingYards > 800) bullets.push(`${player.rushingYards} rushing yards demonstrate workhorse ability`)
+  if ((pos === 'WR' || pos === 'TE') && player.receivingYards && player.receivingYards > 600) bullets.push(`${player.receivingYards} receiving yards show target dominance`)
+
+  if (teamDirection === 'Rebuilder') bullets.push('Ideal long-term asset for your rebuild')
+  if (bullets.length === 0) bullets.push('Solid dynasty prospect worth monitoring')
+
+  return bullets.slice(0, 3)
+}
+
+async function generateFromAI(biggestNeed: string, teamDirection: string, isSF: boolean, isTEP: boolean, totalTeams: number, firstPick: string, leagueType: string) {
+  const currentYear = new Date().getFullYear()
+
+  try {
+    const prompt = `You are a fantasy football devy draft expert. Today is February ${currentYear}. Generate draft recommendations for a ${leagueType} league.
+
+CRITICAL: Only recommend college players CURRENTLY still in college for the ${currentYear} season.
+
+League Context:
+- Format: ${leagueType} (${isSF ? 'Superflex' : '1QB'})
+- Teams: ${totalTeams}
+- TE Premium: ${isTEP ? 'Yes' : 'No'}
+- User's Pick: ${firstPick}
+- Team Direction: ${teamDirection}
+- Biggest Roster Need: ${biggestNeed}
+
+Generate exactly this JSON with 6 topTargets, 3 fallbacks, 4-6 projectedPicksAhead:
+{
+  "topTargets": [{"name":"...","position":"QB/RB/WR/TE","school":"...","tier":"Tier 1/Tier 2/Sleeper","draftValue":85,"availabilityPct":70,"whyBullets":["...","..."],"needMatch":"Strong/Medium/Low"}],
+  "fallbacks": [...],
+  "projectedPicksAhead": [{"name":"...","pct":85}],
+  "updateReasons": ["...","...","..."]
+}
+Return ONLY valid JSON.`
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.7,
+      max_tokens: 2000,
+    })
+
+    const content = completion.choices[0]?.message?.content || ''
+    const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+    return JSON.parse(cleaned)
+  } catch {
+    return generateFallbackData(biggestNeed, teamDirection, isSF)
+  }
+}
+
 function generateFallbackData(biggestNeed: string, teamDirection: string, isSF: boolean) {
-  // 2026 Draft Class prospects (players currently in college as of 2026)
-  // Note: 2024 and 2025 draft classes have already been drafted
-  const prospects: Record<string, DevyPlayer[]> = {
+  const prospects: Record<string, DevyPlayerResult[]> = {
     QB: [
-      { name: 'Arch Manning', position: 'QB', school: 'Texas', tier: 'Tier 1', draftValue: 95, availabilityPct: 25, whyBullets: ['Elite pedigree and arm talent', 'Perfect SF asset'], needMatch: 'Strong' },
-      { name: 'Dylan Raiola', position: 'QB', school: 'Nebraska', tier: 'Tier 1', draftValue: 88, availabilityPct: 40, whyBullets: ['Pro-ready mechanics', 'High football IQ'], needMatch: 'Strong' },
-      { name: 'Julian Sayin', position: 'QB', school: 'Ohio State', tier: 'Tier 2', draftValue: 78, availabilityPct: 60, whyBullets: ['Excellent accuracy', 'Rising prospect'], needMatch: 'Medium' },
+      { name: 'Arch Manning', position: 'QB', school: 'Texas', tier: 'Tier 1', draftValue: 95, availabilityPct: 25, whyBullets: ['Elite pedigree and arm talent', 'Perfect SF asset'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Dylan Raiola', position: 'QB', school: 'Nebraska', tier: 'Tier 1', draftValue: 88, availabilityPct: 40, whyBullets: ['Pro-ready mechanics', 'High football IQ'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Julian Sayin', position: 'QB', school: 'Ohio State', tier: 'Tier 2', draftValue: 78, availabilityPct: 60, whyBullets: ['Excellent accuracy', 'Rising prospect'], needMatch: 'Medium', badge: 'NCAA' },
     ],
     RB: [
-      { name: 'Jerrick Gibson', position: 'RB', school: 'LSU', tier: 'Tier 1', draftValue: 90, availabilityPct: 35, whyBullets: ['Elite speed and vision', 'Workhorse potential'], needMatch: 'Strong' },
-      { name: 'Quinten Joyner', position: 'RB', school: 'USC', tier: 'Tier 1', draftValue: 85, availabilityPct: 45, whyBullets: ['Complete skillset', 'Pass-catching ability'], needMatch: 'Strong' },
-      { name: 'Rueben Owens', position: 'RB', school: 'Louisville', tier: 'Tier 2', draftValue: 75, availabilityPct: 55, whyBullets: ['Explosive athlete', 'Breakout potential'], needMatch: 'Medium' },
+      { name: 'Jerrick Gibson', position: 'RB', school: 'LSU', tier: 'Tier 1', draftValue: 90, availabilityPct: 35, whyBullets: ['Elite speed and vision', 'Workhorse potential'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Quinten Joyner', position: 'RB', school: 'USC', tier: 'Tier 1', draftValue: 85, availabilityPct: 45, whyBullets: ['Complete skillset', 'Pass-catching ability'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Rueben Owens', position: 'RB', school: 'Louisville', tier: 'Tier 2', draftValue: 75, availabilityPct: 55, whyBullets: ['Explosive athlete', 'Breakout potential'], needMatch: 'Medium', badge: 'NCAA' },
     ],
     WR: [
-      { name: 'Jeremiah Smith', position: 'WR', school: 'Ohio State', tier: 'Tier 1', draftValue: 98, availabilityPct: 15, whyBullets: ['Generational talent', 'Elite size/speed combo'], needMatch: 'Strong' },
-      { name: 'Ryan Williams', position: 'WR', school: 'Alabama', tier: 'Tier 1', draftValue: 92, availabilityPct: 30, whyBullets: ['Dynamic playmaker', 'Already producing'], needMatch: 'Strong' },
-      { name: 'Dakorien Moore', position: 'WR', school: 'LSU', tier: 'Tier 2', draftValue: 82, availabilityPct: 50, whyBullets: ['Explosive athlete', 'Big play threat'], needMatch: 'Medium' },
+      { name: 'Jeremiah Smith', position: 'WR', school: 'Ohio State', tier: 'Tier 1', draftValue: 98, availabilityPct: 15, whyBullets: ['Generational talent', 'Elite size/speed combo'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Ryan Williams', position: 'WR', school: 'Alabama', tier: 'Tier 1', draftValue: 92, availabilityPct: 30, whyBullets: ['Dynamic playmaker', 'Already producing'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Dakorien Moore', position: 'WR', school: 'LSU', tier: 'Tier 2', draftValue: 82, availabilityPct: 50, whyBullets: ['Explosive athlete', 'Big play threat'], needMatch: 'Medium', badge: 'NCAA' },
     ],
     TE: [
-      { name: 'Duce Robinson', position: 'TE', school: 'USC', tier: 'Tier 1', draftValue: 85, availabilityPct: 45, whyBullets: ['Elite athleticism', 'Pro-ready frame'], needMatch: 'Strong' },
-      { name: 'Jackson Carver', position: 'TE', school: 'Texas', tier: 'Tier 2', draftValue: 75, availabilityPct: 55, whyBullets: ['Reliable target', 'Good blocker'], needMatch: 'Medium' },
-      { name: 'Eli Raridon', position: 'TE', school: 'Notre Dame', tier: 'Tier 2', draftValue: 72, availabilityPct: 65, whyBullets: ['Rising prospect', 'Soft hands'], needMatch: 'Medium' },
+      { name: 'Duce Robinson', position: 'TE', school: 'USC', tier: 'Tier 1', draftValue: 85, availabilityPct: 45, whyBullets: ['Elite athleticism', 'Pro-ready frame'], needMatch: 'Strong', badge: 'NCAA' },
+      { name: 'Eli Raridon', position: 'TE', school: 'Notre Dame', tier: 'Tier 2', draftValue: 72, availabilityPct: 65, whyBullets: ['Rising prospect', 'Soft hands'], needMatch: 'Medium', badge: 'NCAA' },
     ],
   }
 
   const needProspects = prospects[biggestNeed] || prospects.WR
   const otherPositions = Object.keys(prospects).filter(p => p !== biggestNeed)
-  
+
   const topTargets = [
     ...needProspects.slice(0, 3),
     ...prospects[otherPositions[0]]?.slice(0, 2) || [],
@@ -213,23 +347,20 @@ function generateFallbackData(biggestNeed: string, teamDirection: string, isSF: 
   ].slice(0, 6)
 
   const fallbacks = [
-    { name: 'Johntay Cook II', position: 'WR', school: 'Texas', tier: 'Sleeper' as const, draftValue: 68, availabilityPct: 75, whyBullets: ['Big play ability', 'Value pick'], needMatch: 'Low' as const },
-    { name: 'Peyton ONeil', position: 'RB', school: 'USC', tier: 'Tier 2' as const, draftValue: 70, availabilityPct: 70, whyBullets: ['Underrated talent', 'Safe floor'], needMatch: 'Medium' as const },
-    { name: 'Kyion Grayes', position: 'WR', school: 'Alabama', tier: 'Tier 2' as const, draftValue: 65, availabilityPct: 80, whyBullets: ['Route technician', 'Good value'], needMatch: 'Low' as const },
-  ]
-
-  const projectedPicksAhead = [
-    { name: 'Jeremiah Smith', pct: 95 },
-    { name: 'Arch Manning', pct: 90 },
-    { name: 'Ryan Williams', pct: 85 },
-    { name: 'Jerrick Gibson', pct: 80 },
-    { name: 'Dylan Raiola', pct: 75 },
+    { name: 'Johntay Cook II', position: 'WR', school: 'Texas', tier: 'Sleeper' as const, draftValue: 68, availabilityPct: 75, whyBullets: ['Big play ability', 'Value pick'], needMatch: 'Low' as const, badge: 'NCAA' as const },
+    { name: 'Quinten Joyner', position: 'RB', school: 'USC', tier: 'Tier 2' as const, draftValue: 70, availabilityPct: 70, whyBullets: ['Underrated talent', 'Safe floor'], needMatch: 'Medium' as const, badge: 'NCAA' as const },
+    { name: 'Kyion Grayes', position: 'WR', school: 'Alabama', tier: 'Tier 2' as const, draftValue: 65, availabilityPct: 80, whyBullets: ['Route technician', 'Good value'], needMatch: 'Low' as const, badge: 'NCAA' as const },
   ]
 
   return {
     topTargets,
     fallbacks,
-    projectedPicksAhead,
+    projectedPicksAhead: [
+      { name: 'Jeremiah Smith', pct: 95 },
+      { name: 'Arch Manning', pct: 90 },
+      { name: 'Ryan Williams', pct: 85 },
+      { name: 'Jerrick Gibson', pct: 80 },
+    ],
     updateReasons: [
       `${biggestNeed} prioritized based on roster analysis`,
       `${teamDirection} strategy applied to rankings`,
