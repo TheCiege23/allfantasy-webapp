@@ -20,6 +20,23 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10)
 }
 
+function normName(s: string) {
+  return String(s || '').trim().toLowerCase()
+}
+
+function uniq(arr: string[]) {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const a of arr) {
+    const k = normName(a)
+    if (!k) continue
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(String(a).trim())
+  }
+  return out
+}
+
 function scoreLeagueAdjustments(req: TradeEngineRequest) {
   const scoring = req.leagueContext?.scoring
   if (!scoring) return { delta: 0, drivers: [] as string[] }
@@ -195,7 +212,7 @@ function pricedItemsToSources(items: Array<{ name: string; type: 'player' | 'pic
   return sources
 }
 
-function pricedItemsToAssetValueMap(items: Array<any>) {
+function pricedItemsToImpactMap(items: Array<any>) {
   const map: Record<string, { impact: number; vorp: number; vol: number }> = {}
   for (const it of items || []) {
     if (it?.type !== 'player') continue
@@ -248,38 +265,141 @@ function faabValue(assets: Asset[]) {
   return total
 }
 
-function countRosterByPos(roster: TradePlayerAsset[]) {
-  const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0 }
-  for (const p of roster || []) {
-    const pos = String(p.pos || '').toUpperCase()
-    if (pos in counts) counts[pos]++
+type RosterCfg = {
+  startingQB: number
+  startingRB: number
+  startingWR: number
+  startingTE: number
+  startingFlex: number
+  superflex: boolean
+}
+
+function rosterCfgFromLeague(req: TradeEngineRequest): RosterCfg {
+  const isSF = req.leagueContext?.scoring?.qbFormat === 'superflex'
+  const base: RosterCfg = {
+    startingQB: 1,
+    startingRB: 2,
+    startingWR: 2,
+    startingTE: 1,
+    startingFlex: isSF ? 3 : 2,
+    superflex: isSF,
   }
-  return counts
+  const override = (req.leagueContext?.roster as any) || {}
+  return {
+    ...base,
+    startingQB: Number.isFinite(override.startingQB) ? override.startingQB : base.startingQB,
+    startingRB: Number.isFinite(override.startingRB) ? override.startingRB : base.startingRB,
+    startingWR: Number.isFinite(override.startingWR) ? override.startingWR : base.startingWR,
+    startingTE: Number.isFinite(override.startingTE) ? override.startingTE : base.startingTE,
+    startingFlex: Number.isFinite(override.startingFlex) ? override.startingFlex : base.startingFlex,
+    superflex: typeof override.superflex === 'boolean' ? override.superflex : base.superflex,
+  }
+}
+
+function buildPostRosterPlayers(args: {
+  preRoster: TradePlayerAsset[]
+  receivedAssets: Asset[]
+  sentAssets: Asset[]
+}) {
+  const { preRoster, receivedAssets, sentAssets } = args
+
+  const sentNames = new Set(
+    sentAssets
+      .filter(a => a.type === 'player')
+      .map(a => normName(a.player.name))
+      .filter(Boolean)
+  )
+
+  const kept = preRoster.filter(p => !sentNames.has(normName(p.name)))
+
+  const receivedPlayers: TradePlayerAsset[] = receivedAssets
+    .filter(a => a.type === 'player')
+    .map(a => enrichDevy((a as any).player))
+
+  const merged = [...kept, ...receivedPlayers]
+  const seen = new Set<string>()
+  const out: TradePlayerAsset[] = []
+  for (const p of merged) {
+    const k = normName(p.name)
+    if (!k) continue
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(p)
+  }
+  return out
+}
+
+function startersFromRoster(args: {
+  roster: TradePlayerAsset[]
+  cfg: RosterCfg
+  impactMap: Record<string, { impact: number; vorp: number; vol: number }>
+}) {
+  const { roster, cfg, impactMap } = args
+
+  const impactOf = (p: TradePlayerAsset) => impactMap[p.name]?.impact ?? 0
+
+  const byPos = (pos: string) =>
+    roster
+      .filter(p => String(p.pos || '').toUpperCase() === pos)
+      .slice()
+      .sort((a, b) => impactOf(b) - impactOf(a))
+
+  const starters: { slot: string; name: string; pos: string; impact: number }[] = []
+  const used = new Set<string>()
+
+  const takeN = (arr: TradePlayerAsset[], n: number, slot: string) => {
+    for (const p of arr) {
+      if (starters.length && n <= 0) break
+      const k = normName(p.name)
+      if (!k || used.has(k)) continue
+      starters.push({ slot, name: p.name, pos: String(p.pos || ''), impact: impactOf(p) })
+      used.add(k)
+      n--
+      if (n <= 0) break
+    }
+  }
+
+  takeN(byPos('QB'), cfg.startingQB, 'QB')
+  takeN(byPos('RB'), cfg.startingRB, 'RB')
+  takeN(byPos('WR'), cfg.startingWR, 'WR')
+  takeN(byPos('TE'), cfg.startingTE, 'TE')
+
+  const flexEligible = roster
+    .filter(p => {
+      const pos = String(p.pos || '').toUpperCase()
+      if (cfg.superflex) return pos === 'RB' || pos === 'WR' || pos === 'TE' || pos === 'QB'
+      return pos === 'RB' || pos === 'WR' || pos === 'TE'
+    })
+    .slice()
+    .sort((a, b) => impactOf(b) - impactOf(a))
+
+  takeN(flexEligible, cfg.startingFlex, cfg.superflex ? 'FLEX/SF' : 'FLEX')
+
+  const totalImpact = starters.reduce((acc, s) => acc + (s.impact || 0), 0)
+
+  return { starters, totalImpact }
 }
 
 function computeNeedsFitFromRosterConfig(args: {
-  rosterConfig: {
-    startingQB: number
-    startingRB: number
-    startingWR: number
-    startingTE: number
-    startingFlex: number
-    superflex: boolean
-  }
+  cfg: RosterCfg
   partnerRoster: TradePlayerAsset[]
   assetsPartnerReceives: Asset[]
 }) {
-  const { rosterConfig, partnerRoster, assetsPartnerReceives } = args
+  const { cfg, partnerRoster, assetsPartnerReceives } = args
 
-  const counts = countRosterByPos(partnerRoster)
-  const need: Record<string, number> = {
-    QB: Math.max(0, rosterConfig.startingQB - counts.QB),
-    RB: Math.max(0, rosterConfig.startingRB - counts.RB),
-    WR: Math.max(0, rosterConfig.startingWR - counts.WR),
-    TE: Math.max(0, rosterConfig.startingTE - counts.TE),
+  const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0 }
+  for (const p of partnerRoster || []) {
+    const pos = String(p.pos || '').toUpperCase()
+    if (pos in counts) counts[pos]++
   }
 
-  if (rosterConfig.superflex) need.QB += 0.5
+  const need: Record<string, number> = {
+    QB: Math.max(0, cfg.startingQB - counts.QB),
+    RB: Math.max(0, cfg.startingRB - counts.RB),
+    WR: Math.max(0, cfg.startingWR - counts.WR),
+    TE: Math.max(0, cfg.startingTE - counts.TE),
+  }
+  if (cfg.superflex) need.QB += 0.5
 
   let suppliedNeed = 0
   let suppliedCount = 0
@@ -300,25 +420,6 @@ function computeNeedsFitFromRosterConfig(args: {
   }
 
   return clamp(score, 0, 100)
-}
-
-function computeLineupDeltaUsingImpact(args: {
-  gainedItems: Array<{ name: string }>
-  lostItems: Array<{ name: string }>
-  impactMap: Record<string, { impact: number; vorp: number; vol: number }>
-}) {
-  const { gainedItems, lostItems, impactMap } = args
-
-  const sum = (arr: Array<{ name: string }>) =>
-    arr.reduce((acc, it) => acc + (impactMap[it.name]?.impact ?? 0), 0)
-
-  const gained = sum(gainedItems)
-  const lost = sum(lostItems)
-  const net = gained - lost
-
-  const starterDeltaPts = clamp(Math.round(net / 75), -10, 10)
-
-  return { starterDeltaPts, netImpact: net }
 }
 
 export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEngineResponse> {
@@ -363,13 +464,6 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     ...pricedItemsToSources(pricedB.items as any),
   }
 
-  const impactMapA = pricedItemsToAssetValueMap(pricedA.items as any)
-  const impactMapB = pricedItemsToAssetValueMap(pricedB.items as any)
-  const impactMap: Record<string, { impact: number; vorp: number; vol: number }> = {
-    ...impactMapA,
-    ...impactMapB,
-  }
-
   const devyA = devySideValue(splitA.devyPlayers, teamA.direction)
   const devyB = devySideValue(splitB.devyPlayers, teamB.direction)
 
@@ -382,7 +476,6 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const total = vA + vB || 1
   const delta = vA - vB
   const fairnessDeltaPct = (delta / total) * 100
-
   const fairnessScore = clamp(Math.round(50 + fairnessDeltaPct * 1.5), 0, 100)
 
   const fairnessConfidence =
@@ -394,7 +487,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     {
       key: 'hybrid_total',
       delta: clamp(delta / 25, -20, 20),
-      note: `Hybrid total (market assets) + Devy projection + FAAB. A=${Math.round(vA)} B=${Math.round(vB)}`,
+      note: `Hybrid total (market assets) + Devy + FAAB. YouGet(A)=${Math.round(vA)} YouGive(B)=${Math.round(vB)}`,
     },
     ...(splitA.devyPlayers.length || splitB.devyPlayers.length
       ? [
@@ -417,25 +510,61 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   ]
 
   const leagueAdj = scoreLeagueAdjustments(req)
+  const cfg = rosterCfgFromLeague(req)
+
+  const needsFitScore = computeNeedsFitFromRosterConfig({
+    cfg,
+    partnerRoster: req.rosterB ?? [],
+    assetsPartnerReceives: req.assetsB,
+  })
+
   const risk = computeRisk(req, req.assetsA, req.assetsB)
   const volatilityDelta = risk.volatility
 
-  const rosterConfig = hvCtx.rosterConfig || {
-    startingQB: isSuperFlex ? 1 : 1,
-    startingRB: 2,
-    startingWR: 2,
-    startingTE: 1,
-    startingFlex: isSuperFlex ? 3 : 2,
-    superflex: isSuperFlex,
-  }
+  const preRosterA = req.rosterA ?? []
+  const preRosterB = req.rosterB ?? []
 
-  const needsFitScore = computeNeedsFitFromRosterConfig({
-    rosterConfig,
-    partnerRoster: req.rosterB ?? [],
-    assetsPartnerReceives: req.assetsA,
+  const postRosterA = buildPostRosterPlayers({
+    preRoster: preRosterA,
+    receivedAssets: req.assetsA,
+    sentAssets: req.assetsB,
   })
 
-  const offeredToPartner: TradePlayerAsset[] = req.assetsA
+  const postRosterB = buildPostRosterPlayers({
+    preRoster: preRosterB,
+    receivedAssets: req.assetsB,
+    sentAssets: req.assetsA,
+  })
+
+  const rosterNamesA = uniq([
+    ...preRosterA.map(p => p.name),
+    ...postRosterA.map(p => p.name),
+  ])
+  const rosterNamesB = uniq([
+    ...preRosterB.map(p => p.name),
+    ...postRosterB.map(p => p.name),
+  ])
+
+  const pricedRosterA = await priceAssets({ players: rosterNamesA, picks: [] } as any, hvCtx)
+  const pricedRosterB = await priceAssets({ players: rosterNamesB, picks: [] } as any, hvCtx)
+
+  const impactMapA = pricedItemsToImpactMap(pricedRosterA.items as any)
+  const impactMapB = pricedItemsToImpactMap(pricedRosterB.items as any)
+
+  const startersPreA = startersFromRoster({ roster: preRosterA, cfg, impactMap: impactMapA })
+  const startersPostA = startersFromRoster({ roster: postRosterA, cfg, impactMap: impactMapA })
+
+  const startersPreB = startersFromRoster({ roster: preRosterB, cfg, impactMap: impactMapB })
+  const startersPostB = startersFromRoster({ roster: postRosterB, cfg, impactMap: impactMapB })
+
+  const netStarterImpactA = startersPostA.totalImpact - startersPreA.totalImpact
+  const netStarterImpactB = startersPostB.totalImpact - startersPreB.totalImpact
+
+  const starterDeltaPtsA = clamp(Math.round(netStarterImpactA / 75), -12, 12)
+  const starterDeltaPtsB = clamp(Math.round(netStarterImpactB / 75), -12, 12)
+
+  const partnerRosterId = 'B'
+  const offeredToPartner: TradePlayerAsset[] = req.assetsB
     .filter(a => a.type === 'player')
     .map(a => (a as any).player)
 
@@ -445,36 +574,16 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     needsFitScore,
     volatilityDelta,
     marketContext: req.marketContext,
-    partnerRosterId: 'B',
+    partnerRosterId,
     offeredPlayersToPartner: offeredToPartner,
   })
 
   const verdict: TradeEngineResponse['verdict'] =
-    fairnessScore >= 60 && acceptance.final >= 0.55 ? 'accept'
-    : fairnessScore <= 45 && acceptance.final <= 0.45 ? 'reject'
-    : 'counter'
+    fairnessScore >= 58 && acceptance.final >= 0.52 ? 'accept'
+      : fairnessScore <= 44 ? 'reject'
+        : 'counter'
 
   const counters = buildCounters(fairnessScore, acceptance.final)
-
-  const gainedPlayers = req.assetsA
-    .filter(a => a.type === 'player')
-    .map(a => ({ name: (a as any).player.name || '' }))
-  const lostPlayers = req.assetsB
-    .filter(a => a.type === 'player')
-    .map(a => ({ name: (a as any).player.name || '' }))
-
-  const impactResult = computeLineupDeltaUsingImpact({
-    gainedItems: gainedPlayers,
-    lostItems: lostPlayers,
-    impactMap,
-  })
-
-  const lineupImpact = {
-    starterDeltaPts: impactResult.starterDeltaPts,
-    note: leagueContextUsed
-      ? `Net impact: ${impactResult.netImpact >= 0 ? '+' : ''}${Math.round(impactResult.netImpact)}. Based on hybrid impactValue decomposition.`
-      : 'Limited league settings; provide roster/scoring for highest accuracy.',
-  }
 
   const liquidity = ENGINE_FLAGS.enableLiquidityModel ? computeLiquidity(req.marketContext?.liquidity) : null
 
@@ -493,7 +602,10 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       delta: leagueAdj.delta,
       drivers: leagueAdj.drivers,
     },
-    lineupImpact,
+    lineupImpact: {
+      starterDeltaPts: starterDeltaPtsA,
+      note: `StarterImpact(A): ${Math.round(startersPreA.totalImpact)} \u2192 ${Math.round(startersPostA.totalImpact)} (net ${Math.round(netStarterImpactA)}). StarterImpact(B): ${Math.round(startersPreB.totalImpact)} \u2192 ${Math.round(startersPostB.totalImpact)} (net ${Math.round(netStarterImpactB)}).`,
+    },
     risk,
     acceptanceProbability: acceptance,
     counters,
@@ -513,8 +625,29 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
         numTeams,
         statsA: pricedA.stats,
         statsB: pricedB.stats,
+        rosterStatsA: pricedRosterA.stats,
+        rosterStatsB: pricedRosterB.stats,
       },
+      rosterConfig: cfg,
       needsFitScore,
+      starterImpact: {
+        teamA: {
+          pre: Math.round(startersPreA.totalImpact),
+          post: Math.round(startersPostA.totalImpact),
+          net: Math.round(netStarterImpactA),
+          starterDeltaPts: starterDeltaPtsA,
+          startersPre: startersPreA.starters,
+          startersPost: startersPostA.starters,
+        },
+        teamB: {
+          pre: Math.round(startersPreB.totalImpact),
+          post: Math.round(startersPostB.totalImpact),
+          net: Math.round(netStarterImpactB),
+          starterDeltaPts: starterDeltaPtsB,
+          startersPre: startersPreB.starters,
+          startersPost: startersPostB.starters,
+        },
+      },
       teamA: { direction: teamA.direction, confidence: teamA.directionConfidence },
       teamB: { direction: teamB.direction, confidence: teamB.directionConfidence },
       liquidity,
