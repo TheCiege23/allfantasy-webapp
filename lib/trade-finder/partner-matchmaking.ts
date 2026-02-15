@@ -28,9 +28,17 @@ export interface MatchmakingInput {
   maxResults?: number
 }
 
+export interface OfferAsset {
+  assetId: string
+  name: string
+  value: number
+  position: string
+  isPick: boolean
+}
+
 export interface OfferSkeleton {
-  userGives: Array<{ name: string; value: number; position: string; isPick: boolean }>
-  partnerGives: Array<{ name: string; value: number; position: string; isPick: boolean }>
+  userGives: OfferAsset[]
+  partnerGives: OfferAsset[]
   fairnessPct: number
 }
 
@@ -374,12 +382,14 @@ function buildOfferSkeleton(
 
   return {
     userGives: best.map(a => ({
+      assetId: a.assetId,
       name: a.name,
       value: a.value,
       position: a.position as string,
       isPick: !!a.isPick,
     })),
     partnerGives: [{
+      assetId: partnerGivesAsset.assetId,
       name: partnerGivesAsset.name,
       value: partnerGivesAsset.value,
       position: partnerGivesAsset.position as string,

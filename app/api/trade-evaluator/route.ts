@@ -29,7 +29,8 @@ import { logNarrativeValidation } from '@/lib/trade-engine/narrative-validation-
 import { detectTradeLabels, getPositiveLabels, getWarningLabels, TradeAsset, TradeLabel } from '@/lib/trade-labels'
 import { evaluateVeto, VetoResult } from '@/lib/trade-veto'
 import { buildLeagueDecisionContext, summarizeLeagueDecisionContext, LeagueDecisionContext } from '@/lib/league-decision-context'
-import { getLeagueInfo, getLeagueRosters, getTradedDraftPicks } from '@/lib/sleeper-client'
+import { getLeagueInfo, getLeagueRosters, getTradedDraftPicks, getAllPlayers } from '@/lib/sleeper-client'
+import { buildPlayerMedia } from '@/lib/player-media'
 
 const PlayerInputSchema = z.object({
   name: z.string(),
@@ -162,6 +163,20 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
     const senderPicksData = (data.sender.gives_picks as any[]).map(resolvePickData)
     const receiverPicksData = (data.receiver.gives_picks as any[]).map(resolvePickData)
 
+    let nflPlayers: Record<string, any> = {}
+    const playerNameToId: Record<string, string> = {}
+    if (data.league_id) {
+      try {
+        const allP = await getAllPlayers()
+        nflPlayers = allP
+        for (const [pid, p] of Object.entries(allP)) {
+          if (p?.full_name) {
+            playerNameToId[p.full_name.toLowerCase()] = pid
+          }
+        }
+      } catch { /* non-critical */ }
+    }
+
     let rosterConfigForVorp: import('@/lib/vorp-engine').LeagueRosterConfig | undefined
     if (data.league_id) {
       try {
@@ -217,16 +232,25 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
       priced: { value: number; source: string; assetValue: { marketValue: number; impactValue: number; vorpValue: number; volatility: number } },
       position?: string,
       age?: number
-    ) => ({
-      name,
-      value: compositeScore(priced.assetValue),
-      marketValue: priced.assetValue.marketValue,
-      assetValue: priced.assetValue,
-      tier: valueToTier(priced.assetValue.marketValue),
-      source: priced.source,
-      ...(position && { position }),
-      ...(age && { age }),
-    })
+    ) => {
+      const pid = playerNameToId[name.toLowerCase()] || null
+      const team = pid && nflPlayers[pid]?.team ? nflPlayers[pid].team : null
+      return {
+        name,
+        value: compositeScore(priced.assetValue),
+        marketValue: priced.assetValue.marketValue,
+        assetValue: priced.assetValue,
+        tier: valueToTier(priced.assetValue.marketValue),
+        source: priced.source,
+        ...(position && { position }),
+        ...(age && { age }),
+        playerId: pid,
+        fullName: name,
+        teamAbbr: team,
+        sport: 'nfl' as const,
+        media: pid ? buildPlayerMedia(pid, team) : { headshotUrl: null, teamLogoUrl: null },
+      }
+    }
 
     const teamAGives = [
       ...senderPlayerNames.map((name, i) => {

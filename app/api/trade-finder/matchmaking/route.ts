@@ -9,6 +9,7 @@ import { getPreAnalysisStatus } from '@/lib/trade-pre-analysis'
 import { findBestPartners, type MatchmakingGoal } from '@/lib/trade-finder/partner-matchmaking'
 import type { PricedAsset } from '@/lib/trade-finder/candidate-generator'
 import type { LeagueIntelligence, ManagerProfile } from '@/lib/trade-engine/types'
+import { buildPlayerMedia } from '@/lib/player-media'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -412,9 +413,30 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder/matchmaking", to
       maxResults,
     })
 
+    const enrichAsset = (a: { assetId: string; name: string; value: number; position: string; isPick: boolean }) => ({
+      ...a,
+      playerId: a.assetId,
+      fullName: a.name,
+      teamAbbr: a.isPick ? null : (nflPlayers[a.assetId]?.team || null),
+      sport: 'nfl' as const,
+      media: a.isPick ? { headshotUrl: null, teamLogoUrl: null } : buildPlayerMedia(a.assetId, nflPlayers[a.assetId]?.team || null),
+    })
+
+    const enrichedResult = {
+      ...result,
+      partners: result.partners.map(p => ({
+        ...p,
+        suggestedOffer: p.suggestedOffer ? {
+          ...p.suggestedOffer,
+          userGives: p.suggestedOffer.userGives.map(enrichAsset),
+          partnerGives: p.suggestedOffer.partnerGives.map(enrichAsset),
+        } : null,
+      })),
+    }
+
     return NextResponse.json({
       success: true,
-      ...result,
+      ...enrichedResult,
       leagueInfo: {
         name: league.name,
         type: league.settings?.type === 2 ? 'Dynasty' : 'Redraft',

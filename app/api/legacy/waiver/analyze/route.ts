@@ -18,6 +18,7 @@ import { pricePlayer, ValuationContext } from '@/lib/hybrid-valuation'
 import { getComprehensiveLearningContext } from '@/lib/comprehensive-trade-learning'
 import { autoLogDecision } from '@/lib/decision-log'
 import { computeConfidenceRisk, getHistoricalHitRate } from '@/lib/analytics/confidence-risk-engine'
+import { buildPlayerMedia } from '@/lib/player-media'
 import {
   scoreWaiverCandidates,
   type WaiverCandidate,
@@ -443,6 +444,11 @@ Write narrative summary, per-player reasoning, and roster notes.`
         top_drivers: deterministicResults[0].topDrivers,
         drop_candidate: deterministicResults[0].dropCandidate,
         reasoning: narratives[deterministicResults[0].playerName] || deterministicResults[0].topDrivers.filter(d => d.direction === 'positive').map(d => d.detail).join('. '),
+        playerId: deterministicResults[0].playerId,
+        fullName: deterministicResults[0].playerName,
+        teamAbbr: deterministicResults[0].team,
+        sport: 'nfl' as const,
+        media: buildPlayerMedia(deterministicResults[0].playerId, deterministicResults[0].team),
       } : null,
       suggestions: deterministicResults.map((t) => ({
         player_name: t.playerName,
@@ -463,6 +469,11 @@ Write narrative summary, per-player reasoning, and roster notes.`
         drop_risk_of_regret: t.dropCandidate?.riskOfRegret ?? null,
         drop_risk_label: t.dropCandidate?.riskLabel ?? null,
         value: t.value,
+        playerId: t.playerId,
+        fullName: t.playerName,
+        teamAbbr: t.team,
+        sport: 'nfl' as const,
+        media: buildPlayerMedia(t.playerId, t.team),
       })),
       roster_notes: rosterNotes,
     }
