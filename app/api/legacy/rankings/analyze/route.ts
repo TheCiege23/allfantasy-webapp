@@ -238,6 +238,13 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
         }
       })
 
+    if (!teamRankings || teamRankings.length === 0) {
+      return buildPreseasonFallbackResponse({
+        league: leagueData,
+        sleeperUser: { username: sleeper_username, userId: sleeperUserId },
+      })
+    }
+
     teamRankings.sort((a, b) => b.overallScore - a.overallScore)
 
     const totalTeams = teamRankings.length
@@ -256,9 +263,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
       })
       teamRankings.sort((a, b) => b.overallScore - a.overallScore)
     }
+    const safeTotal = Math.max(1, totalTeams)
     teamRankings.forEach((team, idx) => {
       const rank = idx + 1
-      const percentile = rank / totalTeams
+      const percentile = rank / safeTotal
       if (percentile <= 0.25) team.tier = 'Contender'
       else if (percentile <= 0.58) team.tier = 'Frisky'
       else if (percentile <= 0.83) team.tier = 'Fraud'
@@ -380,6 +388,50 @@ Provide actionable insight about where this team stands and what they should foc
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 })
   }
 })
+
+function buildPreseasonFallbackResponse({
+  league,
+  sleeperUser,
+}: {
+  league: any
+  sleeperUser: { username: string; userId?: string }
+}) {
+  const rosterPositions: string[] = Array.isArray(league?.roster_positions) ? league.roster_positions : []
+  const isSF =
+    league?.settings?.superflex_enabled === 1 ||
+    rosterPositions.filter((p: string) => p === 'SUPER_FLEX' || p === 'QB').length >= 2
+  const starters = rosterPositions.filter((p: string) => !['BN', 'IR', 'TAXI'].includes(p)).length
+  const baseRec = Number(league?.scoring_settings?.rec || 0)
+  const teRec = Number(league?.scoring_settings?.rec_te || 0)
+  const teBonus = Number(league?.scoring_settings?.bonus_rec_te || 0)
+  const hasTEP = teRec > baseRec || teBonus > 0
+  const tepBonus = hasTEP ? (teRec - baseRec > 0 ? teRec - baseRec : teBonus) : 0
+
+  return NextResponse.json({
+    leagueName: league?.name ?? 'Unknown League',
+    teamName: sleeperUser.username ?? 'Your Team',
+    userRank: 1,
+    totalTeams: league?.total_rosters ?? 1,
+    rosterValueRank: 1,
+    pointsForRank: 1,
+    winRateRank: 1,
+    futureOutlookRank: 1,
+    allTeams: [],
+    aiAnalysis:
+      'This league is currently in preseason or has no finalized rosters. Preseason market-based projections will activate once roster data is available.',
+    leagueSettings: {
+      isSF,
+      starters,
+      hasTEP,
+      tepBonus,
+    },
+    rankingSource: 'preseason_empty',
+    rankingSourceNote:
+      'No active roster data available — awaiting finalized season data.',
+    isOffseason: true,
+    fallbackMode: true,
+  })
+}
 
 async function getFantasyCalcValues(): Promise<Map<string, number>> {
   return new Map<string, number>()

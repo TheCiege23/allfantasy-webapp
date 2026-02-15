@@ -12274,7 +12274,24 @@ function AFLegacyContent() {
                           </div>
                         )}
 
-                        {rankingsData && (
+                        {rankingsData && rankingsData.fallbackMode && (
+                          <div className="space-y-6 mt-4">
+                            <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-200">
+                              <div className="font-semibold">Preseason Mode</div>
+                              <div className="mt-1 text-yellow-300/80">
+                                No finalized roster data available yet. Rankings will populate automatically once the season begins.
+                              </div>
+                            </div>
+                            {rankingsData.aiAnalysis && (
+                              <div className="rounded-xl bg-black/30 border border-white/10 p-4">
+                                <div className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-2">AI Insight</div>
+                                <p className="text-sm text-white/70">{rankingsData.aiAnalysis}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {rankingsData && !rankingsData.fallbackMode && (
                           <div className="space-y-6 mt-4">
                             {rankingsData.rankingSourceNote && (
                               <div className={`rounded-xl px-3 py-2 text-xs flex items-center gap-2 ${
