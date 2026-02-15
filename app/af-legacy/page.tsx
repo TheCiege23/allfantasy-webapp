@@ -18,6 +18,7 @@ import InsightsPanel from "@/components/InsightsPanel"
 import BadgeDisplay from "@/components/BadgeDisplay"
 import CommunityInsights from "@/components/CommunityInsights"
 import TradeAlternatives from "@/components/TradeAlternatives"
+import TradeCounterSuggestions from "@/components/TradeCounterSuggestions"
 import TradeFinderV2 from "@/components/TradeFinderV2"
 import AdaptiveRankings from "@/components/AdaptiveRankings"
 import EnhancedRankingsPanel from "@/components/EnhancedRankingsPanel"
@@ -2002,6 +2003,16 @@ function AFLegacyContent() {
     const status = isContending ? 'contending' : 'rebuilding'
     
     return { needs, status, record: manager.record, posCount }
+  }
+
+  const addCounterCandidateToGive = (playerId: string) => {
+    if (!playerId) return
+    setTradeHubPlayersB(prev => (prev.includes(playerId) ? prev : [...prev, playerId]))
+  }
+
+  const addCounterCandidateToGet = (playerId: string) => {
+    if (!playerId) return
+    setTradeHubPlayersA(prev => (prev.includes(playerId) ? prev : [...prev, playerId]))
   }
 
   const handleShareReward = async (shareType: 'trade_result' | 'rankings' | 'portfolio') => {
@@ -7106,6 +7117,13 @@ function AFLegacyContent() {
                               </div>
                             </div>
                           )}
+
+                          {/* Counter Suggestions (Clickable) */}
+                          <TradeCounterSuggestions
+                            counters={inlineTradeResult?.counters}
+                            onAddCandidateToGive={addCounterCandidateToGive}
+                            onAddCandidateToGet={addCounterCandidateToGet}
+                          />
 
                           {/* Share for Token CTA */}
                           <div className="mt-6 pt-6 border-t border-white/10">
