@@ -71,6 +71,46 @@ type TradeAsset =
   | { type: 'pick'; pick: { year: number; round: 1 | 2 | 3 | 4; pickNumber?: number; originalRosterId?: number } }
   | { type: 'faab'; faab: { amount: number } }
 
+const SleeperUserSchema = z.object({
+  username: z.string(),
+  userId: z.string(),
+}).optional()
+
+const LeagueContextSchema = z.object({
+  season: z.number().optional(),
+  week: z.number().optional(),
+  phase: z.string().optional(),
+  numTeams: z.number().optional(),
+  settings: z.object({
+    qbFormat: z.enum(['superflex', '2qb', '1qb']).optional(),
+    tep: z.object({ enabled: z.boolean(), premiumPprBonus: z.number() }).optional(),
+    ppr: z.number().optional(),
+    ppCarry: z.number().optional(),
+    ppCompletion: z.number().optional(),
+    sixPtPassTd: z.boolean().optional(),
+    idp: z.boolean().optional(),
+  }).optional(),
+  roster: z.object({
+    slots: z.record(z.number()).optional(),
+    limits: z.object({ maxRoster: z.number().optional() }).optional(),
+  }).optional(),
+  trade: z.object({
+    vetoType: z.string().optional(),
+    tradeDeadlineWeek: z.number().optional(),
+    faabTradable: z.boolean().optional(),
+  }).optional(),
+}).optional()
+
+const MarketContextSchema = z.object({
+  ldi: z.record(z.number()).optional(),
+  partnerTendencies: z.record(z.any()).optional(),
+}).optional()
+
+const NflContextSchema = z.object({
+  asOf: z.string().optional(),
+  players: z.record(z.any()).optional(),
+}).optional()
+
 const TradeAnalyzeRequestSchema = z.object({
   sport: z.literal('NFL'),
   format: z.enum(['redraft', 'dynasty', 'specialty']),
@@ -85,6 +125,9 @@ const TradeAnalyzeRequestSchema = z.object({
   sleeper_username_a: z.string().min(1),
   sleeper_username_b: z.string().min(1),
 
+  sleeperUserA: SleeperUserSchema,
+  sleeperUserB: SleeperUserSchema,
+
   assetsA: z.array(z.any()).default([]),
   assetsB: z.array(z.any()).default([]),
   
@@ -93,8 +136,17 @@ const TradeAnalyzeRequestSchema = z.object({
   tradeGoal: z.string().optional().nullable(),
   
   tradeDate: z.string().optional().nullable(),
+
+  leagueContext: LeagueContextSchema,
+  marketContext: MarketContextSchema,
+  nflContext: NflContextSchema,
+
+  options: z.object({
+    offlineSnapshotOk: z.boolean().optional(),
+    explainLevel: z.enum(['brief', 'full']).optional(),
+    counterCount: z.number().optional(),
+  }).optional(),
   
-  // Full rosters for trade impact analysis
   rosterA: z.array(z.any()).optional().default([]),
   rosterB: z.array(z.any()).optional().default([]),
 })
@@ -1373,6 +1425,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
     const sleeperA = String(reqData.sleeper_username_a || '').trim()
     const sleeperB = String(reqData.sleeper_username_b || '').trim()
 
+    const clientLeagueContext = reqData.leagueContext
+    const clientMarketContext = reqData.marketContext
+    const clientNflContext = reqData.nflContext
+
     console.log('[TradeAnalyze] incoming roster ids', {
       leagueId,
       sleeperA,
@@ -1799,10 +1855,9 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       console.log('[TradeAnalyze] pick inference notes:', pickInferenceNotes)
     }
 
-    // Determine FantasyCalc settings from league
     const rosterPositions = league?.roster_positions || []
-    const isSFForCalc = detectSFFromRosterPositions(rosterPositions)
-    const leaguePpr = league?.scoring_settings?.rec === 1 ? 1 : (league?.scoring_settings?.rec === 0.5 ? 0.5 : 0)
+    const isSFForCalc = clientLeagueContext?.settings?.qbFormat === 'superflex' || clientLeagueContext?.settings?.qbFormat === '2qb' || detectSFFromRosterPositions(rosterPositions)
+    const leaguePpr = clientLeagueContext?.settings?.ppr ?? (league?.scoring_settings?.rec === 1 ? 1 : (league?.scoring_settings?.rec === 0.5 ? 0.5 : 0))
     const calcSettings: FantasyCalcSettings = {
       isDynasty: format === 'dynasty',
       numQbs: isSFForCalc ? 2 : 1,
@@ -1921,11 +1976,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       const tierAssetsA = convertToTierAssets(assetsA, numTeams)
       const tierAssetsB = convertToTierAssets(assetsB, numTeams)
       
-      // Detect league settings from roster positions
-      const rosterPositions = league?.roster_positions || []
-      const isSF = detectSFFromRosterPositions(rosterPositions) || true // Default to SF for dynasty
-      const idpStarterCount = detectIDPFromRosterPositions(rosterPositions)
-      const isTEP = league?.scoring_settings?.bonus_rec_te ? league.scoring_settings.bonus_rec_te > 0 : false
+      const tierRosterPositions = league?.roster_positions || []
+      const isSF = clientLeagueContext?.settings?.qbFormat === 'superflex' || clientLeagueContext?.settings?.qbFormat === '2qb' || detectSFFromRosterPositions(tierRosterPositions) || true
+      const idpStarterCount = detectIDPFromRosterPositions(tierRosterPositions)
+      const isTEP = clientLeagueContext?.settings?.tep?.enabled ?? (league?.scoring_settings?.bonus_rec_te ? league.scoring_settings.bonus_rec_te > 0 : false)
       
       const leagueSettings: LeagueSettings = {
         isSF,
@@ -2064,8 +2118,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
     const giveDriverAssets = tradeDriverAssets(assetsB, 'give')
     const receiveDriverAssets = tradeDriverAssets(assetsA, 'receive')
     const rosterPositionsForSF = league?.roster_positions || []
-    const isSFForDrivers = rosterPositionsForSF.filter((p: string) => p === 'SUPER_FLEX' || p === 'QB').length >= 2
-    const isTEPForDrivers = (league?.scoring_settings?.bonus_rec_te || 0) > 0
+    const isSFForDrivers = clientLeagueContext?.settings?.qbFormat === 'superflex' || clientLeagueContext?.settings?.qbFormat === '2qb' || rosterPositionsForSF.filter((p: string) => p === 'SUPER_FLEX' || p === 'QB').length >= 2
+    const isTEPForDrivers = clientLeagueContext?.settings?.tep?.enabled ?? ((league?.scoring_settings?.bonus_rec_te || 0) > 0)
 
     const rosterToAssets = (roster: any[]): Asset[] => {
       if (!roster || roster.length === 0) return []

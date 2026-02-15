@@ -980,6 +980,7 @@ function AFLegacyContent() {
   const [tradeHubManagers, setTradeHubManagers] = useState<any[]>([])
   const [tradeHubLoading, setTradeHubLoading] = useState(false)
   const [tradeHubRosterPositions, setTradeHubRosterPositions] = useState<string[]>([])
+  const [tradeHubLeagueSettings, setTradeHubLeagueSettings] = useState<any>(null)
   const [tradeHubLivePreview, setTradeHubLivePreview] = useState<any>(null)
   const [tradeHubLiveLoading, setTradeHubLiveLoading] = useState(false)
   const [tradeHubExpandedSlotMap, setTradeHubExpandedSlotMap] = useState(false)
@@ -1678,6 +1679,7 @@ function AFLegacyContent() {
       if (data.success && data.managers) {
         setTradeHubManagers(data.managers)
         setTradeHubRosterPositions(data.leagueSettings?.rosterPositions || [])
+        setTradeHubLeagueSettings(data.leagueSettings || null)
         
         // Find the current user's team and set as Team A default
         const userTeam = data.managers.find((m: any) => 
@@ -1774,6 +1776,16 @@ function AFLegacyContent() {
             opponentUsername: teamB.displayName,
             sleeperUserA: { username: teamA.username || teamA.displayName, userId: teamA.userId || '' },
             sleeperUserB: { username: teamB.username || teamB.displayName, userId: teamB.userId || '' },
+            leagueContext: tradeHubLeagueSettings ? {
+              season: parseInt(tradeHubLeagueSettings.season) || new Date().getFullYear(),
+              numTeams: tradeHubLeagueSettings.numTeams || effectiveNumTeams,
+              settings: {
+                qbFormat: tradeHubLeagueSettings.flags?.isSuperFlex ? 'superflex' : '1qb',
+                tep: { enabled: !!tradeHubLeagueSettings.flags?.isTEP, premiumPprBonus: tradeHubLeagueSettings.scoring?.tepBonus ?? 0 },
+                ppr: tradeHubLeagueSettings.scoring?.ppr ?? 1.0,
+              },
+              roster: { slots: tradeHubLeagueSettings.roster?.slots || {} },
+            } : undefined,
             suggestSweetener: true,
             sweetenerCandidates: benchCandidates,
           }),
@@ -1872,8 +1884,38 @@ function AFLegacyContent() {
     const sideA = buildSide(tradeHubPlayersA, tradeHubPicksA, tradeHubFaabA, teamA)
     const sideB = buildSide(tradeHubPlayersB, tradeHubPicksB, tradeHubFaabB, teamB)
     
+    const enrichRoster = (players: any[]) => players.map((p: any) => {
+      const id = String(p.id || '').trim()
+      const team = p.team ? String(p.team).trim() : undefined
+      return { id, name: p.name, pos: p.pos, team, media: { headshotUrl: id ? headshotUrl(id) : '', teamLogoUrl: team ? teamLogoUrl(team) : '' } }
+    })
+
+    const ls = tradeHubLeagueSettings
+    const leagueContext = ls ? {
+      season: parseInt(ls.season) || new Date().getFullYear(),
+      phase: ls.status === 'in_season' ? 'in_season' : ls.status === 'complete' ? 'offseason' : ls.seasonType || 'unknown',
+      numTeams: ls.numTeams || effectiveNumTeams,
+      settings: {
+        qbFormat: ls.flags?.isSuperFlex ? 'superflex' : '1qb',
+        tep: { enabled: !!ls.flags?.isTEP, premiumPprBonus: ls.scoring?.tepBonus ?? 0 },
+        ppr: ls.scoring?.ppr ?? 1.0,
+        ppCarry: ls.scoring?.ppCarry ?? 0,
+        ppCompletion: ls.scoring?.ppCompletion ?? 0,
+        sixPtPassTd: !!ls.scoring?.sixPtPassTd,
+        idp: !!ls.flags?.idp,
+      },
+      roster: {
+        slots: ls.roster?.slots || {},
+        limits: { maxRoster: ls.roster?.maxRoster || 0 },
+      },
+      trade: {
+        vetoType: ls.trade?.vetoType || 'none',
+        tradeDeadlineWeek: ls.trade?.tradeDeadlineWeek ?? 99,
+        faabTradable: !!ls.trade?.faabTradable,
+      },
+    } : undefined
+
     try {
-      // Generate main trade analysis
       const res = await fetch('/api/legacy/trade/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1889,16 +1931,9 @@ function AFLegacyContent() {
           assetsB: sideB,
           tradeGoal: tradeHubGoal || undefined,
           numTeams: effectiveNumTeams,
-          rosterA: teamA.players.map((p: any) => {
-            const id = String(p.id || '').trim()
-            const team = p.team ? String(p.team).trim() : undefined
-            return { id, name: p.name, pos: p.pos, team, media: { headshotUrl: id ? headshotUrl(id) : '', teamLogoUrl: team ? teamLogoUrl(team) : '' } }
-          }),
-          rosterB: teamB.players.map((p: any) => {
-            const id = String(p.id || '').trim()
-            const team = p.team ? String(p.team).trim() : undefined
-            return { id, name: p.name, pos: p.pos, team, media: { headshotUrl: id ? headshotUrl(id) : '', teamLogoUrl: team ? teamLogoUrl(team) : '' } }
-          }),
+          leagueContext,
+          rosterA: enrichRoster(teamA.players),
+          rosterB: enrichRoster(teamB.players),
         })
       })
       

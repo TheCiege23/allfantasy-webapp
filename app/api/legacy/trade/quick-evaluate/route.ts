@@ -130,15 +130,16 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/quick-evaluate",
       numTeams = 12,
       leagueId,
       opponentUsername,
+      leagueContext,
       suggestSweetener = false,
       sweetenerCandidates = [],
     } = body
 
-    const isSF = rosterPositions.some((p: string) =>
+    const isSF = leagueContext?.settings?.qbFormat === 'superflex' || leagueContext?.settings?.qbFormat === '2qb' || (rosterPositions.some((p: string) =>
       p === 'SUPER_FLEX' || p === 'QB'
-    ) && rosterPositions.filter((p: string) => p === 'SUPER_FLEX' || p === 'QB').length >= 2
+    ) && rosterPositions.filter((p: string) => p === 'SUPER_FLEX' || p === 'QB').length >= 2)
 
-    const isTEP = false
+    const isTEP = leagueContext?.settings?.tep?.enabled ?? false
     const isDynasty = format === 'dynasty'
 
     const fcPlayers = await getFcPlayers(isSF, numTeams)

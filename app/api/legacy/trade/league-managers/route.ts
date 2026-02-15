@@ -27,9 +27,24 @@ interface SleeperRoster {
 }
 
 interface SleeperLeague {
+  season?: string
+  season_type?: string
+  status?: string
+  total_rosters?: number
   settings?: {
     waiver_budget?: number
+    trade_deadline?: number
+    num_teams?: number
+    playoff_teams?: number
+    playoff_week_start?: number
+    best_ball?: number
+    taxi_slots?: number
+    reserve_slots?: number
+    bench_lock?: number
+    disable_trades?: number
+    veto_votes_needed?: number
   }
+  scoring_settings?: Record<string, number>
   roster_positions?: string[]
 }
 
@@ -326,6 +341,22 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
       return b.pointsFor - a.pointsFor
     })
 
+    const scoringSettings = leagueData?.scoring_settings || {}
+    const ppr = scoringSettings.rec ?? 0
+    const tepBonus = scoringSettings.bonus_rec_te ?? 0
+    const ppCarry = scoringSettings.rush_att ?? 0
+    const ppCompletion = scoringSettings.pass_cmp ?? 0
+    const sixPtPassTd = (scoringSettings.pass_td ?? 4) >= 6
+    const isSuperFlex = rosterPositions.includes('SUPER_FLEX')
+    const isTEP = tepBonus > 0
+    const idp = rosterPositions.some(p => ['DL', 'LB', 'DB', 'IDP_FLEX'].includes(p))
+
+    const slotCounts: Record<string, number> = {}
+    rosterPositions.forEach(p => { slotCounts[p] = (slotCounts[p] || 0) + 1 })
+
+    const tradeDeadlineWeek = leagueData?.settings?.trade_deadline ?? 99
+    const vetoVotesNeeded = leagueData?.settings?.veto_votes_needed ?? 0
+
     return NextResponse.json({ 
       success: true, 
       managers,
@@ -333,6 +364,44 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
         faabBudget: totalFaabBudget,
         sport,
         rosterPositions,
+        season: leagueData?.season || String(new Date().getFullYear()),
+        seasonType: leagueData?.season_type || 'regular',
+        status: leagueData?.status || 'unknown',
+        numTeams: rosters.length,
+
+        scoring: {
+          ppr,
+          tepBonus,
+          ppCarry,
+          ppCompletion,
+          sixPtPassTd,
+          passTd: scoringSettings.pass_td ?? 4,
+          passInt: scoringSettings.pass_int ?? -2,
+          rushTd: scoringSettings.rush_td ?? 6,
+          recTd: scoringSettings.rec_td ?? 6,
+          fumLost: scoringSettings.fum_lost ?? -2,
+          raw: scoringSettings,
+        },
+
+        roster: {
+          slots: slotCounts,
+          maxRoster: rosterPositions.length,
+          taxiSlots: leagueData?.settings?.taxi_slots ?? 0,
+          reserveSlots: leagueData?.settings?.reserve_slots ?? 0,
+        },
+
+        flags: {
+          isSuperFlex,
+          isTEP,
+          idp,
+          bestBall: !!(leagueData?.settings?.best_ball),
+        },
+
+        trade: {
+          tradeDeadlineWeek,
+          vetoType: vetoVotesNeeded > 0 ? 'vote' : 'none',
+          faabTradable: totalFaabBudget > 0,
+        },
       }
     })
   } catch (e) {
