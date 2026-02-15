@@ -76,18 +76,22 @@ const LeagueContextSchema = z.object({
 
 const SleeperUserSchema = z.object({
   username: z.string().min(1),
-  userId: z.string().min(1),
-}).optional()
+  userId: z.string().optional().default(''),
+})
 
 const TradeRequestSchema = z.object({
   trade_id: z.string().optional(),
   league_id: z.string().optional(),
-  sleeperUser: SleeperUserSchema,
+  leagueId: z.string().optional(),
+  sleeperUser: SleeperUserSchema.optional(),
   sender: TeamInputSchema,
   receiver: TeamInputSchema,
   league: LeagueContextSchema.optional(),
   asOfDate: z.string().optional().nullable(),
-})
+}).transform(d => ({
+  ...d,
+  league_id: d.leagueId || d.league_id,
+}))
 
 const valueToTier = (value: number): string => {
   if (value >= 9000) return 'Tier0_Untouchable'
