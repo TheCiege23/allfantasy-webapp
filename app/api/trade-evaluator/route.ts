@@ -30,7 +30,7 @@ import { detectTradeLabels, getPositiveLabels, getWarningLabels, TradeAsset, Tra
 import { evaluateVeto, VetoResult } from '@/lib/trade-veto'
 import { buildLeagueDecisionContext, summarizeLeagueDecisionContext, LeagueDecisionContext } from '@/lib/league-decision-context'
 import { getLeagueInfo, getLeagueRosters, getTradedDraftPicks, getAllPlayers } from '@/lib/sleeper-client'
-import { buildPlayerMedia } from '@/lib/player-media'
+import { attachPlayerMediaBatch } from '@/lib/player-media'
 
 const PlayerInputSchema = z.object({
   name: z.string(),
@@ -227,6 +227,20 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
     const teamANetValue = senderReceivedComposite - senderGivenComposite
     const teamBNetValue = senderGivenComposite - senderReceivedComposite
 
+    const allPlayerNames = [...senderPlayerNames, ...receiverPlayerNames]
+    const playersToResolve = allPlayerNames
+      .map(name => {
+        const pid = playerNameToId[name.toLowerCase()]
+        if (!pid) return null
+        const team = nflPlayers[pid]?.team || null
+        return { playerId: pid, teamAbbr: team, sport: 'nfl' }
+      })
+      .filter((p): p is { playerId: string; teamAbbr: string | null; sport: string } => p !== null)
+
+    const tradeMediaMap = playersToResolve.length > 0
+      ? await attachPlayerMediaBatch(playersToResolve)
+      : new Map()
+
     const buildAssetDetail = (
       name: string,
       priced: { value: number; source: string; assetValue: { marketValue: number; impactValue: number; vorpValue: number; volatility: number } },
@@ -234,7 +248,8 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
       age?: number
     ) => {
       const pid = playerNameToId[name.toLowerCase()] || null
-      const team = pid && nflPlayers[pid]?.team ? nflPlayers[pid].team : null
+      const resolved = pid ? tradeMediaMap.get(pid) : null
+      const team = resolved?.teamAbbr || (pid && nflPlayers[pid]?.team ? nflPlayers[pid].team : null)
       return {
         name,
         value: compositeScore(priced.assetValue),
@@ -248,7 +263,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
         fullName: name,
         teamAbbr: team,
         sport: 'nfl' as const,
-        media: pid ? buildPlayerMedia(pid, team) : { headshotUrl: null, teamLogoUrl: null },
+        media: resolved?.media || { headshotUrl: null, teamLogoUrl: null },
       }
     }
 

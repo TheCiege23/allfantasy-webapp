@@ -151,6 +151,22 @@ model PlayerIdentityMap {
   @@index([sport, position])
 }
 
+model PlayerTeamHistory {
+  id        String   @id @default(uuid())
+  playerId  String
+  sport     String   @default("nfl")
+  season    Int
+  week      Int      @default(0)
+  teamAbbr  String
+  source    String   @default("sleeper")
+  createdAt DateTime @default(now())
+
+  @@unique([playerId, sport, season, week])
+  @@index([playerId, sport, season])
+  @@index([teamAbbr, sport, season])
+  @@map("player_team_history")
+}
+
 model SportsGame {
   id         String    @id @default(uuid())
   sport      String
