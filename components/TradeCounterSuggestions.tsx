@@ -33,6 +33,8 @@ export default function TradeCounterSuggestions({
 }) {
   if (!counters || counters.length === 0) return null
 
+  const [animatedAccept, setAnimatedAccept] = React.useState<number | null>(null)
+
   const applyBest = (c: Counter) => {
     const add = c.options?.addCandidates ?? []
     const ask = c.options?.askCandidates ?? []
@@ -81,7 +83,7 @@ export default function TradeCounterSuggestions({
                   </div>
                   <div className="mt-1 text-xs text-white/60">
                     {typeof c.acceptProb === "number" ? (
-                      <>Est. Accept: {(c.acceptProb * 100).toFixed(0)}%</>
+                      <>Est. Accept: {animatedAccept !== null ? animatedAccept : (c.acceptProb * 100).toFixed(0)}%</>
                     ) : (
                       <>Est. Accept: —</>
                     )}
@@ -94,7 +96,21 @@ export default function TradeCounterSuggestions({
                 {showApply ? (
                   <button
                     type="button"
-                    onClick={() => applyBest(c)}
+                    onClick={() => {
+                      applyBest(c)
+                      if (typeof c.acceptProb === "number") {
+                        let start = Math.max(0, Math.round((c.acceptProb - 0.15) * 100))
+                        const target = Math.round(c.acceptProb * 100)
+                        setAnimatedAccept(start)
+                        const interval = setInterval(() => {
+                          start += 1
+                          if (start >= target) {
+                            clearInterval(interval)
+                          }
+                          setAnimatedAccept(start)
+                        }, 15)
+                      }
+                    }}
                     className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-emerald-400/20"
                     title="Apply the best recommended counter adjustment"
                   >

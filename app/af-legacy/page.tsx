@@ -1037,6 +1037,7 @@ function AFLegacyContent() {
   const [tradeHubPlayersA, setTradeHubPlayersA] = useState<string[]>([])
   const [tradeHubPlayersB, setTradeHubPlayersB] = useState<string[]>([])
   const [recentlyAddedIds, setRecentlyAddedIds] = useState<string[]>([])
+  const [toast, setToast] = useState<string | null>(null)
   const sideARef = useRef<HTMLDivElement | null>(null)
   const sideBRef = useRef<HTMLDivElement | null>(null)
   const [tradeHubPicksA, setTradeHubPicksA] = useState<string[]>([])
@@ -2010,6 +2011,8 @@ function AFLegacyContent() {
 
   const triggerHighlight = (id: string) => {
     setRecentlyAddedIds(prev => [...prev, id])
+    setToast(`Added player to trade`)
+    setTimeout(() => setToast(null), 1500)
     setTimeout(() => {
       setRecentlyAddedIds(prev => prev.filter(x => x !== id))
     }, 1200)
@@ -16661,6 +16664,12 @@ function AFLegacyContent() {
           open={trustSheetOpen}
           onClose={() => setTrustSheetOpen(false)}
         />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-emerald-500/90 px-4 py-3 text-sm text-white shadow-lg transition-all duration-500">
+          {toast}
+        </div>
       )}
     </main>
   )
