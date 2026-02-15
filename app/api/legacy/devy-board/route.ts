@@ -147,7 +147,9 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "Le
         !needPlayers.find(n => n.id === p.id) && !secondaryPlayers.find(s => s.id === p.id)
       )]
 
-      allCandidates.sort((a, b) => {
+      const safeCandidates = allCandidates.filter(p => p.graduatedToNFL !== true && p.devyEligible !== false)
+
+      safeCandidates.sort((a, b) => {
         const aNeedBoost = a.position === biggestNeed ? 2000 : a.position === secondaryNeed ? 1000 : 0
         const bNeedBoost = b.position === biggestNeed ? 2000 : b.position === secondaryNeed ? 1000 : 0
         return (b.devyValue + bNeedBoost) - (a.devyValue + aNeedBoost)
@@ -176,47 +178,61 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "Le
         receivingTDs: p.receivingTDs,
       })
 
-      topTargets = allCandidates.slice(0, 6).map(toResult)
-      fallbacks = allCandidates.slice(6, 9).map(toResult)
+      if (safeCandidates.length < 6) {
+        const aiFallback = await generateFromAI(biggestNeed, teamDirection, isSF, isTEP, totalTeams, firstPick, leagueType)
+        const dbResults = safeCandidates.map(toResult)
+        topTargets = [...dbResults, ...(aiFallback.topTargets || [])].slice(0, 6)
+        fallbacks = aiFallback.fallbacks || []
+        projectedPicksAhead = aiFallback.projectedPicksAhead || []
+        updateReasons = [
+          `${safeCandidates.length} classified players found — supplemented with AI`,
+          `${biggestNeed} prioritized based on roster analysis`,
+          `${teamDirection} strategy applied to rankings`,
+        ]
+        dataSource = 'hybrid'
+      } else {
+        topTargets = safeCandidates.slice(0, 6).map(toResult)
+        fallbacks = safeCandidates.slice(6, 9).map(toResult)
 
-      const topProspects = allCandidates.slice(0, pickNumber - 1)
-      projectedPicksAhead = topProspects.map(p => ({
-        name: p.name,
-        pct: Math.min(95, Math.round(p.devyValue / 100)),
-      }))
+        const topProspects = safeCandidates.slice(0, pickNumber - 1)
+        projectedPicksAhead = topProspects.map(p => ({
+          name: p.name,
+          pct: Math.min(95, Math.round(p.devyValue / 100)),
+        }))
 
-      updateReasons = [
-        `${dbPlayerCount} classified college players in database`,
-        `${biggestNeed} prioritized based on roster analysis`,
-        `${teamDirection} strategy applied to rankings`,
-        isSF ? 'Superflex QB premium factored in' : 'Standard QB valuation applied',
-      ]
+        updateReasons = [
+          `${dbPlayerCount} classified college players in database`,
+          `${biggestNeed} prioritized based on roster analysis`,
+          `${teamDirection} strategy applied to rankings`,
+          isSF ? 'Superflex QB premium factored in' : 'Standard QB valuation applied',
+        ]
 
-      try {
-        const playerSummary = topTargets.slice(0, 3).map(p =>
-          `${p.name} (${p.position}, ${p.school}, value: ${p.draftValue})`
-        ).join(', ')
+        try {
+          const playerSummary = topTargets.slice(0, 3).map(p =>
+            `${p.name} (${p.position}, ${p.school}, value: ${p.draftValue})`
+          ).join(', ')
 
-        const narrativePrompt = `Generate 2-sentence "why" bullets for these top devy prospects for a ${teamDirection} in a ${isSF ? 'Superflex' : '1QB'} dynasty league needing ${biggestNeed}:\n${playerSummary}\n\nReturn JSON array of objects: [{"name": "...", "bullets": ["...", "..."]}]. Return ONLY valid JSON.`
+          const narrativePrompt = `Generate 2-sentence "why" bullets for these top devy prospects for a ${teamDirection} in a ${isSF ? 'Superflex' : '1QB'} dynasty league needing ${biggestNeed}:\n${playerSummary}\n\nReturn JSON array of objects: [{"name": "...", "bullets": ["...", "..."]}]. Return ONLY valid JSON.`
 
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: [{ role: 'user', content: narrativePrompt }],
-          temperature: 0.6,
-          max_tokens: 600,
-        })
+          const completion = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [{ role: 'user', content: narrativePrompt }],
+            temperature: 0.6,
+            max_tokens: 600,
+          })
 
-        const content = completion.choices[0]?.message?.content || ''
-        const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
-        const narratives = JSON.parse(cleaned)
+          const content = completion.choices[0]?.message?.content || ''
+          const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
+          const narratives = JSON.parse(cleaned)
 
-        for (const n of narratives) {
-          const target = topTargets.find(t => t.name === n.name)
-          if (target && Array.isArray(n.bullets)) {
-            target.whyBullets = n.bullets.slice(0, 3)
+          for (const n of narratives) {
+            const target = topTargets.find(t => t.name === n.name)
+            if (target && Array.isArray(n.bullets)) {
+              target.whyBullets = n.bullets.slice(0, 3)
+            }
           }
+        } catch {
         }
-      } catch {
       }
     } else {
       const aiResult = await generateFromAI(biggestNeed, teamDirection, isSF, isTEP, totalTeams, firstPick, leagueType)

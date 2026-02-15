@@ -60,8 +60,6 @@ export function computeAvailabilityPct(
 ): number {
   const currentYear = new Date().getFullYear()
   const yearsOut = draftEligibleYear - currentYear
-
-  const allPlayers = devyValue
   const pickPosition = pickNumber / totalTeams
 
   const valuePercentile = Math.min(1, Math.max(0, devyValue / 10000))
@@ -260,12 +258,7 @@ export async function classifyGraduations(): Promise<{ graduated: number; errors
       const nflMatch = nflNameMap.get(devy.normalizedName)
       if (!nflMatch) continue
 
-      const posMatch =
-        devy.position === nflMatch.position ||
-        (devy.position === 'WR' && nflMatch.position === 'WR') ||
-        (devy.position === 'RB' && nflMatch.position === 'RB')
-
-      if (!posMatch && devy.position !== nflMatch.position) continue
+      if (devy.position !== nflMatch.position) continue
 
       try {
         await prisma.devyPlayer.update({
