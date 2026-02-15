@@ -337,3 +337,22 @@ export function clearMediaCache(): void {
   PLAYER_CACHE.clear()
   TEAM_CACHE.clear()
 }
+
+export type SportKey = 'nfl' | 'nba' | 'mlb' | 'nhl' | 'ncaaf' | 'ncaab' | string
+
+export function sleeperHeadshotUrl(playerId: string, sport: SportKey = 'nfl'): string | null {
+  if (!playerId) return null
+  if (sport === 'nfl') return `${SLEEPER_HEADSHOT_BASE}/${playerId}.jpg`
+  return null
+}
+
+export function sleeperTeamLogoUrl(teamAbbr: string, sport: SportKey = 'nfl'): string | null {
+  if (!teamAbbr) return null
+  if (sport === 'nfl') return `https://sleepercdn.com/images/team_logos/nfl/${teamAbbr.toLowerCase()}.png`
+  return null
+}
+
+export function normalizeTeamAbbr(team?: string | null): string | null {
+  const t = (team || '').trim()
+  return t ? t.toUpperCase() : null
+}

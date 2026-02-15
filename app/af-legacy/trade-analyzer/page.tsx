@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import PlayerBadge from '@/components/PlayerBadge'
 import PlayerSearchDropdown from '@/components/PlayerSearchDropdown'
+import { normalizePlayer } from '@/lib/normalize-player'
 import NegotiationSheet, { type NegotiationBlock } from '@/components/ai/NegotiationSheet'
 import type { TradeCandidate } from '@/lib/trade-finder/apply-counter'
 import type { TradeAsset as IndexTradeAsset } from '@/lib/trade-finder/asset-index'
@@ -21,6 +22,10 @@ type RosteredPlayer = {
   team?: string
   slot: RosterSlot
   isIdp?: boolean
+  media?: {
+    headshotUrl: string | null
+    teamLogoUrl: string | null
+  }
 }
 
 type TradeAsset =
@@ -978,19 +983,33 @@ export default function LegacyTradeAnalyzerPage() {
   }
 
   const addPlayerFromRoster = (side: Side, p: RosteredPlayer) => {
-    const asset: TradeAsset = { type: 'player', player: p }
+    const normalized = normalizePlayer(
+      { id: p.id, name: p.name, position: p.pos, team: p.team },
+      sport === 'NFL' ? 'nfl' : 'nba'
+    )
+    const enriched: RosteredPlayer = {
+      ...p,
+      media: normalized.media,
+    }
+    const asset: TradeAsset = { type: 'player', player: enriched }
     if (side === 'A') setAssetsA((prev) => [...prev, asset])
     else setAssetsB((prev) => [...prev, asset])
   }
 
   const addManualPlayer = (side: Side, name: string) => {
+    const sportKey = sport === 'NFL' ? 'nfl' : 'nba'
+    const normalized = normalizePlayer(
+      { name, position: sport === 'NFL' ? 'WR' : 'SG' },
+      sportKey
+    )
     const mock: RosteredPlayer = {
-      id: `${side}-${name}`.toLowerCase().replace(/\s+/g, '-'),
+      id: normalized.id,
       name,
       pos: sport === 'NFL' ? 'WR' : 'SG',
       slot: 'Bench',
       team: '',
       isIdp: false,
+      media: normalized.media,
     }
     addPlayerFromRoster(side, mock)
   }

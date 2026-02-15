@@ -886,7 +886,7 @@ export default function TradeFinderV2({
     try {
       const body: Record<string, unknown> = {
         leagueId: selectedLeague,
-        sleeperUser: { username, userId: sleeperUserId || '' },
+        sleeperUser: { username, ...(sleeperUserId ? { userId: sleeperUserId } : {}) },
         goal: mmGoal,
         maxResults: 5,
       }
