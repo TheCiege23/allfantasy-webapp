@@ -27,6 +27,8 @@ The core architecture is built upon three pillars:
 2.  **One Narrative System**: AI-generated narratives must cite specific drivers and evidence, validated via `NarrativeValidationLog`.
 3.  **One Monitoring System**: A Calibration Dashboard (`/admin?tab=calibration`) monitors for quality degradation and facilitates weekly auto-recalibration.
 
+4.  **One Engine API**: Universal shared engine (`lib/engine/*`) providing standardized LeagueContext, PlayerState, Asset models, capability flags, and feature-flagged graceful degradation. All tools consume the same truth: scoring adjustments, positional scarcity, contender/rebuild classification, manager archetypes, and LDI-driven acceptance probability.
+
 Key features include:
 -   **AI-Powered Analysis**: Instant Trade Check, Personalized AI Chat, AI Trade Evaluator (with deterministic tiers, pick aging, and veto layer), Deterministic Waiver AI, and a Goal-Driven AI Trade Proposal Generator.
 -   **Trade & League Management**: Trade Partner Matchmaking Engine, League Rankings, Trade Notifications, Deterministic Negotiation Toolkit, and Trade Ideas.

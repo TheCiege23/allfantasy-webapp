@@ -1,0 +1,69 @@
+import type { EngineLeagueContext, EnginePlayerState } from './types'
+
+export interface ScoringAdjustment {
+  baseMultiplier: number
+  tepMultiplier: number
+  sfMultiplier: number
+  idpMultiplier: number
+  positionMultiplier: Record<string, number>
+}
+
+export function computeScoringAdjustments(league: EngineLeagueContext): ScoringAdjustment {
+  const { scoring, roster } = league
+
+  const positionMultiplier: Record<string, number> = {
+    QB: 1.0,
+    RB: 1.0,
+    WR: 1.0,
+    TE: 1.0,
+    K: 0.3,
+    DEF: 0.4,
+  }
+
+  if (scoring.isSF) {
+    positionMultiplier.QB = 2.0
+  }
+
+  if (scoring.isTEP) {
+    positionMultiplier.TE = 1.0 + scoring.tepBonus * 0.5
+  }
+
+  if (scoring.ppr >= 1) {
+    positionMultiplier.WR *= 1.1
+    positionMultiplier.RB *= 0.95
+  } else if (scoring.ppr === 0) {
+    positionMultiplier.RB *= 1.15
+    positionMultiplier.WR *= 0.9
+  }
+
+  if (scoring.passBonus6pt) {
+    positionMultiplier.QB *= 1.15
+  }
+
+  return {
+    baseMultiplier: 1.0,
+    tepMultiplier: scoring.isTEP ? 1.0 + scoring.tepBonus * 0.3 : 1.0,
+    sfMultiplier: scoring.isSF ? 1.8 : 1.0,
+    idpMultiplier: roster.idpEnabled ? 1.1 : 1.0,
+    positionMultiplier,
+  }
+}
+
+export function adjustValueForScoring(
+  player: EnginePlayerState,
+  adjustment: ScoringAdjustment
+): number {
+  const pos = player.position
+  const posMult = adjustment.positionMultiplier[pos] ?? 1.0
+  return Math.round(player.value.market * posMult * adjustment.baseMultiplier)
+}
+
+export function scoringFormatLabel(league: EngineLeagueContext): string {
+  const parts: string[] = []
+  parts.push(league.scoring.format)
+  if (league.scoring.isSF) parts.push('SF')
+  if (league.scoring.isTEP) parts.push(`TEP+${league.scoring.tepBonus}`)
+  if (league.roster.idpEnabled) parts.push('IDP')
+  if (league.scoring.passBonus6pt) parts.push('6PT')
+  return parts.join(' | ')
+}
