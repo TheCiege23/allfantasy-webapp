@@ -4,7 +4,6 @@ import type {
   TradeEngineRequest,
   TradeEngineResponse,
   TradePlayerAsset,
-  TradePickAsset,
 } from './trade-types'
 import { ENGINE_FLAGS } from './flags'
 import { computeLiquidity } from './liquidity'
@@ -15,10 +14,6 @@ import { priceAssets } from '@/lib/hybrid-valuation'
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
-}
-
-function normalizePos(pos?: string) {
-  return (pos || '').toUpperCase()
 }
 
 function todayISO() {
@@ -73,7 +68,6 @@ function inferTeamDirection(team: TeamContext): TeamContext {
     nflCount >= 12 ? ('MODERATE' as const) : ('LEARNING' as const)
 
   let direction: TeamContext['direction'] = 'MIDDLE'
-
   if (devyCount >= 6) direction = 'REBUILD'
   if (avgAge <= 24 && devyCount >= 3) direction = 'REBUILD'
   if (avgAge >= 27 && devyCount <= 1) direction = 'CONTEND'
@@ -125,21 +119,6 @@ function computeRisk(req: TradeEngineRequest, assetsA: Asset[], assetsB: Asset[]
     volatility: clamp(volatility, 0, 100),
     notes: notes.slice(0, 8),
   }
-}
-
-function estimateNeedsFitScore(req: TradeEngineRequest) {
-  const scoring = req.leagueContext?.scoring
-  const isSF = scoring?.qbFormat === 'superflex'
-  const assetsAll = [...req.assetsA, ...req.assetsB]
-
-  const hasQB = assetsAll.some(a => a.type === 'player' && (a.player.pos || '').toUpperCase() === 'QB')
-  const hasTE = assetsAll.some(a => a.type === 'player' && (a.player.pos || '').toUpperCase() === 'TE')
-  const isTEP = !!scoring?.tep?.enabled
-
-  let score = 55
-  if (isSF && hasQB) score += 10
-  if (isTEP && hasTE) score += 8
-  return clamp(score, 0, 100)
 }
 
 function buildCounters(baseFairness: number, acceptProb: number) {
@@ -216,6 +195,21 @@ function pricedItemsToSources(items: Array<{ name: string; type: 'player' | 'pic
   return sources
 }
 
+function pricedItemsToAssetValueMap(items: Array<any>) {
+  const map: Record<string, { impact: number; vorp: number; vol: number }> = {}
+  for (const it of items || []) {
+    if (it?.type !== 'player') continue
+    const nm = String(it.name || '').trim()
+    if (!nm) continue
+    map[nm] = {
+      impact: Number(it.assetValue?.impactValue ?? 0) || 0,
+      vorp: Number(it.assetValue?.vorpValue ?? 0) || 0,
+      vol: Number(it.assetValue?.volatility ?? 0) || 0,
+    }
+  }
+  return map
+}
+
 function splitDevyAssets(assets: Asset[]) {
   const devyPlayers: TradePlayerAsset[] = []
   const marketAssets: Asset[] = []
@@ -254,6 +248,79 @@ function faabValue(assets: Asset[]) {
   return total
 }
 
+function countRosterByPos(roster: TradePlayerAsset[]) {
+  const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0 }
+  for (const p of roster || []) {
+    const pos = String(p.pos || '').toUpperCase()
+    if (pos in counts) counts[pos]++
+  }
+  return counts
+}
+
+function computeNeedsFitFromRosterConfig(args: {
+  rosterConfig: {
+    startingQB: number
+    startingRB: number
+    startingWR: number
+    startingTE: number
+    startingFlex: number
+    superflex: boolean
+  }
+  partnerRoster: TradePlayerAsset[]
+  assetsPartnerReceives: Asset[]
+}) {
+  const { rosterConfig, partnerRoster, assetsPartnerReceives } = args
+
+  const counts = countRosterByPos(partnerRoster)
+  const need: Record<string, number> = {
+    QB: Math.max(0, rosterConfig.startingQB - counts.QB),
+    RB: Math.max(0, rosterConfig.startingRB - counts.RB),
+    WR: Math.max(0, rosterConfig.startingWR - counts.WR),
+    TE: Math.max(0, rosterConfig.startingTE - counts.TE),
+  }
+
+  if (rosterConfig.superflex) need.QB += 0.5
+
+  let suppliedNeed = 0
+  let suppliedCount = 0
+  for (const a of assetsPartnerReceives) {
+    if (a.type !== 'player') continue
+    const pos = String(a.player.pos || '').toUpperCase()
+    if (!(pos in need)) continue
+    suppliedCount++
+    suppliedNeed += need[pos] > 0 ? 1 : 0.25
+  }
+
+  let score = 50
+  if (suppliedCount > 0) {
+    const ratio = suppliedNeed / suppliedCount
+    score += Math.round((ratio - 0.25) * (35 / 0.75))
+  } else {
+    score -= 8
+  }
+
+  return clamp(score, 0, 100)
+}
+
+function computeLineupDeltaUsingImpact(args: {
+  gainedItems: Array<{ name: string }>
+  lostItems: Array<{ name: string }>
+  impactMap: Record<string, { impact: number; vorp: number; vol: number }>
+}) {
+  const { gainedItems, lostItems, impactMap } = args
+
+  const sum = (arr: Array<{ name: string }>) =>
+    arr.reduce((acc, it) => acc + (impactMap[it.name]?.impact ?? 0), 0)
+
+  const gained = sum(gainedItems)
+  const lost = sum(lostItems)
+  const net = gained - lost
+
+  const starterDeltaPts = clamp(Math.round(net / 75), -10, 10)
+
+  return { starterDeltaPts, netImpact: net }
+}
+
 export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEngineResponse> {
   const leagueId = req.leagueId || req.league_id || req.leagueContext?.leagueId || ''
   const leagueContextUsed = !!req.leagueContext
@@ -261,13 +328,13 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
 
   const teamA: TeamContext = inferTeamDirection({
     rosterId: 'A',
-    managerName: req.sleeperUserA?.username || req.sleeper_username_a || 'Side A',
+    managerName: req.sleeperUserA?.username || req.sleeper_username_a || 'Team A',
     roster: req.rosterA ?? [],
   })
 
   const teamB: TeamContext = inferTeamDirection({
     rosterId: 'B',
-    managerName: req.sleeperUserB?.username || req.sleeper_username_b || 'Side B',
+    managerName: req.sleeperUserB?.username || req.sleeper_username_b || 'Team B',
     roster: req.rosterB ?? [],
   })
 
@@ -277,10 +344,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const hvAssetsA = toHybridAssetsInput(splitA.marketAssets)
   const hvAssetsB = toHybridAssetsInput(splitB.marketAssets)
 
-  const asOfDate = req.leagueContext?.season
-    ? `${req.leagueContext.season}-12-31`
-    : todayISO()
-
+  const asOfDate = req.leagueContext?.season ? `${req.leagueContext.season}-12-31` : todayISO()
   const isSuperFlex = req.leagueContext?.scoring?.qbFormat === 'superflex'
   const numTeams = req.numTeams ?? req.leagueContext?.numTeams ?? 12
 
@@ -297,6 +361,13 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const pricingSources: Record<string, string> = {
     ...pricedItemsToSources(pricedA.items as any),
     ...pricedItemsToSources(pricedB.items as any),
+  }
+
+  const impactMapA = pricedItemsToAssetValueMap(pricedA.items as any)
+  const impactMapB = pricedItemsToAssetValueMap(pricedB.items as any)
+  const impactMap: Record<string, { impact: number; vorp: number; vol: number }> = {
+    ...impactMapA,
+    ...impactMapB,
   }
 
   const devyA = devySideValue(splitA.devyPlayers, teamA.direction)
@@ -346,11 +417,24 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   ]
 
   const leagueAdj = scoreLeagueAdjustments(req)
-  const needsFitScore = estimateNeedsFitScore(req)
   const risk = computeRisk(req, req.assetsA, req.assetsB)
   const volatilityDelta = risk.volatility
 
-  const partnerRosterId = 'B'
+  const rosterConfig = hvCtx.rosterConfig || {
+    startingQB: isSuperFlex ? 1 : 1,
+    startingRB: 2,
+    startingWR: 2,
+    startingTE: 1,
+    startingFlex: isSuperFlex ? 3 : 2,
+    superflex: isSuperFlex,
+  }
+
+  const needsFitScore = computeNeedsFitFromRosterConfig({
+    rosterConfig,
+    partnerRoster: req.rosterB ?? [],
+    assetsPartnerReceives: req.assetsA,
+  })
+
   const offeredToPartner: TradePlayerAsset[] = req.assetsA
     .filter(a => a.type === 'player')
     .map(a => (a as any).player)
@@ -361,7 +445,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     needsFitScore,
     volatilityDelta,
     marketContext: req.marketContext,
-    partnerRosterId,
+    partnerRosterId: 'B',
     offeredPlayersToPartner: offeredToPartner,
   })
 
@@ -372,10 +456,23 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
 
   const counters = buildCounters(fairnessScore, acceptance.final)
 
+  const gainedPlayers = req.assetsA
+    .filter(a => a.type === 'player')
+    .map(a => ({ name: (a as any).player.name || '' }))
+  const lostPlayers = req.assetsB
+    .filter(a => a.type === 'player')
+    .map(a => ({ name: (a as any).player.name || '' }))
+
+  const impactResult = computeLineupDeltaUsingImpact({
+    gainedItems: gainedPlayers,
+    lostItems: lostPlayers,
+    impactMap,
+  })
+
   const lineupImpact = {
-    starterDeltaPts: clamp(Math.round((needsFitScore - 50) / 8), -8, 8),
+    starterDeltaPts: impactResult.starterDeltaPts,
     note: leagueContextUsed
-      ? 'League settings applied; replacement-level slot modeling can be upgraded with full slot map.'
+      ? `Net impact: ${impactResult.netImpact >= 0 ? '+' : ''}${Math.round(impactResult.netImpact)}. Based on hybrid impactValue decomposition.`
       : 'Limited league settings; provide roster/scoring for highest accuracy.',
   }
 
@@ -417,6 +514,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
         statsA: pricedA.stats,
         statsB: pricedB.stats,
       },
+      needsFitScore,
       teamA: { direction: teamA.direction, confidence: teamA.directionConfidence },
       teamB: { direction: teamB.direction, confidence: teamB.directionConfidence },
       liquidity,
