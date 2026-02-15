@@ -1,3 +1,16 @@
+const ITERATION_LIMITS = {
+  matchup: { dev: 5000, prod: 2000 },
+  season: { dev: 3000, prod: 1000 },
+  playoff: { dev: 5000, prod: 1500 },
+  championship: { dev: 5000, prod: 2000 },
+} as const
+
+function capIterations(requested: number, type: keyof typeof ITERATION_LIMITS): number {
+  const isProd = process.env.NODE_ENV === 'production'
+  const limit = isProd ? ITERATION_LIMITS[type].prod : ITERATION_LIMITS[type].dev
+  return Math.min(requested, limit)
+}
+
 function randomNormal(mean: number, stdDev: number): number {
   const u = 1 - Math.random()
   const v = Math.random()
@@ -23,6 +36,7 @@ export function simulateMatchup(
   teamB: TeamProjection,
   iterations = 5000
 ): MatchupResult {
+  iterations = capIterations(iterations, 'matchup')
   let winsA = 0
   let marginSum = 0
   let marginSqSum = 0
@@ -61,6 +75,7 @@ export function simulateSeason(
   byeSpots: number,
   iterations = 3000
 ): SeasonSimResult {
+  iterations = capIterations(iterations, 'season')
   let totalWins = 0
   let playoffCount = 0
   let byeCount = 0
@@ -99,6 +114,7 @@ export function simulatePlayoffs(
   targetTeamIndex: number,
   iterations = 5000
 ): PlayoffSimResult {
+  iterations = capIterations(iterations, 'playoff')
   if (teams.length < 2) {
     return { championshipProbability: 1, finalistProbability: 1 }
   }
@@ -153,6 +169,7 @@ export function computeChampionshipDelta(
   stdDevDelta: number = 0,
   iterations = 5000
 ): ChampionshipDelta {
+  iterations = capIterations(iterations, 'championship')
   const before = simulatePlayoffs(teams, targetTeamIndex, iterations)
 
   const modifiedTeams = teams.map((t, i) => {

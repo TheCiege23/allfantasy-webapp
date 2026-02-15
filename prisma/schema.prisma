@@ -1869,3 +1869,17 @@ model TradeOutcomeTraining {
   @@index([leagueId, createdAt])
   @@index([wasAccepted])
 }
+
+model EngineSnapshot {
+  id         String   @id @default(cuid())
+  leagueId   String
+  type       String   @db.VarChar(32)
+  hash       String   @db.VarChar(64)
+  payload    Json
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([leagueId, type, hash])
+  @@index([leagueId, type])
+  @@index([expiresAt])
+}
