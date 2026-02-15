@@ -15,7 +15,7 @@ const Ctx = createContext<ThemeCtx | null>(null)
 const STORAGE_KEY = "af_mode"
 
 export function ThemeProvider(props: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<AppMode>("dark")
+  const [mode, setModeState] = useState<AppMode>("light")
 
   useEffect(() => {
     const saved = (typeof window !== "undefined" && window.localStorage.getItem(STORAGE_KEY)) as AppMode | null
@@ -35,7 +35,7 @@ export function ThemeProvider(props: { children: React.ReactNode }) {
       mode,
       setMode: (m) => setModeState(m),
       cycleMode: () =>
-        setModeState((prev) => (prev === "dark" ? "light" : prev === "light" ? "legacy" : "dark"))
+        setModeState((prev) => (prev === "light" ? "dark" : prev === "dark" ? "legacy" : "light"))
     }
   }, [mode])
 
