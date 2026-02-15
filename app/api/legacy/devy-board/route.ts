@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { getEligibleDevyPlayers, computeAvailabilityPct } from '@/lib/devy-classification'
+import { computeAllDevyIntelMetrics, computeDevyFinalScore, computeAvailabilityPctV2 } from '@/lib/devy-intel'
 import { prisma } from '@/lib/prisma'
 
 const openai = new OpenAI()
@@ -45,6 +46,26 @@ interface DevyPlayerResult {
   rushingYards?: number | null
   receivingYards?: number | null
   receivingTDs?: number | null
+  recruitingComposite?: number | null
+  breakoutAge?: number | null
+  draftProjectionScore?: number | null
+  projectedDraftRound?: number | null
+  projectedDraftPick?: number | null
+  devyAdp?: number | null
+  injurySeverityScore?: number | null
+  transferStatus?: boolean
+  redshirtStatus?: boolean
+  athleticProfileScore?: number | null
+  productionIndex?: number | null
+  volatilityScore?: number | null
+  finalScore?: number | null
+  scoreBreakdown?: {
+    draftProjectionComponent: number
+    adpMarketComponent: number
+    leagueNeedComponent: number
+    scarcityComponent: number
+    volatilityComponent: number
+  } | null
 }
 
 interface DevyBoardResponse {
@@ -149,34 +170,61 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "Le
 
       const safeCandidates = allCandidates.filter(p => p.graduatedToNFL !== true && p.devyEligible !== false)
 
+      const finalScoreOpts = { biggestNeed, secondaryNeed, isSF, isTEP, totalTeams, pickNumber }
+
       safeCandidates.sort((a, b) => {
-        const aNeedBoost = a.position === biggestNeed ? 2000 : a.position === secondaryNeed ? 1000 : 0
-        const bNeedBoost = b.position === biggestNeed ? 2000 : b.position === secondaryNeed ? 1000 : 0
-        return (b.devyValue + bNeedBoost) - (a.devyValue + aNeedBoost)
+        const aScore = computeDevyFinalScore(a, finalScoreOpts).finalScore
+        const bScore = computeDevyFinalScore(b, finalScoreOpts).finalScore
+        return bScore - aScore
       })
 
-      const toResult = (p: any): DevyPlayerResult => ({
-        name: p.name,
-        position: p.position,
-        school: p.school,
-        tier: assignTier(p.devyValue),
-        draftValue: Math.round(p.devyValue / 100),
-        availabilityPct: computeAvailabilityPct(p.devyValue, p.draftEligibleYear || 2028, pickNumber, totalTeams),
-        whyBullets: generateWhyBullets(p, biggestNeed, teamDirection),
-        needMatch: assignNeedMatch(p.position, biggestNeed, secondaryNeed),
-        classYear: p.classYear,
-        conference: p.conference,
-        devyEligible: p.devyEligible,
-        graduatedToNFL: p.graduatedToNFL,
-        nflTeam: p.nflTeam,
-        sleeperId: p.sleeperId,
-        badge: p.graduatedToNFL ? 'Graduated' : p.devyEligible ? 'NCAA' : 'NFL',
-        statSeason: p.statSeason,
-        passingYards: p.passingYards,
-        rushingYards: p.rushingYards,
-        receivingYards: p.receivingYards,
-        receivingTDs: p.receivingTDs,
-      })
+      const toResult = (p: any): DevyPlayerResult => {
+        const metrics = computeAllDevyIntelMetrics(p)
+        const fs = computeDevyFinalScore(p, finalScoreOpts)
+
+        return {
+          name: p.name,
+          position: p.position,
+          school: p.school,
+          tier: assignTier(p.devyValue),
+          draftValue: Math.round(p.devyValue / 100),
+          availabilityPct: computeAvailabilityPctV2(p, pickNumber, totalTeams),
+          whyBullets: generateWhyBullets(p, biggestNeed, teamDirection),
+          needMatch: assignNeedMatch(p.position, biggestNeed, secondaryNeed),
+          classYear: p.classYear,
+          conference: p.conference,
+          devyEligible: p.devyEligible,
+          graduatedToNFL: p.graduatedToNFL,
+          nflTeam: p.nflTeam,
+          sleeperId: p.sleeperId,
+          badge: p.graduatedToNFL ? 'Graduated' : p.devyEligible ? 'NCAA' : 'NFL',
+          statSeason: p.statSeason,
+          passingYards: p.passingYards,
+          rushingYards: p.rushingYards,
+          receivingYards: p.receivingYards,
+          receivingTDs: p.receivingTDs,
+          recruitingComposite: metrics.recruitingComposite,
+          breakoutAge: metrics.breakoutAge,
+          draftProjectionScore: metrics.draftProjectionScore,
+          projectedDraftRound: metrics.projectedDraftRound,
+          projectedDraftPick: metrics.projectedDraftPick,
+          devyAdp: p.devyAdp,
+          injurySeverityScore: metrics.injurySeverityScore,
+          transferStatus: p.transferStatus,
+          redshirtStatus: p.redshirtStatus,
+          athleticProfileScore: metrics.athleticProfileScore,
+          productionIndex: metrics.productionIndex,
+          volatilityScore: metrics.volatilityScore,
+          finalScore: fs.finalScore,
+          scoreBreakdown: {
+            draftProjectionComponent: fs.draftProjectionComponent,
+            adpMarketComponent: fs.adpMarketComponent,
+            leagueNeedComponent: fs.leagueNeedComponent,
+            scarcityComponent: fs.scarcityComponent,
+            volatilityComponent: fs.volatilityComponent,
+          },
+        }
+      }
 
       if (safeCandidates.length < 6) {
         const aiFallback = await generateFromAI(biggestNeed, teamDirection, isSF, isTEP, totalTeams, firstPick, leagueType)

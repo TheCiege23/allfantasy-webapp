@@ -49,6 +49,16 @@ export type Asset = {
   // Futures
   futuresMultiplier?: number
 
+  // Devy
+  isDevy?: boolean
+  draftProjectionScore?: number
+  projectedDraftRound?: number
+  breakoutAge?: number
+  injurySeverityScore?: number
+  volatilityScore?: number
+  devyAdp?: number
+  draftEligibleYear?: number
+
   // Tags
   tags?: string[]
 }
@@ -388,7 +398,7 @@ export type AcceptDriver = {
   evidence: {
     metric?: string
     raw?: number
-    unit?: 'PPG' | 'PCT' | 'COUNT' | 'SCORE'
+    unit?: 'PPG' | 'PCT' | 'COUNT' | 'SCORE' | 'ROUND' | 'AGE'
     note?: string
   }
 }

@@ -1758,6 +1758,44 @@ export function computeTradeDrivers(
   }
 
   tradeResult.acceptDrivers = buildAcceptDrivers(acceptResult)
+
+  const devyAssets = [...give, ...receive].filter(a => a.isDevy && a.draftProjectionScore)
+  if (devyAssets.length > 0) {
+    const partnerArchetype = toManager?.tradeAggression === 'low' ? 'FutureFocused' : null
+    for (const da of devyAssets) {
+      if (da.projectedDraftRound && da.projectedDraftRound <= 1) {
+        tradeResult.acceptDrivers.push(makeDriver('devy_rd1_capital', 'Projected Rd 1 NFL Capital', '🏈',
+          0.06, { metric: 'projectedDraftRound', raw: da.projectedDraftRound, unit: 'ROUND' }))
+      } else if (da.projectedDraftRound && da.projectedDraftRound <= 2) {
+        tradeResult.acceptDrivers.push(makeDriver('devy_rd2_capital', 'Projected Day 1-2 NFL Pick', '🏈',
+          0.03, { metric: 'projectedDraftRound', raw: da.projectedDraftRound, unit: 'ROUND' }))
+      }
+
+      if (da.breakoutAge != null && da.breakoutAge <= 20) {
+        tradeResult.acceptDrivers.push(makeDriver('devy_breakout', 'Early Breakout Age', '⚡',
+          0.03, { metric: 'breakoutAge', raw: da.breakoutAge, unit: 'AGE' }))
+      }
+
+      if (da.injurySeverityScore != null && da.injurySeverityScore > 70) {
+        tradeResult.acceptDrivers.push(makeDriver('devy_injury_risk', 'Devy Injury Concern', '🏥',
+          -0.07, { metric: 'injurySeverityScore', raw: da.injurySeverityScore, unit: 'SCORE' }))
+      } else if (da.injurySeverityScore != null && da.injurySeverityScore > 40) {
+        tradeResult.acceptDrivers.push(makeDriver('devy_mod_injury', 'Moderate Injury Risk', '🏥',
+          -0.03, { metric: 'injurySeverityScore', raw: da.injurySeverityScore, unit: 'SCORE' }))
+      }
+
+      if (da.volatilityScore != null && da.volatilityScore > 70) {
+        tradeResult.acceptDrivers.push(makeDriver('devy_high_vol', 'High Volatility Devy', '🌊',
+          -0.04, { metric: 'volatilityScore', raw: da.volatilityScore, unit: 'SCORE' }))
+      }
+    }
+
+    if (partnerArchetype === 'FutureFocused') {
+      tradeResult.acceptDrivers.push(makeDriver('devy_partner_youth', 'Partner Loves Youth', '🧠',
+        0.08, { note: 'Future-focused partner archetype' }))
+    }
+  }
+
   tradeResult.confidenceDrivers = buildConfidenceDrivers({
     hasLineupData,
     hasYourRoster: (rosterCtx?.yourRoster?.length ?? 0) > 0,

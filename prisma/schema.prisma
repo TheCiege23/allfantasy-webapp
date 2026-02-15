@@ -1755,6 +1755,24 @@ model DevyPlayer {
   recruitingStars    Int?
   recruitingRanking  Int?
 
+  recruitingComposite    Float?
+  breakoutAge            Float?
+  draftProjectionScore   Float?
+  projectedDraftRound    Int?
+  projectedDraftPick     Int?
+  devyAdp                Float?
+  redshirtStatus         Boolean  @default(false)
+  transferStatus         Boolean  @default(false)
+  nilImpactScore         Float?
+  injurySeverityScore    Float?
+  athleticProfileScore   Float?
+  productionIndex        Float?
+  volatilityScore        Float?
+  nflDraftRound          Int?
+  nflDraftPick           Int?
+
+  devyAdpHistory DevyAdp[]
+
   source             String   @default("cfbd")
   lastClassifiedAt   DateTime?
   lastSyncedAt       DateTime @default(now())
@@ -1768,4 +1786,19 @@ model DevyPlayer {
   @@index([draftEligibleYear])
   @@index([graduatedToNFL])
   @@index([cfbdId])
+  @@index([draftProjectionScore])
+}
+
+model DevyAdp {
+  id        String   @id @default(cuid())
+  playerId  String
+  player    DevyPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  adp       Float
+  source    String
+  season    Int
+  updatedAt DateTime @updatedAt
+
+  @@unique([playerId, source, season])
+  @@index([playerId])
+  @@index([season])
 }

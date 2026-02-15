@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { getCFBPlayerStats, getCFBTeamRoster, type CFBPlayer, type CFBPlayerStats } from '@/lib/cfb-player-data'
+import { computeAllDevyIntelMetrics } from '@/lib/devy-intel'
 
 function normalizeName(name: string): string {
   return name
@@ -286,6 +287,43 @@ export async function classifyGraduations(): Promise<{ graduated: number; errors
   return { graduated, errors }
 }
 
+export async function enrichDevyIntelMetrics(): Promise<{ updated: number; errors: string[] }> {
+  let updated = 0
+  const errors: string[] = []
+
+  const players = await prisma.devyPlayer.findMany({
+    where: { devyEligible: true, graduatedToNFL: false, league: 'NCAA' },
+  })
+
+  for (const player of players) {
+    try {
+      const metrics = computeAllDevyIntelMetrics(player)
+
+      await prisma.devyPlayer.update({
+        where: { id: player.id },
+        data: {
+          recruitingComposite: metrics.recruitingComposite,
+          breakoutAge: metrics.breakoutAge,
+          draftProjectionScore: metrics.draftProjectionScore,
+          projectedDraftRound: metrics.projectedDraftRound,
+          projectedDraftPick: metrics.projectedDraftPick,
+          athleticProfileScore: metrics.athleticProfileScore,
+          productionIndex: metrics.productionIndex,
+          nilImpactScore: metrics.nilImpactScore,
+          injurySeverityScore: metrics.injurySeverityScore,
+          volatilityScore: metrics.volatilityScore,
+          lastSyncedAt: new Date(),
+        },
+      })
+      updated++
+    } catch (err: any) {
+      errors.push(`Intel enrichment failed for ${player.name}: ${err.message?.slice(0, 100)}`)
+    }
+  }
+
+  return { updated, errors }
+}
+
 export async function runFullDevySync(season?: number): Promise<DevySyncResult> {
   console.log('[DevySync] Starting full devy sync...')
 
@@ -298,11 +336,14 @@ export async function runFullDevySync(season?: number): Promise<DevySyncResult> 
   const grad = await classifyGraduations()
   console.log(`[DevySync] Graduated ${grad.graduated} players to NFL`)
 
+  const intel = await enrichDevyIntelMetrics()
+  console.log(`[DevySync] Enriched intel metrics for ${intel.updated} players`)
+
   return {
     ingested: roster.ingested,
     graduated: grad.graduated,
     classified: roster.ingested + stats.updated,
-    errors: [...roster.errors, ...stats.errors, ...grad.errors],
+    errors: [...roster.errors, ...stats.errors, ...grad.errors, ...intel.errors],
   }
 }
 
