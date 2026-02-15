@@ -1,1 +1,0 @@
-git remote set-url origin https://pat_11BBPM2TJY0f4EUa8IkVHTb_3ogd0nV1ETDDg1bnIsyJaACef31ep5NLIO1drDxXarBSBLWRP6QXRTqI3xTHgithttps://TheCiege23@github.com/TheCiege23/allfantasy-webapp.git
