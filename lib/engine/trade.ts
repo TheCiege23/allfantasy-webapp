@@ -152,13 +152,14 @@ function benchFromStarters(roster: TradePlayerAsset[], starters: { name: string 
   return roster.filter(p => !starterNames.has(normName(p.name)))
 }
 
-function pickCandidate(args: {
+function pickCandidates(args: {
   roster: TradePlayerAsset[]
   impactMap: Record<string, { impact: number; vorp: number; vol: number }>
   prefer: 'high_vol' | 'low_vol' | 'low_impact' | 'high_impact'
   posFilter?: string[]
+  limit?: number
 }) {
-  const { roster, impactMap, prefer, posFilter } = args
+  const { roster, impactMap, prefer, posFilter, limit = 3 } = args
 
   const volOf = (p: TradePlayerAsset) => impactMap[p.name]?.vol ?? 0
   const impactOf = (p: TradePlayerAsset) => impactMap[p.name]?.impact ?? 0
@@ -169,7 +170,7 @@ function pickCandidate(args: {
   }
 
   const filtered = roster.filter(posOk)
-  if (filtered.length === 0) return null
+  if (filtered.length === 0) return []
 
   const sorted = filtered.slice().sort((a, b) => {
     if (prefer === 'high_vol') return volOf(b) - volOf(a)
@@ -178,10 +179,23 @@ function pickCandidate(args: {
     return impactOf(a) - impactOf(b)
   })
 
-  return sorted[0] || null
+  const out: TradePlayerAsset[] = []
+  const seen = new Set<string>()
+  for (const p of sorted) {
+    const k = normName(p.name)
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(p)
+    if (out.length >= limit) break
+  }
+  return out
 }
 
-function buildCountersAdaptiveNamed(args: {
+function formatCandidateList(players: TradePlayerAsset[]) {
+  return players.map(p => `${p.name} (${String(p.pos || '').toUpperCase()})`)
+}
+
+function buildCountersAdaptiveNamedTop3(args: {
   fairnessScore: number
   acceptProb: number
   teamADirection?: TeamContext['direction']
@@ -222,104 +236,88 @@ function buildCountersAdaptiveNamed(args: {
   const myBench = benchFromStarters(preRosterA, startersPreA.starters)
   const theirBench = benchFromStarters(preRosterB, startersPreB.starters)
 
-  const mySweetener = wantStability
-    ? pickCandidate({
-        roster: myBench,
-        impactMap: impactMapA,
-        prefer: 'high_vol',
-        posFilter: [topHot],
-      }) ||
-      pickCandidate({ roster: myBench, impactMap: impactMapA, prefer: 'high_vol' })
-    : wantCeiling
-      ? pickCandidate({
-          roster: myBench,
-          impactMap: impactMapA,
-          prefer: 'low_impact',
-          posFilter: [topHot],
-        }) ||
-        pickCandidate({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact' })
-      : pickCandidate({
-          roster: myBench,
-          impactMap: impactMapA,
-          prefer: 'low_impact',
-          posFilter: [topHot],
-        }) ||
-        pickCandidate({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact' })
+  const myAddOptions =
+    wantStability
+      ? (pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'high_vol', posFilter: [topHot], limit: 3 }).length
+          ? pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'high_vol', posFilter: [topHot], limit: 3 })
+          : pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'high_vol', limit: 3 }))
+      : wantCeiling
+        ? (pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact', posFilter: [topHot], limit: 3 }).length
+            ? pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact', posFilter: [topHot], limit: 3 })
+            : pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact', limit: 3 }))
+        : (pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact', posFilter: [topHot], limit: 3 }).length
+            ? pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact', posFilter: [topHot], limit: 3 })
+            : pickCandidates({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact', limit: 3 }))
 
-  const askFromThem = wantStability
-    ? pickCandidate({
-        roster: theirBench,
-        impactMap: impactMapB,
-        prefer: 'low_vol',
-        posFilter: [topHot],
-      }) ||
-      pickCandidate({ roster: theirBench, impactMap: impactMapB, prefer: 'low_vol' })
-    : wantCeiling
-      ? pickCandidate({
-          roster: theirBench,
-          impactMap: impactMapB,
-          prefer: 'high_vol',
-          posFilter: [topHot],
-        }) ||
-        pickCandidate({ roster: theirBench, impactMap: impactMapB, prefer: 'high_vol' })
-      : pickCandidate({
-          roster: theirBench,
-          impactMap: impactMapB,
-          prefer: 'high_impact',
-          posFilter: [topHot],
-        }) ||
-        pickCandidate({ roster: theirBench, impactMap: impactMapB, prefer: 'high_impact' })
+  const myAskOptions =
+    wantStability
+      ? (pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'low_vol', posFilter: [topHot], limit: 3 }).length
+          ? pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'low_vol', posFilter: [topHot], limit: 3 })
+          : pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'low_vol', limit: 3 }))
+      : wantCeiling
+        ? (pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'high_vol', posFilter: [topHot], limit: 3 }).length
+            ? pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'high_vol', posFilter: [topHot], limit: 3 })
+            : pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'high_vol', limit: 3 }))
+        : (pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'high_impact', posFilter: [topHot], limit: 3 }).length
+            ? pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'high_impact', posFilter: [topHot], limit: 3 })
+            : pickCandidates({ roster: theirBench, impactMap: impactMapB, prefer: 'high_impact', limit: 3 }))
 
-  const sweetenerText = mySweetener ? `${mySweetener.name} (${String(mySweetener.pos || '').toUpperCase()})` : null
-  const askText = askFromThem ? `${askFromThem.name} (${String(askFromThem.pos || '').toUpperCase()})` : null
+  const addList = formatCandidateList(myAddOptions)
+  const askList = formatCandidateList(myAskOptions)
 
   if (acceptProb < 0.55) {
-    if (sweetenerText) {
+    if (addList.length) {
       counters.push({
-        label: wantStability ? 'Win-Now Accept Boost (Named)' : wantCeiling ? 'Rebuild Accept Boost (Named)' : 'Accept Boost (Named)',
+        label: wantStability ? 'Win-Now Accept Boost (Top 3)' : wantCeiling ? 'Rebuild Accept Boost (Top 3)' : 'Accept Boost (Top 3)',
         changes: [
-          { addToB: `Add ${sweetenerText} to your side ("You Give") as a sweetener.` },
-          ldiByPos ? { note: `LDI hot position: ${topHot}. Sweetener chosen from your bench to match league demand.` } : null,
+          { addToB: `Add one of: ${addList.join(' / ')}` },
+          ldiByPos ? { note: `LDI hot position: ${topHot}. Add-options pulled from your bench to match league demand.` } : null,
         ].filter(Boolean),
         acceptProb: clamp(acceptProb + 0.12, 0, 1),
         fairnessScore: clamp(fairnessScore - 3, 0, 100),
-        whyTheyAccept: ['It\'s a real, startable/usable piece that increases deal "feel-good" value.'],
+        whyTheyAccept: ['Real bench pieces reduce negotiation friction and increase perceived value.'],
         whyItHelpsYou: wantStability
-          ? ['You\'re moving a volatile bench piece to protect weekly floor.']
+          ? ['You move volatility off your bench without touching core starters.']
           : wantCeiling
-            ? ['You\'re avoiding paying with premium ceiling assets; using bench surplus instead.']
-            : ['You\'re improving acceptance without changing the core swap.'],
+            ? ['You keep ceiling assets; pay with surplus/low-impact pieces instead.']
+            : ['You increase acceptance without reshaping the core deal.'],
+        options: {
+          addCandidates: myAddOptions.map(p => ({ id: p.id, name: p.name, pos: p.pos, team: p.team })),
+        },
       })
     } else {
       counters.push({
         label: 'Accept Boost (Pick-Based)',
         changes: [
           { addToB: 'Add a late 2nd (or upgrade 3rd \u2192 2nd) instead of losing a core player.' },
-          ldiByPos ? { note: `LDI suggests ${topHot} is hot \u2014 picks often substitute when you can\'t spare that position.` } : null,
+          ldiByPos ? { note: `LDI suggests ${topHot} is hot \u2014 picks substitute when bench options are thin.` } : null,
         ].filter(Boolean),
         acceptProb: clamp(acceptProb + 0.11, 0, 1),
         fairnessScore: clamp(fairnessScore - 2, 0, 100),
-        whyTheyAccept: ['Picks reduce friction and feel like guaranteed future value.'],
-        whyItHelpsYou: ['Keeps your current lineup intact while still raising acceptance.'],
+        whyTheyAccept: ['Picks feel like guaranteed future value.'],
+        whyItHelpsYou: ['Keeps your weekly lineup intact while raising acceptance.'],
       })
     }
   }
 
-  if (askText) {
+  if (askList.length) {
     counters.push({
-      label: wantStability ? 'Ask Back Stability (Named)' : wantCeiling ? 'Ask Back Ceiling (Named)' : 'Ask Back Value (Named)',
+      label: wantStability ? 'Ask Back Stability (Top 3)' : wantCeiling ? 'Ask Back Ceiling (Top 3)' : 'Ask Back Value (Top 3)',
       changes: [
-        { askFromThem: `Counter by asking for ${askText} from their bench.` },
-        ldiByPos ? { note: `Selected from their bench in a league-demanded position (${topHot}).` } : null,
+        { askFromThem: `Counter by asking for one of: ${askList.join(' / ')}` },
+        ldiByPos ? { note: `Ask-options pulled from their bench in league-demanded position (${topHot}).` } : null,
       ].filter(Boolean),
       acceptProb: clamp(acceptProb + 0.05, 0, 1),
       fairnessScore: clamp(fairnessScore + 1, 0, 100),
-      whyTheyAccept: ['It\'s usually an easier "yes" than moving their core starters.'],
+      whyTheyAccept: ['Bench concessions are easier than moving starters.'],
       whyItHelpsYou: wantStability
-        ? ['Adds weekly floor without paying extra picks.']
+        ? ['Adds floor without paying extra picks.']
         : wantCeiling
-          ? ['Adds upside insulation (breakout profile) to raise long-term EV.']
+          ? ['Adds upside insulation to raise long-term EV.']
           : ['Improves deal balance with minimal negotiation pain.'],
+      options: {
+        askCandidates: myAskOptions.map(p => ({ id: p.id, name: p.name, pos: p.pos, team: p.team })),
+      },
     })
   }
 
@@ -327,11 +325,11 @@ function buildCountersAdaptiveNamed(args: {
   counters.push({
     label: partnerIsRebuild ? 'Partner Rebuild Angle' : 'Partner Win-Now Angle',
     changes: partnerIsRebuild
-      ? [{ addPick: 'If they hesitate, replace your sweetener with a future pick (2nd/3rd) \u2014 rebuilders respond better to picks.' }]
-      : [{ addToB: 'If they hesitate, replace pick talk with a usable startable depth piece \u2014 contenders want points now.' }],
+      ? [{ addPick: 'If they hesitate, swap your add-on for a future pick (2nd/3rd) \u2014 rebuilders respond better to picks.' }]
+      : [{ addToB: 'If they hesitate, swap pick talk for a usable startable depth piece \u2014 contenders want points now.' }],
     acceptProb: clamp(acceptProb + 0.04, 0, 1),
     fairnessScore: clamp(fairnessScore - 1, 0, 100),
-    whyTheyAccept: [partnerIsRebuild ? 'Matches rebuild incentives: future value.' : 'Matches contender incentives: immediate points.'],
+    whyTheyAccept: [partnerIsRebuild ? 'Matches rebuild incentives: future value.' : 'Matches contender incentives: points now.'],
     whyItHelpsYou: ['You increase acceptance by speaking their roster language.'],
   })
 
@@ -790,7 +788,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       : fairnessScore <= 44 ? 'reject'
         : 'counter'
 
-  const counters = buildCountersAdaptiveNamed({
+  const counters = buildCountersAdaptiveNamedTop3({
     fairnessScore,
     acceptProb: acceptance.final,
     teamADirection: teamA.direction,
