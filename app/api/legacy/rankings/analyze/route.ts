@@ -74,21 +74,29 @@ interface TeamRanking {
 export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", tool: "LegacyRankingsAnalyze" })(async (request: NextRequest) => {
   try {
     const body = await request.json().catch(() => ({}))
-    const sleeper_username = String(body?.sleeper_username || '').trim()
-    const league_id = String(body?.league_id || '').trim()
+    const sleeperUser = body?.sleeperUser as { username?: string; userId?: string } | undefined
+    const sleeper_username = String(sleeperUser?.username || body?.sleeper_username || '').trim()
+    const league_id = String(body?.leagueId || body?.league_id || '').trim()
 
     if (!sleeper_username || !league_id) {
       return NextResponse.json({ error: 'Missing sleeper_username or league_id' }, { status: 400 })
     }
 
     const sleeperUsernameLower = sleeper_username.toLowerCase()
+    const sleeperUserId = sleeperUser?.userId?.trim() || undefined
 
-    const user = await prisma.legacyUser.findUnique({
+    let user = await prisma.legacyUser.findUnique({
       where: { sleeperUsername: sleeperUsernameLower },
     })
 
+    if (!user && sleeperUserId) {
+      user = await prisma.legacyUser.findFirst({
+        where: { sleeperUserId },
+      })
+    }
+
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      return NextResponse.json({ error: 'User not found. Please sign up on the AllFantasy home page first.' }, { status: 404 })
     }
 
     const leagueRes = await fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(league_id)}`, {

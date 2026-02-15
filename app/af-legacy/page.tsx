@@ -3388,25 +3388,32 @@ function AFLegacyContent() {
     reader.readAsDataURL(file)
   }
 
-  const runRankingsAnalysis = async () => {
-    if (!username || !rankingsSelectedLeague) return
+  const runRankingsAnalysis = async (leagueId?: string, retryCount = 0) => {
+    const targetLeague = leagueId || rankingsSelectedLeague
+    if (!username || !targetLeague) {
+      if (!username) setRankingsError('Please enter your Sleeper username first.')
+      if (!targetLeague) setRankingsError('Please select a league first.')
+      return
+    }
     setRankingsLoading(true)
     setRankingsError('')
     setRankingsData(null)
-    trackToolUse('league_rankings', { username, league_id: rankingsSelectedLeague })
-    
+    trackToolUse('league_rankings', { username, league_id: targetLeague })
+
+    const sleeperUser = buildSleeperUser(username, profile)
+
     try {
-      // Step 1: Try to load from snapshot first (deterministic, faster)
       const snapshotRes = await fetch('/api/legacy/snapshots/latest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          league_id: rankingsSelectedLeague,
+          league_id: targetLeague,
           sleeper_username: username,
+          sleeperUser,
           snapshot_type: 'rankings_analyze',
         }),
       })
-      
+
       if (snapshotRes.ok) {
         const snapData = await snapshotRes.json()
         if (snapData.ok && snapData.snapshot?.createdAt && snapData.payload) {
@@ -3414,7 +3421,7 @@ function AFLegacyContent() {
           const ageHours = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60)
           if (ageHours < 24) {
             setRankingsData(snapData.payload)
-            fetchDevyBoard(rankingsSelectedLeague, snapData.payload)
+            fetchDevyBoard(targetLeague, snapData.payload)
             fetchPlayoffForecast()
             fetchHistoricalRatings()
             fetchLeagueFormat()
@@ -3422,28 +3429,38 @@ function AFLegacyContent() {
           }
         }
       }
-      
-      // Step 2: No valid snapshot - compute fresh
+
       const res = await fetch('/api/legacy/rankings/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sleeper_username: username,
-          league_id: rankingsSelectedLeague,
+          league_id: targetLeague,
+          sleeperUser,
         }),
       })
       const data = await res.json()
       if (!res.ok) {
+        if (retryCount === 0) {
+          console.warn('[Rankings] First attempt failed, retrying...', data.error)
+          setRankingsLoading(false)
+          return runRankingsAnalysis(targetLeague, 1)
+        }
         setRankingsError(data.error || 'Failed to analyze rankings')
         return
       }
       setRankingsData(data)
-      fetchDevyBoard(rankingsSelectedLeague, data)
+      fetchDevyBoard(targetLeague, data)
       fetchPlayoffForecast()
       fetchHistoricalRatings()
       fetchLeagueFormat()
-    } catch {
-      setRankingsError('Network error')
+    } catch (e: any) {
+      if (retryCount === 0) {
+        console.warn('[Rankings] Network error, retrying once...', e?.message)
+        setRankingsLoading(false)
+        return runRankingsAnalysis(targetLeague, 1)
+      }
+      setRankingsError('Network error — please check your connection and try again.')
     } finally {
       setRankingsLoading(false)
     }
@@ -12067,8 +12084,12 @@ function AFLegacyContent() {
                           <select
                             value={rankingsSelectedLeague}
                             onChange={(e) => {
-                              setRankingsSelectedLeague(e.target.value)
+                              const newLeague = e.target.value
+                              setRankingsSelectedLeague(newLeague)
                               setRankingsData(null)
+                              if (newLeague && username) {
+                                runRankingsAnalysis(newLeague)
+                              }
                             }}
                             className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white focus:outline-none focus:border-cyan-500/50"
                           >
@@ -12081,7 +12102,7 @@ function AFLegacyContent() {
                         </div>
 
                         <button
-                          onClick={runRankingsAnalysis}
+                          onClick={() => runRankingsAnalysis()}
                           disabled={rankingsLoading || !rankingsSelectedLeague}
                           className="px-6 py-3 bg-gradient-to-r from-yellow-500 to-amber-500 text-white font-semibold rounded-xl hover:from-yellow-400 hover:to-amber-400 transition disabled:opacity-50"
                         >
@@ -12142,8 +12163,14 @@ function AFLegacyContent() {
                         )}
 
                         {rankingsError && (
-                          <div className="p-4 rounded-xl bg-red-500/10 border border-red-400/30 text-red-300">
-                            {rankingsError}
+                          <div className="p-4 rounded-xl bg-red-500/10 border border-red-400/30 text-red-300 flex items-center justify-between gap-3">
+                            <span>{rankingsError}</span>
+                            <button
+                              onClick={() => runRankingsAnalysis()}
+                              className="shrink-0 px-4 py-1.5 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg text-sm text-red-200 transition"
+                            >
+                              Retry
+                            </button>
                           </div>
                         )}
 
