@@ -1036,6 +1036,9 @@ function AFLegacyContent() {
   const [tradeHubTeamB, setTradeHubTeamB] = useState('')
   const [tradeHubPlayersA, setTradeHubPlayersA] = useState<string[]>([])
   const [tradeHubPlayersB, setTradeHubPlayersB] = useState<string[]>([])
+  const [recentlyAddedIds, setRecentlyAddedIds] = useState<string[]>([])
+  const sideARef = useRef<HTMLDivElement | null>(null)
+  const sideBRef = useRef<HTMLDivElement | null>(null)
   const [tradeHubPicksA, setTradeHubPicksA] = useState<string[]>([])
   const [tradeHubPicksB, setTradeHubPicksB] = useState<string[]>([])
   const [tradeHubFaabA, setTradeHubFaabA] = useState(0)
@@ -2005,14 +2008,35 @@ function AFLegacyContent() {
     return { needs, status, record: manager.record, posCount }
   }
 
+  const triggerHighlight = (id: string) => {
+    setRecentlyAddedIds(prev => [...prev, id])
+    setTimeout(() => {
+      setRecentlyAddedIds(prev => prev.filter(x => x !== id))
+    }, 1200)
+  }
+
   const addCounterCandidateToGive = (playerId: string) => {
     if (!playerId) return
-    setTradeHubPlayersB(prev => (prev.includes(playerId) ? prev : [...prev, playerId]))
+    setTradeHubPlayersB(prev => {
+      if (prev.includes(playerId)) return prev
+      return [...prev, playerId]
+    })
+    triggerHighlight(playerId)
+    setTimeout(() => {
+      sideBRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 100)
   }
 
   const addCounterCandidateToGet = (playerId: string) => {
     if (!playerId) return
-    setTradeHubPlayersA(prev => (prev.includes(playerId) ? prev : [...prev, playerId]))
+    setTradeHubPlayersA(prev => {
+      if (prev.includes(playerId)) return prev
+      return [...prev, playerId]
+    })
+    triggerHighlight(playerId)
+    setTimeout(() => {
+      sideARef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 100)
   }
 
   const handleShareReward = async (shareType: 'trade_result' | 'rankings' | 'portfolio') => {
@@ -9287,7 +9311,7 @@ function AFLegacyContent() {
                                   <>
                                     {/* Selected Players */}
                                     {tradeHubPlayersA.length > 0 && (
-                                      <div className="mb-2">
+                                      <div className="mb-2" ref={sideARef}>
                                         <label className="block text-xs text-cyan-400 mb-1">Selected Players</label>
                                         <div className="flex flex-wrap gap-1">
                                           {tradeHubPlayersA.map((pid: string) => {
@@ -9296,7 +9320,7 @@ function AFLegacyContent() {
                                               <button
                                                 key={pid}
                                                 onClick={() => setTradeHubPlayersA(tradeHubPlayersA.filter(id => id !== pid))}
-                                                className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-red-500/30 hover:border-red-500/50 hover:text-red-300 transition-colors"
+                                                className={`flex items-center gap-1 px-2 py-1 text-xs rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-red-500/30 hover:border-red-500/50 hover:text-red-300 transition-all duration-500 ${recentlyAddedIds.includes(pid) ? "ring-2 ring-emerald-400 animate-pulse" : ""}`}
                                               >
                                                 <PlayerBadge name={p?.name || pid} sleeperId={pid} position={p?.pos} team={p?.team} size="sm" showTeamLogo={false} />
                                                 <span className="text-red-400">×</span>
@@ -9450,7 +9474,7 @@ function AFLegacyContent() {
                                       <label className="block text-xs text-white/50 mb-1">Players ({tradeHubPlayersB.length} selected)</label>
                                       {/* Selected Players */}
                                       {tradeHubPlayersB.length > 0 && (
-                                        <div className="mb-2">
+                                        <div className="mb-2" ref={sideBRef}>
                                           <label className="block text-xs text-purple-400 mb-1">Selected Players</label>
                                           <div className="flex flex-wrap gap-1">
                                             {tradeHubPlayersB.map((pid: string) => {
@@ -9459,7 +9483,7 @@ function AFLegacyContent() {
                                                 <button
                                                   key={pid}
                                                   onClick={() => setTradeHubPlayersB(tradeHubPlayersB.filter(id => id !== pid))}
-                                                  className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-red-500/30 hover:border-red-500/50 hover:text-red-300 transition-colors"
+                                                  className={`flex items-center gap-1 px-2 py-1 text-xs rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 hover:bg-red-500/30 hover:border-red-500/50 hover:text-red-300 transition-all duration-500 ${recentlyAddedIds.includes(pid) ? "ring-2 ring-emerald-400 animate-pulse" : ""}`}
                                                 >
                                                   <PlayerBadge name={p?.name || pid} sleeperId={pid} position={p?.pos} team={p?.team} size="sm" showTeamLogo={false} />
                                                   <span className="text-red-400">×</span>
