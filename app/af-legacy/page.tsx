@@ -201,6 +201,10 @@ interface Profile {
   ai_title?: string
 }
 
+function buildSleeperUser(username: string, profile: Profile | null) {
+  return { username, userId: profile?.sleeper_user_id || '' }
+}
+
 function clampMs(ms: unknown) {
   const n = Number(ms)
   if (!Number.isFinite(n)) return 0
@@ -3214,7 +3218,7 @@ function AFLegacyContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sleeperUser: { username, userId: profile?.sleeper_user_id || '' },
+          sleeperUser: buildSleeperUser(username, profile),
           league_id: waiverSelectedLeague,
           goal: waiverGoal || undefined,
         }),
