@@ -66,6 +66,7 @@ interface DevyPlayerResult {
     scarcityComponent: number
     volatilityComponent: number
   } | null
+  riskBand?: 'LOW' | 'MEDIUM' | 'HIGH'
 }
 
 interface DevyBoardResponse {
@@ -85,6 +86,17 @@ interface DevyBoardResponse {
   projectedPicksAhead: Array<{ name: string; pct: number }>
   updateReasons: string[]
   totalClassifiedPlayers?: number
+}
+
+function computeRiskBand(player: any): 'LOW' | 'MEDIUM' | 'HIGH' {
+  const risk =
+    (player.injurySeverityScore ?? 0) * 0.4 +
+    (player.transferStatus ? 10 : 0) +
+    (player.redshirtStatus ? 5 : 0)
+
+  if (risk < 20) return 'LOW'
+  if (risk < 50) return 'MEDIUM'
+  return 'HIGH'
 }
 
 function assignTier(devyValue: number): 'Tier 1' | 'Tier 2' | 'Sleeper' {
@@ -223,6 +235,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "Le
             scarcityComponent: fs.scarcityComponent,
             volatilityComponent: fs.volatilityComponent,
           },
+          riskBand: computeRiskBand(p),
         }
       }
 

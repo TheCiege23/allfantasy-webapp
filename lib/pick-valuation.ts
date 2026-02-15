@@ -46,7 +46,8 @@ export function pickValue(
   pickRound: number, 
   pickYear: number, 
   currentYear: number, 
-  daysToDraftForPickYear: number | null = null
+  daysToDraftForPickYear: number | null = null,
+  classStrength: number | null = null,
 ): number {
   const base = BASE_PICK_VALUE[roundToKey(pickRound)] || 10
   const yearsOut = pickYear - currentYear
@@ -56,7 +57,49 @@ export function pickValue(
 
   const feverMult = rookieFeverMultiplier(daysToDraftForPickYear)
 
-  return base * timeMult * feverMult
+  let value = base * timeMult * feverMult
+
+  if (classStrength !== null && classStrength > 0) {
+    value *= (classStrength / 80)
+  }
+
+  return value
+}
+
+export function computeClassStrength(players: any[]): number {
+  const topProspects = players
+    .filter((p: any) => p.projectedDraftRound === 1)
+    .map((p: any) => p.draftProjectionScore ?? 50)
+
+  if (topProspects.length === 0) return 50
+
+  const avg = topProspects.reduce((a: number, b: number) => a + b, 0) / topProspects.length
+
+  return Math.round(avg)
+}
+
+export function computeClassDepthByPosition(players: any[]): { qbDepth: number; rbDepth: number; wrDepth: number; teDepth: number } {
+  const byPos = { QB: [] as number[], RB: [] as number[], WR: [] as number[], TE: [] as number[] }
+
+  for (const p of players) {
+    const pos = (p.position || '').toUpperCase()
+    if (byPos[pos as keyof typeof byPos]) {
+      byPos[pos as keyof typeof byPos].push(p.draftProjectionScore ?? 50)
+    }
+  }
+
+  const depthScore = (scores: number[]) => {
+    if (scores.length === 0) return 40
+    const top = scores.sort((a, b) => b - a).slice(0, 5)
+    return Math.round(top.reduce((a, b) => a + b, 0) / top.length)
+  }
+
+  return {
+    qbDepth: depthScore(byPos.QB),
+    rbDepth: depthScore(byPos.RB),
+    wrDepth: depthScore(byPos.WR),
+    teDepth: depthScore(byPos.TE),
+  }
 }
 
 function pickTier(round: number): number {
@@ -106,11 +149,12 @@ export function applyTierJumpOverride(
   return { bonus, timePenaltyCapApplied: true }
 }
 
-export function sideTotalValue(assets: TradeAsset[], currentYear: number): number {
+export function sideTotalValue(assets: TradeAsset[], currentYear: number, classStrengthByYear?: Record<number, number>): number {
   let total = 0
   for (const a of assets) {
     if (a.type === 'pick' && a.round && a.year) {
-      total += pickValue(a.round, a.year, currentYear, a.daysToDraft ?? null)
+      const cs = classStrengthByYear?.[a.year] ?? null
+      total += pickValue(a.round, a.year, currentYear, a.daysToDraft ?? null, cs)
     } else if (a.type === 'player' && a.playerValue) {
       total += a.playerValue
     }

@@ -1839,3 +1839,13 @@ model DevyAdp {
   @@index([playerId])
   @@index([season])
 }
+
+model RookieClass {
+  year        Int      @id
+  strength    Float
+  qbDepth     Float
+  rbDepth     Float
+  wrDepth     Float
+  teDepth     Float
+  updatedAt   DateTime @updatedAt
+}
