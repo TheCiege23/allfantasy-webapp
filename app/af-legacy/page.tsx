@@ -12,6 +12,7 @@ import HeroMetricAI from "@/app/components/HeroMetricAI"
 import PortfolioChart from "@/components/PortfolioChart"
 import PlayerBadge from "@/components/PlayerBadge"
 import MiniPlayerImg from "@/components/MiniPlayerImg"
+import { buildSleeperUser } from '@/lib/sleeper-user'
 import InsightsPanel from "@/components/InsightsPanel"
 import BadgeDisplay from "@/components/BadgeDisplay"
 import CommunityInsights from "@/components/CommunityInsights"
@@ -199,10 +200,6 @@ interface Profile {
   import_progress: number
   ai_rating?: number
   ai_title?: string
-}
-
-function buildSleeperUser(username: string, profile: Profile | null) {
-  return { username, userId: profile?.sleeper_user_id || '' }
 }
 
 function clampMs(ms: unknown) {

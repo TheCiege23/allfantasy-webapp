@@ -93,14 +93,14 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/roster", tool: "L
   try {
     const leagueId = String(req.nextUrl.searchParams.get('league_id') || '').trim()
     const sleeperUsername = String(req.nextUrl.searchParams.get('sleeper_username') || '').trim()
+    const sleeperUserId = String(req.nextUrl.searchParams.get('sleeper_user_id') || '').trim()
     const sportRaw = String(req.nextUrl.searchParams.get('sport') || 'nfl').trim().toLowerCase()
 
     if (!leagueId) return NextResponse.json({ error: 'Missing league_id' }, { status: 400 })
-    if (!sleeperUsername) return NextResponse.json({ error: 'Missing sleeper_username' }, { status: 400 })
+    if (!sleeperUsername && !sleeperUserId) return NextResponse.json({ error: 'Missing sleeper_username or sleeper_user_id' }, { status: 400 })
 
     const sport: Sport = sportRaw === 'nba' ? 'nba' : 'nfl'
 
-    // 1) Find user_id from league users
     const usersUrl = `https://api.sleeper.app/v1/league/${encodeURIComponent(leagueId)}/users`
     const usersRes = await fetchJson(usersUrl)
     if (!usersRes.ok || !Array.isArray(usersRes.json)) {
@@ -110,14 +110,23 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/roster", tool: "L
       )
     }
 
-    const target = normalizeName(sleeperUsername)
     const users = usersRes.json as SleeperUser[]
-    const user =
-      users.find((u) => normalizeName(u.username) === target) ||
-      users.find((u) => normalizeName(u.display_name) === target)
+    let user: SleeperUser | undefined
+
+    if (sleeperUserId) {
+      user = users.find((u) => String(u.user_id) === sleeperUserId)
+    }
+
+    if (!user && sleeperUsername) {
+      const target = normalizeName(sleeperUsername)
+      user =
+        users.find((u) => normalizeName(u.username) === target) ||
+        users.find((u) => normalizeName(u.display_name) === target)
+    }
+
     if (!user?.user_id) {
       return NextResponse.json(
-        { error: `User not found in league: ${sleeperUsername}` },
+        { error: `User not found in league: ${sleeperUsername || sleeperUserId}` },
         { status: 404 }
       )
     }

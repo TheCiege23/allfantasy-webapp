@@ -865,6 +865,7 @@ export default function TradeFinderV2({
     if (userRosterId) return userRosterId
     try {
       const params = new URLSearchParams({ league_id: leagueId, sleeper_username: username, sport: 'nfl' })
+      if (sleeperUserId) params.set('sleeper_user_id', sleeperUserId)
       const res = await fetch(`/api/legacy/trade/roster?${params.toString()}`)
       const data = await res.json()
       if (data.resolved?.roster_id) {
@@ -873,7 +874,7 @@ export default function TradeFinderV2({
       }
     } catch {}
     return null
-  }, [username, userRosterId])
+  }, [username, sleeperUserId, userRosterId])
 
   const runMatchmaking = useCallback(async () => {
     if (!selectedLeague || !username) return
