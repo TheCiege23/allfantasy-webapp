@@ -138,13 +138,60 @@ function computeRisk(req: TradeEngineRequest, assetsA: Asset[], assetsB: Asset[]
   }
 }
 
-function buildCountersAdaptive(args: {
+function sortHotPositions(ldiByPos: Record<string, number> | undefined) {
+  if (!ldiByPos) return []
+  return Object.entries(ldiByPos)
+    .map(([pos, v]) => ({ pos: String(pos).toUpperCase(), v: Number(v) }))
+    .filter(x => Number.isFinite(x.v))
+    .sort((a, b) => b.v - a.v)
+    .map(x => x.pos)
+}
+
+function benchFromStarters(roster: TradePlayerAsset[], starters: { name: string }[]) {
+  const starterNames = new Set(starters.map(s => normName(s.name)))
+  return roster.filter(p => !starterNames.has(normName(p.name)))
+}
+
+function pickCandidate(args: {
+  roster: TradePlayerAsset[]
+  impactMap: Record<string, { impact: number; vorp: number; vol: number }>
+  prefer: 'high_vol' | 'low_vol' | 'low_impact' | 'high_impact'
+  posFilter?: string[]
+}) {
+  const { roster, impactMap, prefer, posFilter } = args
+
+  const volOf = (p: TradePlayerAsset) => impactMap[p.name]?.vol ?? 0
+  const impactOf = (p: TradePlayerAsset) => impactMap[p.name]?.impact ?? 0
+  const posOk = (p: TradePlayerAsset) => {
+    if (!posFilter || posFilter.length === 0) return true
+    const pos = String(p.pos || '').toUpperCase()
+    return posFilter.includes(pos)
+  }
+
+  const filtered = roster.filter(posOk)
+  if (filtered.length === 0) return null
+
+  const sorted = filtered.slice().sort((a, b) => {
+    if (prefer === 'high_vol') return volOf(b) - volOf(a)
+    if (prefer === 'low_vol') return volOf(a) - volOf(b)
+    if (prefer === 'high_impact') return impactOf(b) - impactOf(a)
+    return impactOf(a) - impactOf(b)
+  })
+
+  return sorted[0] || null
+}
+
+function buildCountersAdaptiveNamed(args: {
   fairnessScore: number
   acceptProb: number
   teamADirection?: TeamContext['direction']
   teamBDirection?: TeamContext['direction']
-  givePlayers: string[]
-  getPlayers: string[]
+  cfg: RosterCfg
+  ldiByPos?: Record<string, number>
+  preRosterA: TradePlayerAsset[]
+  preRosterB: TradePlayerAsset[]
+  startersPreA: { starters: { name: string }[] }
+  startersPreB: { starters: { name: string }[] }
   impactMapA: Record<string, { impact: number; vorp: number; vol: number }>
   impactMapB: Record<string, { impact: number; vorp: number; vol: number }>
 }) {
@@ -153,99 +200,126 @@ function buildCountersAdaptive(args: {
     acceptProb,
     teamADirection,
     teamBDirection,
-    givePlayers,
-    getPlayers,
+    cfg,
+    ldiByPos,
+    preRosterA,
+    preRosterB,
+    startersPreA,
+    startersPreB,
     impactMapA,
     impactMapB,
   } = args
 
   const counters: any[] = []
+
   const wantStability = teamADirection === 'CONTEND' || teamADirection === 'FRAGILE_CONTEND'
   const wantCeiling = teamADirection === 'REBUILD'
 
-  const volOf = (name: string) =>
-    impactMapA[name]?.vol ?? impactMapB[name]?.vol ?? 0
-  const impactOf = (name: string) =>
-    impactMapA[name]?.impact ?? impactMapB[name]?.impact ?? 0
+  const hotPos = sortHotPositions(ldiByPos)
+  const hotPosFiltered = hotPos.filter(p => ['QB', 'RB', 'WR', 'TE'].includes(p))
+  const topHot = hotPosFiltered[0] || (cfg.superflex ? 'QB' : 'WR')
 
-  const giveSortedByVolHigh = givePlayers.slice().sort((a, b) => volOf(b) - volOf(a))
-  const giveSortedByVolLow = givePlayers.slice().sort((a, b) => volOf(a) - volOf(b))
-  const giveSortedByImpactLow = givePlayers.slice().sort((a, b) => impactOf(a) - impactOf(b))
+  const myBench = benchFromStarters(preRosterA, startersPreA.starters)
+  const theirBench = benchFromStarters(preRosterB, startersPreB.starters)
 
-  const primaryGivePiece =
-    wantStability ? (giveSortedByVolHigh[0] || giveSortedByImpactLow[0])
-      : wantCeiling ? (giveSortedByVolLow[0] || giveSortedByImpactLow[0])
-        : (giveSortedByImpactLow[0])
+  const mySweetener = wantStability
+    ? pickCandidate({
+        roster: myBench,
+        impactMap: impactMapA,
+        prefer: 'high_vol',
+        posFilter: [topHot],
+      }) ||
+      pickCandidate({ roster: myBench, impactMap: impactMapA, prefer: 'high_vol' })
+    : wantCeiling
+      ? pickCandidate({
+          roster: myBench,
+          impactMap: impactMapA,
+          prefer: 'low_impact',
+          posFilter: [topHot],
+        }) ||
+        pickCandidate({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact' })
+      : pickCandidate({
+          roster: myBench,
+          impactMap: impactMapA,
+          prefer: 'low_impact',
+          posFilter: [topHot],
+        }) ||
+        pickCandidate({ roster: myBench, impactMap: impactMapA, prefer: 'low_impact' })
+
+  const askFromThem = wantStability
+    ? pickCandidate({
+        roster: theirBench,
+        impactMap: impactMapB,
+        prefer: 'low_vol',
+        posFilter: [topHot],
+      }) ||
+      pickCandidate({ roster: theirBench, impactMap: impactMapB, prefer: 'low_vol' })
+    : wantCeiling
+      ? pickCandidate({
+          roster: theirBench,
+          impactMap: impactMapB,
+          prefer: 'high_vol',
+          posFilter: [topHot],
+        }) ||
+        pickCandidate({ roster: theirBench, impactMap: impactMapB, prefer: 'high_vol' })
+      : pickCandidate({
+          roster: theirBench,
+          impactMap: impactMapB,
+          prefer: 'high_impact',
+          posFilter: [topHot],
+        }) ||
+        pickCandidate({ roster: theirBench, impactMap: impactMapB, prefer: 'high_impact' })
+
+  const sweetenerText = mySweetener ? `${mySweetener.name} (${String(mySweetener.pos || '').toUpperCase()})` : null
+  const askText = askFromThem ? `${askFromThem.name} (${String(askFromThem.pos || '').toUpperCase()})` : null
 
   if (acceptProb < 0.55) {
-    if (wantStability) {
+    if (sweetenerText) {
       counters.push({
-        label: 'Win-Now Accept Boost',
+        label: wantStability ? 'Win-Now Accept Boost (Named)' : wantCeiling ? 'Rebuild Accept Boost (Named)' : 'Accept Boost (Named)',
         changes: [
-          { addToB: 'Add a small sweetener (late 2nd / depth RB/WR)' },
-          primaryGivePiece ? { note: `Keep your stable core; use ${primaryGivePiece} (high-vol piece) as leverage if needed.` } : null,
-        ].filter(Boolean),
-        acceptProb: clamp(acceptProb + 0.13, 0, 1),
-        fairnessScore: clamp(fairnessScore - 3, 0, 100),
-        whyTheyAccept: ['More concrete value without changing the headline player swap.'],
-        whyItHelpsYou: ['Raises acceptance while protecting weekly stability.'],
-      })
-    } else if (wantCeiling) {
-      counters.push({
-        label: 'Rebuild Accept Boost',
-        changes: [
-          { addToB: 'Convert part of the deal into picks (future 2nd/3rd)' },
-          primaryGivePiece ? { note: `If they want a player, pivot with ${primaryGivePiece} (stable piece) to avoid overpaying ceiling.` } : null,
+          { addToB: `Add ${sweetenerText} to your side ("You Give") as a sweetener.` },
+          ldiByPos ? { note: `LDI hot position: ${topHot}. Sweetener chosen from your bench to match league demand.` } : null,
         ].filter(Boolean),
         acceptProb: clamp(acceptProb + 0.12, 0, 1),
-        fairnessScore: clamp(fairnessScore - 2, 0, 100),
-        whyTheyAccept: ['Picks reduce their risk and feel "real" in negotiation.'],
-        whyItHelpsYou: ['Keeps your rebuild flexibility while improving acceptance odds.'],
+        fairnessScore: clamp(fairnessScore - 3, 0, 100),
+        whyTheyAccept: ['It\'s a real, startable/usable piece that increases deal "feel-good" value.'],
+        whyItHelpsYou: wantStability
+          ? ['You\'re moving a volatile bench piece to protect weekly floor.']
+          : wantCeiling
+            ? ['You\'re avoiding paying with premium ceiling assets; using bench surplus instead.']
+            : ['You\'re improving acceptance without changing the core swap.'],
       })
     } else {
       counters.push({
-        label: 'Likely Accept',
-        changes: [{ addToB: 'Add a 2nd / small sweetener' }],
-        acceptProb: clamp(acceptProb + 0.12, 0, 1),
-        fairnessScore: clamp(fairnessScore - 3, 0, 100),
-        whyTheyAccept: ['Adds tangible upside without changing core structure.'],
-        whyItHelpsYou: ['Increases acceptance while keeping most of your value edge.'],
+        label: 'Accept Boost (Pick-Based)',
+        changes: [
+          { addToB: 'Add a late 2nd (or upgrade 3rd \u2192 2nd) instead of losing a core player.' },
+          ldiByPos ? { note: `LDI suggests ${topHot} is hot \u2014 picks often substitute when you can\'t spare that position.` } : null,
+        ].filter(Boolean),
+        acceptProb: clamp(acceptProb + 0.11, 0, 1),
+        fairnessScore: clamp(fairnessScore - 2, 0, 100),
+        whyTheyAccept: ['Picks reduce friction and feel like guaranteed future value.'],
+        whyItHelpsYou: ['Keeps your current lineup intact while still raising acceptance.'],
       })
     }
   }
 
-  if (wantStability) {
+  if (askText) {
     counters.push({
-      label: 'Stability Upgrade Counter',
+      label: wantStability ? 'Ask Back Stability (Named)' : wantCeiling ? 'Ask Back Ceiling (Named)' : 'Ask Back Value (Named)',
       changes: [
-        { swap: 'Swap your highest-volatility piece for a steadier starter-tier asset' },
-        primaryGivePiece ? { note: `Start by replacing ${primaryGivePiece} (volatile) with a similar-impact stable player.` } : null,
+        { askFromThem: `Counter by asking for ${askText} from their bench.` },
+        ldiByPos ? { note: `Selected from their bench in a league-demanded position (${topHot}).` } : null,
       ].filter(Boolean),
       acceptProb: clamp(acceptProb + 0.05, 0, 1),
       fairnessScore: clamp(fairnessScore + 1, 0, 100),
-      whyTheyAccept: ['Still reads as fair, just reshaped.'],
-      whyItHelpsYou: ['Improves weekly floor in a contender window.'],
-    })
-  } else if (wantCeiling) {
-    counters.push({
-      label: 'Ceiling + Picks Counter',
-      changes: [
-        { addPick: 'Add a future pick instead of adding a stable vet' },
-        { swap: 'If you must add a player, make it a high-volatility upside profile' },
-      ],
-      acceptProb: clamp(acceptProb + 0.03, 0, 1),
-      fairnessScore: clamp(fairnessScore + 3, 0, 100),
-      whyTheyAccept: ['Picks + upside are attractive without feeling like a fleece.'],
-      whyItHelpsYou: ['Maximizes long-term EV and breakout exposure.'],
-    })
-  } else {
-    counters.push({
-      label: 'Value Win',
-      changes: [{ swap: 'Downgrade your least important piece, keep the stud' }],
-      acceptProb: clamp(acceptProb - 0.04, 0, 1),
-      fairnessScore: clamp(fairnessScore + 4, 0, 100),
-      whyTheyAccept: ['Still looks fair on the surface.'],
-      whyItHelpsYou: ['Improves long-term value without adding major cost.'],
+      whyTheyAccept: ['It\'s usually an easier "yes" than moving their core starters.'],
+      whyItHelpsYou: wantStability
+        ? ['Adds weekly floor without paying extra picks.']
+        : wantCeiling
+          ? ['Adds upside insulation (breakout profile) to raise long-term EV.']
+          : ['Improves deal balance with minimal negotiation pain.'],
     })
   }
 
@@ -253,12 +327,12 @@ function buildCountersAdaptive(args: {
   counters.push({
     label: partnerIsRebuild ? 'Partner Rebuild Angle' : 'Partner Win-Now Angle',
     changes: partnerIsRebuild
-      ? [{ addPick: 'Add/upgrade a future pick; remove an aging vet from their side' }]
-      : [{ addToB: 'Add a startable depth piece; avoid adding only long-term picks' }],
+      ? [{ addPick: 'If they hesitate, replace your sweetener with a future pick (2nd/3rd) \u2014 rebuilders respond better to picks.' }]
+      : [{ addToB: 'If they hesitate, replace pick talk with a usable startable depth piece \u2014 contenders want points now.' }],
     acceptProb: clamp(acceptProb + 0.04, 0, 1),
     fairnessScore: clamp(fairnessScore - 1, 0, 100),
-    whyTheyAccept: [partnerIsRebuild ? 'Matches a rebuild mindset: picks and future value.' : 'Matches a contender mindset: usable points now.'],
-    whyItHelpsYou: ['Negotiation improves when you speak their roster language.'],
+    whyTheyAccept: [partnerIsRebuild ? 'Matches rebuild incentives: future value.' : 'Matches contender incentives: immediate points.'],
+    whyItHelpsYou: ['You increase acceptance by speaking their roster language.'],
   })
 
   return counters.slice(0, 3)
@@ -716,15 +790,17 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       : fairnessScore <= 44 ? 'reject'
         : 'counter'
 
-  const givePlayers = hvAssetsB.players || []
-  const getPlayers = hvAssetsA.players || []
-  const counters = buildCountersAdaptive({
+  const counters = buildCountersAdaptiveNamed({
     fairnessScore,
     acceptProb: acceptance.final,
     teamADirection: teamA.direction,
     teamBDirection: teamB.direction,
-    givePlayers,
-    getPlayers,
+    cfg,
+    ldiByPos: req.marketContext?.ldiByPos as any,
+    preRosterA,
+    preRosterB,
+    startersPreA: { starters: startersPreA.starters },
+    startersPreB: { starters: startersPreB.starters },
     impactMapA,
     impactMapB,
   })
