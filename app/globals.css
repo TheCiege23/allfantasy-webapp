@@ -4,7 +4,7 @@
 
 :root {
   --foreground-rgb: 255, 255, 255;
-  --background-rgb: 5, 6, 10;
+  --background-rgb: 0, 0, 0;
 
   --radius: 16px;
   --text-xs: 12px;
@@ -12,9 +12,9 @@
   --text-base: 16px;
   --text-lg: 18px;
 
-  --bg: #070A10;
-  --panel: #0B1220;
-  --panel2: #0E172A;
+  --bg: #000000;
+  --panel: #0A0A0A;
+  --panel2: #141414;
   --border: rgba(255,255,255,0.10);
   --text: rgba(255,255,255,0.92);
   --muted: rgba(255,255,255,0.68);
@@ -83,10 +83,10 @@ html[data-mode="light"] {
 }
 
 html[data-mode="legacy"] {
-  --bg: #06060B;
-  --panel: #0A0A14;
-  --panel2: #0E0E1E;
-  --border: rgba(255,255,255,0.12);
+  --bg: #0D1117;
+  --panel: #111D2B;
+  --panel2: #152234;
+  --border: rgba(16,185,129,0.20);
   --text: rgba(255,255,255,0.93);
   --muted: rgba(255,255,255,0.67);
   --muted2: rgba(255,255,255,0.50);
@@ -120,6 +120,18 @@ body {
   background: var(--bg);
   min-height: 100vh;
 }
+
+.gradient-orb-1 { background: rgba(6,182,212,0.03); }
+.gradient-orb-2 { background: rgba(124,58,237,0.02); }
+.gradient-orb-3 { background: rgba(79,70,229,0.02); }
+.gradient-overlay { background: none; }
+
+html[data-mode="light"] .gradient-bg-orbs { display: none; }
+
+html[data-mode="legacy"] .gradient-orb-1 { background: rgba(16,185,129,0.15); }
+html[data-mode="legacy"] .gradient-orb-2 { background: rgba(124,58,237,0.12); }
+html[data-mode="legacy"] .gradient-orb-3 { background: rgba(79,70,229,0.10); }
+html[data-mode="legacy"] .gradient-overlay { background: linear-gradient(to bottom, rgba(16,185,129,0.05), transparent, rgba(124,58,237,0.05)); }
 
 h1, h2, h3 {
   letter-spacing: -0.01em;

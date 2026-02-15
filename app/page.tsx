@@ -237,12 +237,12 @@ function HomeContent() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      {/* Gradient background */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 left-1/2 h-[700px] w-[700px] -translate-x-1/2 rounded-full bg-cyan-500/20 blur-[200px]" />
-        <div className="absolute top-1/4 -left-32 h-[500px] w-[500px] rounded-full bg-purple-600/15 blur-[180px]" />
-        <div className="absolute bottom-0 right-0 h-[600px] w-[600px] rounded-full bg-indigo-600/15 blur-[200px]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/5 via-transparent to-purple-500/5" />
+      {/* Gradient background - theme-aware */}
+      <div className="pointer-events-none absolute inset-0 gradient-bg-orbs">
+        <div className="gradient-orb-1 absolute -top-32 left-1/2 h-[700px] w-[700px] -translate-x-1/2 rounded-full blur-[200px]" />
+        <div className="gradient-orb-2 absolute top-1/4 -left-32 h-[500px] w-[500px] rounded-full blur-[180px]" />
+        <div className="gradient-orb-3 absolute bottom-0 right-0 h-[600px] w-[600px] rounded-full blur-[200px]" />
+        <div className="gradient-overlay absolute inset-0" />
       </div>
 
       <div className="pointer-events-none absolute inset-0 noise-overlay" />
