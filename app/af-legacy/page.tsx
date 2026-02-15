@@ -3217,6 +3217,7 @@ function AFLegacyContent() {
           sleeper_username: username,
           league_id: waiverSelectedLeague,
           goal: waiverGoal || undefined,
+          sleeperUser: profile?.sleeper_user_id ? { username, userId: profile.sleeper_user_id } : undefined,
         }),
       })
       const data = await res.json()
@@ -10808,6 +10809,7 @@ function AFLegacyContent() {
                       team_count: lg.team_count,
                     }))}
                     username={username}
+                    sleeperUserId={profile?.sleeper_user_id}
                     selectedLeague={finderSelectedLeague}
                     onLeagueChange={setFinderSelectedLeague}
                     userRosterId={finderUserRosterId}

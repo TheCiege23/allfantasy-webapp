@@ -18,9 +18,15 @@ const VALID_GOALS: MatchmakingGoal[] = [
   'get_younger', 'acquire_picks', 'win_now', 'rebuild', 'target_player',
 ]
 
+const SleeperUserSchema = z.object({
+  username: z.string().min(1),
+  userId: z.string().min(1),
+}).optional()
+
 const RequestSchema = z.object({
   leagueId: z.string().min(1),
   username: z.string().min(1),
+  sleeperUser: SleeperUserSchema,
   goal: z.string().refine(g => VALID_GOALS.includes(g as MatchmakingGoal), 'Invalid goal'),
   targetPlayerName: z.string().optional(),
   targetPlayerId: z.string().optional(),
@@ -74,7 +80,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder/matchmaking", to
       return NextResponse.json({ error: 'Invalid request', details: parsed.error.issues }, { status: 400 })
     }
 
-    const { leagueId, username, goal, targetPlayerName, targetPlayerId, maxResults } = parsed.data
+    const { leagueId, username, sleeperUser: sleeperUserIdentity, goal, targetPlayerName, targetPlayerId, maxResults } = parsed.data
 
     if (goal === 'target_player' && !targetPlayerName && !targetPlayerId) {
       return NextResponse.json({ error: 'target_player goal requires targetPlayerName or targetPlayerId' }, { status: 400 })
@@ -101,10 +107,12 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder/matchmaking", to
       userMap.set(u.user_id, u)
     }
 
-    const sleeperUser = users.find((u: any) =>
-      u.username?.toLowerCase() === username.toLowerCase() ||
-      u.display_name?.toLowerCase() === username.toLowerCase()
-    )
+    const sleeperUser = sleeperUserIdentity?.userId
+      ? users.find((u: any) => u.user_id === sleeperUserIdentity.userId)
+      : users.find((u: any) =>
+          u.username?.toLowerCase() === username.toLowerCase() ||
+          u.display_name?.toLowerCase() === username.toLowerCase()
+        )
     if (!sleeperUser) {
       return NextResponse.json({ error: 'User not found in this league' }, { status: 404 })
     }

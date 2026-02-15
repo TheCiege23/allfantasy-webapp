@@ -174,9 +174,12 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
 
     const ip = getClientIp(request)
     const body = await request.json()
-    const { sleeper_username, league_id, goal: userProvidedGoal } = body
+    const { sleeper_username, league_id, goal: userProvidedGoal, sleeperUser: sleeperUserIdentity } = body
 
-    if (!sleeper_username || !league_id) {
+    const resolvedUsername = sleeperUserIdentity?.username || sleeper_username
+    const resolvedUserId = sleeperUserIdentity?.userId || undefined
+
+    if (!resolvedUsername || !league_id) {
       return NextResponse.json(
         { error: 'Missing sleeper_username or league_id' },
         { status: 400 }
@@ -186,7 +189,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
     const rl = consumeRateLimit({
       scope: 'legacy',
       action: 'waiver_analyze',
-      sleeperUsername: sleeper_username,
+      sleeperUsername: resolvedUsername,
       ip,
       maxRequests: 5,
       windowMs: 60_000,
@@ -200,7 +203,9 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
       )
     }
 
-    const sleeperUser = await getSleeperUser(sleeper_username)
+    const sleeperUser = resolvedUserId
+      ? { user_id: resolvedUserId, username: resolvedUsername, display_name: resolvedUsername }
+      : await getSleeperUser(resolvedUsername)
     if (!sleeperUser) {
       return NextResponse.json({ error: 'Sleeper user not found' }, { status: 404 })
     }
@@ -462,14 +467,14 @@ Write narrative summary, per-player reasoning, and roster notes.`
       roster_notes: rosterNotes,
     }
 
-    trackLegacyToolUsage('waiver_ai', null, null, { sleeperUsername: sleeper_username, leagueId: league_id })
+    trackLegacyToolUsage('waiver_ai', null, null, { sleeperUsername: resolvedUsername, sleeperUserId: resolvedUserId, leagueId: league_id })
 
     const learningContext = await getComprehensiveLearningContext().catch(() => null)
-    const hitRate = await getHistoricalHitRate(sleeper_username, 'waiver', league_id).catch(() => null)
+    const hitRate = await getHistoricalHitRate(resolvedUsername, 'waiver', league_id).catch(() => null)
 
     const crResult = computeConfidenceRisk({
       category: 'waiver',
-      userId: sleeper_username,
+      userId: resolvedUserId || resolvedUsername,
       leagueId: league_id,
       dataCompleteness: {
         hasHistoricalData: !!learningContext,
@@ -487,7 +492,7 @@ Write narrative summary, per-player reasoning, and roster notes.`
 
     if (deterministicResults.length > 0) {
       autoLogDecision({
-        userId: sleeper_username,
+        userId: resolvedUserId || resolvedUsername,
         leagueId: league_id,
         decisionType: 'waiver',
         aiRecommendation: {

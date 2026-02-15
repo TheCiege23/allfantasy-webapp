@@ -74,9 +74,15 @@ const LeagueContextSchema = z.object({
   market_notes: z.string().optional(),
 })
 
+const SleeperUserSchema = z.object({
+  username: z.string().min(1),
+  userId: z.string().min(1),
+}).optional()
+
 const TradeRequestSchema = z.object({
   trade_id: z.string().optional(),
   league_id: z.string().optional(),
+  sleeperUser: SleeperUserSchema,
   sender: TeamInputSchema,
   receiver: TeamInputSchema,
   league: LeagueContextSchema.optional(),
@@ -1069,7 +1075,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
 
     logTradeOfferEvent({
       leagueId: data.league_id ?? null,
-      senderUserId: data.sender.team_id ?? null,
+      senderUserId: data.sleeperUser?.userId ?? data.sender.team_id ?? null,
       opponentUserId: data.receiver.team_id ?? null,
       assetsGiven: senderGivenAssetsList.map(a => ({ name: a.name, value: compositeScore(a.assetValue), type: a.source })),
       assetsReceived: senderReceivedAssetsList.map(a => ({ name: a.name, value: compositeScore(a.assetValue), type: a.source })),

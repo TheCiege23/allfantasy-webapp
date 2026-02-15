@@ -170,6 +170,7 @@ interface FinderResponse {
 interface TradeFinderV2Props {
   leagues: League[]
   username: string
+  sleeperUserId?: string
   selectedLeague?: string
   onLeagueChange?: (leagueId: string) => void
   userRosterId?: number | null
@@ -815,6 +816,7 @@ function LoadingAnimation({ mode }: { mode: FinderMode }) {
 export default function TradeFinderV2({
   leagues,
   username,
+  sleeperUserId,
   selectedLeague: externalSelectedLeague,
   onLeagueChange,
   userRosterId: externalRosterId,
@@ -884,6 +886,7 @@ export default function TradeFinderV2({
       const body: Record<string, unknown> = {
         leagueId: selectedLeague,
         username,
+        sleeperUser: sleeperUserId ? { username, userId: sleeperUserId } : undefined,
         goal: mmGoal,
         maxResults: 5,
       }
