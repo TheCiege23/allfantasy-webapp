@@ -9,6 +9,14 @@ function sigmoid(z: number) {
   return 1 / (1 + Math.exp(-z))
 }
 
+export interface AcceptanceBucket {
+  key: string
+  label: string
+  value: number
+  delta: number
+  note: string
+}
+
 export function computeAcceptanceProbability(args: {
   req: TradeEngineRequest
   fairnessScore: number
@@ -38,9 +46,9 @@ export function computeAcceptanceProbability(args: {
   drivers.push({ key: 'needs_fit', delta: 0.7 * needsNorm, note: 'If it helps their lineup/needs, acceptance rises.' })
   drivers.push({ key: 'volatility', delta: -0.6 * volNorm, note: 'High volatility packages reduce acceptance.' })
 
+  let ldiBoost = 0
   const ldi = marketContext?.ldiByPos
   if (ldi) {
-    let ldiBoost = 0
     for (const p of offeredPlayersToPartner ?? []) {
       const pos = (p.pos || '').toUpperCase()
       const ldiPos = ldi[pos] ?? ldi[pos === 'DST' ? 'DEF' : pos] ?? null
@@ -53,23 +61,25 @@ export function computeAcceptanceProbability(args: {
     }
   }
 
+  let managerDelta = 0
   if (partner && partnerSample >= 6) {
     if (partner.futureFocused) {
-      z += 0.05
+      managerDelta += 0.05
       drivers.push({ key: 'partner_future_focused', delta: 0.05, note: 'This manager historically prefers future assets.' })
     }
     if (partner.riskAverse) {
-      z -= 0.05
+      managerDelta -= 0.05
       drivers.push({ key: 'partner_risk_averse', delta: -0.05, note: 'This manager historically avoids risky packages.' })
     }
     if (partner.pickHoarder) {
-      z += 0.04
+      managerDelta += 0.04
       drivers.push({ key: 'partner_pick_bias', delta: 0.04, note: 'This manager tends to trade for picks.' })
     }
     if (partner.studChaser) {
-      z += 0.03
+      managerDelta += 0.03
       drivers.push({ key: 'partner_stud_bias', delta: 0.03, note: 'This manager tends to consolidate into elite players.' })
     }
+    z += managerDelta
   }
 
   let devyDelta = 0
@@ -91,10 +101,69 @@ export function computeAcceptanceProbability(args: {
   const confidence: 'HIGH' | 'MODERATE' | 'LEARNING' =
     partnerSample >= 10 ? 'HIGH' : partnerSample >= 6 ? 'MODERATE' : 'LEARNING'
 
+  const buckets: AcceptanceBucket[] = [
+    {
+      key: 'fairness',
+      label: 'Fairness',
+      value: fairnessScore,
+      delta: +(0.9 * fairnessNorm).toFixed(3),
+      note: fairnessScore >= 55
+        ? 'Trade is value-balanced — boosts acceptance.'
+        : fairnessScore >= 45
+          ? 'Marginal value gap — neutral effect.'
+          : 'Significant value gap — reduces acceptance.',
+    },
+    {
+      key: 'teamFit',
+      label: 'Team Fit',
+      value: needsFitScore,
+      delta: +(0.7 * needsNorm).toFixed(3),
+      note: needsFitScore >= 55
+        ? 'Trade addresses roster needs — boosts acceptance.'
+        : needsFitScore >= 45
+          ? 'Minimal roster impact — neutral.'
+          : 'Trade does not address lineup needs.',
+    },
+    {
+      key: 'managerProfile',
+      label: 'Manager Profile',
+      value: partnerSample >= 6 ? Math.round(50 + managerDelta * 100) : 50,
+      delta: +managerDelta.toFixed(3),
+      note: partnerSample >= 6
+        ? `Based on ${partnerSample} historical trades from this manager.`
+        : 'No trade history available — using market baseline.',
+    },
+    {
+      key: 'marketDemand',
+      label: 'Market Demand (LDI)',
+      value: ldi ? Math.round(50 + ldiBoost * 200) : 50,
+      delta: +ldiBoost.toFixed(3),
+      note: !ldi
+        ? 'No in-league trades yet — using market baseline.'
+        : ldiBoost > 0
+          ? 'Offering high-demand positions lifts acceptance.'
+          : ldiBoost < 0
+            ? 'Offering low-demand positions reduces acceptance.'
+            : 'Offered positions at neutral league demand.',
+    },
+    {
+      key: 'riskVolatility',
+      label: 'Risk / Volatility',
+      value: Math.round(100 - volatilityDelta),
+      delta: +(-0.6 * volNorm).toFixed(3),
+      note: volatilityDelta <= 45
+        ? 'Low-volatility package — stable assets boost acceptance.'
+        : volatilityDelta >= 55
+          ? 'High-volatility package — risky assets reduce acceptance.'
+          : 'Normal volatility — no major impact.',
+    },
+  ]
+
   return {
     base,
     final: base,
     confidence,
+    buckets,
     drivers: drivers
       .slice()
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))

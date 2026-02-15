@@ -46,6 +46,8 @@ export default function TradeCounterSuggestions({
   championshipEquity?: {
     teamA?: { oddsBefore: number; oddsAfter: number; delta: number }
     teamB?: { oddsBefore: number; oddsAfter: number; delta: number }
+    confidence?: 'HIGH' | 'MODERATE' | 'LEARNING'
+    topReasons?: string[]
   }
 }) {
   if (!counters || counters.length === 0) return null
@@ -163,8 +165,19 @@ export default function TradeCounterSuggestions({
 
       {championshipEquity?.teamA && (
         <div className="mt-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-3 py-2">
-          <div className="text-xs font-semibold text-cyan-300">
-            Title Odds
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-semibold text-cyan-300">
+              Title Odds
+            </div>
+            {championshipEquity.confidence && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                championshipEquity.confidence === 'HIGH' ? 'bg-emerald-500/20 text-emerald-300' :
+                championshipEquity.confidence === 'MODERATE' ? 'bg-amber-500/20 text-amber-300' :
+                'bg-white/10 text-white/50'
+              }`}>
+                {championshipEquity.confidence}
+              </span>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-2">
             <span className="text-lg font-bold text-white">
@@ -182,6 +195,16 @@ export default function TradeCounterSuggestions({
               {championshipEquity.teamA.delta > 0 ? '+' : ''}{(championshipEquity.teamA.delta * 100).toFixed(1)}%
             </span>
           </div>
+          {championshipEquity.topReasons && championshipEquity.topReasons.length > 0 && (
+            <div className="mt-1.5 space-y-0.5">
+              {championshipEquity.topReasons.map((r, i) => (
+                <div key={i} className="text-[11px] text-white/50 flex items-start gap-1">
+                  <span className="text-cyan-400/60 mt-px">{'>'}</span>
+                  <span>{r}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

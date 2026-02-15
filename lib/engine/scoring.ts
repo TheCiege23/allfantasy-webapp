@@ -1,4 +1,43 @@
 import type { EngineLeagueContext, EnginePlayerState } from './types'
+import type { TradeLeagueContext } from './trade-types'
+
+export interface NormalizedTradeScoring {
+  qbFormat: '1QB' | 'superflex'
+  ppr: number
+  tep: { enabled: boolean; premiumPprBonus: number }
+  ppCarry: number
+  ppCompletion: number
+  sixPtPassTd: boolean
+  bonuses: Record<string, boolean>
+}
+
+export function normalizeTradeScoring(ctx?: TradeLeagueContext | null): NormalizedTradeScoring {
+  const s = ctx?.scoring
+  return {
+    qbFormat: s?.qbFormat ?? '1QB',
+    ppr: s?.ppr ?? 1,
+    tep: {
+      enabled: s?.tep?.enabled ?? false,
+      premiumPprBonus: s?.tep?.premiumPprBonus ?? 0,
+    },
+    ppCarry: s?.ppCarry ?? 0,
+    ppCompletion: s?.ppCompletion ?? 0,
+    sixPtPassTd: s?.sixPtPassTd ?? false,
+    bonuses: s?.bonusFlags ?? {},
+  }
+}
+
+export function tradeScoringLabel(scoring: NormalizedTradeScoring): string {
+  const parts: string[] = []
+  if (scoring.qbFormat === 'superflex') parts.push('SF')
+  if (scoring.tep.enabled) parts.push('TEP')
+  if (scoring.ppCarry > 0) parts.push('PPCarry')
+  if (scoring.ppr === 0.5) parts.push('Half-PPR')
+  else if (scoring.ppr === 0) parts.push('Standard')
+  else parts.push('PPR')
+  if (scoring.sixPtPassTd) parts.push('6PT-Pass')
+  return parts.join(' / ') || 'PPR'
+}
 
 export interface ScoringAdjustment {
   baseMultiplier: number

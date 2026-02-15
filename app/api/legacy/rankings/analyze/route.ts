@@ -241,6 +241,21 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
     teamRankings.sort((a, b) => b.overallScore - a.overallScore)
 
     const totalTeams = teamRankings.length
+    const hasMatchupData = teamRankings.some(t => t.pointsFor > 0 || t.wins > 0)
+    const leagueStatus = leagueData?.status || 'unknown'
+    const isOffseason = leagueStatus === 'pre_draft' || leagueStatus === 'drafting' || leagueStatus === 'complete' || !hasMatchupData
+
+    let rankingSource: 'live' | 'preseason_market' | 'snapshot' = hasMatchupData ? 'live' : 'preseason_market'
+    let rankingSourceNote = hasMatchupData
+      ? 'In-season data with live stats and records.'
+      : 'Preseason (Market-based) — no matchup data yet. Rankings use roster value and future outlook only.'
+
+    if (isOffseason && !hasMatchupData) {
+      teamRankings.forEach(t => {
+        t.overallScore = t.rosterValue * 0.55 + t.futureOutlook * 0.45
+      })
+      teamRankings.sort((a, b) => b.overallScore - a.overallScore)
+    }
     teamRankings.forEach((team, idx) => {
       const rank = idx + 1
       const percentile = rank / totalTeams
@@ -341,6 +356,9 @@ Provide actionable insight about where this team stands and what they should foc
         hasTEP,
         tepBonus,
       },
+      rankingSource,
+      rankingSourceNote,
+      isOffseason,
     }
 
     try {

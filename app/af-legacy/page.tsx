@@ -1597,10 +1597,12 @@ function AFLegacyContent() {
       })
       if (!ok) return
 
-      const engineCounters = rawResponse.engineAnalysis?.counters || data.counters
-      const engineChampEq = rawResponse.engineAnalysis?.championshipEquity || data.championshipEquity
+      const ea = rawResponse.engineAnalysis
+      const engineCounters = ea?.counters || data.counters
+      const engineChampEq = ea?.championshipEquity || data.championshipEquity
       const engineReqForSim = rawResponse.engineRequest || undefined
-      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters || data.counters, championshipEquity: engineChampEq, engineRequest: engineReqForSim })
+      const acceptBuckets = ea?.acceptanceProbability?.buckets || null
+      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters || data.counters, championshipEquity: engineChampEq, engineRequest: engineReqForSim, acceptanceBuckets: acceptBuckets })
       setLastTradeResult({
         sideA: sideAPlayers.map(name => ({ name })),
         sideB: sideBPlayers.map(name => ({ name })),
@@ -1975,10 +1977,12 @@ function AFLegacyContent() {
       })
       if (!ok) return
 
-      const engineCounters2 = rawResponse.engineAnalysis?.counters || data.counters
-      const engineChampEq2 = rawResponse.engineAnalysis?.championshipEquity || data.championshipEquity
+      const ea2 = rawResponse.engineAnalysis
+      const engineCounters2 = ea2?.counters || data.counters
+      const engineChampEq2 = ea2?.championshipEquity || data.championshipEquity
       const engineReqForSim2 = rawResponse.engineRequest || undefined
-      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters2 || data.counters, championshipEquity: engineChampEq2, engineRequest: engineReqForSim2 })
+      const acceptBuckets2 = ea2?.acceptanceProbability?.buckets || null
+      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters2 || data.counters, championshipEquity: engineChampEq2, engineRequest: engineReqForSim2, acceptanceBuckets: acceptBuckets2 })
       setLastTradeResult({
         sideA: sideA.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
         sideB: sideB.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
@@ -6944,6 +6948,29 @@ function AFLegacyContent() {
                             )}
                           </div>
 
+                          {inlineTradeResult.acceptanceBuckets && Array.isArray(inlineTradeResult.acceptanceBuckets) && inlineTradeResult.acceptanceBuckets.length > 0 && (
+                            <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                              <div className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-3">Acceptance Drivers</div>
+                              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                                {inlineTradeResult.acceptanceBuckets.map((b: any) => {
+                                  const d = Number(b.delta) || 0
+                                  return (
+                                  <div key={b.key || b.label} className="rounded-lg bg-black/30 border border-white/5 px-3 py-2">
+                                    <div className="text-[10px] text-white/40 uppercase tracking-wider">{b.label || '—'}</div>
+                                    <div className="flex items-baseline gap-1 mt-0.5">
+                                      <span className="text-lg font-bold text-white">{b.value ?? '—'}</span>
+                                      <span className={`text-[10px] font-medium ${d > 0 ? 'text-emerald-400' : d < 0 ? 'text-rose-400' : 'text-white/30'}`}>
+                                        {d > 0 ? '+' : ''}{(d * 100).toFixed(0)}%
+                                      </span>
+                                    </div>
+                                    <div className="text-[9px] text-white/35 mt-0.5 line-clamp-2">{b.note || ''}</div>
+                                  </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
                           {inlineTradeResult.confidenceRisk && (
                             <div className="mb-6">
                               {(() => {
@@ -10001,6 +10028,26 @@ function AFLegacyContent() {
                                 </div>
                               </div>
 
+                              {inlineTradeResult.acceptanceBuckets && Array.isArray(inlineTradeResult.acceptanceBuckets) && inlineTradeResult.acceptanceBuckets.length > 0 && (
+                                <div className="rounded-xl bg-black/30 border border-white/10 p-4">
+                                  <div className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">Acceptance Drivers</div>
+                                  <div className="grid grid-cols-5 gap-1.5">
+                                    {inlineTradeResult.acceptanceBuckets.map((b: any) => {
+                                      const d = Number(b.delta) || 0
+                                      return (
+                                      <div key={b.key || b.label} className="text-center">
+                                        <div className="text-[9px] text-white/40 uppercase truncate">{b.label || '—'}</div>
+                                        <div className="text-base font-bold text-white">{b.value ?? '—'}</div>
+                                        <div className={`text-[9px] ${d > 0 ? 'text-emerald-400' : d < 0 ? 'text-rose-400' : 'text-white/30'}`}>
+                                          {d > 0 ? '+' : ''}{(d * 100).toFixed(0)}%
+                                        </div>
+                                      </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Analysis Summary */}
                               {(inlineTradeResult.expertAnalysis || inlineTradeResult.why?.length > 0) && (
                                 <div className="rounded-xl bg-black/30 border border-white/10 p-4">
@@ -12229,6 +12276,18 @@ function AFLegacyContent() {
 
                         {rankingsData && (
                           <div className="space-y-6 mt-4">
+                            {rankingsData.rankingSourceNote && (
+                              <div className={`rounded-xl px-3 py-2 text-xs flex items-center gap-2 ${
+                                rankingsData.rankingSource === 'preseason_market'
+                                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-300'
+                                  : rankingsData.rankingSource === 'snapshot'
+                                    ? 'bg-blue-500/10 border border-blue-500/20 text-blue-300'
+                                    : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300'
+                              }`}>
+                                <span className="font-semibold">{rankingsData.rankingSource === 'preseason_market' ? 'Preseason' : rankingsData.rankingSource === 'snapshot' ? 'Cached' : 'Live'}</span>
+                                <span className="text-white/50">{rankingsData.rankingSourceNote}</span>
+                              </div>
+                            )}
                             {/* Dynasty Daddy Style Top Stat Cards */}
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                               <div className="p-4 rounded-xl bg-gradient-to-b from-slate-800/80 to-slate-900/80 border border-slate-700/50 text-center">

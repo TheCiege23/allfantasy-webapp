@@ -10,6 +10,7 @@ import { computeLiquidity } from './liquidity'
 import { computeAcceptanceProbability } from './acceptance'
 import { enrichDevy, devyValueMultiplier } from './devy'
 import { computeChampionshipDelta, type TeamProjection } from '@/lib/monte-carlo'
+import { normalizeTradeScoring, tradeScoringLabel, type NormalizedTradeScoring } from './scoring'
 
 import { priceAssets } from '@/lib/hybrid-valuation'
 
@@ -98,35 +99,29 @@ function buildLeagueProjections(args: {
 }
 
 function scoreLeagueAdjustments(req: TradeEngineRequest) {
-  const scoring = req.leagueContext?.scoring
-  if (!scoring) return { delta: 0, drivers: [] as string[] }
-
+  const ns = normalizeTradeScoring(req.leagueContext)
   const drivers: string[] = []
   let delta = 0
 
-  const qbFormat = scoring.qbFormat
-  const tep = scoring.tep?.enabled ? scoring.tep.premiumPprBonus ?? 0.5 : 0
-  const ppCarry = scoring.ppCarry ?? 0
-  const ppr = scoring.ppr ?? 0
-
-  if (qbFormat === 'superflex') {
+  if (ns.qbFormat === 'superflex') {
     delta += 6
     drivers.push('Superflex scarcity boosts QB value')
   }
-  if (tep > 0) {
-    delta += Math.round(tep * 10)
-    drivers.push(`TE premium enabled (+${tep} PPR bonus)`)
+  const tepBonus = ns.tep.enabled ? ns.tep.premiumPprBonus || 0.5 : 0
+  if (tepBonus > 0) {
+    delta += Math.round(tepBonus * 10)
+    drivers.push(`TE premium enabled (+${tepBonus} PPR bonus)`)
   }
-  if (ppCarry > 0) {
-    delta += Math.round(ppCarry * 20)
-    drivers.push(`Points-per-carry enabled (+${ppCarry}) boosts RB profiles`)
+  if (ns.ppCarry > 0) {
+    delta += Math.round(ns.ppCarry * 20)
+    drivers.push(`Points-per-carry enabled (+${ns.ppCarry}) boosts RB profiles`)
   }
-  if (ppr >= 1) {
+  if (ns.ppr >= 1) {
     delta += 2
-    drivers.push(`PPR scoring (ppr=${ppr}) increases WR/TE stability`)
+    drivers.push(`PPR scoring (ppr=${ns.ppr}) increases WR/TE stability`)
   }
 
-  return { delta: clamp(delta, -15, 15), drivers }
+  return { delta: clamp(delta, -15, 15), drivers, scoringLabel: tradeScoringLabel(ns) }
 }
 
 function inferTeamDirection(team: TeamContext): TeamContext {
@@ -868,7 +863,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   let championshipEquity: TradeEngineResponse['championshipEquity'] = undefined
   {
     try {
-      championshipEquity = buildLeagueProjections({
+      const rawChamp = buildLeagueProjections({
         numTeams,
         teamAImpactPre: startersPreA.totalImpact,
         teamBImpactPre: startersPreB.totalImpact,
@@ -877,6 +872,38 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
         teamAVol: startersPostA.avgVol,
         teamBVol: startersPostB.avgVol,
       })
+
+      const champReasons: string[] = []
+      if (Math.abs(netStarterImpactA) > 500) {
+        champReasons.push(`Starter impact ${netStarterImpactA > 0 ? '+' : ''}${Math.round(netStarterImpactA)} pts`)
+      }
+      if (Math.abs(startersPostA.avgVol - startersPreA.avgVol) > 3) {
+        const volChange = startersPostA.avgVol - startersPreA.avgVol
+        champReasons.push(`Volatility ${volChange > 0 ? '+' : ''}${volChange.toFixed(1)}% ${volChange > 0 ? '(riskier)' : '(more stable)'}`)
+      }
+      if (risk.injury > 40) {
+        champReasons.push(`Injury risk factor: ${risk.injury}/100`)
+      }
+      if (teamA.direction === 'CONTEND' && netStarterImpactA > 0) {
+        champReasons.push('Contender gets immediate lineup upgrade')
+      }
+      if (teamA.direction === 'REBUILD' && netStarterImpactA < 0) {
+        champReasons.push('Rebuild direction — trading production for future value')
+      }
+      if (champReasons.length === 0) {
+        champReasons.push('Marginal lineup shift — title odds nearly unchanged')
+      }
+
+      const champConfidence: 'HIGH' | 'MODERATE' | 'LEARNING' =
+        leagueContextUsed && numTeams >= 10 ? 'HIGH'
+          : numTeams >= 8 ? 'MODERATE'
+            : 'LEARNING'
+
+      championshipEquity = {
+        ...rawChamp,
+        confidence: champConfidence,
+        topReasons: champReasons.slice(0, 2),
+      }
     } catch (_) {}
   }
 
@@ -913,6 +940,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     },
     meta: {
       leagueId,
+      scoringLabel: leagueAdj.scoringLabel,
       hv: {
         asOfDate,
         isSuperFlex,

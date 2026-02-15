@@ -202,6 +202,13 @@ export interface TradeEngineResponse {
     base: number
     final: number
     confidence: TradeConfidenceState
+    buckets: Array<{
+      key: string
+      label: string
+      value: number
+      delta: number
+      note: string
+    }>
     drivers: { key: string; delta: number; note: string }[]
   }
 
@@ -225,6 +232,8 @@ export interface TradeEngineResponse {
       oddsAfter: number
       delta: number
     }
+    confidence: TradeConfidenceState
+    topReasons: string[]
   }
 
   multiLegImpact?: {
