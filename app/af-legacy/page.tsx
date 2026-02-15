@@ -1824,23 +1824,29 @@ function AFLegacyContent() {
       
       players.forEach(pid => {
         const player = manager.players.find((p: any) => String(p.id) === String(pid))
-        if (player) {
-          const id = String(player.id || pid).trim()
-          const team = player.team ? String(player.team).trim() : undefined
-          items.push({
-            type: 'player',
-            player: {
-              id,
-              name: player.name,
-              pos: player.pos,
-              team,
-              media: {
-                headshotUrl: headshotUrl(id),
-                teamLogoUrl: teamLogoUrl(team),
-              },
-            },
-          })
+        if (!player) return
+
+        const id = String(player.id || '').trim()
+        const team = player.team ? String(player.team).trim() : undefined
+
+        if (!id) {
+          console.warn('Missing player id in trade build:', player)
+          return
         }
+
+        items.push({
+          type: 'player',
+          player: {
+            id,
+            name: player.name,
+            pos: player.pos,
+            team,
+            media: {
+              headshotUrl: headshotUrl(id),
+              teamLogoUrl: team ? teamLogoUrl(team) : '',
+            },
+          },
+        })
       })
       
       picks.forEach(pickKey => {
