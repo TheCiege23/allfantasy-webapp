@@ -1733,8 +1733,10 @@ function AFLegacyContent() {
       const buildQuickAssets = (players: string[], picks: string[], faab: number, manager: any): any[] => {
         const items: any[] = []
         players.forEach(pid => {
-          const p = manager.players.find((pl: any) => pl.id === pid)
-          if (p) items.push({ type: 'player', name: p.name, pos: p.pos, team: p.team, id: pid })
+          const p = manager.players.find((pl: any) => String(pl.id) === String(pid))
+          const id = String(p?.id || pid).trim()
+          const team = p?.team ? String(p.team).trim() : undefined
+          if (p) items.push({ type: 'player', name: p.name, pos: p.pos, team, id, media: { headshotUrl: headshotUrl(id), teamLogoUrl: teamLogoUrl(team) } })
         })
         picks.forEach(pickKey => {
           const [season, round, , slot] = pickKey.split('|')
@@ -1747,7 +1749,11 @@ function AFLegacyContent() {
       const benchCandidates = teamB.players
         .filter((p: any) => !tradeHubPlayersB.includes(p.id) && !(teamB.starters || []).includes(p.id))
         .slice(0, 15)
-        .map((p: any) => ({ type: 'player' as const, name: p.name, pos: p.pos, team: p.team, id: p.id }))
+        .map((p: any) => {
+          const id = String(p.id || '').trim()
+          const team = p.team ? String(p.team).trim() : undefined
+          return { type: 'player' as const, name: p.name, pos: p.pos, team, id, media: { headshotUrl: headshotUrl(id), teamLogoUrl: teamLogoUrl(team) } }
+        })
 
       try {
         const res = await fetch('/api/legacy/trade/quick-evaluate', {
@@ -1815,9 +1821,23 @@ function AFLegacyContent() {
       const items: any[] = []
       
       players.forEach(pid => {
-        const player = manager.players.find((p: any) => p.id === pid)
+        const player = manager.players.find((p: any) => String(p.id) === String(pid))
         if (player) {
-          items.push({ type: 'player', player: { name: player.name, pos: player.pos, team: player.team } })
+          const id = String(player.id || pid).trim()
+          const team = player.team ? String(player.team).trim() : undefined
+          items.push({
+            type: 'player',
+            player: {
+              id,
+              name: player.name,
+              pos: player.pos,
+              team,
+              media: {
+                headshotUrl: headshotUrl(id),
+                teamLogoUrl: teamLogoUrl(team),
+              },
+            },
+          })
         }
       })
       
@@ -1859,8 +1879,16 @@ function AFLegacyContent() {
           assetsB: sideB,
           tradeGoal: tradeHubGoal || undefined,
           numTeams: effectiveNumTeams,
-          rosterA: teamA.players.map((p: any) => ({ name: p.name, pos: p.pos, team: p.team })),
-          rosterB: teamB.players.map((p: any) => ({ name: p.name, pos: p.pos, team: p.team })),
+          rosterA: teamA.players.map((p: any) => {
+            const id = String(p.id || '').trim()
+            const team = p.team ? String(p.team).trim() : undefined
+            return { id, name: p.name, pos: p.pos, team, media: { headshotUrl: id ? headshotUrl(id) : '', teamLogoUrl: team ? teamLogoUrl(team) : '' } }
+          }),
+          rosterB: teamB.players.map((p: any) => {
+            const id = String(p.id || '').trim()
+            const team = p.team ? String(p.team).trim() : undefined
+            return { id, name: p.name, pos: p.pos, team, media: { headshotUrl: id ? headshotUrl(id) : '', teamLogoUrl: team ? teamLogoUrl(team) : '' } }
+          }),
         })
       })
       
