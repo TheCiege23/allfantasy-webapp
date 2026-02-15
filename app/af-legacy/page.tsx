@@ -3214,10 +3214,9 @@ function AFLegacyContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sleeper_username: username,
+          sleeperUser: { username, userId: profile?.sleeper_user_id || '' },
           league_id: waiverSelectedLeague,
           goal: waiverGoal || undefined,
-          sleeperUser: profile?.sleeper_user_id ? { username, userId: profile.sleeper_user_id } : undefined,
         }),
       })
       const data = await res.json()

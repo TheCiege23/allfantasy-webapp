@@ -338,7 +338,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
     }
 
     const deterministicResults = scoreWaiverCandidates(waiverCandidates, scoringCtx, { maxResults: 10 })
-    console.log(`[WaiverAI] Deterministic engine: ${deterministicResults.length} scored targets for ${sleeper_username} (goal=${goal})`)
+    console.log(`[WaiverAI] Deterministic engine: ${deterministicResults.length} scored targets for ${resolvedUsername} (goal=${goal})`)
 
     let narratives: Record<string, string> = {}
     let summary = ''
