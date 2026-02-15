@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { X, ChevronDown, ChevronUp } from 'lucide-react'
+import { headshotUrl as buildHeadshot, teamLogoUrl as buildTeamLogo } from '@/lib/media-url'
 
 const DEPTH_CHART_POSITION_MAP: Record<string, string> = {
   'RWR': 'WR',
@@ -159,13 +160,9 @@ export default function PlayerDetailModal({ isOpen, onClose, playerName, playerI
 
   if (!isOpen) return null
 
-  const headshotUrl = bio?.sleeperId 
-    ? `https://sleepercdn.com/content/nfl/players/thumb/${bio.sleeperId}.jpg`
-    : null
+  const headshotUrl = buildHeadshot(bio?.sleeperId || playerId) || null
   
-  const teamLogoUrl = (bio?.team || team)
-    ? `https://a.espncdn.com/i/teamlogos/nfl/500/${bio?.team || team}.png`
-    : null
+  const teamLogoUrl = buildTeamLogo(bio?.team || team) || null
 
   const posColor = (pos: string) => {
     switch(pos) {

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { headshotUrl, teamLogoUrl } from "@/lib/media-url";
 
 type GrokAI = {
   confidence?: "high" | "medium" | "low";
@@ -70,9 +71,9 @@ export default function WaiverSuggestionCard({
     >
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 relative">
-          {suggestion.player_id ? (
+          {headshotUrl(suggestion.player_id) ? (
             <img
-              src={`https://sleepercdn.com/content/nfl/players/thumb/${suggestion.player_id}.jpg`}
+              src={headshotUrl(suggestion.player_id)}
               alt={name}
               className="w-12 h-12 rounded-xl object-cover bg-white/10 border border-white/10"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; e.currentTarget.nextElementSibling && ((e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex') }}
@@ -81,10 +82,10 @@ export default function WaiverSuggestionCard({
           <div className={`w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500/20 to-purple-500/20 flex items-center justify-center text-lg font-bold text-white/60 ${suggestion.player_id ? 'hidden' : ''}`}>
             {name.charAt(0)}
           </div>
-          {suggestion.team && (
+          {teamLogoUrl(suggestion.team) && (
             <img
-              src={`https://a.espncdn.com/i/teamlogos/nfl/500/${suggestion.team}.png`}
-              alt={suggestion.team}
+              src={teamLogoUrl(suggestion.team)}
+              alt={suggestion.team || ''}
               className="absolute -bottom-1 -right-1 w-5 h-5 object-contain"
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
             />

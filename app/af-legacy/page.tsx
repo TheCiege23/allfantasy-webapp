@@ -12,6 +12,7 @@ import HeroMetricAI from "@/app/components/HeroMetricAI"
 import PortfolioChart from "@/components/PortfolioChart"
 import PlayerBadge from "@/components/PlayerBadge"
 import MiniPlayerImg from "@/components/MiniPlayerImg"
+import { headshotUrl, teamLogoUrl } from '@/lib/media-url'
 import { buildSleeperUser } from '@/lib/sleeper-user'
 import InsightsPanel from "@/components/InsightsPanel"
 import BadgeDisplay from "@/components/BadgeDisplay"
@@ -11731,7 +11732,7 @@ function AFLegacyContent() {
                             <div className="flex-shrink-0">
                               {waiverAnalysis.one_move.player_id ? (
                                 <img
-                                  src={`https://sleepercdn.com/content/nfl/players/thumb/${waiverAnalysis.one_move.player_id}.jpg`}
+                                  src={headshotUrl(waiverAnalysis.one_move.player_id)}
                                   alt={waiverAnalysis.one_move.player_name}
                                   className="w-14 h-14 rounded-xl object-cover bg-white/10 border border-white/10"
                                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
@@ -11803,7 +11804,7 @@ function AFLegacyContent() {
                                   <div className="flex-shrink-0 relative">
                                     {s.player_id ? (
                                       <img
-                                        src={`https://sleepercdn.com/content/nfl/players/thumb/${s.player_id}.jpg`}
+                                        src={headshotUrl(s.player_id)}
                                         alt={s.player_name}
                                         className="w-11 h-11 rounded-xl object-cover bg-white/10 border border-white/10"
                                         onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; if (e.currentTarget.nextElementSibling) (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'flex' }}
@@ -14778,7 +14779,7 @@ function AFLegacyContent() {
                                               <div key={idx} className="flex items-center gap-2 p-1.5 rounded-lg bg-white/5">
                                                 <span className="text-[8px] text-white/40 w-8">R{pick.round}P{pick.pick}</span>
                                                 <img
-                                                  src={`https://sleepercdn.com/content/nfl/players/thumb/${pick.playerId}.jpg`}
+                                                  src={headshotUrl(pick.playerId)}
                                                   alt={pick.playerName}
                                                   className="w-5 h-5 rounded-full object-cover"
                                                   onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none' }}
@@ -14849,7 +14850,7 @@ function AFLegacyContent() {
                                                   }`}>{pos === 'SUPER_FLEX' ? 'SF' : pos}</span>
                                                   {!isEmptySlot && (
                                                     <img
-                                                      src={`https://sleepercdn.com/content/nfl/players/thumb/${playerId}.jpg`}
+                                                      src={headshotUrl(playerId)}
                                                       alt=""
                                                       className="w-6 h-6 rounded-full object-cover bg-white/10"
                                                       onError={(e) => { (e.currentTarget as HTMLImageElement).src = ''; (e.currentTarget as HTMLImageElement).style.display='none' }}
@@ -14872,7 +14873,7 @@ function AFLegacyContent() {
                                                   </div>
                                                   {!isEmptySlot && player?.team && (
                                                     <img
-                                                      src={`https://a.espncdn.com/i/teamlogos/nfl/500/${player.team}.png`}
+                                                      src={teamLogoUrl(player.team)}
                                                       alt=""
                                                       className="w-4 h-4 object-contain"
                                                       onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none' }}
@@ -14911,7 +14912,7 @@ function AFLegacyContent() {
                                                     'bg-white/10 text-white/30'
                                                   }`}>BN</span>
                                                   <img
-                                                    src={`https://sleepercdn.com/content/nfl/players/thumb/${playerId}.jpg`}
+                                                    src={headshotUrl(playerId)}
                                                     alt=""
                                                     className="w-5 h-5 rounded-full object-cover bg-white/10"
                                                     onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none' }}
@@ -14951,7 +14952,7 @@ function AFLegacyContent() {
                                                   <div key={idx} className="flex items-center gap-2 p-1 rounded-lg bg-red-500/5 border border-red-500/10">
                                                     <span className="w-10 text-[8px] font-bold px-1 py-0.5 rounded text-center bg-red-500/20 text-red-300/60">IR</span>
                                                     <img
-                                                      src={`https://sleepercdn.com/content/nfl/players/thumb/${playerId}.jpg`}
+                                                      src={headshotUrl(playerId)}
                                                       alt=""
                                                       className="w-5 h-5 rounded-full object-cover bg-white/10 opacity-60"
                                                       onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none' }}
@@ -14992,7 +14993,7 @@ function AFLegacyContent() {
                                                   <div key={idx} className="flex items-center gap-2 p-1 rounded-lg bg-amber-500/5 border border-amber-500/10">
                                                     <span className="w-10 text-[8px] font-bold px-1 py-0.5 rounded text-center bg-amber-500/20 text-amber-300/60">TAXI</span>
                                                     <img
-                                                      src={`https://sleepercdn.com/content/nfl/players/thumb/${playerId}.jpg`}
+                                                      src={headshotUrl(playerId)}
                                                       alt=""
                                                       className="w-5 h-5 rounded-full object-cover bg-white/10 opacity-70"
                                                       onError={(e) => { (e.currentTarget as HTMLImageElement).style.display='none' }}

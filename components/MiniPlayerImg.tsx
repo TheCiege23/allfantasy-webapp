@@ -1,20 +1,22 @@
 'use client'
 
 import React, { useState } from 'react'
-
-const SLEEPER_HEADSHOT_BASE = 'https://sleepercdn.com/content/nfl/players/thumb'
+import { resolveHeadshot, type PlayerMedia } from '@/lib/media-url'
 
 interface MiniPlayerImgProps {
   sleeperId?: string
   name?: string
   size?: number
   className?: string
+  media?: PlayerMedia | null
 }
 
-export default function MiniPlayerImg({ sleeperId, name, size = 20, className = '' }: MiniPlayerImgProps) {
+export default function MiniPlayerImg({ sleeperId, name, size = 20, className = '', media }: MiniPlayerImgProps) {
   const [error, setError] = useState(false)
 
-  if (!sleeperId || error) {
+  const src = resolveHeadshot(media, sleeperId)
+
+  if (!src || error) {
     return (
       <div
         className={`rounded-full bg-white/10 flex items-center justify-center text-white/40 font-bold flex-shrink-0 ${className}`}
@@ -27,7 +29,7 @@ export default function MiniPlayerImg({ sleeperId, name, size = 20, className = 
 
   return (
     <img
-      src={`${SLEEPER_HEADSHOT_BASE}/${sleeperId}.jpg`}
+      src={src}
       alt={name || ''}
       width={size}
       height={size}

@@ -2,31 +2,7 @@
 
 import React, { useState } from 'react'
 import Image from 'next/image'
-
-const SLEEPER_HEADSHOT_BASE = 'https://sleepercdn.com/content/nfl/players/thumb'
-const ESPN_LOGO_BASE = 'https://a.espncdn.com/i/teamlogos/nfl/500'
-
-const NFL_TEAM_ABBREV_MAP: Record<string, string> = {
-  ARI: 'ari', ATL: 'atl', BAL: 'bal', BUF: 'buf',
-  CAR: 'car', CHI: 'chi', CIN: 'cin', CLE: 'cle',
-  DAL: 'dal', DEN: 'den', DET: 'det', GB: 'gb',
-  HOU: 'hou', IND: 'ind', JAX: 'jax', KC: 'kc',
-  LAC: 'lac', LAR: 'lar', LV: 'lv', MIA: 'mia',
-  MIN: 'min', NE: 'ne', NO: 'no', NYG: 'nyg',
-  NYJ: 'nyj', PHI: 'phi', PIT: 'pit', SEA: 'sea',
-  SF: 'sf', TB: 'tb', TEN: 'ten', WAS: 'was',
-}
-
-function getTeamLogoUrl(teamAbbrev?: string): string {
-  if (!teamAbbrev) return ''
-  const key = NFL_TEAM_ABBREV_MAP[teamAbbrev.toUpperCase()]
-  return key ? `${ESPN_LOGO_BASE}/${key}.png` : ''
-}
-
-function getPlayerHeadshotUrl(sleeperId?: string): string {
-  if (!sleeperId) return ''
-  return `${SLEEPER_HEADSHOT_BASE}/${sleeperId}.jpg`
-}
+import { resolveHeadshot, resolveTeamLogo, type PlayerMedia } from '@/lib/media-url'
 
 const POS_COLORS: Record<string, string> = {
   QB: 'bg-red-500/20 text-red-300 border-red-500/30',
@@ -53,6 +29,7 @@ interface PlayerBadgeProps {
   showPosition?: boolean
   showSlot?: boolean
   className?: string
+  media?: PlayerMedia | null
 }
 
 export default function PlayerBadge({
@@ -66,12 +43,13 @@ export default function PlayerBadge({
   showPosition = true,
   showSlot = false,
   className = '',
+  media,
 }: PlayerBadgeProps) {
   const [imgError, setImgError] = useState(false)
   const [logoError, setLogoError] = useState(false)
 
-  const headshotUrl = getPlayerHeadshotUrl(sleeperId)
-  const teamLogoUrl = getTeamLogoUrl(team)
+  const headshotUrl = resolveHeadshot(media, sleeperId)
+  const teamLogo = resolveTeamLogo(media, team)
 
   const sizeMap = {
     sm: { img: 24, text: 'text-xs', gap: 'gap-1.5', pill: 'text-[10px] px-1 py-0' },
@@ -104,9 +82,9 @@ export default function PlayerBadge({
           </div>
         )}
 
-        {showTeamLogo && teamLogoUrl && !logoError && (
+        {showTeamLogo && teamLogo && !logoError && (
           <Image
-            src={teamLogoUrl}
+            src={teamLogo}
             alt={team || ''}
             width={size === 'sm' ? 12 : size === 'md' ? 14 : 16}
             height={size === 'sm' ? 12 : size === 'md' ? 14 : 16}
@@ -145,17 +123,18 @@ interface PlayerBadgeInlineProps {
   sleeperId?: string
   position?: string
   team?: string
+  media?: PlayerMedia | null
 }
 
-export function PlayerBadgeInline({ name, sleeperId, position, team }: PlayerBadgeInlineProps) {
+export function PlayerBadgeInline({ name, sleeperId, position, team, media }: PlayerBadgeInlineProps) {
   const [imgError, setImgError] = useState(false)
-  const headshotUrl = getPlayerHeadshotUrl(sleeperId)
+  const headshotSrc = resolveHeadshot(media, sleeperId)
 
   return (
     <span className="inline-flex items-center gap-1">
-      {headshotUrl && !imgError ? (
+      {headshotSrc && !imgError ? (
         <Image
-          src={headshotUrl}
+          src={headshotSrc}
           alt={name}
           width={18}
           height={18}
@@ -175,4 +154,5 @@ export function PlayerBadgeInline({ name, sleeperId, position, team }: PlayerBad
   )
 }
 
-export { getPlayerHeadshotUrl, getTeamLogoUrl, NFL_TEAM_ABBREV_MAP }
+export { headshotUrl as getPlayerHeadshotUrl, teamLogoUrl as getTeamLogoUrl } from '@/lib/media-url'
+export { NFL_TEAM_MAP as NFL_TEAM_ABBREV_MAP } from '@/lib/media-url'
