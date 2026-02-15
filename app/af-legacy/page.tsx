@@ -858,7 +858,7 @@ function AFLegacyContent() {
   const [shareTradeLoading, setShareTradeLoading] = useState(false)
   const [shareTradeError, setShareTradeError] = useState('')
   const [sharePlayerSearch, setSharePlayerSearch] = useState('')
-  const [sharePlayerResult, setSharePlayerResult] = useState<{ name: string; position?: string; team?: string; value?: number; trend?: string; signal?: string; rank?: number } | null>(null)
+  const [sharePlayerResult, setSharePlayerResult] = useState<{ name: string; sleeperId?: string; position?: string; team?: string; value?: number; trend?: string; signal?: string; rank?: number } | null>(null)
   const [sharePlayerLoading, setSharePlayerLoading] = useState(false)
   const [sharePlayerError, setSharePlayerError] = useState('')
   const [showTutorial, setShowTutorial] = useState(false)
@@ -2777,6 +2777,7 @@ function AFLegacyContent() {
       if (data.success) {
         setSharePlayerResult({
           name: data.player.name,
+          sleeperId: data.player.sleeperId || data.player.id,
           position: data.player.position,
           team: data.player.team,
           value: data.player.value,
@@ -14197,7 +14198,7 @@ function AFLegacyContent() {
                           <div className="p-3 rounded-lg bg-black/30 border border-pink-500/30">
                             <div className="flex items-center justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <MiniPlayerImg sleeperId={sharePlayerResult.id || sharePlayerResult.sleeperId} name={sharePlayerResult.name} size={28} />
+                                <MiniPlayerImg sleeperId={sharePlayerResult.sleeperId} name={sharePlayerResult.name} size={28} />
                                 <div>
                                   <span className="text-lg font-bold text-white">{sharePlayerResult.name}</span>
                                   <span className="ml-2 text-xs text-gray-400">{sharePlayerResult.position} - {sharePlayerResult.team}</span>
