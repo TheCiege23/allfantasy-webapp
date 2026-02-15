@@ -16,6 +16,8 @@ import { getCachedDNA, formatDNAForPrompt } from '@/lib/manager-dna'
 import { lookupByNames, buildPlayerContextForAI, enrichWithValuation, type UnifiedPlayer } from '@/lib/unified-player-service'
 import { computeTradeDrivers, type TradeDriverData } from '@/lib/trade-engine/trade-engine'
 import type { Asset } from '@/lib/trade-engine/types'
+import { computeDraftProjectionScore, devyAcceptanceAdjustment, applyTeamDirectionAdjustment } from '@/lib/devy-model'
+import { prisma } from '@/lib/prisma'
 import { getCalibratedWeights } from '@/lib/trade-engine/accept-calibration'
 import { logTradeOfferEvent } from '@/lib/trade-engine/trade-event-logger'
 import { normalizeTeamAbbrev } from '@/lib/team-abbrev'
@@ -2146,6 +2148,53 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
 
     const calWeights = await getCalibratedWeights()
     const tradeDriverData = computeTradeDrivers(giveDriverAssets, receiveDriverAssets, null, null, isSFForDrivers, isTEPForDrivers, rosterCtx, undefined, undefined, undefined, undefined, calWeights)
+
+    let devyAcceptDelta = 0
+    const allTradeAssets = [...(assetsA || []), ...(assetsB || [])]
+    for (const asset of allTradeAssets) {
+      if (asset.type === 'player') {
+        try {
+          const devyPlayer = await (prisma as any).player.findFirst({
+            where: {
+              name: asset.player.name,
+              league: 'NCAA',
+              devyEligible: true,
+              graduatedToNFL: false,
+            },
+          })
+
+          if (devyPlayer) {
+            const projection = computeDraftProjectionScore(devyPlayer)
+            ;(asset.player as any).draftProjectionScore = projection
+            ;(asset.player as any).adjustedValue =
+              projection * 0.8 + (devyPlayer.devyAdp ?? 50) * 0.2
+
+            const teamPhase = clientLeagueContext?.phase
+            const teamDirection = teamPhase === 'Contender' ? 'CONTEND' : teamPhase === 'Rebuild' ? 'REBUILD' : ''
+            if (teamDirection) {
+              ;(asset.player as any).adjustedValue = applyTeamDirectionAdjustment(
+                (asset.player as any).adjustedValue,
+                teamDirection
+              )
+            }
+
+            const delta = devyAcceptanceAdjustment(
+              { ...devyPlayer, draftProjectionScore: projection },
+              null
+            )
+            if (Math.abs(delta) > Math.abs(devyAcceptDelta)) {
+              devyAcceptDelta = delta
+            }
+          }
+        } catch {}
+      }
+    }
+
+    if (devyAcceptDelta !== 0 && tradeDriverData) {
+      ;(tradeDriverData as any).acceptProbability = Math.max(0, Math.min(1,
+        (tradeDriverData.acceptProbability ?? 0.5) + devyAcceptDelta
+      ))
+    }
 
     const userPrompt = buildUserPrompt({
       sport,

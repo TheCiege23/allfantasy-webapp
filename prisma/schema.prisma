@@ -1716,6 +1716,43 @@ model ApiUsageRollup {
   @@unique([bucketType, bucketStart, scope, tool, endpoint, leagueId], name: "uniq_usage_rollup_bucket_key")
 }
 
+model Player {
+  id                     String   @id
+  name                   String
+  sport                  String
+  position               String
+  team                   String?
+  birthYear              Int?
+
+  league                 String
+  devyEligible           Boolean  @default(false)
+  graduatedToNFL         Boolean  @default(false)
+
+  recruitingComposite    Float?
+  breakoutAge            Float?
+  draftProjectionScore   Float?
+  projectedDraftRound    Int?
+  projectedDraftPick     Int?
+  devyAdp                Float?
+  redshirtStatus         Boolean  @default(false)
+  transferStatus         Boolean  @default(false)
+  nilImpactScore         Float?
+  injurySeverityScore    Float?
+
+  nflDraftRound          Int?
+  nflDraftPick           Int?
+  nflTeam                String?
+
+  active                 Boolean  @default(true)
+  injuryStatus           String?
+
+  lastSyncedAt           DateTime @updatedAt
+  createdAt              DateTime @default(now())
+
+  @@index([league])
+  @@index([devyEligible])
+}
+
 model DevyPlayer {
   id                 String   @id @default(uuid())
   name               String
