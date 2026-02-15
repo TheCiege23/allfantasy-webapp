@@ -1,0 +1,231 @@
+export type TradeConfidenceState = 'HIGH' | 'MODERATE' | 'LEARNING'
+
+export type LeagueFormat = 'dynasty' | 'redraft' | 'keeper'
+export type QbFormat = '1QB' | 'superflex'
+
+export type SportKey = 'NFL' | 'NBA' | 'MLB' | 'NHL' | 'NCAAF' | string
+
+export interface SleeperUserIdentity {
+  username: string
+  userId: string
+}
+
+export interface LeagueScoringSettings {
+  ppr?: number
+  ppCarry?: number
+  ppCompletion?: number
+  sixPtPassTd?: boolean
+  bonusFlags?: Record<string, boolean>
+  tep?: { enabled: boolean; premiumPprBonus?: number }
+  qbFormat?: QbFormat
+}
+
+export interface LeagueRosterSettings {
+  slots?: Record<string, number>
+  limits?: Record<string, number | null>
+}
+
+export interface TradeLeagueContext {
+  leagueId: string
+  sport: SportKey
+  format: LeagueFormat
+  season?: number
+  week?: number
+  phase?: string
+  numTeams?: number
+  scoring?: LeagueScoringSettings
+  roster?: LeagueRosterSettings
+  trade?: {
+    vetoType?: 'none' | 'commissioner' | 'league_vote'
+    tradeDeadlineWeek?: number
+    faabTradable?: boolean
+  }
+}
+
+export type TradeAssetUnion =
+  | { type: 'player'; player: TradePlayerAsset }
+  | { type: 'pick'; pick: TradePickAsset }
+  | { type: 'faab'; faab: { amount: number } }
+
+export interface TradePlayerAsset {
+  id: string
+  name: string
+  pos?: string
+  team?: string
+  age?: number
+  media?: {
+    headshotUrl?: string
+    teamLogoUrl?: string
+  }
+
+  league?: 'NFL' | 'NCAA'
+  devyEligible?: boolean
+  graduatedToNFL?: boolean
+  recruitingComposite?: number
+  breakoutAge?: number
+  devyAdp?: number
+  projectedDraftRound?: number
+  projectedDraftPick?: number
+  nilImpactScore?: number
+  injurySeverityScore?: number
+  draftProjectionScore?: number
+}
+
+export interface TradePickAsset {
+  year: number
+  round: number
+  pickNumber?: number
+  originalOwner?: string
+  projected_range?: string
+}
+
+export interface TeamContext {
+  rosterId?: string
+  managerName?: string
+  recordOrRank?: string
+  roster: TradePlayerAsset[]
+  exposure?: Record<string, number>
+  direction?: 'CONTEND' | 'REBUILD' | 'MIDDLE' | 'FRAGILE_CONTEND'
+  directionConfidence?: TradeConfidenceState
+}
+
+export interface MarketContext {
+  ldiByPos?: Record<string, number>
+  partnerTendencies?: Record<
+    string,
+    {
+      overpayByPos?: Record<string, number>
+      discountByPos?: Record<string, number>
+      sampleSize?: number
+      futureFocused?: boolean
+      riskAverse?: boolean
+      pickHoarder?: boolean
+      studChaser?: boolean
+    }
+  >
+  liquidity?: {
+    tradesLast30?: number
+    activeManagers?: number
+    totalManagers?: number
+    avgAssetsPerTrade?: number
+  }
+}
+
+export interface NflContext {
+  asOf?: string
+  players?: Record<
+    string,
+    {
+      injuryStatus?: string
+      expectedReturnWeeks?: number
+      role?: string
+      usage?: {
+        snapPct?: number
+        targetsPg?: number
+        carriesPg?: number
+        routesPg?: number
+        rzTargetsPg?: number
+        rzCarriesPg?: number
+      }
+      trend?: {
+        last4Points?: number
+        seasonPoints?: number
+      }
+      coachingChange?: boolean
+      depthChartChange?: boolean
+    }
+  >
+}
+
+export interface TradeEngineRequest {
+  sport: SportKey
+  format: LeagueFormat
+  league_id?: string
+  leagueId?: string
+
+  sleeper_username_a?: string
+  sleeper_username_b?: string
+  sleeperUserA?: SleeperUserIdentity
+  sleeperUserB?: SleeperUserIdentity
+
+  leagueContext?: TradeLeagueContext
+
+  assetsA: TradeAssetUnion[]
+  assetsB: TradeAssetUnion[]
+
+  rosterA?: TradePlayerAsset[]
+  rosterB?: TradePlayerAsset[]
+
+  marketContext?: MarketContext
+  nflContext?: NflContext
+
+  tradeGoal?: string
+  numTeams?: number
+
+  options?: {
+    explainLevel?: 'short' | 'full'
+    counterCount?: number
+    offlineSnapshotOk?: boolean
+    simulateChampionship?: boolean
+  }
+}
+
+export interface TradeEngineResponse {
+  verdict: 'accept' | 'reject' | 'counter'
+  fairness: {
+    score: number
+    delta: number
+    confidence: TradeConfidenceState
+    drivers: { key: string; delta: number; note: string }[]
+  }
+
+  leagueAdjusted: {
+    delta: number
+    drivers: string[]
+  }
+
+  lineupImpact: {
+    starterDeltaPts: number
+    note: string
+  }
+
+  risk: {
+    injury: number
+    roleStability: number
+    volatility: number
+    notes: string[]
+  }
+
+  acceptanceProbability: {
+    base: number
+    final: number
+    confidence: TradeConfidenceState
+    drivers: { key: string; delta: number; note: string }[]
+  }
+
+  counters: Array<{
+    label: string
+    changes: Array<Record<string, any>>
+    acceptProb: number
+    fairnessScore: number
+    whyTheyAccept: string[]
+    whyItHelpsYou: string[]
+  }>
+
+  multiLegImpact?: {
+    yourRankDelta?: number
+    theirRankDelta?: number
+    uninvolvedBeneficiaries?: Array<{ rosterId: string; delta: number }>
+  }
+
+  evidence: {
+    leagueContextUsed: boolean
+    nflContextUsed: boolean
+    pricingSources?: Record<string, string>
+    partnerModelUsed: boolean
+    liquidityUsed: boolean
+    devyUsed: boolean
+  }
+
+  meta?: Record<string, any>
+}

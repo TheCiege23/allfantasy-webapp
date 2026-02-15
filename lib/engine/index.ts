@@ -70,6 +70,40 @@ export {
 
 export { ENGINE_FLAGS, isEnabled, getActiveFlags, getIterationLimit, getCacheTTL } from './flags'
 
+export type {
+  TradeConfidenceState,
+  LeagueFormat,
+  QbFormat,
+  SportKey,
+  SleeperUserIdentity,
+  LeagueScoringSettings,
+  LeagueRosterSettings,
+  TradeLeagueContext,
+  TradeAssetUnion,
+  TradePlayerAsset,
+  TradePickAsset,
+  TeamContext,
+  MarketContext,
+  NflContext,
+  TradeEngineRequest,
+  TradeEngineResponse,
+} from './trade-types'
+
+export { runTradeAnalysis } from './trade'
+
+export {
+  breakoutAgeScore,
+  draftCapitalScore,
+  adpScore,
+  computeDraftProjectionScore as computeEngineDevyDPS,
+  enrichDevy,
+  devyValueMultiplier,
+} from './devy'
+
+export { computeEngineLiquidity } from './engine-liquidity'
+
+export { computeAcceptanceProbability as computeEngineAcceptance } from './engine-acceptance'
+
 export { buildContextFromSleeper, buildContextFromExisting } from './context-builder'
 
 export {

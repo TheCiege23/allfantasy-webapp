@@ -26,6 +26,8 @@ import { prisma } from '@/lib/prisma'
 import { getCalibratedWeights } from '@/lib/trade-engine/accept-calibration'
 import { logTradeOfferEvent } from '@/lib/trade-engine/trade-event-logger'
 import { normalizeTeamAbbrev } from '@/lib/team-abbrev'
+import { runTradeAnalysis } from '@/lib/engine/trade'
+import type { TradeEngineRequest as EngineTradeReq, TradeAssetUnion } from '@/lib/engine/trade-types'
 
 type Sport = 'nfl' | 'nba'
 type RosterSlot = 'Starter' | 'Bench' | 'IR' | 'Taxi'
@@ -2510,6 +2512,58 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       leagueFormat: format || null,
     }).catch(() => {})
 
+    let engineAnalysis: any = null
+    try {
+      const mapAssets = (assets: TradeAsset[]): TradeAssetUnion[] =>
+        assets.map(a => {
+          if (a.type === 'player') return { type: 'player' as const, player: { id: a.player.id || '', name: a.player.name, pos: a.player.pos, team: a.player.team } }
+          if (a.type === 'pick') return { type: 'pick' as const, pick: { year: a.pick.year, round: a.pick.round, pickNumber: a.pick.pickNumber } }
+          return { type: 'faab' as const, faab: { amount: (a as any).faab?.amount ?? 0 } }
+        })
+
+      const engineReq: EngineTradeReq = {
+        sport: 'NFL',
+        format: (format || 'dynasty') as any,
+        leagueId: leagueId || undefined,
+        sleeper_username_a: sleeperA,
+        sleeper_username_b: sleeperB,
+        sleeperUserA: body.sleeperUserA || undefined,
+        sleeperUserB: body.sleeperUserB || undefined,
+        leagueContext: body.leagueContext ? {
+          leagueId: leagueId || '',
+          sport: 'NFL',
+          format: (format || 'dynasty') as any,
+          season: body.leagueContext.season,
+          week: body.leagueContext.week,
+          phase: body.leagueContext.phase,
+          numTeams: body.leagueContext.numTeams,
+          scoring: body.leagueContext.settings ? {
+            ppr: body.leagueContext.settings.ppr,
+            ppCarry: body.leagueContext.settings.ppCarry,
+            ppCompletion: body.leagueContext.settings.ppCompletion,
+            sixPtPassTd: body.leagueContext.settings.sixPtPassTd,
+            qbFormat: body.leagueContext.settings.qbFormat === 'superflex' ? 'superflex' : '1QB',
+            tep: body.leagueContext.settings.tep,
+          } : undefined,
+          roster: body.leagueContext.roster,
+          trade: body.leagueContext.trade,
+        } : undefined,
+        assetsA: mapAssets(assetsA),
+        assetsB: mapAssets(assetsB),
+        rosterA: (body.rosterA || []).map((p: any) => ({ id: p.id || '', name: p.name || '', pos: p.pos, team: p.team, age: p.age })),
+        rosterB: (body.rosterB || []).map((p: any) => ({ id: p.id || '', name: p.name || '', pos: p.pos, team: p.team, age: p.age })),
+        marketContext: body.marketContext ? {
+          ldiByPos: body.marketContext.ldi,
+          partnerTendencies: body.marketContext.partnerTendencies,
+        } : undefined,
+        nflContext: body.nflContext || undefined,
+        numTeams: numTeams ?? undefined,
+        tradeGoal: body.tradeGoal ?? undefined,
+        options: { explainLevel: 'full', counterCount: 3 },
+      }
+      engineAnalysis = await runTradeAnalysis(engineReq)
+    } catch {}
+
     return NextResponse.json({
       success: true,
       result: {
@@ -2535,6 +2589,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         explanation: crResult.explanation,
       },
       ...(analyticsEnhanced ? { analytics: analyticsEnhanced } : {}),
+      ...(engineAnalysis ? { engineAnalysis } : {}),
       validated: true,
       rate_limit: { remaining: rlPair.remaining, retryAfterSec: rlPair.retryAfterSec },
     })
