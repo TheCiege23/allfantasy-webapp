@@ -293,34 +293,36 @@ function HomeContent() {
 
             {/* CTA Form */}
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3 p-2 rounded-2xl backdrop-blur-xl" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-                <input
-                  type="email"
-                  required
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="Enter your email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="flex-1 w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
-                  style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
-                />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full sm:w-auto rounded-xl px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-base text-black min-h-[48px]
-                             bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
-                             shadow-[0_8px_32px_rgba(34,211,238,0.4),0_0_0_1px_rgba(34,211,238,0.2)]
-                             hover:shadow-[0_12px_40px_rgba(34,211,238,0.5),0_0_0_1px_rgba(34,211,238,0.3)]
-                             hover:translate-y-[-2px] hover:bg-right
-                             active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-cyan-400/30
-                             disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-                >
-                  {loading ? 'Saving...' : 'Get AI Early Access'}
-                </button>
+              <div className="orb-border rounded-2xl glow-box-strong backdrop-blur-xl p-2">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
+                  <input
+                    type="email"
+                    required
+                    autoComplete="email"
+                    inputMode="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="flex-1 w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
+                    style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full sm:w-auto rounded-xl px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-base text-black min-h-[48px]
+                               bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
+                               shadow-[0_8px_32px_rgba(34,211,238,0.4),0_0_0_1px_rgba(34,211,238,0.2)]
+                               hover:shadow-[0_12px_40px_rgba(34,211,238,0.5),0_0_0_1px_rgba(34,211,238,0.3)]
+                               hover:translate-y-[-2px] hover:bg-right
+                               active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-cyan-400/30
+                               disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                  >
+                    {loading ? 'Saving...' : 'Get AI Early Access'}
+                  </button>
+                </div>
               </div>
               <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-3">
-                <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-amber-500/15 border border-amber-400/30">
+                <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-amber-500/15 border border-amber-400/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
                   <span className="text-amber-400">🎁</span>
                   <span className="text-[11px] sm:text-xs font-medium" style={{ color: 'var(--badge-text-amber)' }}>Founding users get 10 days of AF Pro free</span>
                 </div>
@@ -333,11 +335,8 @@ function HomeContent() {
             {/* Secondary CTA */}
             <Link 
               href="/af-legacy" 
-              className="inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 rounded-xl text-sm sm:text-base font-semibold w-full sm:w-auto min-h-[48px]
-                         bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20
-                         border border-cyan-400/40 shadow-lg shadow-cyan-500/10
-                         hover:from-cyan-500/30 hover:via-purple-500/30 hover:to-cyan-500/30
-                         hover:border-cyan-400/60 hover:shadow-cyan-500/20
+              className="orb-border-accent rounded-xl glow-box inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 text-sm sm:text-base font-semibold w-full sm:w-auto min-h-[48px]
+                         hover:scale-[1.02]
                          active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition-all duration-300 group"
               style={{ color: 'var(--text)' }}
             >
