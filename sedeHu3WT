@@ -1,0 +1,46 @@
+modules = ["nodejs-20", "python-3.11", "postgresql-16"]
+[agent]
+expertMode = true
+integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:2.0.0", "resend:1.0.0"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Next.js Dev Server"
+
+[[workflows.workflow]]
+name = "Next.js Dev Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["npm", "start"]
+build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+APP_URL = "https://allfantasy.ai"
+NEXT_PUBLIC_META_PIXEL_ID = "1607977376870461"

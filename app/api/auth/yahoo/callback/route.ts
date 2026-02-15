@@ -1,0 +1,108 @@
+import { withApiUsage } from "@/lib/telemetry/usage"
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+
+const YAHOO_CLIENT_ID = process.env.YAHOO_CLIENT_ID!
+const YAHOO_CLIENT_SECRET = process.env.YAHOO_CLIENT_SECRET!
+const APP_URL = process.env.APP_URL || 'https://allfantasy.ai'
+// Must match exactly what's in Yahoo Developer Console
+const YAHOO_REDIRECT_URI = 'https://allfantasy.ai/api/auth/yahoo/callback'
+
+export const GET = withApiUsage({ endpoint: "/api/auth/yahoo/callback", tool: "AuthYahooCallback" })(async (request: NextRequest) => {
+  const searchParams = request.nextUrl.searchParams
+  const code = searchParams.get('code')
+  const state = searchParams.get('state')
+  const error = searchParams.get('error')
+  
+  if (error) {
+    const errorDesc = searchParams.get('error_description') || ''
+    console.error('Yahoo OAuth error:', error, errorDesc)
+    return NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_error=${encodeURIComponent(error)}&yahoo_error_desc=${encodeURIComponent(errorDesc)}`)
+  }
+  
+  if (!code) {
+    return NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_error=no_code`)
+  }
+  
+  const storedState = request.cookies.get('yahoo_oauth_state')?.value
+  if (!storedState || storedState !== state) {
+    return NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_error=invalid_state`)
+  }
+  
+  try {
+    const tokenResponse = await fetch('https://api.login.yahoo.com/oauth2/get_token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${Buffer.from(`${YAHOO_CLIENT_ID}:${YAHOO_CLIENT_SECRET}`).toString('base64')}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: YAHOO_REDIRECT_URI,
+      }),
+    })
+    
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text()
+      console.error('Yahoo token error:', tokenResponse.status, errorText)
+      console.error('Token request details - redirect_uri:', YAHOO_REDIRECT_URI)
+      return NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_error=token_failed&status=${tokenResponse.status}`)
+    }
+    
+    const tokens = await tokenResponse.json()
+    const { access_token, refresh_token, expires_in } = tokens
+    
+    const userResponse = await fetch('https://fantasysports.yahooapis.com/fantasy/v2/users;use_login=1?format=json', {
+      headers: {
+        'Authorization': `Bearer ${access_token}`,
+      },
+    })
+    
+    if (!userResponse.ok) {
+      console.error('Yahoo user fetch error:', await userResponse.text())
+      return NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_error=user_fetch_failed`)
+    }
+    
+    const userData = await userResponse.json()
+    const user = userData?.fantasy_content?.users?.[0]?.user?.[0]
+    const yahooUserId = user?.guid || 'unknown'
+    const displayName = user?.profile?.display_name || user?.name || null
+    
+    const tokenExpiresAt = new Date(Date.now() + (expires_in || 3600) * 1000)
+    
+    await prisma.yahooConnection.upsert({
+      where: { yahooUserId },
+      update: {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        tokenExpiresAt,
+        displayName,
+        updatedAt: new Date(),
+      },
+      create: {
+        yahooUserId,
+        displayName,
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        tokenExpiresAt,
+      },
+    })
+    
+    const response = NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_connected=1&yahoo_user=${encodeURIComponent(yahooUserId)}`)
+    
+    response.cookies.set('yahoo_user_id', yahooUserId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 30,
+    })
+    
+    response.cookies.delete('yahoo_oauth_state')
+    
+    return response
+  } catch (error: any) {
+    console.error('Yahoo OAuth error:', error)
+    return NextResponse.redirect(`${APP_URL}/af-legacy?yahoo_error=${encodeURIComponent(error.message || 'unknown')}`)
+  }
+})

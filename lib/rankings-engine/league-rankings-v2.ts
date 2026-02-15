@@ -1,0 +1,2072 @@
+import {
+  getLeagueRosters,
+  getLeagueUsers,
+  getLeagueInfo,
+  SleeperRoster,
+  SleeperUser,
+} from '../sleeper-client'
+import { fetchFantasyCalcValues, FantasyCalcPlayer, FantasyCalcSettings } from '../fantasycalc'
+import { prisma } from '../prisma'
+import { getWeekStatsFromCache } from './sleeper-matchup-cache'
+
+export interface Driver {
+  id: string
+  polarity: 'UP' | 'DOWN' | 'NEUTRAL'
+  impact: number
+  evidence: Record<string, any>
+}
+
+export interface Action {
+  id: string
+  title: string
+  why: string
+  expectedImpact: 'LOW' | 'MEDIUM' | 'HIGH'
+  cta: { label: string; href: string }
+}
+
+export interface RankExplanation {
+  confidence: {
+    score: number
+    rating: 'HIGH' | 'MEDIUM' | 'LEARNING'
+    drivers: Driver[]
+  }
+  drivers: Driver[]
+  nextActions: Action[]
+  valid: boolean
+}
+
+export interface MotivationalFrame {
+  headline: string
+  subtext: string
+  suggestedAction: string
+  tone: 'encouraging' | 'cautionary' | 'neutral' | 'celebratory'
+  trigger: string
+}
+
+export interface TeamScore {
+  rosterId: number
+  ownerId: string
+  username: string | null
+  displayName: string | null
+  avatar: string | null
+
+  winScore: number
+  powerScore: number
+  luckScore: number
+  marketValueScore: number
+  managerSkillScore: number
+  composite: number
+
+  rank: number
+  prevRank: number | null
+  rankDelta: number | null
+
+  record: { wins: number; losses: number; ties: number }
+  pointsFor: number
+  pointsAgainst: number
+  expectedWins: number
+  streak: number
+  luckDelta: number
+  shouldBeRecord: { wins: number; losses: number }
+  bounceBackIndex: number
+  motivationalFrame: MotivationalFrame
+
+  starterValue: number
+  benchValue: number
+  totalRosterValue: number
+  pickValue: number
+
+  positionValues: Record<string, { starter: number; bench: number; total: number }>
+  rosterExposure: Record<string, number>
+  marketAdj: number
+
+  phase: 'offseason' | 'in_season' | 'post_draft' | 'post_season'
+
+  explanation: RankExplanation
+  badges: Badge[]
+}
+
+export interface Badge {
+  id: string
+  label: string
+  icon: string
+  tier: 'gold' | 'silver' | 'bronze' | 'none'
+}
+
+export interface MarketInsight {
+  position: string
+  premiumPct: number
+  sample: number
+  label: string
+}
+
+export interface WeeklyAward {
+  id:
+    | 'top_score'
+    | 'high_score_margin'
+    | 'biggest_upset'
+    | 'unluckiest'
+    | 'luckiest'
+    | 'bounceback_alert'
+    | 'points_against_victim'
+    | 'boss_win'
+  week: number
+  rosterId: number
+  title: string
+  subtitle: string
+  value: number
+  evidence: Record<string, any>
+}
+
+export interface WeeklyAwardsPayload {
+  week: number
+  awards: WeeklyAward[]
+}
+
+export interface TradeHubShortcut {
+  rosterId: number
+  headline: string
+  body: string
+  ldiPos: string
+  ldiScore: number
+  leverageScore: number
+  ctas: Array<{ id: 'generate_offers' | 'find_overpayers' | 'open_trade_hub'; label: string; href: string }>
+  evidence: {
+    exposureByPos: Record<string, number>
+    ldiByPos: Record<string, number>
+    topCurrencyPos: string
+    topPartners: Array<{
+      partnerName: string
+      sample: number
+      ldiForPos: number
+      meanPremiumPctForPos: number
+      tag: 'Overpayer' | 'Learning'
+      posN: number
+    }>
+  }
+}
+
+export interface PartnerTendency {
+  partnerName: string
+  sample: number
+  ldiByPos: Record<string, number>
+  meanPremiumPctByPos: Record<string, number>
+  topOverpayPos: string | null
+  topDiscountPos: string | null
+}
+
+export interface LeagueRankingsV2Output {
+  leagueId: string
+  leagueName: string
+  season: string
+  week: number
+  phase: 'offseason' | 'in_season' | 'post_draft' | 'post_season'
+  isDynasty: boolean
+  isSuperFlex: boolean
+  teams: TeamScore[]
+  weeklyPointsDistribution: { rosterId: number; weeklyPoints: number[] }[]
+  computedAt: number
+  marketInsights: MarketInsight[]
+  ldiChips: LDIChip[]
+  weeklyAwards: WeeklyAwardsPayload | null
+  tradeHubShortcuts: TradeHubShortcut[]
+  partnerTendencies: PartnerTendency[]
+  meta: {
+    ldiByPos: Record<string, number>
+    partnerPosCounts: Record<string, Record<string, number>>
+    ldiSampleTotal: number
+    ldiTrend: Record<string, number>
+    proposalTargets: Array<{
+      position: string
+      rosterId: string
+      name: string
+      score: number
+      ldiByPos: number
+      meanPremiumPct: number
+      nByPos: number
+      label: 'Overpayer' | 'Learning'
+    }>
+  }
+}
+
+export interface LDIChip {
+  position: string
+  ldi: number
+  label: string
+  type: 'hot' | 'cold'
+}
+
+
+interface LeagueSettings {
+  leagueId: string
+  name: string
+  season: string
+  isSF: boolean
+  isDynasty: boolean
+  ppr: 0 | 0.5 | 1
+  numTeams: number
+  status: string
+  week: number
+}
+
+interface RosterRecord {
+  rosterId: number
+  ownerId: string
+  ownerName: string | null
+  wins: number
+  losses: number
+  ties: number
+  pointsFor: number
+  pointsAgainst: number
+  playoffSeed: number | null
+  isChampion: boolean
+  players: string[]
+  starters: string[]
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v))
+}
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v))
+}
+
+function robustPercentileRank(value: number, values: number[]): number {
+  const N = values.length
+  if (N < 6) return 0.5
+  const sorted = [...values].sort((a, b) => a - b)
+  let sumRanks = 0
+  let count = 0
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i] === value) {
+      sumRanks += i
+      count++
+    }
+  }
+  if (count === 0) {
+    const idx = sorted.findIndex(v => v >= value)
+    if (idx === -1) return 1.0
+    return idx / Math.max(1, N - 1)
+  }
+  const avgRank = sumRanks / count
+  return avgRank / Math.max(1, N - 1)
+}
+
+function stddev(arr: number[]): number {
+  if (arr.length < 2) return 0
+  const mean = arr.reduce((s, v) => s + v, 0) / arr.length
+  const sqDiffs = arr.map(v => (v - mean) ** 2)
+  return Math.sqrt(sqDiffs.reduce((s, v) => s + v, 0) / arr.length)
+}
+
+async function fetchLeagueSettings(leagueId: string): Promise<LeagueSettings | null> {
+  const dbLeague = await prisma.legacyLeague.findFirst({
+    where: { sleeperLeagueId: leagueId },
+    select: {
+      sleeperLeagueId: true,
+      name: true,
+      season: true,
+      isSF: true,
+      isTEP: true,
+      tepBonus: true,
+      teamCount: true,
+      scoringType: true,
+      leagueType: true,
+      specialtyFormat: true,
+      status: true,
+    },
+    orderBy: { season: 'desc' },
+  })
+
+  if (dbLeague) {
+    const isDynasty = dbLeague.leagueType === 'dynasty' || dbLeague.leagueType === '2'
+    const pprMap: Record<string, 0 | 0.5 | 1> = { 'ppr': 1, 'half_ppr': 0.5, 'standard': 0 }
+    const ppr = pprMap[dbLeague.scoringType || ''] ?? 1
+
+    const sleeperLeague = await getLeagueInfo(leagueId)
+    const week = sleeperLeague ? Math.max(1, (sleeperLeague.settings as any)?.leg ?? 1) : 1
+    const status = sleeperLeague?.status || dbLeague.status || 'in_season'
+
+    return {
+      leagueId,
+      name: dbLeague.name,
+      season: String(dbLeague.season),
+      isSF: dbLeague.isSF,
+      isDynasty,
+      ppr,
+      numTeams: dbLeague.teamCount || 12,
+      status,
+      week,
+    }
+  }
+
+  const league = await getLeagueInfo(leagueId)
+  if (!league) return null
+
+  const rosterPositions = league.roster_positions || []
+  const isSuperFlex = rosterPositions.some(
+    p => p.toUpperCase() === 'SUPER_FLEX' || p.toUpperCase() === 'QB' && rosterPositions.filter(r => r.toUpperCase() === 'QB').length >= 2,
+  )
+  const scoringSettings = league.scoring_settings || {}
+  const ppr = (scoringSettings.rec ?? 1) as 0 | 0.5 | 1
+  const isDynasty = (league.settings as any)?.type === 2
+
+  return {
+    leagueId,
+    name: league.name,
+    season: league.season,
+    isSF: isSuperFlex,
+    isDynasty,
+    ppr,
+    numTeams: league.total_rosters || 12,
+    status: league.status,
+    week: Math.max(1, (league.settings as any)?.leg ?? 1),
+  }
+}
+
+async function fetchRosterRecords(leagueId: string): Promise<Map<number, RosterRecord> | null> {
+  const dbLeague = await prisma.legacyLeague.findFirst({
+    where: { sleeperLeagueId: leagueId },
+    select: { id: true },
+    orderBy: { season: 'desc' },
+  })
+  if (!dbLeague) return null
+
+  const dbRosters = await prisma.legacyRoster.findMany({
+    where: { leagueId: dbLeague.id },
+    select: {
+      rosterId: true,
+      ownerId: true,
+      ownerName: true,
+      wins: true,
+      losses: true,
+      ties: true,
+      pointsFor: true,
+      pointsAgainst: true,
+      playoffSeed: true,
+      isChampion: true,
+      players: true,
+    },
+  })
+
+  if (dbRosters.length === 0) return null
+
+  const m = new Map<number, RosterRecord>()
+  for (const r of dbRosters) {
+    const players = Array.isArray(r.players) ? r.players as string[] : []
+    m.set(r.rosterId, {
+      rosterId: r.rosterId,
+      ownerId: r.ownerId || '',
+      ownerName: r.ownerName || null,
+      wins: r.wins,
+      losses: r.losses,
+      ties: r.ties,
+      pointsFor: r.pointsFor,
+      pointsAgainst: r.pointsAgainst,
+      playoffSeed: r.playoffSeed,
+      isChampion: r.isChampion,
+      players,
+      starters: [],
+    })
+  }
+  return m
+}
+
+
+function computeExpectedWins(
+  rosterId: number,
+  weeklyPointsByRoster: Map<number, number[]>,
+  maxWeek: number,
+): number {
+  let expectedWins = 0
+  for (let w = 0; w < maxWeek; w++) {
+    const myPts = weeklyPointsByRoster.get(rosterId)?.[w]
+    if (myPts === undefined || myPts === 0) continue
+    const weekScores: number[] = []
+    weeklyPointsByRoster.forEach((pts, rid) => {
+      const p = pts[w]
+      if (p !== undefined && p > 0) weekScores.push(p)
+    })
+    weekScores.sort((a, b) => b - a)
+    const rank = weekScores.indexOf(myPts) + 1
+    const ewCredit = (weekScores.length - rank) / Math.max(1, weekScores.length - 1)
+    expectedWins += ewCredit
+  }
+  return expectedWins
+}
+
+function computeStreak(weeklyPoints: number[], weeklyOpponentPoints: number[]): number {
+  let streak = 0
+  for (let i = weeklyPoints.length - 1; i >= 0; i--) {
+    if (weeklyPoints[i] === 0 && weeklyOpponentPoints[i] === 0) continue
+    const won = weeklyPoints[i] > weeklyOpponentPoints[i]
+    if (i === weeklyPoints.length - 1 || (streak > 0 && won) || (streak < 0 && !won)) {
+      streak += won ? 1 : -1
+    } else {
+      break
+    }
+  }
+  return streak
+}
+
+function computeSOS(
+  rosterId: number,
+  weekStats: { week: number; rosterId: number; matchupId: number | null }[],
+  rosterRecords: Map<number, { wins: number; total: number }>,
+): number {
+  let oppWinPctSum = 0
+  let oppCount = 0
+
+  const myStats = weekStats.filter(s => s.rosterId === rosterId && s.matchupId !== null)
+  for (const ms of myStats) {
+    const opp = weekStats.find(
+      s => s.week === ms.week && s.matchupId === ms.matchupId && s.rosterId !== rosterId,
+    )
+    if (!opp) continue
+    const oppRec = rosterRecords.get(opp.rosterId)
+    if (oppRec && oppRec.total > 0) {
+      oppWinPctSum += oppRec.wins / oppRec.total
+      oppCount++
+    }
+  }
+
+  if (oppCount === 0) return 0.5
+  return oppWinPctSum / oppCount
+}
+
+interface PlayerValueMap {
+  sleeperId: string
+  value: number
+  redraftValue: number
+  position: string
+  age: number | null
+  name: string
+}
+
+function buildPlayerValueMap(fcPlayers: FantasyCalcPlayer[]): Map<string, PlayerValueMap> {
+  const m = new Map<string, PlayerValueMap>()
+  for (const fc of fcPlayers) {
+    if (fc.player.sleeperId) {
+      m.set(fc.player.sleeperId, {
+        sleeperId: fc.player.sleeperId,
+        value: fc.value,
+        redraftValue: fc.redraftValue,
+        position: fc.player.position || '',
+        age: fc.player.maybeAge,
+        name: fc.player.name,
+      })
+    }
+  }
+  return m
+}
+
+interface RosterValueResult {
+  starterValue: number
+  benchValue: number
+  totalValue: number
+  positionValues: Record<string, { starter: number; bench: number; total: number }>
+}
+
+function computeRosterValues(
+  roster: SleeperRoster,
+  valueMap: Map<string, PlayerValueMap>,
+  isDynasty: boolean,
+): RosterValueResult {
+  let starterValue = 0
+  let benchValue = 0
+  const positionValues: Record<string, { starter: number; bench: number; total: number }> = {}
+
+  const starters = new Set(roster.starters || [])
+  const allPlayers = roster.players || []
+
+  for (const pid of allPlayers) {
+    const pv = valueMap.get(pid)
+    if (!pv) continue
+    const val = isDynasty ? pv.value : pv.redraftValue
+    const pos = (pv.position || 'OTHER').toUpperCase()
+    if (!positionValues[pos]) positionValues[pos] = { starter: 0, bench: 0, total: 0 }
+    if (starters.has(pid)) {
+      starterValue += val
+      positionValues[pos].starter += val
+    } else {
+      benchValue += val
+      positionValues[pos].bench += val
+    }
+    positionValues[pos].total += val
+  }
+
+  return { starterValue, benchValue, totalValue: starterValue + benchValue, positionValues }
+}
+
+function computeAgeAdjustedMarketValue(
+  roster: SleeperRoster,
+  valueMap: Map<string, PlayerValueMap>,
+  isDynasty: boolean,
+  ldiData: Record<string, { ldi: number }> | null,
+): number {
+  let total = 0
+  for (const pid of roster.players || []) {
+    const pv = valueMap.get(pid)
+    if (!pv) continue
+    let val = isDynasty ? pv.value : pv.redraftValue
+    if (isDynasty && pv.age !== null) {
+      const ageFactor = clamp(1 + 0.02 * (26 - pv.age), 0.88, 1.12)
+      val = val * ageFactor
+    }
+    if (ldiData) {
+      const posLdi = ldiData[pv.position.toUpperCase()]?.ldi ?? 50
+      const posBoost = 0.85 + 0.30 * (posLdi / 100)
+      val = val * posBoost
+    }
+    total += val
+  }
+  return total
+}
+
+async function fetchTradeMetrics(
+  leagueId: string,
+  rosterIdToUsername: Map<number, string>,
+): Promise<Map<number, { tradeCount: number; avgPremium: number }>> {
+  const result = new Map<number, { tradeCount: number; avgPremium: number }>()
+
+  const histories = await prisma.leagueTradeHistory.findMany({
+    where: { sleeperLeagueId: leagueId },
+    select: {
+      sleeperUsername: true,
+      trades: {
+        where: { analyzed: true },
+        select: { valueGiven: true, valueReceived: true },
+      },
+    },
+  })
+
+  const usernameToMetrics = new Map<string, { tradeCount: number; avgPremium: number }>()
+  for (const h of histories) {
+    let totalPremium = 0
+    let validCount = 0
+    for (const t of h.trades) {
+      if (t.valueGiven !== null && t.valueReceived !== null) {
+        totalPremium += ((t.valueReceived || 0) - (t.valueGiven || 0)) / Math.max(1, t.valueGiven || 0)
+        validCount++
+      }
+    }
+    usernameToMetrics.set(h.sleeperUsername.toLowerCase(), {
+      tradeCount: h.trades.length,
+      avgPremium: validCount > 0 ? totalPremium / validCount : 0,
+    })
+  }
+
+  rosterIdToUsername.forEach((username, rid) => {
+    const metrics = usernameToMetrics.get(username.toLowerCase())
+    result.set(rid, metrics || { tradeCount: 0, avgPremium: 0 })
+  })
+
+  return result
+}
+
+async function fetchLdiForLeague(
+  leagueId: string,
+): Promise<Record<string, { ldi: number; meanPremiumPct?: number; sample?: number }> | null> {
+  const snapshot = await prisma.leagueDemandWeekly.findFirst({
+    where: { leagueId },
+    orderBy: { weekStart: 'desc' },
+    select: { demandByPosition: true },
+  })
+  if (!snapshot) return null
+  const dj = snapshot.demandByPosition as any
+  if (dj && typeof dj === 'object' && dj.QB) return dj
+  return null
+}
+
+function detectPhase(week: number, season: string, leagueStatus?: string): 'offseason' | 'post_draft' | 'in_season' | 'post_season' {
+  if (leagueStatus === 'pre_draft') return 'offseason'
+  if (leagueStatus === 'drafting') return 'post_draft'
+  if (leagueStatus === 'complete') return 'post_season'
+  if (week === 0) return 'offseason'
+  if (week >= 18) return 'post_season'
+  return 'in_season'
+}
+
+function computeWinScore(
+  winPct: number,
+  sos: number,
+  phase: string,
+  madePlayoffs: boolean,
+  isChamp: boolean,
+  playoffSeed: number | null,
+  numTeams: number,
+): number {
+  const sosAdj = clamp((sos - 0.5) * 0.10, -0.05, 0.05)
+  const wsBase = clamp01(winPct + sosAdj)
+
+  if (phase === 'post_season') {
+    let playoffFinishScore = 0.35
+    if (isChamp) playoffFinishScore = 1.0
+    else if (playoffSeed === 2 || (madePlayoffs && playoffSeed !== null && playoffSeed <= 2)) playoffFinishScore = 0.85
+    else if (madePlayoffs && playoffSeed !== null && playoffSeed <= 4) playoffFinishScore = 0.70
+    else if (madePlayoffs && playoffSeed !== null && playoffSeed <= 8) playoffFinishScore = 0.55
+    else if (madePlayoffs) playoffFinishScore = 0.55
+    return Math.round(100 * clamp01(0.70 * winPct + 0.30 * playoffFinishScore))
+  }
+
+  return Math.round(100 * wsBase)
+}
+
+function computePowerScore(
+  starterP: number,
+  benchP: number,
+  isDynasty: boolean,
+  injuryPenalty: number,
+): number {
+  const rawWeighted = isDynasty
+    ? 0.70 * starterP + 0.30 * benchP
+    : 0.80 * starterP + 0.20 * benchP
+  const adjusted = rawWeighted * (0.85 + 0.30 * injuryPenalty)
+  return Math.round(100 * clamp01(adjusted))
+}
+
+function computeLuckScore(luckDelta: number, allLuckDeltas: number[]): number {
+  const luckP = robustPercentileRank(luckDelta, allLuckDeltas)
+  return Math.round(100 * luckP)
+}
+
+function computeMarketValueScore(
+  ageAdjustedTotal: number,
+  allAgeAdjustedTotals: number[],
+): number {
+  const mvsRaw = robustPercentileRank(ageAdjustedTotal, allAgeAdjustedTotals)
+  return Math.round(100 * mvsRaw)
+}
+
+function computeManagerSkillScore(
+  tradeAvgPremium: number,
+  allTradeAvgPremiums: number[],
+  processConsistency: number,
+  allProcessConsistencies: number[],
+  isDynasty: boolean,
+): number {
+  const tradeP = robustPercentileRank(tradeAvgPremium, allTradeAvgPremiums)
+  const waiverP = 0.5
+  const draftP = 0.5
+  const processP = robustPercentileRank(processConsistency, allProcessConsistencies)
+
+  const mssRaw = isDynasty
+    ? 0.35 * tradeP + 0.20 * waiverP + 0.25 * draftP + 0.20 * processP
+    : 0.25 * tradeP + 0.35 * waiverP + 0.10 * draftP + 0.30 * processP
+
+  return Math.round(100 * clamp01(mssRaw))
+}
+
+function computeComposite(
+  ws: number,
+  ps: number,
+  ls: number,
+  mvs: number,
+  mss: number,
+  draftGainP: number,
+  phase: string,
+  isDynasty: boolean,
+): number {
+  const w = ws / 100
+  const p = ps / 100
+  const l = ls / 100
+  const m = mvs / 100
+  const s = mss / 100
+  const dg = draftGainP / 100
+
+  if (phase === 'offseason') {
+    if (isDynasty) {
+      return Math.round(100 * clamp01(0.55 * m + 0.25 * p + 0.10 * s + 0.10 * (1 - l)))
+    }
+    return Math.round(100 * clamp01(0.50 * p + 0.20 * s + 0.20 * m + 0.10 * w))
+  }
+
+  if (phase === 'post_draft') {
+    if (isDynasty) {
+      return Math.round(100 * clamp01(0.45 * m + 0.25 * p + 0.15 * dg + 0.15 * s))
+    }
+    return Math.round(100 * clamp01(0.55 * p + 0.20 * dg + 0.15 * s + 0.10 * m))
+  }
+
+  if (phase === 'post_season') {
+    if (isDynasty) {
+      return Math.round(100 * clamp01(0.45 * w + 0.25 * p + 0.15 * s + 0.15 * m))
+    }
+    return Math.round(100 * clamp01(0.45 * w + 0.25 * p + 0.15 * s + 0.15 * m))
+  }
+
+  const luckTerm = 1 - Math.abs(l - 0.5) * 2
+  return Math.round(100 * clamp01(0.45 * p + 0.30 * w + 0.15 * luckTerm + 0.10 * s))
+}
+
+const DRIVER_ALLOWLIST = new Set([
+  'record_surge', 'record_slide',
+  'points_for_spike', 'points_for_dip',
+  'points_against_luck',
+  'power_strength_gain', 'power_strength_drop',
+  'depth_safety_gain', 'depth_safety_drop',
+  'luck_positive', 'luck_negative',
+  'market_value_gain', 'market_value_drop',
+  'league_demand_tailwind', 'league_demand_headwind',
+  'trade_edge_positive', 'trade_edge_negative',
+  'waiver_roi_positive', 'waiver_roi_negative',
+])
+
+interface DriverContext {
+  winScore: number
+  powerScore: number
+  luckScore: number
+  marketValueScore: number
+  managerSkillScore: number
+  composite: number
+  record: { wins: number; losses: number; ties: number }
+  pointsFor: number
+  pointsAgainst: number
+  expectedWins: number
+  streak: number
+  starterValue: number
+  benchValue: number
+  totalRosterValue: number
+  positionValues: Record<string, { starter: number; bench: number; total: number }>
+  weeklyPts: number[]
+  weeklyOppPts: number[]
+  tradeEff: { tradeCount: number; avgPremium: number }
+  allTeamCount: number
+  starterPercentile: number
+  benchPercentile: number
+  marketPercentile: number
+  ldiData: Record<string, { ldi: number }> | null
+  isDynasty: boolean
+}
+
+function generateDrivers(ctx: DriverContext): Driver[] {
+  const drivers: Driver[] = []
+  const totalGames = ctx.record.wins + ctx.record.losses + ctx.record.ties
+  const winPct = totalGames > 0 ? ctx.record.wins / totalGames : 0.5
+
+  const recentPts = ctx.weeklyPts.slice(-4)
+  const avgPtsAll = ctx.weeklyPts.length > 0 ? ctx.weeklyPts.reduce((s, v) => s + v, 0) / ctx.weeklyPts.length : 0
+  const avgPtsRecent = recentPts.length > 0 ? recentPts.reduce((s, v) => s + v, 0) / recentPts.length : 0
+  const recentOppPts = ctx.weeklyOppPts.slice(-4)
+  const avgOppPtsRecent = recentOppPts.length > 0 ? recentOppPts.reduce((s, v) => s + v, 0) / recentOppPts.length : 0
+
+  if (ctx.winScore >= 65 && ctx.streak >= 2) {
+    drivers.push({
+      id: 'record_surge',
+      polarity: 'UP',
+      impact: clamp01((ctx.winScore - 50) / 50),
+      evidence: { wins: ctx.record.wins, losses: ctx.record.losses, streak: ctx.streak, winPctDelta: Math.round((winPct - 0.5) * 100) / 100 },
+    })
+  } else if (ctx.winScore <= 35 && ctx.streak <= -2) {
+    drivers.push({
+      id: 'record_slide',
+      polarity: 'DOWN',
+      impact: clamp01((50 - ctx.winScore) / 50),
+      evidence: { wins: ctx.record.wins, losses: ctx.record.losses, streak: ctx.streak, winPctDelta: Math.round((winPct - 0.5) * 100) / 100 },
+    })
+  }
+
+  if (recentPts.length >= 2 && avgPtsRecent > avgPtsAll * 1.10) {
+    drivers.push({
+      id: 'points_for_spike',
+      polarity: 'UP',
+      impact: clamp01((avgPtsRecent - avgPtsAll) / Math.max(1, avgPtsAll)),
+      evidence: { pointsForWeek: Math.round(avgPtsRecent * 10) / 10, pointsForAvg: Math.round(avgPtsAll * 10) / 10, leagueRank: 0 },
+    })
+  } else if (recentPts.length >= 2 && avgPtsRecent < avgPtsAll * 0.90) {
+    drivers.push({
+      id: 'points_for_dip',
+      polarity: 'DOWN',
+      impact: clamp01((avgPtsAll - avgPtsRecent) / Math.max(1, avgPtsAll)),
+      evidence: { pointsForWeek: Math.round(avgPtsRecent * 10) / 10, pointsForAvg: Math.round(avgPtsAll * 10) / 10, leagueRank: 0 },
+    })
+  }
+
+  if (recentOppPts.length >= 2 && avgOppPtsRecent > avgPtsAll * 1.08) {
+    drivers.push({
+      id: 'points_against_luck',
+      polarity: 'DOWN',
+      impact: clamp01((avgOppPtsRecent - avgPtsAll) / Math.max(1, avgPtsAll) * 0.8),
+      evidence: { pointsAgainstWeek: Math.round(avgOppPtsRecent * 10) / 10, leagueAvgPA: Math.round(avgPtsAll * 10) / 10, paPercentile: 0 },
+    })
+  } else if (recentOppPts.length >= 2 && avgOppPtsRecent < avgPtsAll * 0.92) {
+    drivers.push({
+      id: 'points_against_luck',
+      polarity: 'UP',
+      impact: clamp01((avgPtsAll - avgOppPtsRecent) / Math.max(1, avgPtsAll) * 0.5),
+      evidence: { pointsAgainstWeek: Math.round(avgOppPtsRecent * 10) / 10, leagueAvgPA: Math.round(avgPtsAll * 10) / 10, paPercentile: 0 },
+    })
+  }
+
+  if (ctx.starterPercentile >= 0.70) {
+    drivers.push({
+      id: 'power_strength_gain',
+      polarity: 'UP',
+      impact: clamp01(ctx.starterPercentile - 0.5),
+      evidence: { starterPPG: 0, starterPPGDelta: 0, psPercentile: Math.round(ctx.starterPercentile * 100) },
+    })
+  } else if (ctx.starterPercentile <= 0.30) {
+    drivers.push({
+      id: 'power_strength_drop',
+      polarity: 'DOWN',
+      impact: clamp01(0.5 - ctx.starterPercentile),
+      evidence: { starterPPG: 0, starterPPGDelta: 0, psPercentile: Math.round(ctx.starterPercentile * 100) },
+    })
+  }
+
+  if (ctx.benchPercentile >= 0.70) {
+    drivers.push({
+      id: 'depth_safety_gain',
+      polarity: 'UP',
+      impact: clamp01((ctx.benchPercentile - 0.5) * 0.6),
+      evidence: { benchValue: ctx.benchValue, benchRank: Math.round((1 - ctx.benchPercentile) * ctx.allTeamCount) + 1 },
+    })
+  } else if (ctx.benchPercentile <= 0.25) {
+    drivers.push({
+      id: 'depth_safety_drop',
+      polarity: 'DOWN',
+      impact: clamp01((0.5 - ctx.benchPercentile) * 0.6),
+      evidence: { benchValue: ctx.benchValue, benchRank: Math.round((1 - ctx.benchPercentile) * ctx.allTeamCount) + 1 },
+    })
+  }
+
+  const luckDelta = ctx.record.wins - ctx.expectedWins
+  const last3Pts = ctx.weeklyPts.slice(-3)
+  const last3Opp = ctx.weeklyOppPts.slice(-3)
+  let last3Delta = 0
+  for (let i = 0; i < last3Pts.length; i++) {
+    if (last3Pts[i] > (last3Opp[i] || 0)) last3Delta += 1
+    else last3Delta -= 1
+  }
+
+  if (ctx.luckScore >= 70) {
+    drivers.push({
+      id: 'luck_positive',
+      polarity: 'UP',
+      impact: clamp01((ctx.luckScore - 50) / 60),
+      evidence: { expectedWins: Math.round(ctx.expectedWins * 10) / 10, actualWins: ctx.record.wins, delta: Math.round(luckDelta * 10) / 10, last3Delta },
+    })
+  } else if (ctx.luckScore <= 30) {
+    drivers.push({
+      id: 'luck_negative',
+      polarity: 'DOWN',
+      impact: clamp01((50 - ctx.luckScore) / 60),
+      evidence: { expectedWins: Math.round(ctx.expectedWins * 10) / 10, actualWins: ctx.record.wins, delta: Math.round(luckDelta * 10) / 10, last3Delta },
+    })
+  }
+
+  if (ctx.marketPercentile >= 0.70) {
+    drivers.push({
+      id: 'market_value_gain',
+      polarity: 'UP',
+      impact: clamp01(ctx.marketPercentile - 0.5),
+      evidence: { mvsTotal: ctx.totalRosterValue, mvsDelta: 0, marketPercentile: Math.round(ctx.marketPercentile * 100) },
+    })
+  } else if (ctx.marketPercentile <= 0.30) {
+    drivers.push({
+      id: 'market_value_drop',
+      polarity: 'DOWN',
+      impact: clamp01(0.5 - ctx.marketPercentile),
+      evidence: { mvsTotal: ctx.totalRosterValue, mvsDelta: 0, marketPercentile: Math.round(ctx.marketPercentile * 100) },
+    })
+  }
+
+  if (ctx.ldiData && ctx.isDynasty) {
+    const positions = ['QB', 'RB', 'WR', 'TE']
+    let tailwindCount = 0
+    let headwindCount = 0
+    const ldiEvidence: Record<string, number> = {}
+    const exposureEvidence: Record<string, number> = {}
+
+    for (const pos of positions) {
+      const ldi = ctx.ldiData[pos]?.ldi ?? 50
+      ldiEvidence[`ldi${pos}`] = Math.round(ldi)
+      const posVal = ctx.positionValues[pos]?.total ?? 0
+      const totalVal = ctx.totalRosterValue || 1
+      exposureEvidence[pos] = Math.round((posVal / totalVal) * 100)
+
+      if (ldi >= 65 && posVal / totalVal >= 0.15) tailwindCount++
+      else if (ldi <= 35 && posVal / totalVal >= 0.15) headwindCount++
+    }
+
+    if (tailwindCount >= 2) {
+      drivers.push({
+        id: 'league_demand_tailwind',
+        polarity: 'UP',
+        impact: clamp01(tailwindCount * 0.15),
+        evidence: { ...ldiEvidence, rosterExposureByPos: exposureEvidence },
+      })
+    } else if (headwindCount >= 2) {
+      drivers.push({
+        id: 'league_demand_headwind',
+        polarity: 'DOWN',
+        impact: clamp01(headwindCount * 0.15),
+        evidence: { ...ldiEvidence, rosterExposureByPos: exposureEvidence },
+      })
+    }
+  }
+
+  if (ctx.tradeEff.tradeCount >= 2 && ctx.tradeEff.avgPremium > 0.05) {
+    drivers.push({
+      id: 'trade_edge_positive',
+      polarity: 'UP',
+      impact: clamp01(ctx.tradeEff.avgPremium),
+      evidence: { avgTradePremiumPct: Math.round(ctx.tradeEff.avgPremium * 100), sampleTrades: ctx.tradeEff.tradeCount },
+    })
+  } else if (ctx.tradeEff.tradeCount >= 2 && ctx.tradeEff.avgPremium < -0.05) {
+    drivers.push({
+      id: 'trade_edge_negative',
+      polarity: 'DOWN',
+      impact: clamp01(Math.abs(ctx.tradeEff.avgPremium)),
+      evidence: { avgTradePremiumPct: Math.round(ctx.tradeEff.avgPremium * 100), sampleTrades: ctx.tradeEff.tradeCount },
+    })
+  }
+
+  drivers.sort((a, b) => b.impact - a.impact)
+  return drivers.slice(0, 6)
+}
+
+function computeConfidence(ctx: {
+  hasAllScores: boolean
+  weeklyPtsLength: number
+  ldiData: Record<string, { ldi: number }> | null
+  ldiSample: number
+  hasRosterSimulation: boolean
+  allTeamCount: number
+}): { score: number; rating: 'HIGH' | 'MEDIUM' | 'LEARNING' } {
+  let score = 50
+
+  if (ctx.hasAllScores) score += 20
+  if (ctx.weeklyPtsLength >= 4) score += 10
+  if (ctx.ldiData && ctx.ldiSample >= 30) score += 10
+  if (ctx.hasRosterSimulation) score += 10
+
+  if (ctx.weeklyPtsLength === 0) score -= 25
+  if (!ctx.hasRosterSimulation) score -= 15
+  if (ctx.allTeamCount === 0) score -= 10
+
+  score = clamp(score, 0, 100)
+
+  const rating: 'HIGH' | 'MEDIUM' | 'LEARNING' =
+    score >= 75 ? 'HIGH' : score >= 55 ? 'MEDIUM' : 'LEARNING'
+
+  return { score, rating }
+}
+
+function generateNextActions(ctx: DriverContext, drivers: Driver[], leagueId: string): Action[] {
+  const actions: Action[] = []
+
+  const hasLuckNeg = drivers.some(d => d.id === 'luck_negative')
+  const hasPowerDrop = drivers.some(d => d.id === 'power_strength_drop')
+  const hasDepthDrop = drivers.some(d => d.id === 'depth_safety_drop')
+  const hasTradeEdgePos = drivers.some(d => d.id === 'trade_edge_positive')
+  const hasRecordSlide = drivers.some(d => d.id === 'record_slide')
+  const hasMvDrop = drivers.some(d => d.id === 'market_value_drop')
+
+  if (hasPowerDrop || hasRecordSlide) {
+    actions.push({
+      id: 'find_trade_upgrades',
+      title: 'Find trade upgrades',
+      why: 'Your starter strength is below league average — a targeted trade could raise your Power Score.',
+      expectedImpact: 'HIGH',
+      cta: { label: 'Open Trade Hub', href: `/league/${leagueId}/trade-hub` },
+    })
+  }
+
+  if (hasDepthDrop) {
+    actions.push({
+      id: 'waiver_targets',
+      title: 'Check waiver wire',
+      why: 'Your bench depth ranks near the bottom — adding a waiver target reduces injury risk.',
+      expectedImpact: 'MEDIUM',
+      cta: { label: 'Waiver Targets', href: `/league/${leagueId}/waivers` },
+    })
+  }
+
+  if (hasLuckNeg) {
+    actions.push({
+      id: 'stay_the_course',
+      title: "Don't sell low — target a starter upgrade",
+      why: 'Your scoring output is better than your record. Scheduling variance is the culprit, not your roster.',
+      expectedImpact: 'MEDIUM',
+      cta: { label: 'Trade Finder', href: `/league/${leagueId}/trade-finder` },
+    })
+  }
+
+  if (hasMvDrop && ctx.isDynasty) {
+    actions.push({
+      id: 'sell_depreciating',
+      title: 'Sell depreciating assets',
+      why: 'Your roster market value is declining — selling aging players locks in value before further drops.',
+      expectedImpact: 'HIGH',
+      cta: { label: 'Trade Finder', href: `/league/${leagueId}/trade-finder` },
+    })
+  }
+
+  if (hasTradeEdgePos && actions.length < 2) {
+    actions.push({
+      id: 'leverage_trade_edge',
+      title: 'Leverage your trade edge',
+      why: 'You consistently win trades — use this skill to target a high-value upgrade.',
+      expectedImpact: 'MEDIUM',
+      cta: { label: 'Trade Proposals', href: `/league/${leagueId}/trade-hub` },
+    })
+  }
+
+  if (actions.length === 0) {
+    actions.push({
+      id: 'review_rankings',
+      title: 'Review your rankings',
+      why: 'Your team is performing as expected — monitor weekly changes for emerging opportunities.',
+      expectedImpact: 'LOW',
+      cta: { label: 'View Rankings', href: `/league/${leagueId}/rankings` },
+    })
+  }
+
+  return actions.slice(0, 3)
+}
+
+function validateDrivers(drivers: Driver[]): boolean {
+  for (const d of drivers) {
+    if (!DRIVER_ALLOWLIST.has(d.id)) return false
+    if (typeof d.impact !== 'number' || d.impact < 0 || d.impact > 1) return false
+    if (!d.evidence || typeof d.evidence !== 'object' || Object.keys(d.evidence).length === 0) return false
+  }
+  return true
+}
+
+function buildRankExplanation(
+  ctx: DriverContext,
+  leagueId: string,
+  ldiSample: number,
+): RankExplanation {
+  const drivers = generateDrivers(ctx)
+  const hasAllScores = ctx.winScore > 0 || ctx.powerScore > 0 || ctx.luckScore > 0 || ctx.marketValueScore > 0 || ctx.managerSkillScore > 0
+  const conf = computeConfidence({
+    hasAllScores: hasAllScores && ctx.winScore >= 0 && ctx.powerScore >= 0 && ctx.luckScore >= 0 && ctx.marketValueScore >= 0 && ctx.managerSkillScore >= 0,
+    weeklyPtsLength: ctx.weeklyPts.length,
+    ldiData: ctx.ldiData,
+    ldiSample,
+    hasRosterSimulation: ctx.starterValue > 0,
+    allTeamCount: ctx.allTeamCount,
+  })
+
+  const nextActions = generateNextActions(ctx, drivers, leagueId)
+  const valid = validateDrivers(drivers)
+
+  const topConfDrivers = drivers.slice(0, 3)
+
+  return {
+    confidence: { score: conf.score, rating: conf.rating, drivers: topConfDrivers },
+    drivers,
+    nextActions,
+    valid,
+  }
+}
+
+function getWeekValue(arr: number[], week: number): number | null {
+  const idx = week - 1
+  return Number.isFinite(arr?.[idx]) ? arr[idx] : null
+}
+
+interface CachedWeekStat {
+  week: number
+  rosterId: number
+  pointsFor: number
+  pointsAgainst: number
+  win: number
+  matchupId: number | null
+}
+
+function isWeekEligible(weekStats: CachedWeekStat[], w: number, teamCount: number): boolean {
+  const rows = weekStats.filter(s => s.week === w)
+  const withPoints = rows.filter(s => Number.isFinite(s.pointsFor))
+  if (withPoints.length < Math.ceil(teamCount * 0.8)) return false
+  const withMatchup = rows.filter(s => s.matchupId != null)
+  if (withMatchup.length < Math.ceil(rows.length * 0.7)) return false
+  const matchupGroups = new Map<number, number>()
+  for (const r of withMatchup) {
+    matchupGroups.set(r.matchupId!, (matchupGroups.get(r.matchupId!) ?? 0) + 1)
+  }
+  const unpaired = [...matchupGroups.values()].filter(c => c < 2).length
+  if (unpaired > Math.ceil(matchupGroups.size * 0.2)) return false
+  return true
+}
+
+function resolveAwardsWeek(args: {
+  maxWeek: number
+  weekStats: CachedWeekStat[]
+  teamCount: number
+}): number | null {
+  const { maxWeek, weekStats, teamCount } = args
+  if (isWeekEligible(weekStats, maxWeek, teamCount)) return maxWeek
+  if (maxWeek > 1 && isWeekEligible(weekStats, maxWeek - 1, teamCount)) return maxWeek - 1
+  return null
+}
+
+function computeWeeklyAwards(args: {
+  week: number
+  weekStats: CachedWeekStat[]
+  weeklyPointsByRoster: Map<number, number[]>
+  weeklyOpponentPointsByRoster: Map<number, number[]>
+}): WeeklyAwardsPayload | null {
+  const { week, weekStats } = args
+
+  const rows = weekStats.filter(s => s.week === week)
+  if (rows.length < 2) return null
+
+  const pointsList = rows.map(r => r.pointsFor).filter(Number.isFinite).sort((a, b) => a - b)
+  const median = pointsList.length
+    ? (pointsList.length % 2
+      ? pointsList[(pointsList.length - 1) / 2]
+      : (pointsList[pointsList.length / 2 - 1] + pointsList[pointsList.length / 2]) / 2)
+    : 0
+
+  const ranked = [...rows].sort((a, b) => b.pointsFor - a.pointsFor)
+  const awards: WeeklyAward[] = []
+
+  const rankOf = (rid: number) => ranked.findIndex(r => r.rosterId === rid) + 1
+
+  const top = ranked[0]
+  awards.push({
+    id: 'top_score',
+    week,
+    rosterId: top.rosterId,
+    title: 'Top Score',
+    subtitle: `${top.pointsFor.toFixed(1)} points`,
+    value: top.pointsFor,
+    evidence: { pointsFor: top.pointsFor, pointsAgainst: top.pointsAgainst, win: top.win, matchupId: top.matchupId, rankByPoints: 1, leagueMedian: median, deltaVsMedian: top.pointsFor - median },
+  })
+
+  let bestBoss = ranked[0]
+  let bestBossVal = bestBoss.pointsFor - median
+  for (const r of ranked) {
+    const v = r.pointsFor - median
+    if (v > bestBossVal) { bestBossVal = v; bestBoss = r }
+  }
+  awards.push({
+    id: 'boss_win',
+    week,
+    rosterId: bestBoss.rosterId,
+    title: 'Boss Win',
+    subtitle: `${bestBossVal.toFixed(1)} above league median`,
+    value: bestBossVal,
+    evidence: { pointsFor: bestBoss.pointsFor, pointsAgainst: bestBoss.pointsAgainst, win: bestBoss.win, matchupId: bestBoss.matchupId, rankByPoints: rankOf(bestBoss.rosterId), leagueMedian: median, deltaVsMedian: bestBossVal },
+  })
+
+  const validMarginRows = rows.filter(r => r.matchupId != null && r.pointsAgainst > 0)
+  if (validMarginRows.length) {
+    let bestMarginRow = validMarginRows[0]
+    let bestMarginVal = validMarginRows[0].pointsFor - validMarginRows[0].pointsAgainst
+    for (const r of validMarginRows) {
+      const v = r.pointsFor - r.pointsAgainst
+      if (v > bestMarginVal) { bestMarginVal = v; bestMarginRow = r }
+    }
+    awards.push({
+      id: 'high_score_margin',
+      week,
+      rosterId: bestMarginRow.rosterId,
+      title: 'Biggest Beatdown',
+      subtitle: `Won by ${bestMarginVal.toFixed(1)}`,
+      value: bestMarginVal,
+      evidence: { pointsFor: bestMarginRow.pointsFor, pointsAgainst: bestMarginRow.pointsAgainst, win: bestMarginRow.win, matchupId: bestMarginRow.matchupId, rankByPoints: rankOf(bestMarginRow.rosterId), leagueMedian: median, deltaVsMedian: bestMarginRow.pointsFor - median, margin: bestMarginVal },
+    })
+  }
+
+  let victim = rows[0]
+  for (const r of rows) if (r.pointsAgainst > victim.pointsAgainst) victim = r
+  awards.push({
+    id: 'points_against_victim',
+    week,
+    rosterId: victim.rosterId,
+    title: 'Points-Against Victim',
+    subtitle: `Faced ${victim.pointsAgainst.toFixed(1)}`,
+    value: victim.pointsAgainst,
+    evidence: { pointsFor: victim.pointsFor, pointsAgainst: victim.pointsAgainst, win: victim.win, matchupId: victim.matchupId, rankByPoints: rankOf(victim.rosterId), leagueMedian: median, deltaVsMedian: victim.pointsFor - median },
+  })
+
+  const validWinners = rows.filter(r => r.win === 1 && r.pointsAgainst > 0).sort((a, b) => a.pointsFor - b.pointsFor)
+  if (validWinners.length) {
+    const u = validWinners[0]
+    const rbp = rankOf(u.rosterId)
+    awards.push({
+      id: 'biggest_upset',
+      week,
+      rosterId: u.rosterId,
+      title: 'Biggest Upset',
+      subtitle: `Won with ${u.pointsFor.toFixed(1)}`,
+      value: u.pointsFor,
+      evidence: { pointsFor: u.pointsFor, pointsAgainst: u.pointsAgainst, win: 1, matchupId: u.matchupId, rankByPoints: rbp, leagueMedian: median, deltaVsMedian: u.pointsFor - median },
+    })
+  }
+
+  const losers = rows.filter(r => r.win === 0).sort((a, b) => b.pointsFor - a.pointsFor)
+  if (losers.length) {
+    const un = losers[0]
+    const rbp = rankOf(un.rosterId)
+    awards.push({
+      id: 'unluckiest',
+      week,
+      rosterId: un.rosterId,
+      title: 'Unluckiest Loss',
+      subtitle: `Lost with the #${rbp} score`,
+      value: un.pointsFor,
+      evidence: { pointsFor: un.pointsFor, pointsAgainst: un.pointsAgainst, win: 0, matchupId: un.matchupId, rankByPoints: rbp, leagueMedian: median, deltaVsMedian: un.pointsFor - median },
+    })
+  }
+
+  const marginWinners = validMarginRows
+    .filter(r => r.win === 1)
+    .map(r => ({ ...r, margin: r.pointsFor - r.pointsAgainst }))
+    .filter(r => r.margin > 0)
+    .sort((a, b) => a.margin - b.margin)
+  if (marginWinners.length) {
+    const lk = marginWinners[0]
+    const rbp = rankOf(lk.rosterId)
+    awards.push({
+      id: 'luckiest',
+      week,
+      rosterId: lk.rosterId,
+      title: 'Luckiest Win',
+      subtitle: `Won by just ${lk.margin.toFixed(1)}`,
+      value: lk.margin,
+      evidence: { pointsFor: lk.pointsFor, pointsAgainst: lk.pointsAgainst, win: 1, matchupId: lk.matchupId, rankByPoints: rbp, leagueMedian: median, deltaVsMedian: lk.pointsFor - median, margin: lk.margin },
+    })
+  }
+
+  if (losers.length) {
+    const candidate = losers.find(r => rankOf(r.rosterId) <= 3)
+    if (candidate) {
+      const rbp = rankOf(candidate.rosterId)
+      awards.push({
+        id: 'bounceback_alert',
+        week,
+        rosterId: candidate.rosterId,
+        title: 'Bounceback Alert',
+        subtitle: 'Top-3 score in a loss — keep the process',
+        value: candidate.pointsFor,
+        evidence: { pointsFor: candidate.pointsFor, pointsAgainst: candidate.pointsAgainst, win: 0, matchupId: candidate.matchupId, rankByPoints: rbp, leagueMedian: median, deltaVsMedian: candidate.pointsFor - median },
+      })
+    }
+  }
+
+  const seen = new Set<string>()
+  const out: WeeklyAward[] = []
+  for (const a of awards) {
+    const k = `${a.id}:${a.rosterId}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(a)
+    if (out.length >= 6) break
+  }
+
+  return { week, awards: out }
+}
+
+function computeTradeHubShortcuts(args: {
+  leagueId: string
+  seasonYear: number
+  teams: TeamScore[]
+  ldiByPos: Record<string, number>
+  ldiSampleTotal: number
+  partnerPosCounts: PartnerPosCounts
+}): TradeHubShortcut[] {
+  const { leagueId, seasonYear, teams, ldiByPos, ldiSampleTotal, partnerPosCounts } = args
+
+  if (teams.length < 8) return []
+  if (ldiSampleTotal < 30) return []
+
+  const positions = Object.keys(ldiByPos)
+  if (!positions.length) return []
+
+  const sortedPositions = positions
+    .slice()
+    .sort((a, b) => (ldiByPos[b] ?? 0) - (ldiByPos[a] ?? 0))
+
+  let topCurrencyPos = sortedPositions[0]
+  const topScore = ldiByPos[topCurrencyPos] ?? 0
+  if (topCurrencyPos === 'PICK' && topScore < 72) {
+    const next = sortedPositions.find(p => p !== 'PICK')
+    if (next && (ldiByPos[next] ?? 0) >= 65) {
+      topCurrencyPos = next
+    } else {
+      return []
+    }
+  }
+
+  const topCurrencyScore = ldiByPos[topCurrencyPos] ?? 50
+  if (topCurrencyScore < 65) return []
+
+  const actionablePartners = Object.values(partnerPosCounts)
+    .filter(counts => (counts[topCurrencyPos] ?? 0) >= 3)
+    .length
+  if (actionablePartners < 2) return []
+
+  function makeShortcut(t: TeamScore, pos: string, score: number): TradeHubShortcut | null {
+    const exp = (t.rosterExposure?.[pos] ?? 0) / 100
+    if (exp < 0.18) return null
+
+    const leverage = (score - 50) * 2 * exp
+    const leverageScore = Math.max(0, Math.min(100, Math.round(50 + leverage)))
+
+    return {
+      rosterId: t.rosterId,
+      headline: `You're holding the league's hottest currency: ${pos} (LDI ${score})`,
+      body: `About ${Math.round(exp * 100)}% of your roster value is ${pos}. This league pays up for it—use it to upgrade a starter or secure future value.`,
+      ldiPos: pos,
+      ldiScore: score,
+      leverageScore,
+      ctas: [
+        { id: 'generate_offers', label: 'Generate offers', href: `/legacy/trade-hub?leagueId=${leagueId}&season=${seasonYear}&rosterId=${t.rosterId}&pos=${encodeURIComponent(pos)}&mode=generate` },
+        { id: 'find_overpayers', label: 'Find overpayers', href: `/legacy/trading-partners?leagueId=${leagueId}&season=${seasonYear}&pos=${encodeURIComponent(pos)}` },
+        { id: 'open_trade_hub', label: 'Open Trade Hub', href: `/legacy/trade-hub?leagueId=${leagueId}&season=${seasonYear}` },
+      ],
+      evidence: {
+        exposureByPos: t.rosterExposure ?? {},
+        ldiByPos,
+        topCurrencyPos: pos,
+        topPartners: [],
+      },
+    }
+  }
+
+  const secondaryPositions = sortedPositions
+    .filter(p => p !== topCurrencyPos && (ldiByPos[p] ?? 0) >= 60)
+    .filter(p => p !== 'PICK' || (ldiByPos[p] ?? 0) >= 72)
+
+  const out: TradeHubShortcut[] = []
+
+  for (const t of teams) {
+    const rosterShortcuts: TradeHubShortcut[] = []
+
+    const primary = makeShortcut(t, topCurrencyPos, topCurrencyScore)
+    if (primary) rosterShortcuts.push(primary)
+
+    for (const secPos of secondaryPositions) {
+      if (rosterShortcuts.length >= 2) break
+      const secScore = ldiByPos[secPos] ?? 0
+      const sc = makeShortcut(t, secPos, secScore)
+      if (sc) rosterShortcuts.push(sc)
+    }
+
+    out.push(...rosterShortcuts)
+  }
+
+  out.sort((a, b) => b.leverageScore - a.leverageScore)
+  return out.slice(0, 12)
+}
+
+function attachProposalTargetsToShortcuts(args: {
+  shortcuts: TradeHubShortcut[]
+  partnerTendencies: PartnerTendency[]
+  partnerPosCounts: PartnerPosCounts
+}): TradeHubShortcut[] {
+  const { shortcuts, partnerTendencies, partnerPosCounts } = args
+
+  const clamp01 = (x: number) => Math.max(0, Math.min(1, x))
+
+  function partnerScoreForPos(p: PartnerTendency, pos: string): number | null {
+    const ldi = p.ldiByPos?.[pos]
+    const mean = p.meanPremiumPctByPos?.[pos]
+    if (typeof ldi !== 'number' || typeof mean !== 'number') return null
+
+    const posN = partnerPosCounts?.[p.partnerName]?.[pos] ?? 0
+    if (posN < 3) return null
+
+    const s1 = 0.55 * (ldi / 100)
+    const s2 = 0.30 * clamp01((mean + 0.20) / 0.40)
+    const s3 = 0.15 * clamp01(posN / 10)
+    return s1 + s2 + s3
+  }
+
+  function tagForPos(p: PartnerTendency, pos: string): 'Overpayer' | 'Learning' {
+    const posN = partnerPosCounts?.[p.partnerName]?.[pos] ?? 0
+    if (posN >= 5) return 'Overpayer'
+    return 'Learning'
+  }
+
+  return shortcuts.map(sc => {
+    const pos = sc.ldiPos?.toUpperCase?.() ?? sc.ldiPos
+
+    const rankedPartners = partnerTendencies
+      .map(p => {
+        if (p.sample < 6) return null
+        const score = partnerScoreForPos(p, pos)
+        if (score == null) return null
+        const ldiForPos = p.ldiByPos[pos]
+        const meanPremiumPctForPos = p.meanPremiumPctByPos[pos]
+        const posN = partnerPosCounts?.[p.partnerName]?.[pos] ?? 0
+        return {
+          partnerName: p.partnerName,
+          sample: p.sample,
+          ldiForPos,
+          meanPremiumPctForPos,
+          posN,
+          tag: tagForPos(p, pos),
+          _score: score,
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null)
+
+    rankedPartners.sort((a, b) => b._score - a._score)
+
+    const topPartners = rankedPartners.slice(0, 3).map(p => ({
+      partnerName: p.partnerName,
+      sample: p.sample,
+      ldiForPos: p.ldiForPos,
+      meanPremiumPctForPos: p.meanPremiumPctForPos,
+      tag: p.tag,
+      posN: p.posN,
+    }))
+
+    return { ...sc, evidence: { ...sc.evidence, topPartners } }
+  })
+}
+
+function ldiFromMean(meanPremiumPct: number, scale = 0.12): number {
+  const x = meanPremiumPct / scale
+  const s = 50 + 50 * Math.tanh(x)
+  return Math.max(0, Math.min(100, Math.round(s)))
+}
+
+type PartnerAgg = {
+  sample: number
+  sumByPos: Record<string, number>
+  nByPos: Record<string, number>
+}
+
+type PartnerPosCounts = Record<string, Record<string, number>>
+
+function partnerTendenciesFromTrades(trades: Array<{
+  partnerName: string | null
+  valueGiven: number | null
+  valueReceived: number | null
+  playersReceived: any
+}>): { partnerTendencies: PartnerTendency[]; partnerPosCounts: PartnerPosCounts } {
+  const agg = new Map<string, PartnerAgg>()
+
+  for (const tr of trades) {
+    if (!tr.partnerName) continue
+    const given = tr.valueGiven ?? 0
+    const received = tr.valueReceived ?? 0
+    if (given <= 0 || received <= 0) continue
+
+    const prem = (received - given) / Math.max(1, given)
+
+    const players = Array.isArray(tr.playersReceived) ? tr.playersReceived : []
+    if (!players.length) continue
+
+    const weight = 1 / players.length
+
+    let a = agg.get(tr.partnerName)
+    if (!a) {
+      a = { sample: 0, sumByPos: {}, nByPos: {} }
+      agg.set(tr.partnerName, a)
+    }
+    a.sample += 1
+
+    for (const p of players) {
+      const pos = String(p?.position ?? '').toUpperCase()
+      if (!pos) continue
+      a.sumByPos[pos] = (a.sumByPos[pos] ?? 0) + prem * weight
+      a.nByPos[pos] = (a.nByPos[pos] ?? 0) + 1
+    }
+  }
+
+  const partnerPosCounts: PartnerPosCounts = {}
+  const out: PartnerTendency[] = []
+
+  for (const [partnerName, a] of agg.entries()) {
+    if (a.sample < 6) continue
+
+    const meanPremiumPctByPos: Record<string, number> = {}
+    const ldiByPos: Record<string, number> = {}
+
+    for (const [pos, sum] of Object.entries(a.sumByPos)) {
+      const n = a.nByPos[pos] ?? 0
+      if (n <= 0) continue
+      const mean = sum / n
+      meanPremiumPctByPos[pos] = mean
+      ldiByPos[pos] = ldiFromMean(mean)
+    }
+
+    partnerPosCounts[partnerName] = { ...a.nByPos }
+
+    let topOverpayPos: string | null = null
+    let topDiscountPos: string | null = null
+    let best = -Infinity
+    let worst = Infinity
+    for (const [pos, mean] of Object.entries(meanPremiumPctByPos)) {
+      const posN = a.nByPos[pos] ?? 0
+      if (posN < 3) continue
+      if (mean > best) { best = mean; topOverpayPos = pos }
+      if (mean < worst) { worst = mean; topDiscountPos = pos }
+    }
+
+    out.push({
+      partnerName,
+      sample: a.sample,
+      ldiByPos,
+      meanPremiumPctByPos,
+      topOverpayPos,
+      topDiscountPos,
+    })
+  }
+
+  out.sort((a, b) => b.sample - a.sample)
+  return { partnerTendencies: out.slice(0, 50), partnerPosCounts }
+}
+
+async function computePartnerTendencies(
+  leagueId: string,
+  seasonYear: number,
+): Promise<{ partnerTendencies: PartnerTendency[]; partnerPosCounts: PartnerPosCounts }> {
+  const windowStart = new Date(`${seasonYear}-01-01`)
+  const windowEnd = new Date(`${seasonYear + 1}-01-01`)
+
+  const partnerTrades = await prisma.leagueTrade.findMany({
+    where: {
+      history: { sleeperLeagueId: leagueId },
+      partnerName: { not: null },
+      createdAt: { gte: windowStart, lt: windowEnd },
+    },
+    select: {
+      partnerName: true,
+      valueGiven: true,
+      valueReceived: true,
+      playersReceived: true,
+    },
+  })
+
+  return partnerTendenciesFromTrades(partnerTrades)
+}
+
+function computeBounceBackIndex(powerScore: number, luckDelta: number, streak: number): number {
+  const psComponent = clamp01(powerScore / 100) * 50
+  const luckComponent = luckDelta < -0.5 ? clamp01(Math.abs(luckDelta) / 4) * 35 : 0
+  const streakComponent = streak < 0 ? clamp01(Math.abs(streak) / 4) * 15 : 0
+  const raw = psComponent + luckComponent + streakComponent
+  return Math.round(clamp(raw, 0, 100))
+}
+
+function computeMotivationalFrame(
+  luckDelta: number,
+  powerScore: number,
+  winScore: number,
+  luckScore: number,
+  streak: number,
+  record: { wins: number; losses: number },
+): MotivationalFrame {
+  if (luckDelta <= -1.5) {
+    if (powerScore >= 60) {
+      return {
+        headline: 'Your process is better than your record.',
+        subtext: `You're scoring like a playoff team — scheduling variance hit you for ${Math.abs(Math.round(luckDelta * 10) / 10)} wins.`,
+        suggestedAction: "Don't sell low. Target 1 starter upgrade at FLEX to push through.",
+        tone: 'encouraging',
+        trigger: 'luck_negative_strong_roster',
+      }
+    }
+    return {
+      headline: 'Bad luck is masking your true ceiling.',
+      subtext: `Your expected record is ${Math.round(record.wins - luckDelta)}-${Math.round(record.losses + luckDelta)} — the wins will come.`,
+      suggestedAction: 'Stay the course. Look for a depth piece on waivers to reduce week-to-week variance.',
+      tone: 'encouraging',
+      trigger: 'luck_negative_general',
+    }
+  }
+
+  if (luckDelta >= 1.5) {
+    return {
+      headline: 'Great job taking advantage — now protect against regression.',
+      subtext: `You've outperformed expected wins by +${Math.round(luckDelta * 10) / 10}. Some regression is normal.`,
+      suggestedAction: 'Add depth and reduce volatility. Trade a streaky asset for a consistent floor player.',
+      tone: 'cautionary',
+      trigger: 'luck_positive_overperforming',
+    }
+  }
+
+  if (powerScore >= 65 && winScore <= 40) {
+    return {
+      headline: 'Strong roster, results lagging — you\'re close.',
+      subtext: 'Your team grades out well but results haven\'t matched yet. This gap typically closes.',
+      suggestedAction: 'Review your lineup — one start/sit decision could flip a close loss into a win.',
+      tone: 'encouraging',
+      trigger: 'power_high_wins_low',
+    }
+  }
+
+  if (winScore >= 65 && powerScore <= 40) {
+    return {
+      headline: 'Great results, but roster strength is thin — reinforce with depth.',
+      subtext: 'You\'re winning games but your roster value says the margins are tight.',
+      suggestedAction: 'Use your record as leverage in trade talks. Add a reliable RB2/WR2 before the stretch.',
+      tone: 'cautionary',
+      trigger: 'wins_high_power_low',
+    }
+  }
+
+  if (streak <= -3) {
+    return {
+      headline: 'Losing streaks end. Yours is about to.',
+      subtext: `${Math.abs(streak)} straight losses is tough, but your underlying numbers say a turnaround is coming.`,
+      suggestedAction: 'Don\'t panic-sell. Check if a lineup tweak or waiver add can spark the turnaround.',
+      tone: 'encouraging',
+      trigger: 'losing_streak',
+    }
+  }
+
+  if (streak >= 3) {
+    return {
+      headline: 'Momentum is real — keep building.',
+      subtext: `${streak} straight wins. You're playing with confidence and it shows.`,
+      suggestedAction: 'Now is the time to make a move. Buy a championship piece while you have leverage.',
+      tone: 'celebratory',
+      trigger: 'winning_streak',
+    }
+  }
+
+  if (powerScore >= 55 && luckScore >= 45 && luckScore <= 55) {
+    return {
+      headline: 'Steady as she goes.',
+      subtext: 'Your record reflects your roster strength accurately. No luck skew detected.',
+      suggestedAction: 'Look for marginal upgrades — a small edge at TE or FLEX could separate you from the pack.',
+      tone: 'neutral',
+      trigger: 'balanced_neutral',
+    }
+  }
+
+  return {
+    headline: 'Every week is a new opportunity.',
+    subtext: 'Your scores and record are tracking close to expectations.',
+    suggestedAction: 'Monitor the waiver wire and stay active in trade discussions.',
+    tone: 'neutral',
+    trigger: 'default',
+  }
+}
+
+function generateBadges(team: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta'>, allTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta'>[]): Badge[] {
+  const badges: Badge[] = []
+
+  const maxPS = Math.max(...allTeams.map(t => t.powerScore))
+  if (team.powerScore === maxPS && maxPS > 60) {
+    badges.push({ id: 'best_team', label: 'Best Team', icon: 'crown', tier: 'gold' })
+  }
+
+  const minLuck = Math.min(...allTeams.map(t => t.luckScore))
+  if (team.luckScore === minLuck && minLuck < 35) {
+    badges.push({ id: 'most_unlucky', label: 'Most Unlucky', icon: 'storm', tier: 'silver' })
+  }
+
+  const maxMSS = Math.max(...allTeams.map(t => t.managerSkillScore))
+  if (team.managerSkillScore === maxMSS && maxMSS > 55) {
+    badges.push({ id: 'best_negotiator', label: 'Best Negotiator', icon: 'handshake', tier: 'gold' })
+  }
+
+  const maxMVS = Math.max(...allTeams.map(t => t.marketValueScore))
+  if (team.marketValueScore === maxMVS && maxMVS > 60) {
+    badges.push({ id: 'dynasty_king', label: 'Dynasty King', icon: 'gem', tier: 'gold' })
+  }
+
+  const maxWS = Math.max(...allTeams.map(t => t.winScore))
+  if (team.winScore === maxWS && maxWS > 60) {
+    badges.push({ id: 'win_machine', label: 'Win Machine', icon: 'trophy', tier: 'gold' })
+  }
+
+  if (team.luckDelta <= -1.5) {
+    badges.push({ id: 'should_be_record', label: `Should Be ${team.shouldBeRecord.wins}-${team.shouldBeRecord.losses}`, icon: 'clover', tier: 'silver' })
+  }
+
+  if (team.bounceBackIndex >= 70) {
+    badges.push({ id: 'bounce_back', label: 'Bounce-Back Candidate', icon: 'rocket', tier: 'bronze' })
+  }
+
+  return badges
+}
+
+export async function computeLeagueRankingsV2(
+  leagueId: string,
+  currentWeek?: number,
+): Promise<LeagueRankingsV2Output | null> {
+  const settings = await fetchLeagueSettings(leagueId)
+  if (!settings) return null
+
+  const { name: leagueName, season, isSF, isDynasty, ppr, numTeams, status } = settings
+  const week = currentWeek ?? settings.week
+  const phase = detectPhase(week, season, status)
+
+  const dbRosterRecords = await fetchRosterRecords(leagueId)
+
+  const [rosters, users, fcPlayers, ldiData] = await Promise.all([
+    getLeagueRosters(leagueId),
+    getLeagueUsers(leagueId),
+    fetchFantasyCalcValues({
+      isDynasty,
+      numQbs: isSF ? 2 : 1,
+      numTeams,
+      ppr,
+    }),
+    fetchLdiForLeague(leagueId),
+  ])
+
+  if (rosters.length === 0) return null
+
+  const userMap = new Map<string, SleeperUser>()
+  for (const u of users) {
+    userMap.set(u.user_id, u)
+  }
+
+  const rosterIdToUsername = new Map<number, string>()
+  for (const r of rosters) {
+    const user = userMap.get(r.owner_id)
+    rosterIdToUsername.set(r.roster_id, user?.username || r.owner_id)
+  }
+
+  const maxWeek = Math.min(week, 18)
+  const { weekStats, weeklyPointsByRoster, weeklyOpponentPointsByRoster } = await getWeekStatsFromCache(leagueId, maxWeek)
+
+  const rosterRecords = new Map<number, { wins: number; total: number }>()
+  for (const r of rosters) {
+    rosterRecords.set(r.roster_id, {
+      wins: r.settings.wins,
+      total: r.settings.wins + r.settings.losses + r.settings.ties,
+    })
+  }
+
+  const valueMap = buildPlayerValueMap(fcPlayers)
+  const tradeEfficiency = await fetchTradeMetrics(leagueId, rosterIdToUsername)
+
+  const ldiSampleCount = ldiData ? Object.values(ldiData).reduce((s: number, e: any) => s + (e?.sample ?? 0), 0) : 0
+
+  const rawTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta'>[] = []
+
+  const allStarterValues: number[] = []
+  const allBenchValues: number[] = []
+  const allAgeAdjustedTotals: number[] = []
+  const allLuckDeltas: number[] = []
+  const allTradeAvgPremiums: number[] = []
+  const allProcessConsistencies: number[] = []
+
+  interface TeamIntermediate {
+    roster: SleeperRoster
+    user: SleeperUser | undefined
+    rosterValues: RosterValueResult
+    weeklyPts: number[]
+    weeklyOppPts: number[]
+    expectedWins: number
+    sos: number
+    winPct: number
+    luckDelta: number
+    ageAdjustedTotal: number
+    tradeEff: { tradeCount: number; avgPremium: number }
+    processConsistency: number
+    ptsFor: number
+    ptsAgainst: number
+    playoffSeed: number | null
+    isChampion: boolean
+  }
+
+  const teamIntermediates: TeamIntermediate[] = []
+
+  for (const roster of rosters) {
+    const user = userMap.get(roster.owner_id)
+    const rosterValues = computeRosterValues(roster, valueMap, isDynasty)
+    const weeklyPts = weeklyPointsByRoster.get(roster.roster_id) || []
+    const weeklyOppPts = weeklyOpponentPointsByRoster.get(roster.roster_id) || []
+    const expectedWins = computeExpectedWins(roster.roster_id, weeklyPointsByRoster, maxWeek)
+    const sos = computeSOS(roster.roster_id, weekStats, rosterRecords)
+    const tradeEff = tradeEfficiency.get(roster.roster_id) || { tradeCount: 0, avgPremium: 0 }
+
+    const wins = roster.settings.wins ?? 0
+    const losses = roster.settings.losses ?? 0
+    const ties = roster.settings.ties ?? 0
+    const totalGames = wins + losses + ties
+    const winPct = totalGames > 0 ? wins / totalGames : 0.5
+    const luckDelta = wins - expectedWins
+
+    const ageAdjustedTotal = computeAgeAdjustedMarketValue(roster, valueMap, isDynasty, ldiData)
+
+    const ptsFor = (roster.settings.fpts ?? 0) + (roster.settings.fpts_decimal ?? 0) / 100
+    const ptsAgainst = (roster.settings.fpts_against ?? 0) + (roster.settings.fpts_against_decimal ?? 0) / 100
+
+    const processConsistency = weeklyPts.length > 1
+      ? 1 / (1 + stddev(weeklyPts) / Math.max(1, weeklyPts.reduce((s, v) => s + v, 0) / weeklyPts.length))
+      : 0.5
+
+    const dbRecord = dbRosterRecords?.get(roster.roster_id)
+    const playoffSeed = dbRecord?.playoffSeed ?? (roster as any).metadata?.playoff_seed ?? null
+    const isChampion = dbRecord?.isChampion ?? (roster as any).metadata?.is_champ ?? false
+
+    allStarterValues.push(rosterValues.starterValue)
+    allBenchValues.push(rosterValues.benchValue)
+    allAgeAdjustedTotals.push(ageAdjustedTotal)
+    allLuckDeltas.push(luckDelta)
+    allTradeAvgPremiums.push(tradeEff.avgPremium)
+    allProcessConsistencies.push(processConsistency)
+
+    teamIntermediates.push({
+      roster,
+      user,
+      rosterValues,
+      weeklyPts,
+      weeklyOppPts,
+      expectedWins,
+      sos,
+      winPct,
+      luckDelta,
+      ageAdjustedTotal,
+      tradeEff,
+      processConsistency,
+      ptsFor,
+      ptsAgainst,
+      playoffSeed,
+      isChampion,
+    })
+  }
+
+  for (const ti of teamIntermediates) {
+    const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion } = ti
+
+    const madePlayoffs = playoffSeed !== null && playoffSeed > 0
+
+    const winScore = computeWinScore(winPct, sos, phase, madePlayoffs, isChampion, playoffSeed, numTeams)
+
+    const starterP = robustPercentileRank(rosterValues.starterValue, allStarterValues)
+    const benchP = robustPercentileRank(rosterValues.benchValue, allBenchValues)
+    const injuryPenalty = 0.5
+    const powerScore = computePowerScore(starterP, benchP, isDynasty, injuryPenalty)
+
+    const luckScore = computeLuckScore(luckDelta, allLuckDeltas)
+
+    const marketValueScore = computeMarketValueScore(ageAdjustedTotal, allAgeAdjustedTotals)
+
+    const managerSkillScore = computeManagerSkillScore(
+      tradeEff.avgPremium,
+      allTradeAvgPremiums,
+      processConsistency,
+      allProcessConsistencies,
+      isDynasty,
+    )
+
+    const draftGainP = 50
+    const composite = computeComposite(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty)
+    const streak = computeStreak(weeklyPts, weeklyOppPts)
+
+    const starterPer = robustPercentileRank(rosterValues.starterValue, allStarterValues)
+    const benchPer = robustPercentileRank(rosterValues.benchValue, allBenchValues)
+    const marketPer = robustPercentileRank(ageAdjustedTotal, allAgeAdjustedTotals)
+
+    const rWins = roster.settings.wins ?? 0
+    const rLosses = roster.settings.losses ?? 0
+    const rTies = roster.settings.ties ?? 0
+
+    const driverCtx: DriverContext = {
+      winScore,
+      powerScore,
+      luckScore,
+      marketValueScore,
+      managerSkillScore,
+      composite,
+      record: { wins: rWins, losses: rLosses, ties: rTies },
+      pointsFor: ptsFor,
+      pointsAgainst: ptsAgainst,
+      expectedWins,
+      streak,
+      starterValue: rosterValues.starterValue,
+      benchValue: rosterValues.benchValue,
+      totalRosterValue: rosterValues.totalValue,
+      positionValues: rosterValues.positionValues,
+      weeklyPts,
+      weeklyOppPts,
+      tradeEff,
+      allTeamCount: rosters.length,
+      starterPercentile: starterPer,
+      benchPercentile: benchPer,
+      marketPercentile: marketPer,
+      ldiData,
+      isDynasty,
+    }
+
+    const explanation = buildRankExplanation(driverCtx, leagueId, ldiSampleCount)
+
+    const rosterExposure: Record<string, number> = {}
+    const totalVal = rosterValues.totalValue || 1
+    for (const [pos, pv] of Object.entries(rosterValues.positionValues)) {
+      rosterExposure[pos] = Math.round((pv.total / totalVal) * 10000) / 100
+    }
+
+    let marketAdj = 0
+    for (const [pos, expPct] of Object.entries(rosterExposure)) {
+      const posLdi = ldiData?.[pos.toUpperCase()]?.ldi ?? 50
+      const posBoost = 0.85 + 0.30 * (posLdi / 100)
+      marketAdj += (expPct / 100) * posBoost
+    }
+    marketAdj = Math.round(marketAdj * 10000) / 10000
+
+    const totalGames2 = rWins + rLosses
+    const shouldBeWins = Math.round(expectedWins)
+    const shouldBeLosses = Math.max(0, totalGames2 - shouldBeWins)
+    const bounceBackIndex = computeBounceBackIndex(powerScore, luckDelta, streak)
+    const motivationalFrame = computeMotivationalFrame(
+      luckDelta, powerScore, winScore, luckScore, streak,
+      { wins: rWins, losses: rLosses },
+    )
+
+    rawTeams.push({
+      rosterId: roster.roster_id,
+      ownerId: roster.owner_id,
+      username: user?.username || null,
+      displayName: user?.display_name || null,
+      avatar: user?.avatar || null,
+
+      winScore,
+      powerScore,
+      luckScore,
+      marketValueScore,
+      managerSkillScore,
+      composite,
+
+      record: { wins: rWins, losses: rLosses, ties: rTies },
+      pointsFor: ptsFor,
+      pointsAgainst: ptsAgainst,
+      expectedWins,
+      luckDelta: Math.round(luckDelta * 10) / 10,
+      shouldBeRecord: { wins: shouldBeWins, losses: shouldBeLosses },
+      bounceBackIndex,
+      motivationalFrame,
+      positionValues: rosterValues.positionValues,
+      rosterExposure,
+      marketAdj,
+      streak,
+
+      starterValue: rosterValues.starterValue,
+      benchValue: rosterValues.benchValue,
+      totalRosterValue: rosterValues.totalValue,
+      pickValue: 0,
+
+      phase,
+      explanation,
+    })
+  }
+
+  rawTeams.sort((a, b) => b.composite - a.composite)
+
+  const teams: TeamScore[] = rawTeams.map((t, idx) => {
+    const badges = generateBadges(t, rawTeams)
+    return {
+      ...t,
+      rank: idx + 1,
+      prevRank: null,
+      rankDelta: null,
+      badges,
+    }
+  })
+
+  const weeklyPointsDistribution = rosters.map(r => ({
+    rosterId: r.roster_id,
+    weeklyPoints: weeklyPointsByRoster.get(r.roster_id) || [],
+  }))
+
+  const marketInsights: MarketInsight[] = []
+  if (ldiData) {
+    for (const [pos, entry] of Object.entries(ldiData)) {
+      if (entry && typeof entry.meanPremiumPct === 'number' && (entry.sample ?? 0) >= 3) {
+        const pct = Math.round(entry.meanPremiumPct * 100)
+        const direction = pct >= 0 ? '+' : ''
+        marketInsights.push({
+          position: pos,
+          premiumPct: pct,
+          sample: entry.sample ?? 0,
+          label: `${pos} premium is ${direction}${pct}% in your league (${entry.sample} trades)`,
+        })
+      }
+    }
+    marketInsights.sort((a, b) => Math.abs(b.premiumPct) - Math.abs(a.premiumPct))
+  }
+
+  const ldiChips: LDIChip[] = []
+  if (ldiData) {
+    for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+      const entry = ldiData[pos]
+      if (!entry) continue
+      const ldi = entry.ldi ?? 50
+      if (ldi > 65) {
+        ldiChips.push({ position: pos, ldi, label: `${pos} market`, type: 'hot' })
+      } else if (ldi < 35) {
+        ldiChips.push({ position: pos, ldi, label: `${pos} discount`, type: 'cold' })
+      }
+    }
+  }
+
+  const awardsWeek = resolveAwardsWeek({ maxWeek, weekStats, teamCount: rosters.length })
+  const weeklyAwards = awardsWeek != null
+    ? computeWeeklyAwards({ week: awardsWeek, weekStats, weeklyPointsByRoster, weeklyOpponentPointsByRoster })
+    : null
+
+  const { partnerTendencies, partnerPosCounts } = await computePartnerTendencies(leagueId, Number(season) || 2025)
+
+  const ldiByPosFlat: Record<string, number> = {}
+  for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+    ldiByPosFlat[pos] = Math.round(ldiData?.[pos]?.ldi ?? 50)
+  }
+  const rawShortcuts = computeTradeHubShortcuts({ leagueId, seasonYear: Number(season) || 2025, teams, ldiByPos: ldiByPosFlat, ldiSampleTotal: ldiSampleCount, partnerPosCounts })
+  const tradeHubShortcuts = attachProposalTargetsToShortcuts({ shortcuts: rawShortcuts, partnerTendencies, partnerPosCounts })
+
+  const proposalTargets: LeagueRankingsV2Output['meta']['proposalTargets'] = []
+  for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+    for (const pt of partnerTendencies) {
+      const posN = partnerPosCounts[pt.partnerName]?.[pos] ?? 0
+      if (posN < 3) continue
+      const ldi = pt.ldiByPos?.[pos]
+      const mean = pt.meanPremiumPctByPos?.[pos]
+      if (typeof ldi !== 'number' || typeof mean !== 'number') continue
+      const s1 = 0.55 * (ldi / 100)
+      const s2 = 0.30 * Math.max(0, Math.min(1, (mean + 0.20) / 0.40))
+      const s3 = 0.15 * Math.max(0, Math.min(1, posN / 10))
+      proposalTargets.push({
+        position: pos,
+        rosterId: pt.partnerName,
+        name: pt.partnerName,
+        score: Math.round((s1 + s2 + s3) * 100),
+        ldiByPos: ldi,
+        meanPremiumPct: mean,
+        nByPos: posN,
+        label: posN >= 5 ? 'Overpayer' : 'Learning',
+      })
+    }
+  }
+  proposalTargets.sort((a, b) => b.score - a.score)
+
+  const ldiTrend: Record<string, number> = {}
+  if (ldiData) {
+    for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+      ldiTrend[pos] = 0
+    }
+  }
+
+  return {
+    leagueId,
+    leagueName,
+    season,
+    week,
+    phase,
+    isDynasty,
+    isSuperFlex: isSF,
+    teams,
+    weeklyPointsDistribution,
+    computedAt: Date.now(),
+    marketInsights,
+    ldiChips,
+    weeklyAwards,
+    tradeHubShortcuts,
+    partnerTendencies,
+    meta: {
+      ldiByPos: ldiByPosFlat,
+      partnerPosCounts,
+      ldiSampleTotal: ldiSampleCount,
+      ldiTrend,
+      proposalTargets,
+    },
+  }
+}

@@ -1,0 +1,1141 @@
+'use client'
+
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import DemandHeatmap from './DemandHeatmap'
+import { WhatChangedPanel, TierLabel, WinWindowPanel } from './RankingsMicroPanels'
+
+interface PositionValue {
+  starter: number
+  bench: number
+  total: number
+}
+
+interface DriverType {
+  id: string
+  polarity: 'UP' | 'DOWN' | 'NEUTRAL'
+  impact: number
+  evidence: Record<string, any>
+}
+
+interface ActionType {
+  id: string
+  title: string
+  why: string
+  expectedImpact: 'LOW' | 'MEDIUM' | 'HIGH'
+  cta: { label: string; href: string }
+}
+
+interface RankExplanation {
+  confidence: {
+    score: number
+    rating: 'HIGH' | 'MEDIUM' | 'LEARNING'
+    drivers: DriverType[]
+  }
+  drivers: DriverType[]
+  nextActions: ActionType[]
+  valid: boolean
+}
+
+interface MotivationalFrame {
+  headline: string
+  subtext: string
+  suggestedAction: string
+  tone: 'encouraging' | 'cautionary' | 'neutral' | 'celebratory'
+  trigger: string
+}
+
+interface TeamScore {
+  rosterId: number
+  ownerId: string
+  username: string | null
+  displayName: string | null
+  avatar: string | null
+  winScore: number
+  powerScore: number
+  luckScore: number
+  marketValueScore: number
+  managerSkillScore: number
+  composite: number
+  rank: number
+  prevRank: number | null
+  rankDelta: number | null
+  record: { wins: number; losses: number; ties: number }
+  pointsFor: number
+  pointsAgainst: number
+  expectedWins: number
+  streak: number
+  luckDelta: number
+  shouldBeRecord: { wins: number; losses: number }
+  bounceBackIndex: number
+  motivationalFrame: MotivationalFrame
+  starterValue: number
+  benchValue: number
+  totalRosterValue: number
+  pickValue: number
+  positionValues: Record<string, PositionValue>
+  rosterExposure: Record<string, number>
+  marketAdj: number
+  phase: string
+  explanation: RankExplanation
+  badges: { id: string; label: string; icon: string; tier: string }[]
+}
+
+interface MarketInsight {
+  position: string
+  premiumPct: number
+  sample: number
+  label: string
+}
+
+interface WeeklyAward {
+  id: string
+  week: number
+  rosterId: number
+  title: string
+  subtitle: string
+  value: number
+  evidence: Record<string, any>
+}
+
+interface TradeHubShortcut {
+  rosterId: number
+  headline: string
+  body: string
+  ldiPos: string
+  ldiScore: number
+  leverageScore: number
+  ctas: Array<{ id: string; label: string; href: string }>
+  evidence: { exposureByPos: Record<string, number>; ldiByPos: Record<string, number>; topCurrencyPos: string }
+}
+
+interface RankingsData {
+  leagueId: string
+  leagueName: string
+  season: string
+  week: number
+  phase: string
+  isDynasty: boolean
+  isSuperFlex: boolean
+  teams: TeamScore[]
+  weeklyPointsDistribution: { rosterId: number; weeklyPoints: number[] }[]
+  computedAt: number
+  marketInsights: MarketInsight[]
+  ldiChips: { position: string; ldi: number; label: string; type: 'hot' | 'cold' }[]
+  weeklyAwards?: { week: number; awards: WeeklyAward[] } | null
+  tradeHubShortcuts?: TradeHubShortcut[]
+  partnerTendencies?: Array<{ partnerName: string; sample: number; topOverpayPos: string | null; topDiscountPos: string | null }>
+}
+
+interface CoachInsight {
+  bullets: string[]
+  challenge: string
+  tone: string
+}
+
+interface Props {
+  leagueId: string
+  leagueName?: string
+  username?: string
+}
+
+type RankingView = 'power' | 'dynasty' | 'composite'
+
+const BADGE_ICONS: Record<string, string> = {
+  crown: '\u{1F451}',
+  storm: '\u{26C8}\uFE0F',
+  handshake: '\u{1F91D}',
+  gem: '\u{1F48E}',
+  trophy: '\u{1F3C6}',
+  fire: '\u{1F525}',
+  clover: '\u{1F340}',
+  rocket: '\u{1F680}',
+}
+
+function cx(...classes: (string | false | undefined | null)[]): string {
+  return classes.filter(Boolean).join(' ')
+}
+
+const DRIVER_LABELS: Record<string, string> = {
+  record_surge: 'Win Streak Surge',
+  record_slide: 'Losing Slide',
+  points_for_spike: 'Scoring Spike',
+  points_for_dip: 'Scoring Dip',
+  points_against_luck: 'Schedule Luck',
+  power_strength_gain: 'Strong Starters',
+  power_strength_drop: 'Weak Starters',
+  depth_safety_gain: 'Deep Bench',
+  depth_safety_drop: 'Thin Bench',
+  luck_positive: 'Running Hot',
+  luck_negative: 'Running Cold',
+  market_value_gain: 'High Asset Value',
+  market_value_drop: 'Low Asset Value',
+  league_demand_tailwind: 'Market Tailwind',
+  league_demand_headwind: 'Market Headwind',
+  trade_edge_positive: 'Trade Edge',
+  trade_edge_negative: 'Trade Losses',
+  waiver_roi_positive: 'Waiver ROI',
+  waiver_roi_negative: 'Poor Waiver ROI',
+}
+
+function driverEvidence(d: DriverType): string {
+  const e = d.evidence
+  switch (d.id) {
+    case 'record_surge':
+    case 'record_slide':
+      return `${e.wins}-${e.losses}, ${e.streak > 0 ? '+' : ''}${e.streak} streak`
+    case 'points_for_spike':
+    case 'points_for_dip':
+      return `Recent avg ${e.pointsForWeek} vs season ${e.pointsForAvg}`
+    case 'points_against_luck':
+      return `Opp avg ${e.pointsAgainstWeek} vs league ${e.leagueAvgPA}`
+    case 'luck_positive':
+    case 'luck_negative':
+      return `Expected ${e.expectedWins}W, Actual ${e.actualWins}W (${e.delta > 0 ? '+' : ''}${e.delta})`
+    case 'power_strength_gain':
+    case 'power_strength_drop':
+      return `Starter percentile: ${e.psPercentile}%`
+    case 'depth_safety_gain':
+    case 'depth_safety_drop':
+      return `Bench rank #${e.benchRank}, value ${e.benchValue.toLocaleString()}`
+    case 'market_value_gain':
+    case 'market_value_drop':
+      return `Market percentile: ${e.marketPercentile}%`
+    case 'trade_edge_positive':
+    case 'trade_edge_negative':
+      return `${e.avgTradePremiumPct > 0 ? '+' : ''}${e.avgTradePremiumPct}% avg premium (${e.sampleTrades} trades)`
+    case 'league_demand_tailwind':
+    case 'league_demand_headwind':
+      return `LDI: QB ${e.ldiQB ?? '—'}, RB ${e.ldiRB ?? '—'}, WR ${e.ldiWR ?? '—'}, TE ${e.ldiTE ?? '—'}`
+    default:
+      return ''
+  }
+}
+
+function ConfidenceBadge({ rating, score }: { rating: string; score: number }) {
+  const config = rating === 'HIGH'
+    ? { bg: 'bg-emerald-500/15', border: 'border-emerald-500/30', text: 'text-emerald-300' }
+    : rating === 'MEDIUM'
+    ? { bg: 'bg-amber-500/15', border: 'border-amber-500/30', text: 'text-amber-300' }
+    : { bg: 'bg-white/10', border: 'border-white/20', text: 'text-white/50' }
+
+  return (
+    <span className={cx('text-[9px] px-2 py-0.5 rounded-full font-semibold border', config.bg, config.border, config.text)}>
+      {rating} ({score})
+    </span>
+  )
+}
+
+function DriverChip({ driver }: { driver: DriverType }) {
+  const label = DRIVER_LABELS[driver.id] || driver.id
+  const evidence = driverEvidence(driver)
+  const isUp = driver.polarity === 'UP'
+  const isDown = driver.polarity === 'DOWN'
+
+  return (
+    <div className={cx(
+      'text-[10px] px-2.5 py-1.5 rounded-lg border flex flex-col gap-0.5',
+      isUp ? 'bg-emerald-500/10 border-emerald-500/20' : isDown ? 'bg-red-500/10 border-red-500/20' : 'bg-white/5 border-white/10',
+    )}>
+      <div className="flex items-center gap-1.5">
+        <span className={cx('text-[9px] font-bold', isUp ? 'text-emerald-400' : isDown ? 'text-red-400' : 'text-white/40')}>
+          {isUp ? '\u25B2' : isDown ? '\u25BC' : '\u25CF'}
+        </span>
+        <span className={cx('font-medium', isUp ? 'text-emerald-300' : isDown ? 'text-red-300' : 'text-white/60')}>
+          {label}
+        </span>
+        <span className="text-white/20 ml-auto text-[9px]">{Math.round(driver.impact * 100)}%</span>
+      </div>
+      {evidence && <span className="text-white/35 text-[9px] leading-snug pl-4">{evidence}</span>}
+    </div>
+  )
+}
+
+function NextActionButton({ action }: { action: ActionType }) {
+  const impactColor = action.expectedImpact === 'HIGH' ? 'bg-cyan-500/15 border-cyan-500/25 text-cyan-300'
+    : action.expectedImpact === 'MEDIUM' ? 'bg-purple-500/15 border-purple-500/25 text-purple-300'
+    : 'bg-white/5 border-white/15 text-white/50'
+
+  return (
+    <div className={cx('rounded-lg border p-2.5', impactColor)}>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold">{action.title}</span>
+        <span className="text-[8px] uppercase tracking-wider opacity-60">{action.expectedImpact} impact</span>
+      </div>
+      <p className="text-[9px] opacity-60 mt-0.5 leading-snug">{action.why}</p>
+    </div>
+  )
+}
+
+function timeAgo(ts: number): string {
+  const diff = Math.max(0, Date.now() - ts)
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+function MiniSparkline({ points, width = 60, height = 20 }: { points: number[]; width?: number; height?: number }) {
+  if (points.length < 2) return null
+  const min = Math.min(...points)
+  const max = Math.max(...points)
+  const range = max - min || 1
+  const coords = points.map((p, i) => ({
+    x: (i / (points.length - 1)) * width,
+    y: height - ((p - min) / range) * (height - 4) - 2,
+  }))
+  const pathD = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x.toFixed(1)} ${c.y.toFixed(1)}`).join(' ')
+  const trend = points[points.length - 1] >= points[0]
+  return (
+    <svg width={width} height={height} className="shrink-0">
+      <path d={pathD} fill="none" stroke={trend ? '#34d399' : '#f87171'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="2" fill={trend ? '#34d399' : '#f87171'} />
+    </svg>
+  )
+}
+
+function ScoreBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[9px] text-white/40 w-7 text-right shrink-0 uppercase">{label}</span>
+      <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+        <div className={cx('h-full rounded-full transition-all duration-700', color)} style={{ width: `${Math.min(100, value)}%` }} />
+      </div>
+      <span className="text-[9px] font-bold text-white/60 w-5 text-right">{value}</span>
+    </div>
+  )
+}
+
+function RankMovement({ delta }: { delta: number | null }) {
+  if (delta === null || delta === 0) return <span className="text-white/15 text-xs">—</span>
+  if (delta > 0) {
+    return <span className="text-red-400 text-[11px] font-bold flex items-center gap-0.5"><span className="text-[9px]">&#x25BC;</span>{Math.abs(delta)}</span>
+  }
+  return <span className="text-emerald-400 text-[11px] font-bold flex items-center gap-0.5"><span className="text-[9px]">&#x25B2;</span>{Math.abs(delta)}</span>
+}
+
+function PhaseLabel({ phase, week }: { phase: string; week: number }) {
+  if (phase === 'offseason') return <>Offseason</>
+  if (phase === 'post_draft') return <>Post-Draft</>
+  if (phase === 'post_season') return <>Postseason</>
+  return <>Week {week}</>
+}
+
+function HeroCard({ title, subtitle, detail, accent, icon, cta, onCta }: {
+  title: string
+  subtitle: string
+  detail?: string
+  accent: string
+  icon: string
+  cta?: string
+  onCta?: () => void
+}) {
+  return (
+    <div className={cx(
+      'rounded-xl border p-4 flex flex-col justify-between min-h-[140px] lg:min-h-[180px]',
+      accent,
+    )}>
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-lg">{icon}</span>
+          <span className="text-[10px] uppercase tracking-wider text-white/40 font-semibold">{title}</span>
+        </div>
+        <div className="text-sm font-bold text-white leading-tight">{subtitle}</div>
+        {detail && <div className="text-[11px] text-white/50 mt-1 leading-snug">{detail}</div>}
+      </div>
+      {cta && (
+        <button
+          onClick={onCta}
+          className="mt-3 text-[10px] font-semibold text-cyan-300 hover:text-cyan-200 self-start transition-colors"
+        >
+          {cta} &rarr;
+        </button>
+      )}
+    </div>
+  )
+}
+
+function RankHistoryChart({ teams, weeklyPtsMap, selectedTeam, onSelectTeam }: {
+  teams: TeamScore[]
+  weeklyPtsMap: Map<number, number[]>
+  selectedTeam: number | null
+  onSelectTeam: (id: number) => void
+}) {
+  const teamPts = selectedTeam ? weeklyPtsMap.get(selectedTeam) ?? [] : []
+  const teamInfo = teams.find(t => t.rosterId === selectedTeam)
+
+  if (!selectedTeam || teamPts.length < 2) {
+    return (
+      <div className="text-center py-6">
+        <span className="text-xs text-white/30">Select a team to see their weekly performance</span>
+      </div>
+    )
+  }
+
+  const maxPts = Math.max(...teamPts, 1)
+  const barWidth = Math.max(8, Math.min(24, Math.floor(280 / teamPts.length) - 2))
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-white/70">{teamInfo?.displayName || teamInfo?.username || 'Team'}</span>
+        <span className="text-[10px] text-white/30">Weekly Points</span>
+      </div>
+      <div className="flex items-end gap-px h-20">
+        {teamPts.map((pts, i) => {
+          const h = (pts / maxPts) * 100
+          return (
+            <div key={i} className="flex flex-col items-center flex-1 min-w-0">
+              <div
+                className="w-full rounded-t bg-gradient-to-t from-cyan-600 to-cyan-400 transition-all duration-300"
+                style={{ height: `${h}%`, minHeight: pts > 0 ? '2px' : '0' }}
+                title={`Wk ${i + 1}: ${pts.toFixed(1)}`}
+              />
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex justify-between mt-1">
+        <span className="text-[8px] text-white/20">Wk 1</span>
+        <span className="text-[8px] text-white/20">Wk {teamPts.length}</span>
+      </div>
+    </div>
+  )
+}
+
+export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }: Props) {
+  const [data, setData] = useState<RankingsData | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [coachInsights, setCoachInsights] = useState<Record<number, CoachInsight>>({})
+  const [loadingCoach, setLoadingCoach] = useState<number | null>(null)
+  const [rankingView, setRankingView] = useState<RankingView>('composite')
+  const [timelineTeam, setTimelineTeam] = useState<number | null>(null)
+
+  const fetchRankings = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/rankings/league-v2?leagueId=${leagueId}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed' }))
+        throw new Error(err.error || 'Failed to load rankings')
+      }
+      const result = await res.json()
+      setData(result)
+      const userTeam = result.teams.find(
+        (t: TeamScore) => t.username?.toLowerCase() === username?.toLowerCase(),
+      )
+      if (userTeam) setTimelineTeam(userTeam.rosterId)
+      import("@/lib/telemetry/client").then(m => m.logLegacyToolUsage({ tool: "LeagueRankingsV2Panel", leagueId, action: "run" })).catch(() => {})
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [leagueId, username])
+
+  useEffect(() => { fetchRankings() }, [fetchRankings])
+
+  const requestCoach = async (team: TeamScore) => {
+    setLoadingCoach(team.rosterId)
+    try {
+      const res = await fetch('/api/rankings/league-v2', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team,
+          leagueContext: { isDynasty: data?.isDynasty, isSuperFlex: data?.isSuperFlex, week: data?.week, phase: data?.phase },
+        }),
+      })
+      const insight = await res.json()
+      setCoachInsights(prev => ({ ...prev, [team.rosterId]: insight }))
+    } catch {
+      setCoachInsights(prev => ({
+        ...prev,
+        [team.rosterId]: { bullets: ['AI Coach is temporarily unavailable.'], challenge: '', tone: 'motivational' },
+      }))
+    } finally {
+      setLoadingCoach(null)
+    }
+  }
+
+  const weeklyPtsMap = useMemo(() => {
+    const m = new Map<number, number[]>()
+    if (data?.weeklyPointsDistribution) {
+      for (const entry of data.weeklyPointsDistribution) m.set(entry.rosterId, entry.weeklyPoints)
+    }
+    return m
+  }, [data?.weeklyPointsDistribution])
+
+  const sortedTeams = useMemo(() => {
+    if (!data?.teams) return []
+    if (rankingView === 'power') return [...data.teams].sort((a, b) => b.powerScore - a.powerScore)
+    if (rankingView === 'dynasty') return [...data.teams].sort((a, b) => b.marketValueScore - a.marketValueScore)
+    return data.teams
+  }, [data?.teams, rankingView])
+
+  const userTeam = useMemo(() => {
+    return data?.teams.find(t => t.username?.toLowerCase() === username?.toLowerCase()) ?? null
+  }, [data?.teams, username])
+
+  const heroCards = useMemo(() => {
+    if (!data?.teams || data.teams.length === 0) return null
+    const champion = sortedTeams[0]
+    const riser = [...data.teams].sort((a, b) => {
+      const aDelta = a.rankDelta ?? 0
+      const bDelta = b.rankDelta ?? 0
+      return aDelta - bDelta
+    })[0]
+    const unluckiest = [...data.teams].sort((a, b) => a.luckDelta - b.luckDelta)[0]
+    const hotInsight = data.marketInsights?.[0] ?? null
+
+    return { champion, riser, unluckiest, hotInsight }
+  }, [data?.teams, data?.marketInsights, sortedTeams])
+
+  const serverAwards = data?.weeklyAwards ?? null
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3">
+        <div className="w-10 h-10 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+        <span className="text-sm text-white/40">Computing league rankings...</span>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-red-400 text-sm mb-3">{error}</p>
+        <button onClick={fetchRankings} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">Retry</button>
+      </div>
+    )
+  }
+
+  if (!data) return null
+
+  const coachInsight = userTeam ? coachInsights[userTeam.rosterId] ?? null : null
+  const coachLoading = userTeam ? loadingCoach === userTeam.rosterId : false
+
+  return (
+    <div className="max-w-[1280px] mx-auto space-y-8">
+
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 min-h-[64px]">
+        <div>
+          <h1 className="text-xl font-bold text-white tracking-tight">Rankings</h1>
+          <p className="text-xs text-white/40 mt-0.5">
+            {data.leagueName} &middot; {data.season}
+            {data.computedAt && <> &middot; Updated {timeAgo(data.computedAt)}</>}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex bg-black/40 border border-white/10 rounded-lg overflow-hidden">
+            <span className={cx(
+              'px-3 py-1.5 text-[11px] font-medium',
+              data.phase === 'offseason' ? 'bg-white/10 text-white' : 'text-white/30',
+            )}>Offseason</span>
+            <span className={cx(
+              'px-3 py-1.5 text-[11px] font-medium',
+              data.phase === 'post_draft' ? 'bg-white/10 text-white' : 'text-white/30',
+            )}>Post-Draft</span>
+            {data.phase === 'in_season' && (
+              <span className="px-3 py-1.5 text-[11px] font-medium bg-cyan-500/20 text-cyan-300">
+                Week {data.week}
+              </span>
+            )}
+            <span className={cx(
+              'px-3 py-1.5 text-[11px] font-medium',
+              data.phase === 'post_season' ? 'bg-white/10 text-white' : 'text-white/30',
+            )}>Postseason</span>
+          </div>
+
+          <div className="flex bg-black/40 border border-white/10 rounded-lg overflow-hidden">
+            {([
+              { id: 'power' as RankingView, label: 'Power' },
+              { id: 'dynasty' as RankingView, label: 'Dynasty Outlook' },
+              { id: 'composite' as RankingView, label: 'Composite' },
+            ]).map(t => (
+              <button
+                key={t.id}
+                onClick={() => setRankingView(t.id)}
+                className={cx(
+                  'px-3 py-1.5 text-[11px] font-medium transition-all',
+                  rankingView === t.id ? 'bg-gradient-to-b from-cyan-500/20 to-purple-500/20 text-white' : 'text-white/30 hover:text-white/60',
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className={cx(
+              'text-[10px] px-2 py-0.5 rounded-full font-semibold border',
+              'bg-cyan-500/15 border-cyan-500/30 text-cyan-300',
+            )}>
+              {data.isDynasty ? 'Dynasty' : 'Redraft'}
+            </span>
+            <span className={cx(
+              'text-[10px] px-2 py-0.5 rounded-full font-semibold border',
+              'bg-purple-500/15 border-purple-500/30 text-purple-300',
+            )}>
+              {data.isSuperFlex ? 'SF' : '1QB'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {heroCards && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <HeroCard
+            title="Champion Favorite"
+            subtitle={heroCards.champion.displayName || heroCards.champion.username || `Team ${heroCards.champion.rosterId}`}
+            detail={`Power Rank #1 · ${heroCards.champion.record.wins}-${heroCards.champion.record.losses} · Score ${heroCards.champion.composite}`}
+            accent="bg-gradient-to-br from-amber-900/30 to-amber-800/10 border-amber-500/20"
+            icon={BADGE_ICONS.trophy}
+          />
+          <HeroCard
+            title="Biggest Riser"
+            subtitle={heroCards.riser.displayName || heroCards.riser.username || `Team ${heroCards.riser.rosterId}`}
+            detail={heroCards.riser.rankDelta !== null && heroCards.riser.rankDelta < 0
+              ? `+${Math.abs(heroCards.riser.rankDelta)} this week`
+              : DRIVER_LABELS[heroCards.riser.explanation?.drivers?.[0]?.id ?? ''] || 'Climbing the ranks'}
+            accent="bg-gradient-to-br from-emerald-900/30 to-emerald-800/10 border-emerald-500/20"
+            icon="⬆️"
+          />
+          <HeroCard
+            title="Best Process, Worst Luck"
+            subtitle={heroCards.unluckiest.displayName || heroCards.unluckiest.username || `Team ${heroCards.unluckiest.rosterId}`}
+            detail={`Should be ${heroCards.unluckiest.shouldBeRecord?.wins ?? Math.round(heroCards.unluckiest.expectedWins)}-${heroCards.unluckiest.shouldBeRecord?.losses ?? (heroCards.unluckiest.record.wins + heroCards.unluckiest.record.losses - Math.round(heroCards.unluckiest.expectedWins))} · Luck: ${heroCards.unluckiest.luckDelta > 0 ? '+' : ''}${heroCards.unluckiest.luckDelta ?? (heroCards.unluckiest.record.wins - heroCards.unluckiest.expectedWins).toFixed(1)}`}
+            accent="bg-gradient-to-br from-purple-900/30 to-purple-800/10 border-purple-500/20"
+            icon={'\u{1F340}'}
+          />
+          <HeroCard
+            title="Trade Market"
+            subtitle={heroCards.hotInsight ? `${heroCards.hotInsight.position} demand ${heroCards.hotInsight.premiumPct > 0 ? '🔥' : '❄️'}` : 'Market Analysis'}
+            detail={heroCards.hotInsight?.label || 'Import trades to unlock market data'}
+            accent="bg-gradient-to-br from-purple-900/30 to-purple-800/10 border-purple-500/20"
+            icon="📊"
+            cta="Open Trade Hub"
+          />
+        </div>
+      )}
+
+      {data.ldiChips && data.ldiChips.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {data.ldiChips.map(chip => (
+            <span
+              key={chip.position}
+              className={cx(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border',
+                chip.type === 'hot'
+                  ? 'bg-red-500/10 border-red-500/25 text-red-300'
+                  : 'bg-cyan-500/10 border-cyan-500/25 text-cyan-300',
+              )}
+            >
+              <span>{chip.type === 'hot' ? '\uD83D\uDD25' : '\u2744\uFE0F'}</span>
+              <span>{chip.label}</span>
+              <span className="text-[10px] opacity-60">LDI {chip.ldi}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-8 space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">
+              {rankingView === 'power' ? 'Power Rankings' : rankingView === 'dynasty' ? 'Dynasty Outlook' : 'Composite Rankings'}
+            </span>
+            <span className="text-[10px] text-white/25">{sortedTeams.length} teams</span>
+          </div>
+
+          <div className="hidden md:grid grid-cols-[40px_1fr_60px_140px_60px_24px] gap-2 px-3 py-1.5 text-[9px] text-white/25 uppercase tracking-wider">
+            <span>Rank</span>
+            <span>Team</span>
+            <span className="text-center">Score</span>
+            <span className="text-center">WS / PS / MVS</span>
+            <span className="text-center">Trend</span>
+            <span />
+          </div>
+
+          {sortedTeams.map((team, idx) => {
+            const displayRank = rankingView === 'composite' ? team.rank : idx + 1
+            const displayScore = rankingView === 'power' ? team.powerScore : rankingView === 'dynasty' ? team.marketValueScore : team.composite
+            const isUser = team.username?.toLowerCase() === username?.toLowerCase()
+            const isExpanded = expandedId === team.rosterId
+            const weeklyPts = weeklyPtsMap.get(team.rosterId) || []
+            const recentPts = weeklyPts.slice(-6)
+            const explanation = team.explanation
+            const upDrivers = explanation?.drivers?.filter(d => d.polarity === 'UP').slice(0, 2) ?? []
+            const downDrivers = explanation?.drivers?.filter(d => d.polarity === 'DOWN').slice(0, 1) ?? []
+
+            return (
+              <div key={team.rosterId} className={cx(
+                'border rounded-xl overflow-hidden transition-all duration-200',
+                isUser ? 'border-cyan-500/30 bg-gradient-to-r from-cyan-950/30 to-purple-950/20' : 'border-white/[0.06] bg-white/[0.02]',
+                displayRank <= 3 && 'shadow-lg shadow-black/20',
+              )}>
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : team.rosterId)}
+                  className="w-full grid grid-cols-[40px_1fr_60px_140px_60px_24px] md:grid-cols-[40px_1fr_60px_140px_60px_24px] items-center gap-2 px-3 py-3 text-left hover:bg-white/[0.03] transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <div className={cx(
+                      'w-7 h-7 flex items-center justify-center rounded-lg font-bold text-xs',
+                      displayRank === 1 ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-black' :
+                      displayRank === 2 ? 'bg-gradient-to-br from-slate-300 to-slate-500 text-black' :
+                      displayRank === 3 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-black' :
+                      'bg-white/10 text-white/50',
+                    )}>
+                      {displayRank}
+                    </div>
+                    <RankMovement delta={team.rankDelta} />
+                  </div>
+
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-sm font-semibold text-white truncate">
+                          {team.displayName || team.username || `Team ${team.rosterId}`}
+                        </span>
+                        {isUser && <span className="text-[8px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded-full font-bold shrink-0">YOU</span>}
+                        {team.badges.slice(0, 3).map(b => (
+                          <span key={b.id} className="text-xs shrink-0" title={b.label}>{BADGE_ICONS[b.icon] || b.icon}</span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-white/35">{team.record.wins}-{team.record.losses}{team.record.ties > 0 ? `-${team.record.ties}` : ''}</span>
+                        <span className={cx('text-[10px] font-medium', team.streak > 0 ? 'text-emerald-400' : team.streak < 0 ? 'text-red-400' : 'text-white/20')}>
+                          {team.streak > 0 ? `${team.streak}W` : team.streak < 0 ? `${Math.abs(team.streak)}L` : ''}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center">
+                    <div className={cx(
+                      'text-lg font-bold tabular-nums',
+                      displayScore >= 75 ? 'text-emerald-400' :
+                      displayScore >= 50 ? 'text-cyan-400' :
+                      displayScore >= 30 ? 'text-amber-400' : 'text-red-400',
+                    )}>
+                      {displayScore}
+                    </div>
+                  </div>
+
+                  <div className="hidden md:flex flex-col gap-1 px-2">
+                    <ScoreBar label="WS" value={team.winScore} color="bg-emerald-500" />
+                    <ScoreBar label="PS" value={team.powerScore} color="bg-cyan-500" />
+                    <ScoreBar label="MVS" value={team.marketValueScore} color="bg-purple-500" />
+                  </div>
+
+                  <div className="hidden md:flex justify-center">
+                    <MiniSparkline points={recentPts} />
+                  </div>
+
+                  <span className={cx(
+                    'text-white/20 text-xs transition-transform inline-block text-center',
+                    isExpanded ? 'rotate-90' : '',
+                  )}>&#x25B6;</span>
+                </button>
+
+                {isExpanded && (
+                  <div className="px-4 pb-4 border-t border-white/[0.05] pt-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Rank Explanation</span>
+                      {explanation && <ConfidenceBadge rating={explanation.confidence.rating} score={explanation.confidence.score} />}
+                    </div>
+
+                    <TierLabel team={team as any} />
+
+                    <div className="grid grid-cols-5 gap-1.5">
+                      <ScoreBar label="WIN" value={team.winScore} color="bg-emerald-500" />
+                      <ScoreBar label="PWR" value={team.powerScore} color="bg-cyan-500" />
+                      <ScoreBar label="LCK" value={team.luckScore} color="bg-amber-500" />
+                      <ScoreBar label="MKT" value={team.marketValueScore} color="bg-purple-500" />
+                      <ScoreBar label="MGR" value={team.managerSkillScore} color="bg-pink-500" />
+                    </div>
+
+                    {explanation && explanation.valid && explanation.drivers.length > 0 ? (
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] text-white/30 uppercase tracking-wider">Key Drivers</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                          {explanation.drivers.slice(0, 4).map(d => (
+                            <DriverChip key={d.id} driver={d} />
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-white/[0.03] rounded-lg p-3 text-center">
+                        <span className="text-[10px] text-white/30">Not enough data to explain movement this week.</span>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <WhatChangedPanel team={team as any} />
+                      <WinWindowPanel team={team as any} />
+                    </div>
+
+                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-semibold text-white/50 uppercase tracking-wider flex items-center gap-1.5">
+                          {'\u{1F340}'} Luck Meter
+                        </span>
+                        <span className={cx(
+                          'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                          team.luckScore >= 65 ? 'bg-emerald-500/15 text-emerald-400' :
+                          team.luckScore <= 35 ? 'bg-red-500/15 text-red-400' :
+                          'bg-amber-500/15 text-amber-400',
+                        )}>
+                          {team.luckScore >= 65 ? 'Running Hot' : team.luckScore <= 35 ? 'Unlucky' : 'Neutral'}
+                        </span>
+                      </div>
+
+                      <div className="relative h-4 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={cx(
+                            'absolute top-0 left-0 h-full rounded-full transition-all duration-700',
+                            team.luckScore >= 65 ? 'bg-gradient-to-r from-emerald-600 to-emerald-400' :
+                            team.luckScore <= 35 ? 'bg-gradient-to-r from-red-600 to-red-400' :
+                            'bg-gradient-to-r from-amber-600 to-amber-400',
+                          )}
+                          style={{ width: `${team.luckScore}%` }}
+                        />
+                        <div className="absolute top-0 left-1/2 w-px h-full bg-white/20" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-[9px] font-bold text-white/80 drop-shadow-sm">{team.luckScore}</span>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-[9px] text-white/25">
+                        <span>Unlucky</span>
+                        <span>Lucky</span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-white/[0.04] rounded-lg p-2.5 text-center">
+                          <div className="text-[9px] text-white/30 mb-0.5">Actual Record</div>
+                          <div className="text-sm font-bold text-white">{team.record.wins}–{team.record.losses}</div>
+                        </div>
+                        <div className="bg-white/[0.04] rounded-lg p-2.5 text-center">
+                          <div className="text-[9px] text-white/30 mb-0.5">Should-Be Record</div>
+                          <div className={cx(
+                            'text-sm font-bold',
+                            team.luckDelta <= -1.5 ? 'text-emerald-400' :
+                            team.luckDelta >= 1.5 ? 'text-amber-400' : 'text-white',
+                          )}>
+                            {team.shouldBeRecord.wins}–{team.shouldBeRecord.losses}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-center gap-2 text-[10px]">
+                        <span className="text-white/40">Luck:</span>
+                        <span className={cx(
+                          'font-bold',
+                          team.luckDelta <= -1 ? 'text-red-400' :
+                          team.luckDelta >= 1 ? 'text-emerald-400' : 'text-white/60',
+                        )}>
+                          {team.luckDelta > 0 ? '+' : ''}{team.luckDelta} wins
+                        </span>
+                      </div>
+
+                      {team.bounceBackIndex > 0 && team.luckDelta < -0.5 && (
+                        <div className="bg-white/[0.03] rounded-lg p-2 flex items-center gap-2">
+                          <span className="text-[10px]">{'\u{1F680}'}</span>
+                          <div className="flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] text-white/30 uppercase tracking-wider">Bounce-Back Index</span>
+                              <span className={cx(
+                                'text-[10px] font-bold',
+                                team.bounceBackIndex >= 70 ? 'text-emerald-400' :
+                                team.bounceBackIndex >= 45 ? 'text-amber-400' : 'text-white/50',
+                              )}>
+                                {team.bounceBackIndex}/100
+                              </span>
+                            </div>
+                            <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden mt-1">
+                              <div
+                                className={cx(
+                                  'absolute top-0 left-0 h-full rounded-full transition-all duration-500',
+                                  team.bounceBackIndex >= 70 ? 'bg-emerald-500' :
+                                  team.bounceBackIndex >= 45 ? 'bg-amber-500' : 'bg-white/20',
+                                )}
+                                style={{ width: `${team.bounceBackIndex}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {team.motivationalFrame && (
+                      <div className={cx(
+                        'rounded-xl p-3 border',
+                        team.motivationalFrame.tone === 'encouraging' ? 'bg-emerald-500/5 border-emerald-500/15' :
+                        team.motivationalFrame.tone === 'cautionary' ? 'bg-amber-500/5 border-amber-500/15' :
+                        team.motivationalFrame.tone === 'celebratory' ? 'bg-cyan-500/5 border-cyan-500/15' :
+                        'bg-white/[0.02] border-white/[0.06]',
+                      )}>
+                        <div className="flex items-start gap-2">
+                          <span className="text-sm mt-0.5">
+                            {team.motivationalFrame.tone === 'encouraging' ? '\u{1F4AA}' :
+                             team.motivationalFrame.tone === 'cautionary' ? '\u{26A0}\uFE0F' :
+                             team.motivationalFrame.tone === 'celebratory' ? '\u{1F389}' : '\u{1F4CA}'}
+                          </span>
+                          <div className="flex-1 space-y-1.5">
+                            <div className="text-[11px] font-semibold text-white leading-tight">
+                              {team.motivationalFrame.headline}
+                            </div>
+                            <div className="text-[10px] text-white/50 leading-relaxed">
+                              {team.motivationalFrame.subtext}
+                            </div>
+                            <div className={cx(
+                              'text-[10px] font-medium leading-relaxed',
+                              team.motivationalFrame.tone === 'encouraging' ? 'text-emerald-300/70' :
+                              team.motivationalFrame.tone === 'cautionary' ? 'text-amber-300/70' :
+                              team.motivationalFrame.tone === 'celebratory' ? 'text-cyan-300/70' :
+                              'text-white/40',
+                            )}>
+                              {'\u{2192}'} {team.motivationalFrame.suggestedAction}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-4 gap-2 text-[10px]">
+                      {['QB', 'RB', 'WR', 'TE'].map(pos => {
+                        const pv = team.positionValues?.[pos]
+                        return (
+                          <div key={pos} className="bg-white/[0.03] rounded-lg p-2 text-center">
+                            <span className="text-white/30 text-[9px]">{pos}</span>
+                            <div className="text-white font-semibold text-[11px]">
+                              {pv ? (pv.total > 999 ? `${(pv.total / 1000).toFixed(1)}k` : pv.total) : '—'}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+
+                    {team.badges.length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {team.badges.map(b => (
+                          <span key={b.id} className={cx(
+                            'inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full border',
+                            b.tier === 'gold' ? 'bg-amber-500/10 border-amber-500/25 text-amber-300' :
+                            b.tier === 'silver' ? 'bg-slate-400/10 border-slate-400/25 text-slate-300' :
+                            'bg-orange-400/10 border-orange-400/25 text-orange-300',
+                          )}>
+                            {BADGE_ICONS[b.icon] || ''} {b.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 text-[10px]">
+                      <div className="bg-white/[0.03] rounded-lg p-2.5">
+                        <div className="text-white/35">Starter Value</div>
+                        <div className="text-white font-semibold">{team.starterValue.toLocaleString()}</div>
+                      </div>
+                      <div className="bg-white/[0.03] rounded-lg p-2.5">
+                        <div className="text-white/35">Bench Depth</div>
+                        <div className="text-white font-semibold">{team.benchValue.toLocaleString()}</div>
+                      </div>
+                    </div>
+
+                    {explanation && explanation.valid && explanation.nextActions.length > 0 && (
+                      <div className="space-y-1.5">
+                        <span className="text-[9px] text-white/30 uppercase tracking-wider">Next Steps</span>
+                        <div className="grid grid-cols-1 gap-1.5">
+                          {explanation.nextActions.map(a => (
+                            <NextActionButton key={a.id} action={a} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="lg:col-span-4 space-y-4">
+          <div className="bg-gradient-to-br from-cyan-950/40 to-purple-950/30 border border-cyan-500/15 rounded-xl p-5 sticky top-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-white">Your Coach</h3>
+              {userTeam?.explanation ? (
+                <ConfidenceBadge rating={userTeam.explanation.confidence.rating} score={userTeam.explanation.confidence.score} />
+              ) : (
+                <span className={cx(
+                  'text-[9px] px-2 py-0.5 rounded-full font-semibold border',
+                  'bg-white/10 border-white/20 text-white/50',
+                )}>
+                  LEARNING
+                </span>
+              )}
+            </div>
+
+            {!userTeam && (
+              <p className="text-xs text-white/40">Sign in and import your league to get personalized coaching insights.</p>
+            )}
+
+            {userTeam && !coachInsight && !coachLoading && (
+              <div className="space-y-3">
+                <p className="text-xs text-white/40">Get personalized coaching based on your team's performance, strengths, and opportunities.</p>
+                <button
+                  onClick={() => requestCoach(userTeam)}
+                  className="w-full py-2.5 text-xs font-semibold bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white rounded-lg transition-all"
+                >
+                  Get My Coaching Insight
+                </button>
+              </div>
+            )}
+
+            {coachLoading && (
+              <div className="flex items-center gap-3 py-4">
+                <div className="w-5 h-5 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
+                <span className="text-xs text-white/40">Analyzing your team...</span>
+              </div>
+            )}
+
+            {coachInsight && (
+              <div className="space-y-3">
+                <div>
+                  <span className="text-[10px] text-emerald-400/70 uppercase tracking-wider font-semibold">What you're doing well</span>
+                  {coachInsight.bullets.slice(0, 1).map((b, i) => (
+                    <p key={i} className="text-xs text-white/70 mt-1 leading-relaxed">{b}</p>
+                  ))}
+                </div>
+                <div>
+                  <span className="text-[10px] text-amber-400/70 uppercase tracking-wider font-semibold">What's holding you back</span>
+                  {coachInsight.bullets.slice(1, 2).map((b, i) => (
+                    <p key={i} className="text-xs text-white/70 mt-1 leading-relaxed">{b}</p>
+                  ))}
+                </div>
+                <div>
+                  <span className="text-[10px] text-cyan-400/70 uppercase tracking-wider font-semibold">1 move to climb</span>
+                  {coachInsight.bullets.slice(2, 3).map((b, i) => (
+                    <p key={i} className="text-xs text-white/70 mt-1 leading-relaxed">{b}</p>
+                  ))}
+                </div>
+                {coachInsight.challenge && (
+                  <div className="bg-amber-500/10 border border-amber-500/15 rounded-lg p-2.5 text-[11px] text-amber-200/80 leading-relaxed">
+                    {coachInsight.challenge}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {userTeam && (
+              <button className="w-full mt-4 py-2 text-[11px] font-medium border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 rounded-lg transition-all">
+                Generate 3–5 Year Plan
+              </button>
+            )}
+          </div>
+
+          {data.marketInsights && data.marketInsights.length > 0 && (
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4">
+              <h4 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-3">Market Insights</h4>
+              <div className="space-y-2">
+                {data.marketInsights.slice(0, 4).map(ins => (
+                  <div key={ins.position} className="flex items-center gap-2 text-[11px]">
+                    <span className={cx(
+                      'w-2 h-2 rounded-full shrink-0',
+                      ins.premiumPct > 0 ? 'bg-red-400' : 'bg-emerald-400',
+                    )} />
+                    <span className="text-white/60 flex-1">{ins.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {serverAwards && serverAwards.awards.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+            <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Week {serverAwards.week} Awards</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {serverAwards.awards.map((award) => {
+                const colorMap: Record<string, string> = {
+                  top_score: 'text-emerald-400',
+                  boss_win: 'text-emerald-400',
+                  high_score_margin: 'text-cyan-400',
+                  biggest_upset: 'text-amber-400',
+                  unluckiest: 'text-purple-400',
+                  luckiest: 'text-yellow-400',
+                  bounceback_alert: 'text-orange-400',
+                  points_against_victim: 'text-red-400',
+                }
+                return (
+                  <div key={award.id} className="bg-white/[0.03] rounded-lg p-3">
+                    <div className="text-[10px] text-white/30 mb-1">{award.title}</div>
+                    <div className={`text-sm font-bold ${colorMap[award.id] || 'text-white'}`}>{award.subtitle.split(' ')[0]}</div>
+                    <div className="text-[10px] text-white/40">{award.subtitle}</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider">Rank History</h3>
+              <select
+                value={timelineTeam ?? ''}
+                onChange={e => setTimelineTeam(e.target.value ? Number(e.target.value) : null)}
+                className="text-[10px] bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white/60 appearance-none"
+              >
+                <option value="">Select team</option>
+                {data.teams.map(t => (
+                  <option key={t.rosterId} value={t.rosterId}>
+                    {t.displayName || t.username || `Team ${t.rosterId}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <RankHistoryChart
+              teams={data.teams}
+              weeklyPtsMap={weeklyPtsMap}
+              selectedTeam={timelineTeam}
+              onSelectTeam={setTimelineTeam}
+            />
+          </div>
+        </div>
+      )}
+
+      {data.tradeHubShortcuts && data.tradeHubShortcuts.length > 0 && (
+        <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
+          <h3 className="text-xs font-semibold text-white/50 uppercase tracking-wider mb-4">Trade Leverage</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {data.tradeHubShortcuts.slice(0, 3).map((sc: TradeHubShortcut) => (
+              <div key={sc.rosterId} className="bg-white/[0.03] rounded-lg p-4 space-y-2">
+                <div className="text-sm font-bold text-cyan-400">{sc.headline}</div>
+                <div className="text-[11px] text-white/50 leading-relaxed">{sc.body}</div>
+                <div className="flex gap-2 flex-wrap pt-1">
+                  {sc.ctas.map((cta) => (
+                    <a
+                      key={cta.id}
+                      href={cta.href}
+                      className="text-[10px] px-2.5 py-1 rounded-full bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 transition-colors"
+                    >
+                      {cta.label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <DemandHeatmap leagueId={leagueId} week={data?.week ?? 0} />
+    </div>
+  )
+}
