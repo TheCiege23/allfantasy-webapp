@@ -293,7 +293,7 @@ function HomeContent() {
 
             {/* CTA Form */}
             <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="orb-border rounded-2xl glow-box-strong backdrop-blur-xl p-2">
+              <div className="rounded-2xl glow-box-strong backdrop-blur-xl p-2" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
                   <input
                     type="email"
@@ -335,8 +335,11 @@ function HomeContent() {
             {/* Secondary CTA */}
             <Link 
               href="/af-legacy" 
-              className="orb-border-accent rounded-xl glow-box inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 text-sm sm:text-base font-semibold w-full sm:w-auto min-h-[48px]
-                         hover:scale-[1.02]
+              className="rounded-xl glow-box inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 text-sm sm:text-base font-semibold w-full sm:w-auto min-h-[48px]
+                         bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20
+                         border border-cyan-400/40
+                         hover:from-cyan-500/30 hover:via-purple-500/30 hover:to-cyan-500/30
+                         hover:border-cyan-400/60
                          active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition-all duration-300 group"
               style={{ color: 'var(--text)' }}
             >
