@@ -6,6 +6,7 @@ import {
   getDemandTrends,
   getLatestDemandSnapshot,
 } from '@/lib/rankings-engine/ldi-persistence'
+import { hardenLdiResponse } from "@/lib/ldi/harden-ldi"
 
 export const GET = withApiUsage({ endpoint: "/api/leagues/demand-index", tool: "LeaguesDemandIndex" })(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams
@@ -45,7 +46,34 @@ export const GET = withApiUsage({ endpoint: "/api/leagues/demand-index", tool: "
       basePayload.perManager = perManager
     }
 
-    return NextResponse.json(basePayload)
+    const now = new Date()
+    const month = now.getMonth()
+    const isOffseason = month >= 2 && month <= 8
+
+    const hardened = hardenLdiResponse({
+      raw: basePayload,
+      leagueId,
+      leagueName: basePayload?.leagueName,
+      season: basePayload?.season,
+      week: basePayload?.week ?? null,
+      isOffseason,
+    })
+
+    return NextResponse.json({
+      ...hardened,
+      ...basePayload,
+      fallbackMode: hardened.fallbackMode,
+      ldiByPos: hardened.ldiByPos,
+      positionDemandNorm: hardened.positionDemandNorm,
+      pickDemand: basePayload?.pickDemand ?? hardened.pickDemand,
+      rankingSource: hardened.rankingSource,
+      rankingSourceNote: hardened.rankingSourceNote,
+      warnings: hardened.warnings,
+      isOffseason: hardened.isOffseason,
+      tradesAnalyzed: hardened.tradesAnalyzed,
+      sampleSize: hardened.sampleSize,
+      partnerCount: hardened.partnerCount,
+    })
   } catch (err: any) {
     console.error('[Demand Index API]', err?.message)
     return NextResponse.json({ error: 'Failed to compute demand index' }, { status: 500 })

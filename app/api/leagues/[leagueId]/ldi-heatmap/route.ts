@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { buildLDIHeatmap } from "@/lib/rankings-engine/ldi-heatmap"
 import { withApiUsage } from "@/lib/telemetry/usage"
+import { hardenLdiResponse } from "@/lib/ldi/harden-ldi"
 
 export const GET = withApiUsage({
   endpoint: "/api/leagues/[leagueId]/ldi-heatmap",
@@ -16,7 +17,32 @@ export const GET = withApiUsage({
 
   try {
     const data = await buildLDIHeatmap({ leagueId, week })
-    return NextResponse.json(data)
+
+    const now = new Date()
+    const month = now.getMonth()
+    const isOffseason = month >= 2 && month <= 8
+
+    const hardened = hardenLdiResponse({
+      raw: data,
+      leagueId,
+      leagueName: (data as any)?.leagueName,
+      season: (data as any)?.season ? Number((data as any).season) : undefined,
+      week,
+      isOffseason,
+    })
+
+    return NextResponse.json({
+      ...hardened,
+      ...data,
+      fallbackMode: hardened.fallbackMode,
+      ldiByPos: hardened.ldiByPos,
+      positionDemandNorm: hardened.positionDemandNorm,
+      rankingSource: hardened.rankingSource,
+      rankingSourceNote: hardened.rankingSourceNote,
+      warnings: hardened.warnings,
+      isOffseason: hardened.isOffseason,
+      tradesAnalyzed: hardened.tradesAnalyzed,
+    })
   } catch (err: any) {
     console.error("[LDI Heatmap API]", err?.message)
     return NextResponse.json({ error: "Failed to compute heatmap" }, { status: 500 })

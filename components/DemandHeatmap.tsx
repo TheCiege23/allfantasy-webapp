@@ -84,6 +84,7 @@ export default function DemandHeatmap({ leagueId, week, compact = false }: Deman
   const [data, setData] = useState<HeatmapData | null>(null)
   const [activePos, setActivePos] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [ldiFallback, setLdiFallback] = useState<{ fallbackMode: boolean; rankingSourceNote: string } | null>(null)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -91,6 +92,11 @@ export default function DemandHeatmap({ leagueId, week, compact = false }: Deman
       const res = await fetch(`/api/leagues/${leagueId}/ldi-heatmap?week=${week}`)
       if (res.ok) {
         const json = await res.json()
+        if (json.fallbackMode) {
+          setLdiFallback({ fallbackMode: true, rankingSourceNote: json.rankingSourceNote || '' })
+        } else {
+          setLdiFallback(null)
+        }
         setData(json)
       }
     } catch (e) {
@@ -122,9 +128,18 @@ export default function DemandHeatmap({ leagueId, week, compact = false }: Deman
     return (
       <div className="bg-gray-900 rounded-xl border border-gray-800 p-6">
         <h3 className="text-lg font-semibold text-white mb-2">League Demand Heatmap</h3>
-        <p className="text-gray-400 text-sm">
-          Not enough trade data yet. Import your league to see what positions your league overpays for.
-        </p>
+        {ldiFallback?.fallbackMode ? (
+          <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 text-xs text-yellow-200">
+            <div className="font-semibold">Market Baseline Mode</div>
+            <div className="mt-1 text-yellow-300/80">
+              {ldiFallback.rankingSourceNote || "No trade sample yet — using baseline demand until trades occur."}
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-400 text-sm">
+            Not enough trade data yet. Import your league to see what positions your league overpays for.
+          </p>
+        )}
       </div>
     )
   }
