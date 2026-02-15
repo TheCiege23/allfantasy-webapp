@@ -39,6 +39,11 @@ Key features include:
 -   **Model Drift Dashboard**: Monitors model health using various event data, tracking calibration, drift, ranking quality, and narrative integrity.
 -   **Data & Integrations**: Sports Data Router, Hybrid Valuation System, VORP Engine, and a Trade Engine Scoring Architecture.
 -   **AI Confidence & Learning**: Three-tier AI Confidence System, Comprehensive Trade Learning System, AI Decision Guardian, Accept Probability Calibration, and Auto-Recalibration.
+-   **Acceptance Probability Model**: Logistic regression model (`lib/acceptance-model.ts`) with 6 features (fairness, LDI alignment, needs fit, archetype match, deal shape, volatility delta), liquidity-adjusted probability, and customizable weights. Training data stored in `TradeOutcomeTraining` model.
+-   **League Liquidity Model**: Dynamic trade activity scoring (`lib/liquidity-model.ts`) from trades/30d, manager participation, and asset complexity. Five tiers (FROZEN→VERY_HIGH) with acceptance modifiers.
+-   **Monte Carlo Simulation Engine**: Matchup simulation (`lib/monte-carlo.ts`) with Box-Muller normal distribution, season simulation (expected wins, playoff/bye probability), bracket playoff simulation, and championship delta computation (before/after trade odds).
+-   **Portfolio Simulator**: 5-year dynasty simulation (`lib/portfolio-simulator.ts`) with position-specific age curves (QB/RB/WR/TE), devy graduation modeling, pick realization, injury volatility, and year1/year3/year5 projections with asset breakdown.
+-   **Game Theory Counter Builder**: Mathematically optimized counter offers (`lib/counter-builder.ts`) maximizing `acceptProb * champDelta - valueLoss * riskWeight`. Auto-builds sweetener candidates from bench, picks, and FAAB.
 -   **Real-time Data**: Live Scores System, Background Sync System, Live News Crawl, and Weekly Matchup DB Cache.
 -   **Structured AI Interactions**: Structured Trade Evaluation Engine, League Decision Context System, GPT Fail-Closed Enforcement, and Negotiation GPT Contract.
 -   **Weekly Awards Engine**: Server-side computation of 8 deterministic weekly awards from cached matchup data.

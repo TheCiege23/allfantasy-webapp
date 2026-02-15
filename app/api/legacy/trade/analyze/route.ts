@@ -17,6 +17,11 @@ import { lookupByNames, buildPlayerContextForAI, enrichWithValuation, type Unifi
 import { computeTradeDrivers, type TradeDriverData } from '@/lib/trade-engine/trade-engine'
 import type { Asset } from '@/lib/trade-engine/types'
 import { computeDraftProjectionScore, devyAcceptanceAdjustment, applyTeamDirectionAdjustment } from '@/lib/devy-model'
+import { extractAcceptanceFeatures, acceptanceProbabilityWithLiquidity } from '@/lib/acceptance-model'
+import { computeLiquidity, liquidityTier, type LiquidityMetrics } from '@/lib/liquidity-model'
+import { simulateMatchup, computeChampionshipDelta, type TeamProjection } from '@/lib/monte-carlo'
+import { simulatePortfolio, type PortfolioAsset } from '@/lib/portfolio-simulator'
+import { generateOptimalCounters, buildAvailableSweeteners, type TradeShape } from '@/lib/counter-builder'
 import { prisma } from '@/lib/prisma'
 import { getCalibratedWeights } from '@/lib/trade-engine/accept-calibration'
 import { logTradeOfferEvent } from '@/lib/trade-engine/trade-event-logger'
@@ -2355,6 +2360,128 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
 
     const scarcityMultiplier = getScarcityMultiplier(numTeams)
 
+    let analyticsEnhanced: any = null
+    try {
+      const liquidityMetrics: LiquidityMetrics = {
+        tradesLast30: 0,
+        activeManagers: 0,
+        totalManagers: numTeams ?? 12,
+        avgAssetsPerTrade: 3,
+      }
+
+      try {
+        if (leagueId) {
+          const thirtyDaysAgo = new Date()
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+          const recentTrades = await prisma.leagueTrade.findMany({
+            where: {
+              history: { sleeperLeagueId: leagueId },
+              executedAt: { gte: thirtyDaysAgo },
+            },
+            select: { addedPlayerIds: true, droppedPlayerIds: true, rosterIds: true },
+          })
+          liquidityMetrics.tradesLast30 = recentTrades.length
+          const uniqueManagers = new Set(recentTrades.flatMap((t: any) => t.rosterIds || []))
+          liquidityMetrics.activeManagers = uniqueManagers.size
+          if (recentTrades.length > 0) {
+            const totalAssets = recentTrades.reduce((sum: number, t: any) => {
+              return sum + ((t.addedPlayerIds as string[])?.length ?? 0) + ((t.droppedPlayerIds as string[])?.length ?? 0)
+            }, 0)
+            liquidityMetrics.avgAssetsPerTrade = totalAssets / recentTrades.length
+          }
+        }
+      } catch {}
+
+      const liquidityScore = computeLiquidity(liquidityMetrics)
+      const liqTier = liquidityTier(liquidityScore)
+
+      let acceptModel = null
+      if (tradeDriverData) {
+        const features = extractAcceptanceFeatures(tradeDriverData as any)
+        const result = acceptanceProbabilityWithLiquidity(features, liquidityScore)
+        acceptModel = {
+          probability: result.probability,
+          liquidityAdjusted: result.liquidityAdjusted,
+          counterRequired: result.counterRequired,
+        }
+      }
+
+      let championshipDelta = null
+      if (tradeDriverData) {
+        const meanA = (tradeDriverData.lineupImpactScore ?? 50) * 2
+        const stdA = 20
+        const meanDelta = (tradeDriverData.lineupDelta as any)?.deltaYou ?? 0
+
+        const teams: TeamProjection[] = Array.from({ length: numTeams ?? 12 }, (_, i) => ({
+          mean: i === 0 ? meanA : 100,
+          stdDev: stdA,
+        }))
+
+        championshipDelta = computeChampionshipDelta(teams, 0, meanDelta, 0, 3000)
+      }
+
+      let portfolioProjection = null
+      try {
+        const rosterAssets: PortfolioAsset[] = []
+        if (finalRosterA) {
+          for (const p of finalRosterA) {
+            rosterAssets.push({
+              type: 'NFL',
+              name: (p as any).name,
+              position: (p as any).pos || 'WR',
+              age: (p as any).age ?? 24,
+              value: (p as any).value ?? 50,
+            })
+          }
+        }
+        if (rosterAssets.length > 0) {
+          portfolioProjection = simulatePortfolio(rosterAssets)
+        }
+      } catch {}
+
+      let optimizedCounters = null
+      if (tradeDriverData && acceptModel && acceptModel.probability < 0.6) {
+        try {
+          const benchPlayers = (finalRosterA || [])
+            .filter((p: any) => p.slot === 'Bench')
+            .map((p: any) => ({ name: p.name, value: p.value ?? 30, position: p.pos || 'WR' }))
+            .slice(0, 5)
+
+          const sweeteners = buildAvailableSweeteners(benchPlayers, [], 0)
+          if (sweeteners.length > 0) {
+            const features = extractAcceptanceFeatures(tradeDriverData as any)
+            const tradeShape: TradeShape = {
+              features,
+              sideAValue: tradeDriverData.totalScore ?? 50,
+              sideBValue: 50,
+            }
+            optimizedCounters = generateOptimalCounters(tradeShape, sweeteners, {
+              tradeTotal: Math.max(1, (tradeDriverData.totalScore ?? 100)),
+              champDeltaEstimator: championshipDelta
+                ? (v: number) => championshipDelta!.delta * (v / Math.max(1, tradeDriverData.totalScore ?? 100))
+                : undefined,
+            })
+          }
+        } catch {}
+      }
+
+      analyticsEnhanced = {
+        liquidity: { score: liquidityScore, tier: liqTier },
+        acceptModel,
+        championshipDelta,
+        portfolioProjection: portfolioProjection ? {
+          year1: portfolioProjection.year1,
+          year3: portfolioProjection.year3,
+          year5: portfolioProjection.year5,
+          volatilityBand: portfolioProjection.volatilityBand,
+          assetBreakdown: portfolioProjection.assetBreakdown,
+        } : null,
+        optimizedCounters,
+      }
+    } catch (analyticsErr) {
+      console.error('Analytics engines error (non-fatal):', analyticsErr)
+    }
+
     logTradeOfferEvent({
       leagueId: leagueId || null,
       senderUserId: canonicalA || null,
@@ -2407,6 +2534,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         riskTags: crResult.riskTags,
         explanation: crResult.explanation,
       },
+      ...(analyticsEnhanced ? { analytics: analyticsEnhanced } : {}),
       validated: true,
       rate_limit: { remaining: rlPair.remaining, retryAfterSec: rlPair.retryAfterSec },
     })

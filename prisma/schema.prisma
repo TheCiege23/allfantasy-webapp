@@ -1849,3 +1849,23 @@ model RookieClass {
   teDepth     Float
   updatedAt   DateTime @updatedAt
 }
+
+model TradeOutcomeTraining {
+  id               String   @id @default(cuid())
+  leagueId         String
+  proposerRosterId String
+  partnerRosterId  String
+
+  fairnessScore    Float
+  ldiAlignment     Float
+  needsFitScore    Float
+  archetypeMatch   Float
+  dealShapeScore   Float
+  volatilityDelta  Float
+
+  wasAccepted      Boolean
+  createdAt        DateTime @default(now())
+
+  @@index([leagueId, createdAt])
+  @@index([wasAccepted])
+}
