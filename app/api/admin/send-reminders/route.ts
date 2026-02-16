@@ -93,8 +93,18 @@ export const POST = withApiUsage({ endpoint: "/api/admin/send-reminders", tool: 
     let sent = 0;
     let failed = 0;
     const errors: string[] = [];
+    let consecutiveFailures = 0;
 
-    for (const signup of toSend) {
+    for (let i = 0; i < toSend.length; i++) {
+      const signup = toSend[i];
+
+      if (consecutiveFailures >= 5) {
+        const remaining = toSend.length - i;
+        errors.push(`Stopped early: ${consecutiveFailures} consecutive failures (likely rate limited). ${remaining} emails skipped.`);
+        failed += remaining;
+        break;
+      }
+
       try {
         const { subject, html, text } = getConfirmationReminderEmail({
           email: signup.email,
@@ -129,16 +139,20 @@ export const POST = withApiUsage({ endpoint: "/api/admin/send-reminders", tool: 
         });
 
         sent++;
-        console.log(`[REMINDER] Sent to ${signup.email}`);
-
-        if (sent % 10 === 0) {
-          await new Promise(r => setTimeout(r, 1000));
-        }
+        consecutiveFailures = 0;
+        console.log(`[REMINDER] Sent to ${signup.email} (${sent}/${toSend.length})`);
       } catch (err: any) {
         failed++;
+        consecutiveFailures++;
         const msg = `${signup.email}: ${err?.message || "unknown error"}`;
         errors.push(msg);
         console.error(`[REMINDER] Failed:`, msg);
+      }
+
+      await new Promise(r => setTimeout(r, 500));
+
+      if ((i + 1) % 5 === 0) {
+        await new Promise(r => setTimeout(r, 1500));
       }
     }
 

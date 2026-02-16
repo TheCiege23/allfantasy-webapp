@@ -167,7 +167,7 @@ export default function AdminSignups() {
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderStats, setReminderStats] = useState<{ totalUnconfirmed: number; alreadyReminded: number; eligible: number } | null>(null);
-  const [reminderResult, setReminderResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [reminderResult, setReminderResult] = useState<{ ok: boolean; message: string; errors?: string[] } | null>(null);
 
   const loadReminderStats = async () => {
     setReminderLoading(true);
@@ -189,11 +189,16 @@ export default function AdminSignups() {
       const res = await fetch("/api/admin/send-reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ limit: 50 }),
+        body: JSON.stringify({ limit: 20 }),
       });
       const data = await res.json();
       if (data.ok) {
-        setReminderResult({ ok: true, message: `Sent ${data.sent} reminders${data.failed ? `, ${data.failed} failed` : ''}${data.remaining ? `. ${data.remaining} remaining.` : '.'}` });
+        const hasFailures = data.failed > 0;
+        setReminderResult({
+          ok: !hasFailures,
+          message: `Sent ${data.sent} reminders${data.failed ? `, ${data.failed} failed` : ''}${data.remaining ? `. ${data.remaining} remaining.` : '.'}`,
+          errors: data.errors || undefined,
+        });
         loadReminderStats();
       } else {
         setReminderResult({ ok: false, message: data.error || "Failed to send" });
@@ -550,7 +555,7 @@ export default function AdminSignups() {
                   {reminderSending ? (
                     <><RefreshCw className="h-4 w-4 animate-spin" /> Sending...</>
                   ) : (
-                    <><Send className="h-4 w-4" /> Send Reminders ({Math.min(reminderStats.eligible, 50)} at a time)</>
+                    <><Send className="h-4 w-4" /> Send Reminders ({Math.min(reminderStats.eligible, 20)} at a time)</>
                   )}
                 </button>
               ) : (
@@ -572,8 +577,18 @@ export default function AdminSignups() {
           )}
 
           {reminderResult && (
-            <div className={`mt-3 rounded-xl border p-3 text-xs ${reminderResult.ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-red-500/30 bg-red-500/10 text-red-400'}`}>
-              {reminderResult.message}
+            <div className={`mt-3 rounded-xl border p-3 text-xs ${reminderResult.ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/30 bg-amber-500/10 text-amber-400'}`}>
+              <p>{reminderResult.message}</p>
+              {reminderResult.errors && reminderResult.errors.length > 0 && (
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-[11px] opacity-70 hover:opacity-100">Show error details ({reminderResult.errors.length})</summary>
+                  <ul className="mt-1 space-y-0.5 text-[10px] opacity-80 max-h-32 overflow-y-auto">
+                    {reminderResult.errors.map((e, i) => (
+                      <li key={i} className="break-all">{e}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
           )}
         </div>
