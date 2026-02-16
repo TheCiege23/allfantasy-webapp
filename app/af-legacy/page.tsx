@@ -14148,21 +14148,64 @@ function AFLegacyContent() {
                         <div className="rounded-xl bg-black/40 border border-white/10 p-4">
                           <div className="text-sm font-bold text-white/80 mb-2">Head-to-Head by League Type</div>
                           <p className="text-xs text-white/40 mb-3">Only formats where both managers participate are compared</p>
-                          <div className="grid grid-cols-3 gap-2">
-                            {Object.entries(compareResult.comparison.head_to_head_breakdown || {}).map(([type, winner]: [string, any]) => (
-                              <div key={type} className={`text-center p-2 rounded-lg ${winner === 'N/A' ? 'bg-gray-800/30 opacity-50' : 'bg-black/20'}`}>
-                                <div className="text-[10px] uppercase text-white/50">{type.replace('_winner', '')}</div>
-                                <div className={`text-lg font-bold ${
-                                  winner === 'A' ? 'text-cyan-300' :
-                                  winner === 'B' ? 'text-purple-300' :
-                                  winner === 'N/A' ? 'text-gray-500' :
-                                  'text-gray-400'
-                                }`}>
-                                  {winner === 'N/A' ? '—' : winner === 'TIE' ? '=' : winner === 'A' ? '✓ You' : winner === 'B' ? '✗ Opp' : '—'}
+                          <div className="space-y-3">
+                            {(['redraft', 'dynasty', 'specialty'] as const).map((format) => {
+                              const h2h = compareResult.comparison.head_to_head_breakdown || {}
+                              const winnerKey = `${format}_winner`
+                              const winner = h2h[winnerKey] || 'N/A'
+                              const snapA = compareResult.snapshots?.a?.standard_stats?.[format]
+                              const snapB = compareResult.snapshots?.b?.standard_stats?.[format]
+                              const aLeagues = snapA?.leagues || 0
+                              const bLeagues = snapB?.leagues || 0
+                              const notComparable = winner === 'N/A' || (aLeagues === 0 && bLeagues === 0)
+                              const nameA = compareResult.comparison.manager_a?.username || 'Manager A'
+                              const nameB = compareResult.comparison.manager_b?.username || 'Manager B'
+
+                              if (notComparable && aLeagues === 0 && bLeagues === 0) return null
+
+                              return (
+                                <div key={format} className={`rounded-lg border p-3 ${notComparable ? 'bg-gray-800/20 border-white/5 opacity-60' : 'bg-black/20 border-white/10'}`}>
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="text-xs font-bold uppercase text-white/60">{format}</span>
+                                    {notComparable ? (
+                                      <span className="text-[10px] text-gray-500 bg-gray-700/30 px-2 py-0.5 rounded">Not comparable</span>
+                                    ) : (
+                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                        winner === 'A' ? 'bg-cyan-500/20 text-cyan-300' :
+                                        winner === 'B' ? 'bg-purple-500/20 text-purple-300' :
+                                        'bg-gray-500/20 text-gray-300'
+                                      }`}>
+                                        {winner === 'TIE' ? 'Tied' : winner === 'A' ? `${nameA} wins` : `${nameB} wins`}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className={`text-center p-2 rounded ${winner === 'A' && !notComparable ? 'bg-cyan-500/10 border border-cyan-500/20' : 'bg-black/20'}`}>
+                                      <div className="text-[10px] text-white/40 truncate">{nameA}</div>
+                                      {aLeagues > 0 ? (
+                                        <>
+                                          <div className="text-sm font-bold text-white">{snapA.wins}-{snapA.losses}{snapA.ties > 0 ? `-${snapA.ties}` : ''}</div>
+                                          <div className="text-[10px] text-white/40">{aLeagues} lg · {snapA.championships || 0} 🏆</div>
+                                        </>
+                                      ) : (
+                                        <div className="text-xs text-gray-500">No leagues</div>
+                                      )}
+                                    </div>
+                                    <div className={`text-center p-2 rounded ${winner === 'B' && !notComparable ? 'bg-purple-500/10 border border-purple-500/20' : 'bg-black/20'}`}>
+                                      <div className="text-[10px] text-white/40 truncate">{nameB}</div>
+                                      {bLeagues > 0 ? (
+                                        <>
+                                          <div className="text-sm font-bold text-white">{snapB.wins}-{snapB.losses}{snapB.ties > 0 ? `-${snapB.ties}` : ''}</div>
+                                          <div className="text-[10px] text-white/40">{bLeagues} lg · {snapB.championships || 0} 🏆</div>
+                                        </>
+                                      ) : (
+                                        <div className="text-xs text-gray-500">No leagues</div>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                {winner === 'N/A' && <div className="text-[9px] text-gray-500">Not comparable</div>}
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         </div>
 
