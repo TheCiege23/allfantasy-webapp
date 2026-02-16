@@ -1,5 +1,4 @@
 import { prisma } from '@/lib/prisma'
-import { normalizeTeamAbbrev } from '@/lib/team-abbrev'
 
 export interface InsightCitation {
   source: string
@@ -384,16 +383,25 @@ async function generateNewsInsights(
 }
 
 export async function getUnreadInsights(
-  userId: string,
+  username: string,
   limit: number = 20
 ): Promise<any[]> {
   return prisma.aIInsight.findMany({
     where: {
-      userId,
-      isDismissed: false,
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gte: new Date() } },
+      AND: [
+        {
+          OR: [
+            { sleeperUsername: username },
+            { userId: username },
+          ],
+        },
+        { isDismissed: false },
+        {
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gte: new Date() } },
+          ],
+        },
       ],
     },
     orderBy: [{ isRead: 'asc' }, { priority: 'desc' }, { createdAt: 'desc' }],
