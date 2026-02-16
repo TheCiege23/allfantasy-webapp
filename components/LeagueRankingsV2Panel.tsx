@@ -425,8 +425,9 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
       }
       const result = await res.json()
       setData(result)
+      const uLower = username?.toLowerCase()
       const userTeam = result.teams.find(
-        (t: TeamScore) => t.username?.toLowerCase() === username?.toLowerCase(),
+        (t: TeamScore) => t.username?.toLowerCase() === uLower || t.displayName?.toLowerCase() === uLower,
       )
       if (userTeam) setTimelineTeam(userTeam.rosterId)
       import("@/lib/telemetry/client").then(m => m.logLegacyToolUsage({ tool: "LeagueRankingsV2Panel", leagueId, action: "run" })).catch(() => {})
@@ -478,7 +479,8 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
   }, [data?.teams, rankingView])
 
   const userTeam = useMemo(() => {
-    return data?.teams.find(t => t.username?.toLowerCase() === username?.toLowerCase()) ?? null
+    const uLower = username?.toLowerCase()
+    return data?.teams.find(t => t.username?.toLowerCase() === uLower || t.displayName?.toLowerCase() === uLower) ?? null
   }, [data?.teams, username])
 
   const heroCards = useMemo(() => {
