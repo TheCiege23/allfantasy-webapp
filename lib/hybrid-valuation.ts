@@ -480,10 +480,11 @@ function computeConfidence(stats: TradeDelta['valuationStats']): number {
 export async function computeTradeDeltaFromUserTrades(
   trade: UserTrade,
   viewerUserId: string,
-  ctx: ValuationContext
+  ctx: ValuationContext,
+  sleeperUserId?: string
 ): Promise<TradeDelta | null> {
-  const viewerParty = trade.parties?.find(p => isUserParty(p, viewerUserId));
-  const otherParty = trade.parties?.find(p => !isUserParty(p, viewerUserId));
+  const viewerParty = trade.parties?.find(p => isUserParty(p, viewerUserId, sleeperUserId));
+  const otherParty = trade.parties?.find(p => !isUserParty(p, viewerUserId, sleeperUserId));
 
   if (!viewerParty || !otherParty) return null;
 
@@ -557,7 +558,8 @@ export function createValuationContext(
 export async function computeDualModeTradeDelta(
   trade: UserTrade,
   viewerUserId: string,
-  isSuperFlex: boolean
+  isSuperFlex: boolean,
+  sleeperUserId?: string
 ): Promise<{
   atTheTime: TradeDelta | null;
   withHindsight: TradeDelta | null;
@@ -582,8 +584,8 @@ export async function computeDualModeTradeDelta(
   hindsightCtx.fantasyCalcPlayers = fcPlayers;
 
   const [atTheTime, withHindsight] = await Promise.all([
-    computeTradeDeltaFromUserTrades(trade, viewerUserId, atTimeCtx),
-    computeTradeDeltaFromUserTrades(trade, viewerUserId, hindsightCtx)
+    computeTradeDeltaFromUserTrades(trade, viewerUserId, atTimeCtx, sleeperUserId),
+    computeTradeDeltaFromUserTrades(trade, viewerUserId, hindsightCtx, sleeperUserId)
   ]);
 
   let comparison = 'Unable to compare';

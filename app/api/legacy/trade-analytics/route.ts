@@ -171,7 +171,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
         }
         
         try {
-          dualResult = await computeDualModeTradeDelta(userTrade, sleeper_username, isSF)
+          dualResult = await computeDualModeTradeDelta(userTrade, sleeper_username, isSF, sleeper_user_id)
           const selectedMode = mode === 'hindsight' ? dualResult.withHindsight : dualResult.atTheTime
           realValue = selectedMode?.deltaValue || 0
         } catch (e) {
