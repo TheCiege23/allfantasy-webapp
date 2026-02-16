@@ -74,6 +74,7 @@ interface TeamScore {
   pickValue: number
   positionValues: Record<string, PositionValue>
   rosterExposure: Record<string, number>
+  portfolioProjection?: { year1: number; year3: number; year5: number; volatilityBand: number }
   marketAdj: number
   phase: string
   explanation: RankExplanation
@@ -413,6 +414,9 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
   const [loadingCoach, setLoadingCoach] = useState<number | null>(null)
   const [rankingView, setRankingView] = useState<RankingView>('composite')
   const [timelineTeam, setTimelineTeam] = useState<number | null>(null)
+  const [yearPlan, setYearPlan] = useState<any>(null)
+  const [yearPlanLoading, setYearPlanLoading] = useState(false)
+  const [yearPlanError, setYearPlanError] = useState('')
 
   const fetchRankings = useCallback(async () => {
     setLoading(true)
@@ -460,6 +464,66 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
       }))
     } finally {
       setLoadingCoach(null)
+    }
+  }
+
+  const requestYearPlan = async (team: TeamScore) => {
+    setYearPlanLoading(true)
+    setYearPlanError('')
+    try {
+      const positionValues = team.positionValues || {}
+      const exposure = team.rosterExposure || {}
+      const posStrengths: Record<string, number> = {}
+      const weakPositions: string[] = []
+      const allPos = Object.keys(positionValues)
+      const maxTotal = Math.max(...allPos.map(p => positionValues[p]?.total ?? 0), 1)
+      for (const pos of allPos) {
+        const score = Math.round(((positionValues[pos]?.total ?? 0) / maxTotal) * 100)
+        posStrengths[pos] = score
+        if (score < 40) weakPositions.push(pos)
+      }
+      const topAssets = allPos
+        .sort((a, b) => (positionValues[b]?.total ?? 0) - (positionValues[a]?.total ?? 0))
+        .slice(0, 3)
+        .map(p => `${p} group (${(exposure[p] ?? 0).toFixed(0)}% exposure)`)
+
+      const rosterSignals = allPos.map(pos => ({
+        position: pos,
+        playerName: `${pos} group`,
+        age: null,
+        marketValue: positionValues[pos]?.total ?? 0,
+        impactScore: posStrengths[pos] ?? 50,
+        trend30Day: 0,
+      }))
+
+      const portfolio = team.portfolioProjection || { year1: 50, year3: 45, year5: 40 }
+      const avgAge = portfolio.year5 >= portfolio.year1 ? 23 : portfolio.year5 < 30 ? 28 : 30
+      const phase = team.phase || data?.phase || 'in_season'
+      const isContending = team.composite >= 60
+
+      const res = await fetch('/api/rankings/dynasty-roadmap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leagueType: data?.isDynasty ? 'Dynasty' : 'Redraft',
+          isSF: data?.isSuperFlex ?? false,
+          goal: isContending ? 'compete' : 'rebuild',
+          rosterSignals,
+          avgAge,
+          totalValue: team.totalRosterValue ?? 0,
+          positionStrengths: posStrengths,
+          weakPositions,
+          topAssets,
+          leagueName: data?.leagueName,
+        }),
+      })
+      if (!res.ok) throw new Error('Failed to generate plan')
+      const result = await res.json()
+      setYearPlan(result.roadmap)
+    } catch (err: any) {
+      setYearPlanError(err.message || 'Something went wrong')
+    } finally {
+      setYearPlanLoading(false)
     }
   }
 
@@ -1104,10 +1168,97 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
               </div>
             )}
 
-            {userTeam && (
-              <button className="w-full mt-4 py-2 text-[11px] font-medium border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 rounded-lg transition-all">
+            {userTeam && !yearPlan && !yearPlanLoading && (
+              <button
+                onClick={() => requestYearPlan(userTeam)}
+                className="w-full mt-4 py-2 text-[11px] font-medium border border-white/10 text-white/40 hover:text-white/70 hover:border-white/20 rounded-lg transition-all"
+              >
                 Generate 3–5 Year Plan
               </button>
+            )}
+
+            {yearPlanLoading && (
+              <div className="flex items-center gap-3 py-4 mt-4">
+                <div className="w-5 h-5 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+                <span className="text-xs text-white/40">Building your dynasty roadmap...</span>
+              </div>
+            )}
+
+            {yearPlanError && (
+              <div className="mt-4 bg-red-500/10 border border-red-500/15 rounded-lg p-2.5 text-[11px] text-red-300/80">
+                {yearPlanError}
+              </div>
+            )}
+
+            {yearPlan && (
+              <div className="mt-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wider">{yearPlan.horizon || '3-5 Year Plan'}</h4>
+                  <span className={cx(
+                    'text-[10px] px-2 py-0.5 rounded-full font-medium',
+                    yearPlan.currentPhase === 'Contending' ? 'bg-emerald-500/15 text-emerald-400' :
+                    yearPlan.currentPhase === 'Rebuilding' ? 'bg-red-500/15 text-red-400' :
+                    yearPlan.currentPhase === 'Retooling' ? 'bg-amber-500/15 text-amber-400' :
+                    'bg-cyan-500/15 text-cyan-400'
+                  )}>
+                    {yearPlan.currentPhase}
+                  </span>
+                </div>
+
+                {yearPlan.overallStrategy && (
+                  <p className="text-[11px] text-white/50 leading-relaxed">{yearPlan.overallStrategy}</p>
+                )}
+
+                {yearPlan.yearPlans?.map((yp: any) => (
+                  <div key={yp.year} className="bg-white/[0.02] border border-white/[0.06] rounded-lg p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-cyan-400/80 shrink-0">Y{yp.year}</span>
+                      <span className="text-[11px] font-semibold text-white/70">{yp.label?.replace(`Year ${yp.year}: `, '') || `Year ${yp.year}`}</span>
+                    </div>
+                    {yp.priorities?.length > 0 && (
+                      <div className="space-y-1">
+                        {yp.priorities.map((p: string, i: number) => (
+                          <div key={i} className="flex items-start gap-1.5 text-[11px] text-white/50 leading-relaxed">
+                            <span className="text-purple-400/60 mt-0.5 shrink-0">&#x25B8;</span>
+                            <span>{p}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {yp.keyMoves?.length > 0 && (
+                      <div className="space-y-1 pt-1 border-t border-white/[0.04]">
+                        <span className="text-[9px] text-white/30 uppercase tracking-wider font-semibold">Key Moves</span>
+                        {yp.keyMoves.map((m: string, i: number) => (
+                          <p key={i} className="text-[10px] text-white/40 leading-relaxed pl-2">{m}</p>
+                        ))}
+                      </div>
+                    )}
+                    {yp.targetPositions?.length > 0 && (
+                      <div className="flex gap-1 pt-1">
+                        {yp.targetPositions.map((pos: string) => (
+                          <span key={pos} className="text-[9px] bg-cyan-500/10 text-cyan-400/70 px-1.5 py-0.5 rounded">{pos}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {yearPlan.riskFactors?.length > 0 && (
+                  <div className="bg-amber-500/5 border border-amber-500/10 rounded-lg p-2.5 space-y-1">
+                    <span className="text-[9px] text-amber-400/60 uppercase tracking-wider font-semibold">Risk Factors</span>
+                    {yearPlan.riskFactors.map((r: string, i: number) => (
+                      <p key={i} className="text-[10px] text-amber-200/50 leading-relaxed">{r}</p>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => { setYearPlan(null); setYearPlanError('') }}
+                  className="w-full py-1.5 text-[10px] text-white/30 hover:text-white/50 transition-colors"
+                >
+                  Regenerate Plan
+                </button>
+              </div>
             )}
           </div>
 
