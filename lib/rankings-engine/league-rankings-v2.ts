@@ -289,7 +289,7 @@ async function fetchLeagueSettings(leagueId: string): Promise<LeagueSettings | n
   })
 
   if (dbLeague) {
-    const isDynasty = dbLeague.leagueType === 'dynasty' || dbLeague.leagueType === '2'
+    const isDynasty = dbLeague.leagueType?.toLowerCase() === 'dynasty' || dbLeague.leagueType === '2'
     const pprMap: Record<string, 0 | 0.5 | 1> = { 'ppr': 1, 'half_ppr': 0.5, 'standard': 0 }
     const ppr = pprMap[dbLeague.scoringType || ''] ?? 1
 
@@ -709,42 +709,69 @@ function devyGraduationProbability(player: any): number {
   return 0.4
 }
 
-function projectPortfolio(teamRoster: any[]): PortfolioProjection {
-  let baseProjection = 0
+function projectPortfolioRaw(teamRoster: any[]): { currentValue: number; year3Value: number; year5Value: number; volatilitySum: number; playerCount: number } {
+  let currentValue = 0
+  let year3Value = 0
+  let year5Value = 0
   let volatilitySum = 0
   let playerCount = 0
 
   for (const player of teamRoster) {
     const isDevy = player.devyEligible === true && player.league === 'NCAA'
+    const pos = player.position || player.pos || 'WR'
 
     if (isDevy) {
       const gradProb = devyGraduationProbability(player)
-      baseProjection += gradProb * (player.draftProjectionScore ?? 50)
-      volatilitySum += (1 - gradProb) * 30
+      const projVal = (player.draftProjectionScore ?? 50) * gradProb
+      currentValue += projVal * 0.3
+      year3Value += projVal * 0.8
+      year5Value += projVal * 1.0
+      volatilitySum += (1 - gradProb) * 25
       playerCount++
     } else {
-      const marketVal = player.marketValueScore ?? player.value ?? 50
-      const ageCurve = ageCurveAdjustment(player.age ?? 24, player.position || player.pos || 'WR')
-      baseProjection += marketVal * ageCurve
-      volatilitySum += Math.abs(1 - ageCurve) * 20
+      const marketVal = player.marketValueScore ?? player.value ?? 0
+      if (marketVal <= 0) continue
+      const age = player.age ?? 24
+      const curve1 = ageCurveAdjustment(age, pos)
+      const curve3 = ageCurveAdjustment(age + 3, pos)
+      const curve5 = ageCurveAdjustment(age + 5, pos)
+      currentValue += marketVal * curve1
+      year3Value += marketVal * curve3
+      year5Value += marketVal * curve5
+      volatilitySum += Math.abs(curve1 - curve5) * marketVal * 0.3
       playerCount++
     }
   }
 
-  const normalized = playerCount > 0 ? Math.round(baseProjection / Math.max(1, playerCount / 2)) : 50
-  const avgVolatility = playerCount > 0 ? Math.round(volatilitySum / playerCount) : 15
+  return { currentValue, year3Value, year5Value, volatilitySum, playerCount }
+}
 
-  const year1 = Math.min(100, normalized)
-  const year3Decay = 0.92
-  const year5Decay = 0.82
-  const year3 = Math.min(100, Math.round(normalized * year3Decay + (volatilitySum > 200 ? -5 : 3)))
-  const year5 = Math.min(100, Math.round(normalized * year5Decay + (volatilitySum > 300 ? -8 : 2)))
+function projectPortfolioFromPercentiles(
+  raw: { currentValue: number; year3Value: number; year5Value: number; volatilitySum: number; playerCount: number },
+  allCurrentValues: number[],
+  allYear3Values: number[],
+  allYear5Values: number[],
+): PortfolioProjection {
+  if (raw.playerCount === 0) {
+    return { year1: 50, year3: 45, year5: 40, volatilityBand: 15 }
+  }
+
+  const y1Pct = robustPercentileRank(raw.currentValue, allCurrentValues)
+  const y3Pct = robustPercentileRank(raw.year3Value, allYear3Values)
+  const y5Pct = robustPercentileRank(raw.year5Value, allYear5Values)
+
+  const y1 = clamp(Math.round(20 + y1Pct * 75), 10, 98)
+  const y3 = clamp(Math.round(15 + y3Pct * 80), 5, 98)
+  const y5 = clamp(Math.round(10 + y5Pct * 85), 5, 98)
+
+  const totalVal = raw.currentValue || 1
+  const avgVol = Math.round((raw.volatilitySum / totalVal) * 40)
 
   return {
-    year1,
-    year3: Math.max(0, year3),
-    year5: Math.max(0, year5),
-    volatilityBand: Math.min(30, avgVolatility),
+    year1: y1,
+    year3: y3,
+    year5: y5,
+    volatilityBand: clamp(avgVol, 1, 30),
   }
 }
 
@@ -1844,6 +1871,9 @@ export async function computeLeagueRankingsV2(
   const allLuckDeltas: number[] = []
   const allTradeAvgPremiums: number[] = []
   const allProcessConsistencies: number[] = []
+  const allPortfolioCurrentValues: number[] = []
+  const allPortfolioYear3Values: number[] = []
+  const allPortfolioYear5Values: number[] = []
 
   interface TeamIntermediate {
     roster: SleeperRoster
@@ -1862,6 +1892,7 @@ export async function computeLeagueRankingsV2(
     ptsAgainst: number
     playoffSeed: number | null
     isChampion: boolean
+    portfolioRaw: { currentValue: number; year3Value: number; year5Value: number; volatilitySum: number; playerCount: number }
   }
 
   const teamIntermediates: TeamIntermediate[] = []
@@ -1895,12 +1926,32 @@ export async function computeLeagueRankingsV2(
     const playoffSeed = dbRecord?.playoffSeed ?? (roster as any).metadata?.playoff_seed ?? null
     const isChampion = dbRecord?.isChampion ?? (roster as any).metadata?.is_champ ?? false
 
+    const rosterPlayersForPortfolio = (roster.players || []).map((pid: string) => {
+      const pVal = valueMap.get(pid) as any
+      return {
+        id: pid,
+        league: pVal?.league ?? 'NFL',
+        devyEligible: pVal?.devyEligible ?? false,
+        draftProjectionScore: pVal?.draftProjectionScore ?? null,
+        projectedDraftRound: pVal?.projectedDraftRound ?? null,
+        position: pVal?.position || 'WR',
+        pos: pVal?.position || 'WR',
+        age: pVal?.age ?? null,
+        value: pVal?.value ?? 0,
+        marketValueScore: pVal?.value ?? 0,
+      }
+    })
+    const portfolioRaw = projectPortfolioRaw(rosterPlayersForPortfolio)
+
     allStarterValues.push(rosterValues.starterValue)
     allBenchValues.push(rosterValues.benchValue)
     allAgeAdjustedTotals.push(ageAdjustedTotal)
     allLuckDeltas.push(luckDelta)
     allTradeAvgPremiums.push(tradeEff.avgPremium)
     allProcessConsistencies.push(processConsistency)
+    allPortfolioCurrentValues.push(portfolioRaw.currentValue)
+    allPortfolioYear3Values.push(portfolioRaw.year3Value)
+    allPortfolioYear5Values.push(portfolioRaw.year5Value)
 
     teamIntermediates.push({
       roster,
@@ -1919,11 +1970,12 @@ export async function computeLeagueRankingsV2(
       ptsAgainst,
       playoffSeed,
       isChampion,
+      portfolioRaw,
     })
   }
 
   for (const ti of teamIntermediates) {
-    const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion } = ti
+    const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion, portfolioRaw } = ti
 
     const madePlayoffs = playoffSeed !== null && playoffSeed > 0
 
@@ -1968,7 +2020,12 @@ export async function computeLeagueRankingsV2(
     })
 
     const futureCapitalScore = isDynasty ? computeFutureCapitalScore(rosterPlayersForCapital) : 0
-    const portfolioProjection = projectPortfolio(rosterPlayersForCapital)
+    const portfolioProjection = projectPortfolioFromPercentiles(
+      portfolioRaw,
+      allPortfolioCurrentValues,
+      allPortfolioYear3Values,
+      allPortfolioYear5Values,
+    )
 
     const composite = computeComposite(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore)
     const streak = computeStreak(weeklyPts, weeklyOppPts)
