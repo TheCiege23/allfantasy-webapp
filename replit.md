@@ -59,3 +59,9 @@ Key features include:
 -   **NewsAPI.org**: Secondary news source.
 -   **Community Trade Value Data**: Locally stored historical NFL player and pick values.
 -   **Etsy Shop Integration**: Displays AllFantasy merchandise.
+
+## Player Analytics Integration
+The player analytics database (1,468+ NFL players, 355 columns) is integrated across three core systems:
+-   **Waiver AI** (`lib/waiver-engine/waiver-scoring.ts`): Analytics-enhanced stash scoring (breakout age, athleticism, dominator rating bonuses), refined dynasty ceiling driver with combine/college data, and `wa_age_trajectory` analytics profile driver. Batch analytics fetched in `app/api/legacy/waiver/analyze/route.ts`.
+-   **League Rankings V2** (`lib/rankings-engine/league-rankings-v2.ts`): Analytics-enhanced portfolio projections with breakout age (+5% curve bonus for year3/year5) and elite athleticism (+3% curve bonus). Weekly volatility from analytics scaled by market value for better risk bands.
+-   **AI Chat** (`app/api/ai/chat/route.ts`): Player name extraction from user messages, batch analytics lookup, and concise analytics context injection into system prompt (athletic/college grades, breakout age, dominator rating, comparables, volatility). All integrations have graceful fallbacks when analytics unavailable.

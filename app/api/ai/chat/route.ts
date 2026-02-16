@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { consumeRateLimit, getClientIp } from '@/lib/rate-limit'
 import { getOpenAIConfig } from '@/lib/openai-client'
 import { getUniversalAIContext } from '@/lib/ai-player-context'
+import { getPlayerAnalyticsBatch, computeAthleticGrade, computeCollegeProductionGrade, type PlayerAnalytics } from '@/lib/player-analytics'
 
 const ContextScopeSchema = z.object({
   sleeper_username: z.string(),
@@ -24,6 +25,36 @@ const ChatRequestSchema = z.object({
     .optional()
     .default([]),
 })
+
+function extractPlayerNamesFromMessage(message: string, history: Array<{role: string, content: string}>): string[] {
+  const text = [message, ...history.slice(-3).map(h => h.content)].join(' ')
+  const matches = text.match(/[A-Z][a-z]+(?:\.\s?)?(?:[A-Z][a-z]+)+/g) || []
+  const unique = [...new Set(matches)].slice(0, 10)
+  return unique
+}
+
+function buildPlayerAnalyticsContext(analyticsMap: Map<string, PlayerAnalytics>): string {
+  const entries: string[] = []
+  for (const [name, analytics] of analyticsMap) {
+    const athletic = computeAthleticGrade(analytics)
+    const college = computeCollegeProductionGrade(analytics)
+    const parts: string[] = [`**${analytics.name}** (${analytics.position}, ${analytics.currentTeam || 'FA'})`]
+    
+    if (athletic.score > 0) parts.push(`Athletic: ${athletic.grade} (${athletic.label})`)
+    if (college.score > 0) parts.push(`College: ${college.grade} (${college.label})`)
+    if (analytics.college.breakoutAge) parts.push(`Breakout Age: ${analytics.college.breakoutAge}`)
+    if (analytics.combine.fortyYardDash) parts.push(`40-yd: ${analytics.combine.fortyYardDash}s`)
+    if (analytics.college.dominatorRating) parts.push(`Dominator: ${analytics.college.dominatorRating}%`)
+    if (analytics.comparablePlayers.length > 0) parts.push(`Comps: ${analytics.comparablePlayers.slice(0, 3).join(', ')}`)
+    if (analytics.fantasyPointsPerGame) parts.push(`FPts/G: ${analytics.fantasyPointsPerGame.toFixed(1)}`)
+    if (analytics.weeklyVolatility) parts.push(`Volatility: ${analytics.weeklyVolatility.toFixed(2)}`)
+    if (analytics.draft.draftPick) parts.push(`Draft Pick: #${analytics.draft.draftPick}`)
+    
+    entries.push(parts.join(' | '))
+  }
+  
+  return `\n\n## PLAYER ANALYTICS DATA (from database)\nUse this data to provide specific, evidence-based advice about these players:\n${entries.join('\n')}\n\nCite specific metrics when discussing these players (e.g., "His breakout age of 19.5 is elite" or "His A+ athletic profile suggests high ceiling").`
+}
 
 async function getLegacyContext(sleeperUsername: string) {
   const user = await prisma.legacyUser.findUnique({
@@ -79,7 +110,7 @@ async function getLegacyContext(sleeperUsername: string) {
   }
 }
 
-function buildSystemPrompt(legacyContext: Awaited<ReturnType<typeof getLegacyContext>>) {
+function buildSystemPrompt(legacyContext: Awaited<ReturnType<typeof getLegacyContext>>, playerAnalyticsContext?: string) {
   let basePrompt = `You are THE ELITE AllFantasy AI Assistant - the #1 dynasty fantasy sports advisor.
 
 ${getUniversalAIContext()}
@@ -140,6 +171,10 @@ Use this context to personalize your responses. Tailor advice to their estimated
 Reference their history and patterns when giving recommendations.`
   }
 
+  if (playerAnalyticsContext) {
+    basePrompt += playerAnalyticsContext
+  }
+
   return basePrompt
 }
 
@@ -188,7 +223,19 @@ export const POST = withApiUsage({ endpoint: "/api/ai/chat", tool: "AiChat" })(a
       return NextResponse.json({ error: 'User not found. Please import your Sleeper data first.' }, { status: 404 })
     }
 
-    const systemPrompt = buildSystemPrompt(legacyContext)
+    const mentionedPlayers = extractPlayerNamesFromMessage(message, conversation_history)
+    let playerAnalyticsContext = ''
+    if (mentionedPlayers.length > 0) {
+      try {
+        const analyticsMap = await getPlayerAnalyticsBatch(mentionedPlayers)
+        if (analyticsMap.size > 0) {
+          playerAnalyticsContext = buildPlayerAnalyticsContext(analyticsMap)
+        }
+      } catch {
+      }
+    }
+
+    const systemPrompt = buildSystemPrompt(legacyContext, playerAnalyticsContext)
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: systemPrompt },

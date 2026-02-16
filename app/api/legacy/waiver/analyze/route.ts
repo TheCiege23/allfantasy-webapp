@@ -20,6 +20,7 @@ import { getComprehensiveLearningContext } from '@/lib/comprehensive-trade-learn
 import { autoLogDecision } from '@/lib/decision-log'
 import { computeConfidenceRisk, getHistoricalHitRate } from '@/lib/analytics/confidence-risk-engine'
 import { attachPlayerMediaBatch } from '@/lib/player-media'
+import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 import {
   scoreWaiverCandidates,
   type WaiverCandidate,
@@ -366,6 +367,13 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
       ? userProvidedGoal
       : deriveGoalFromContext(userPts, leagueAvg, isDynasty)
 
+    const candidateNames = waiverCandidates.map(c => c.playerName)
+    let analyticsMap: Map<string, any> | undefined
+    try {
+      analyticsMap = await getPlayerAnalyticsBatch(candidateNames)
+      if (analyticsMap.size === 0) analyticsMap = undefined
+    } catch { analyticsMap = undefined }
+
     const scoringCtx: WaiverScoringContext = {
       goal,
       needs,
@@ -377,6 +385,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
       rosterPlayers,
       teamNeeds,
       currentWeek,
+      analyticsMap,
     }
 
     const deterministicResults = scoreWaiverCandidates(waiverCandidates, scoringCtx, { maxResults: 10 })

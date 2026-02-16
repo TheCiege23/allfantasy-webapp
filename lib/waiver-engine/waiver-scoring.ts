@@ -1,5 +1,7 @@
 import type { AssetValue } from '@/lib/hybrid-valuation'
 import type { TeamNeedsMap, UserGoal, SlotNeed, PositionalDepth } from './team-needs'
+import type { PlayerAnalytics } from '@/lib/player-analytics'
+import { computeAthleticGrade, computeCollegeProductionGrade } from '@/lib/player-analytics'
 
 export type WaiverDimensions = {
   startNow: number
@@ -61,6 +63,7 @@ export type WaiverScoringContext = {
   rosterPlayers: WaiverRosterPlayer[]
   teamNeeds: TeamNeedsMap
   currentWeek: number
+  analyticsMap?: Map<string, PlayerAnalytics>
 }
 
 export type ScoredWaiverTarget = {
@@ -163,6 +166,35 @@ function computeStash(
   let score = normalize(marketBase, 500, 10000) * 0.45 +
     ageCurve * 0.45 +
     posBonus
+
+  // Apply analytics-driven enhancements if available
+  if (ctx.analyticsMap) {
+    const analytics = ctx.analyticsMap.get(candidate.playerName)
+    if (analytics) {
+      // Breakout age adjustment
+      if (analytics.college.breakoutAge != null) {
+        if (analytics.college.breakoutAge <= 20) {
+          score += 15 // Early breakout bonus
+        } else if (analytics.college.breakoutAge >= 22) {
+          score -= 10 // Late breakout penalty
+        }
+      }
+
+      // Athleticism bonus
+      if (analytics.combine.athleticismScore != null) {
+        if (analytics.combine.athleticismScore >= 110) {
+          score += 12
+        } else if (analytics.combine.athleticismScore >= 90) {
+          score += 6
+        }
+      }
+
+      // College dominator premium
+      if (analytics.college.dominatorRating != null && analytics.college.dominatorRating >= 30) {
+        score += 8
+      }
+    }
+  }
 
   if (ctx.goal === 'rebuild') score *= 1.2
   if (ctx.goal === 'win-now') score *= 0.75
@@ -324,6 +356,46 @@ function computeDrivers(
       ceilingDetail += '. High-value young asset.'
     }
 
+    // Enhance dynasty ceiling with analytics data when available
+    if (ctx.analyticsMap) {
+      const analytics = ctx.analyticsMap.get(candidate.playerName)
+      if (analytics) {
+        let analyticsDetail = ''
+        let analyticsBoost = 0
+
+        // Breakout age refinement
+        if (analytics.college.breakoutAge != null) {
+          analyticsDetail += `Early breakout age (${analytics.college.breakoutAge.toFixed(1)})`
+          if (analytics.college.breakoutAge <= 20 && age <= 24) {
+            analyticsBoost += 15
+          } else if (analytics.college.breakoutAge > 22) {
+            analyticsBoost -= 8
+          }
+        }
+
+        // Athleticism profile
+        if (analytics.combine.athleticismScore != null) {
+          const athleticGrade = computeAthleticGrade(analytics)
+          if (analyticsDetail) analyticsDetail += ', '
+          analyticsDetail += `elite athletic profile (${athleticGrade.grade})`
+          if (athleticGrade.score >= 90) {
+            analyticsBoost += 12
+          }
+        }
+
+        // Comparable players
+        if (analytics.comparablePlayers && analytics.comparablePlayers.length > 0) {
+          if (analyticsDetail) analyticsDetail += ', '
+          analyticsDetail += `comparable to ${analytics.comparablePlayers[0]}`
+        }
+
+        if (analyticsDetail) {
+          ceilingScore = clamp(ceilingScore + analyticsBoost, 0, 100)
+          ceilingDetail += `. ${analyticsDetail}.`
+        }
+      }
+    }
+
     drivers.push({
       id: 'wa_dynasty_ceiling',
       label: 'Dynasty Ceiling',
@@ -331,6 +403,59 @@ function computeDrivers(
       direction: ceilingScore >= 65 ? 'positive' : ceilingScore <= 35 ? 'negative' : 'neutral',
       detail: ceilingDetail,
     })
+  }
+
+  // Add analytics-driven age trajectory driver when analytics available
+  if (ctx.analyticsMap) {
+    const analytics = ctx.analyticsMap.get(candidate.playerName)
+    if (analytics) {
+      let trajectoryScore = 50
+      let trajectoryDetail = ''
+      const detailParts: string[] = []
+
+      // Breakout age component
+      if (analytics.college.breakoutAge != null) {
+        const breakoutScore = analytics.college.breakoutAge <= 20 ? 80 :
+          analytics.college.breakoutAge <= 21 ? 70 :
+          analytics.college.breakoutAge <= 22 ? 60 :
+          Math.max(20, 60 - (analytics.college.breakoutAge - 22) * 10)
+        trajectoryScore = (trajectoryScore + breakoutScore) / 2
+        detailParts.push(`Breakout age ${analytics.college.breakoutAge.toFixed(1)}`)
+      }
+
+      // Athletic profile component
+      if (analytics.combine.athleticismScore != null) {
+        const athleticGrade = computeAthleticGrade(analytics)
+        if (athleticGrade.score >= 90) {
+          trajectoryScore = Math.min(95, trajectoryScore + 10)
+        } else if (athleticGrade.score >= 70) {
+          trajectoryScore = Math.min(90, trajectoryScore + 5)
+        }
+        detailParts.push(`athleticism ${athleticGrade.grade} (${athleticGrade.score})`)
+      }
+
+      // College dominator rating component
+      if (analytics.college.dominatorRating != null) {
+        const domPercent = analytics.college.dominatorRating
+        if (domPercent >= 30) {
+          trajectoryScore = Math.min(95, trajectoryScore + 8)
+        } else if (domPercent >= 20) {
+          trajectoryScore = Math.min(90, trajectoryScore + 4)
+        }
+        detailParts.push(`dominator ${domPercent.toFixed(1)}%`)
+      }
+
+      if (detailParts.length > 0) {
+        trajectoryDetail = detailParts.join(', ')
+        drivers.push({
+          id: 'wa_age_trajectory',
+          label: 'Analytics Profile',
+          score: Math.round(trajectoryScore),
+          direction: trajectoryScore >= 70 ? 'positive' : trajectoryScore <= 40 ? 'negative' : 'neutral',
+          detail: trajectoryDetail,
+        })
+      }
+    }
   }
 
   let roleTrend = 50

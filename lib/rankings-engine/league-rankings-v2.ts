@@ -9,6 +9,7 @@ import { fetchFantasyCalcValues, FantasyCalcPlayer, FantasyCalcSettings } from '
 import { prisma } from '../prisma'
 import { getWeekStatsFromCache } from './sleeper-matchup-cache'
 import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../idp-kicker-values'
+import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 
 export interface Driver {
   id: string
@@ -722,7 +723,7 @@ function devyGraduationProbability(player: any): number {
   return 0.4
 }
 
-function projectPortfolioRaw(teamRoster: any[]): { currentValue: number; year3Value: number; year5Value: number; volatilitySum: number; playerCount: number } {
+function projectPortfolioRaw(teamRoster: any[], analyticsMap?: Map<string, any>): { currentValue: number; year3Value: number; year5Value: number; volatilitySum: number; playerCount: number } {
   let currentValue = 0
   let year3Value = 0
   let year5Value = 0
@@ -746,12 +747,26 @@ function projectPortfolioRaw(teamRoster: any[]): { currentValue: number; year3Va
       if (marketVal <= 0) continue
       const age = player.age ?? 24
       const curve1 = ageCurveAdjustment(age, pos)
-      const curve3 = ageCurveAdjustment(age + 3, pos)
-      const curve5 = ageCurveAdjustment(age + 5, pos)
+      let curve3 = ageCurveAdjustment(age + 3, pos)
+      let curve5 = ageCurveAdjustment(age + 5, pos)
+
+      const analytics = analyticsMap?.get(player.name || player.player || '')
+
+      if (analytics?.college?.breakoutAge != null && analytics.college.breakoutAge <= 20.5) {
+        curve3 *= 1.05
+        curve5 *= 1.05
+      }
+      if (analytics?.combine?.athleticismScore != null && analytics.combine.athleticismScore >= 100) {
+        curve3 *= 1.03
+        curve5 *= 1.03
+      }
+
       currentValue += marketVal * curve1
       year3Value += marketVal * curve3
       year5Value += marketVal * curve5
-      volatilitySum += Math.abs(curve1 - curve5) * marketVal * 0.3
+      const baseVol = Math.abs(curve1 - curve5) * marketVal * 0.3
+      const analyticsVol = analytics?.weeklyVolatility != null ? analytics.weeklyVolatility * marketVal * 0.005 : null
+      volatilitySum += (analyticsVol ?? baseVol)
       playerCount++
     }
   }
@@ -1873,6 +1888,20 @@ export async function computeLeagueRankingsV2(
 
   const valueMap = buildPlayerValueMap(fcPlayers)
 
+  const allPlayerNames: string[] = []
+  for (const roster of rosters) {
+    for (const pid of roster.players || []) {
+      const pVal = valueMap.get(pid) as any
+      const name = pVal?.name || pVal?.player
+      if (name) allPlayerNames.push(name)
+    }
+  }
+  let analyticsMap: Map<string, any> | undefined
+  try {
+    analyticsMap = await getPlayerAnalyticsBatch(allPlayerNames)
+    if (analyticsMap.size === 0) analyticsMap = undefined
+  } catch { analyticsMap = undefined }
+
   const isIdpLeague = detectIdpLeague(rosterPositions)
   const isKickerLeague = detectKickerLeague(rosterPositions)
   if (isIdpLeague || isKickerLeague) {
@@ -1959,6 +1988,7 @@ export async function computeLeagueRankingsV2(
       const pVal = valueMap.get(pid) as any
       return {
         id: pid,
+        name: pVal?.name || pVal?.player || '',
         league: pVal?.league ?? 'NFL',
         devyEligible: pVal?.devyEligible ?? false,
         draftProjectionScore: pVal?.draftProjectionScore ?? null,
@@ -1970,7 +2000,7 @@ export async function computeLeagueRankingsV2(
         marketValueScore: pVal?.value ?? 0,
       }
     })
-    const portfolioRaw = projectPortfolioRaw(rosterPlayersForPortfolio)
+    const portfolioRaw = projectPortfolioRaw(rosterPlayersForPortfolio, analyticsMap)
 
     allStarterValues.push(rosterValues.starterValue)
     allBenchValues.push(rosterValues.benchValue)
