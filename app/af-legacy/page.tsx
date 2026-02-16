@@ -15754,7 +15754,7 @@ function AFLegacyContent() {
                                         {(() => {
                                           const ss = transferPreview.league?.scoringSettings || {} as Record<string, number>
                                           const std: Record<string, number> = { pass_yd: 0.04, pass_td: 4, pass_int: -1, rush_yd: 0.1, rush_td: 6, rec: 0, rec_yd: 0.1, rec_td: 6, fum_lost: -2, st_td: 6, def_st_td: 6, pts_allow_0: 10, sack: 1, int: 2, fum_rec: 2, ff: 1, safe: 2, blk_kick: 2 }
-                                          const fmt = (v: number) => v >= 0 ? `+${v}` : `${v}`
+                                          const fmt = (v: number) => { const r = Math.round(v * 1e4) / 1e4; return r >= 0 ? `+${r}` : `${r}` }
                                           const perYd = (v: number) => `${fmt(v)} per yard`
                                           const isHL = (key: string, val: number) => std[key] !== undefined && val !== std[key]
 
