@@ -28,9 +28,19 @@ interface SleeperPlayer {
   position?: string
   team?: string
   injury_status?: string
+  injury_body_part?: string
   status?: string
   age?: number
   years_exp?: number
+  height?: string
+  weight?: string
+  college?: string
+  number?: number
+  depth_chart_position?: string
+  depth_chart_order?: number
+  fantasy_positions?: string[]
+  birth_date?: string
+  search_rank?: number
 }
 
 interface SleeperRoster {
@@ -303,6 +313,15 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/player-finder", tool: 
       age: number | null
       experience: number | null
       injuryStatus: string | null
+      injuryBodyPart: string | null
+      height: string | null
+      weight: string | null
+      college: string | null
+      number: number | null
+      depthChartPosition: string | null
+      depthChartOrder: number | null
+      fantasyPositions: string[]
+      searchRank: number | null
       ownership: {
         count: number
         total: number
@@ -397,6 +416,15 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/player-finder", tool: 
           age: player.age || null,
           experience: player.years_exp ?? null,
           injuryStatus: player.injury_status || player.status || null,
+          injuryBodyPart: player.injury_body_part || null,
+          height: player.height || null,
+          weight: player.weight || null,
+          college: player.college || null,
+          number: player.number ?? null,
+          depthChartPosition: player.depth_chart_position || null,
+          depthChartOrder: player.depth_chart_order ?? null,
+          fantasyPositions: player.fantasy_positions || [],
+          searchRank: player.search_rank ?? null,
           ownership: {
             count: ownershipCount,
             total: totalLeagueCount,
