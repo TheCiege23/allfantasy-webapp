@@ -5,6 +5,7 @@ import {
   getLeagueRosters,
   getPlayoffBracket,
   getTradedDraftPicks,
+  getLeagueDrafts,
   getScoringType,
   getLeagueType,
   SleeperLeague,
@@ -338,6 +339,18 @@ async function importLeague(
     tradedPicks = await getTradedDraftPicks(leagueId);
   } catch {}
 
+  let rosterToSlot: Record<number, number> = {};
+  try {
+    const drafts = await getLeagueDrafts(leagueId);
+    if (drafts && drafts.length > 0) {
+      const latestDraft = drafts[0];
+      const slotToRoster: Record<string, number> = latestDraft.slot_to_roster_id || {};
+      for (const [slot, rosterId] of Object.entries(slotToRoster)) {
+        rosterToSlot[rosterId] = parseInt(slot);
+      }
+    }
+  } catch {}
+
   await jitterSleep(100, 200);
 
   const leagueType = inferLeagueType(league);
@@ -448,6 +461,7 @@ async function importLeague(
             season: pick.season,
             round: pick.round,
             originalOwner: pick.roster_id,
+            draftSlot: rosterToSlot[pick.roster_id] || null,
           })),
       },
     };

@@ -166,6 +166,7 @@ interface LeagueHistory {
       season: number
       round: number
       originalOwner: number
+      draftSlot?: number | null
     }>
   }
   transactions?: {
@@ -673,13 +674,13 @@ function LeagueHistoryAccordion({
                                                   <div className="text-[10px] uppercase tracking-wide text-purple-300/70 mb-1">Draft Capital</div>
                                                   <div className="space-y-1">
                                                     {sortedSeasons.map(season => {
-                                                      const picks = picksBySeason[season]!.sort((a, b) => a.round - b.round)
+                                                      const picks = picksBySeason[season]!.sort((a, b) => a.round - b.round || (a.draftSlot || 99) - (b.draftSlot || 99))
                                                       return (
                                                         <div key={season} className="flex flex-wrap items-center gap-1">
                                                           <span className="text-[10px] text-purple-200/60 w-10">{season}:</span>
                                                           {picks.map((pick, i) => (
                                                             <span key={i} className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-400/20 text-[11px] text-purple-200">
-                                                              Rd {pick.round}
+                                                              {pick.draftSlot ? `${pick.round}.${String(pick.draftSlot).padStart(2, '0')}` : `Rd ${pick.round}`}
                                                             </span>
                                                           ))}
                                                         </div>
