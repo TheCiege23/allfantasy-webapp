@@ -2195,7 +2195,7 @@ function AFLegacyContent() {
       }
       
       const resolvedYear = selectedYear === 'current' 
-        ? String(new Date().getFullYear()) 
+        ? (allLeagueYears[0] || String(new Date().getFullYear())) 
         : selectedYear
       const filteredTradesByYear: Record<string, any[]> = resolvedYear === 'all' 
         ? userTradesByYear 
@@ -7498,8 +7498,8 @@ function AFLegacyContent() {
                                 // 1) Set the global league
                                 setReportCardLeague(leagueId)
 
-                                // 2) Default to CURRENT season on change
-                                setReportCardYear('current')
+                                // 2) Default to ALL SEASONS on change (most useful view)
+                                setReportCardYear('all')
                                 setReportCardAvailableYears([])
 
                                 if (!leagueId) return
@@ -7509,7 +7509,7 @@ function AFLegacyContent() {
                                 setTradeHubManagers([])
 
                                 // 4) Load Trade History Report Card (this section)
-                                loadTradeHistoryReportCard(leagueId, 'current')
+                                loadTradeHistoryReportCard(leagueId, 'all')
 
                                 // 5) Lock the rest of AI Trade Hub to this league
                                 loadTradeHubManagers(leagueId)
@@ -7544,11 +7544,11 @@ function AFLegacyContent() {
                                 disabled={reportCardLoading}
                                 className="w-full h-11 px-4 rounded-xl bg-black/50 border border-white/20 text-white text-sm focus:outline-none focus:border-purple-400/60 disabled:opacity-50"
                               >
-                                {/* ✅ Default/current */}
-                                <option value="current">Current Season</option>
-
-                                {/* ✅ All Seasons */}
+                                {/* ✅ All Seasons (default) */}
                                 <option value="all">All Seasons</option>
+
+                                {/* ✅ Current season */}
+                                <option value="current">Current Season</option>
 
                                 {/* Past seasons (only if you have them) */}
                                 {reportCardAvailableYears

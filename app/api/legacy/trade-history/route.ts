@@ -241,6 +241,11 @@ async function fetchSeasonTrades(
   // First try direct roster match by owner_id (most reliable for historical seasons)
   let userRosterId = rosters.find(r => r.owner_id === userId)?.roster_id
   
+  // Check co_owners if no direct match
+  if (!userRosterId) {
+    userRosterId = rosters.find(r => (r as any).co_owners?.includes(userId))?.roster_id
+  }
+  
   // If no direct match, try matching through users list
   if (!userRosterId) {
     const matchedUser = users.find(u => 
@@ -249,7 +254,10 @@ async function fetchSeasonTrades(
       (u as any).username?.toLowerCase() === userId.toLowerCase()
     )
     if (matchedUser) {
-      userRosterId = rosters.find(r => r.owner_id === matchedUser.user_id)?.roster_id
+      userRosterId = rosters.find(r => 
+        r.owner_id === matchedUser.user_id || 
+        (r as any).co_owners?.includes(matchedUser.user_id)
+      )?.roster_id
     }
   }
     
