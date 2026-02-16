@@ -541,52 +541,68 @@ function HomeContent() {
         {/* 2 SECONDARY AI PREVIEW CARDS */}
         <div className="mt-8 sm:mt-12 grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
           
-          {/* AI Power Rankings Card */}
+          {/* AI Trade Evaluator Card */}
           <div className="rounded-2xl p-5" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500/30 to-orange-500/20 flex items-center justify-center">
-                  <span className="text-base">🏆</span>
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/30 to-purple-500/20 flex items-center justify-center">
+                  <span className="text-base">⚖️</span>
                 </div>
                 <div>
-                  <div className="text-sm font-bold" style={{ color: 'var(--text)' }}>AI Power Rankings</div>
-                  <div className="text-[10px]" style={{ color: 'var(--muted2)' }}>See where your team really stands.</div>
+                  <div className="text-sm font-bold" style={{ color: 'var(--text)' }}>AI Trade Evaluator</div>
+                  <div className="text-[10px]" style={{ color: 'var(--muted2)' }}>Deterministic grades. No guesswork.</div>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20" style={{ color: 'var(--accent-amber)' }}>AI Generated</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20" style={{ color: 'var(--accent-cyan)' }}>4-Tier System</span>
             </div>
-            <div className="flex items-center gap-4 mb-3">
-              <div className="px-3 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/25">
-                <span className="text-sm font-bold" style={{ color: 'var(--accent-amber)' }}>Contender</span>
+            <div className="space-y-2 mb-3">
+              <div className="flex items-center gap-2.5 p-2 rounded-lg" style={{ background: 'rgba(34, 211, 238, 0.08)', border: '1px solid rgba(34, 211, 238, 0.15)' }}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-black bg-gradient-to-br from-emerald-400/90 to-emerald-600/90 text-white shrink-0">B+</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] font-semibold truncate" style={{ color: 'var(--text)' }}>Amon-Ra → Breece Hall + 1.08</div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(168, 85, 247, 0.15)', color: 'var(--accent-purple)' }}>Dynasty</span>
+                    <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>+420 delta</span>
+                    <span className="text-[10px]" style={{ color: 'var(--accent-emerald)' }}>72% accept</span>
+                  </div>
+                </div>
               </div>
-              <span className="text-lg font-bold" style={{ color: 'var(--text)' }}>#3 <span className="text-sm" style={{ color: 'var(--muted2)' }}>of 12</span></span>
             </div>
-            <p className="text-xs" style={{ color: 'var(--muted2)' }}>Contender, Frisky, or Rebuilding — the AI ranks every team using your league context.</p>
+            <p className="text-xs" style={{ color: 'var(--muted2)' }}>Letter grades from a 4-layer deterministic engine — market value, lineup delta, replacement level, and manager context.</p>
           </div>
 
-          {/* AI Lineup Insights Card */}
+          {/* Waiver AI Card */}
           <div className="rounded-2xl p-5" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/30 to-teal-500/20 flex items-center justify-center">
-                  <span className="text-base">📋</span>
+                  <span className="text-base">📈</span>
                 </div>
                 <div>
-                  <div className="text-sm font-bold" style={{ color: 'var(--text)' }}>AI Lineup Insights</div>
-                  <div className="text-[10px]" style={{ color: 'var(--muted2)' }}>Start the right players. Every week.</div>
+                  <div className="text-sm font-bold" style={{ color: 'var(--text)' }}>Waiver Wire AI</div>
+                  <div className="text-[10px]" style={{ color: 'var(--muted2)' }}>Find hidden gems before your league does.</div>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20" style={{ color: 'var(--accent-emerald)' }}>AI Generated</span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20" style={{ color: 'var(--accent-emerald)' }}>League-Aware</span>
             </div>
-            <div className="flex items-center gap-3 mb-3 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-              <span className="text-xs font-medium" style={{ color: 'var(--accent-emerald-strong)' }}>Start:</span>
-              <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>James Conner</span>
-              <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
-                <div className="h-full w-4/5 bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full" />
-              </div>
-              <span className="text-xs" style={{ color: 'var(--accent-emerald-strong)' }}>82%</span>
+            <div className="space-y-1.5 mb-3">
+              {[
+                { rank: 1, name: 'Jaylen Wright', tag: 'Stash', score: 91, color: 'from-emerald-400 to-emerald-500' },
+                { rank: 2, name: 'Jaxon Smith-Njigba', tag: 'Start', score: 87, color: 'from-cyan-400 to-cyan-500' },
+                { rank: 3, name: 'Quentin Johnston', tag: 'Stash', score: 74, color: 'from-amber-400 to-amber-500' },
+              ].map((p) => (
+                <div key={p.rank} className="flex items-center gap-2 p-1.5 rounded-lg" style={{ background: 'rgba(16, 185, 129, 0.06)' }}>
+                  <span className="text-[10px] font-bold w-4 text-center" style={{ color: 'var(--muted2)' }}>{p.rank}</span>
+                  <span className="text-xs font-semibold flex-1 truncate" style={{ color: 'var(--text)' }}>{p.name}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded font-medium" style={{ background: p.tag === 'Start' ? 'rgba(34, 211, 238, 0.15)' : 'rgba(168, 85, 247, 0.15)', color: p.tag === 'Start' ? 'var(--accent-cyan)' : 'var(--accent-purple)' }}>{p.tag}</span>
+                  <div className="w-12 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
+                    <div className={`h-full bg-gradient-to-r ${p.color} rounded-full`} style={{ width: `${p.score}%` }} />
+                  </div>
+                  <span className="text-[10px] font-medium w-6 text-right" style={{ color: 'var(--accent-emerald)' }}>{p.score}</span>
+                </div>
+              ))}
             </div>
-            <p className="text-xs" style={{ color: 'var(--muted2)' }}>The AI breaks down matchups, projections, and risk to help you lock in lineups with confidence.</p>
+            <p className="text-xs" style={{ color: 'var(--muted2)' }}>Scores every free agent using your roster needs, breakout age, athleticism, and dynasty ceiling.</p>
           </div>
         </div>
 
