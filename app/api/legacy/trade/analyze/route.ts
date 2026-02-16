@@ -2570,6 +2570,16 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       engineAnalysis = await runTradeAnalysis(engineReq)
     } catch {}
 
+    const leagueStatus = league?.status || ''
+    const isOffseason = leagueStatus === 'complete' || leagueStatus === 'pre_draft'
+    const offseasonContext = isOffseason ? {
+      offseason: true,
+      offseasonBadge: leagueStatus === 'pre_draft' ? 'Pre-Draft Mode' : 'Offseason Mode',
+      offseasonNote: leagueStatus === 'pre_draft'
+        ? 'League is in pre-draft. Live matchup data and weekly projections are unavailable. Trade values use dynasty ADP and historical baselines.'
+        : 'Season is complete. Rankings use end-of-season snapshots. Live scoring and matchup data are unavailable until next season.',
+    } : null
+
     return NextResponse.json({
       success: true,
       result: {
@@ -2596,6 +2606,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       },
       ...(analyticsEnhanced ? { analytics: analyticsEnhanced } : {}),
       ...(engineAnalysis ? { engineAnalysis, engineRequest: engineReqSaved } : {}),
+      ...(offseasonContext ? { offseasonContext } : {}),
       validated: true,
       rate_limit: { remaining: rlPair.remaining, retryAfterSec: rlPair.retryAfterSec },
     })

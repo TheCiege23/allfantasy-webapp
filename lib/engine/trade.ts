@@ -11,6 +11,8 @@ import { computeAcceptanceProbability } from './acceptance'
 import { enrichDevy, devyValueMultiplier } from './devy'
 import { computeChampionshipDelta, type TeamProjection } from '@/lib/monte-carlo'
 import { normalizeTradeScoring, tradeScoringLabel, type NormalizedTradeScoring } from './scoring'
+import { normalizeLeagueContext } from './normalize'
+import { computeScoringAdjustments, type ScoringAdjustment } from './scoring'
 
 import { priceAssets } from '@/lib/hybrid-valuation'
 
@@ -421,6 +423,32 @@ function toHybridAssetsInput(marketAssets: Asset[]) {
   return { players, picks }
 }
 
+function applyScoringNormalization(
+  pricedItems: Array<any>,
+  scoringAdj: ScoringAdjustment | null
+): { items: Array<any>; total: number } {
+  if (!scoringAdj) {
+    const total = pricedItems.reduce((s: number, it: any) => s + (Number(it.assetValue?.total ?? it.value ?? 0) || 0), 0)
+    return { items: pricedItems, total }
+  }
+
+  let total = 0
+  const items = pricedItems.map((it: any) => {
+    const rawVal = Number(it.assetValue?.total ?? it.value ?? 0) || 0
+    if (it.type !== 'player') {
+      total += rawVal
+      return it
+    }
+    const pos = String(it.position || it.pos || '').toUpperCase()
+    const mult = scoringAdj.positionMultiplier[pos] ?? 1.0
+    const adjusted = Math.round(rawVal * mult)
+    total += adjusted
+    return { ...it, value: adjusted, assetValue: { ...it.assetValue, total: adjusted, scoringMultiplier: mult } }
+  })
+
+  return { items, total }
+}
+
 function pricedItemsToSources(items: Array<{ name: string; type: 'player' | 'pick'; source: string }>) {
   const sources: Record<string, string> = {}
   for (const it of items) {
@@ -696,8 +724,33 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     rosterConfig: req.leagueContext?.roster || undefined,
   }
 
-  const pricedA = await priceAssets(hvAssetsA as any, hvCtx)
-  const pricedB = await priceAssets(hvAssetsB as any, hvCtx)
+  const rawPricedA = await priceAssets(hvAssetsA as any, hvCtx)
+  const rawPricedB = await priceAssets(hvAssetsB as any, hvCtx)
+
+  let scoringAdj: ScoringAdjustment | null = null
+  if (req.leagueContext?.scoring) {
+    try {
+      const s = req.leagueContext.scoring
+      const r = req.leagueContext.roster
+      const engineLeague = normalizeLeagueContext({
+        scoring_settings: {
+          rec: s.ppr ?? 1,
+          bonus_rec_te: s.tep?.premiumPprBonus ?? 0,
+          pass_td: s.sixPtPassTd ? 6 : 4,
+          pts_carry: s.ppCarry ?? 0,
+        },
+        roster_positions: r?.slots
+          ? Object.entries(r.slots).flatMap(([pos, count]) => Array(count as number).fill(pos))
+          : [],
+        numTeams,
+        settings: { num_teams: numTeams },
+      })
+      scoringAdj = computeScoringAdjustments(engineLeague)
+    } catch {}
+  }
+
+  const pricedA = { ...rawPricedA, ...applyScoringNormalization(rawPricedA.items as any, scoringAdj) }
+  const pricedB = { ...rawPricedB, ...applyScoringNormalization(rawPricedB.items as any, scoringAdj) }
 
   const pricingSources: Record<string, string> = {
     ...pricedItemsToSources(pricedA.items as any),
@@ -936,6 +989,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       partnerModelUsed: !!req.marketContext?.partnerTendencies,
       liquidityUsed: !!liquidity,
       devyUsed: (splitA.devyPlayers.length + splitB.devyPlayers.length) > 0,
+      scoringNormalized: scoringAdj !== null,
       pricingSources,
     },
     meta: {

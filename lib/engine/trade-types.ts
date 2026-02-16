@@ -249,6 +249,7 @@ export interface TradeEngineResponse {
     partnerModelUsed: boolean
     liquidityUsed: boolean
     devyUsed: boolean
+    scoringNormalized?: boolean
   }
 
   meta?: Record<string, any>

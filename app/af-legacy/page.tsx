@@ -1602,7 +1602,8 @@ function AFLegacyContent() {
       const engineChampEq = ea?.championshipEquity || data.championshipEquity
       const engineReqForSim = rawResponse.engineRequest || undefined
       const acceptBuckets = ea?.acceptanceProbability?.buckets || null
-      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters || data.counters, championshipEquity: engineChampEq, engineRequest: engineReqForSim, acceptanceBuckets: acceptBuckets })
+      const offseasonCtx = rawResponse.offseasonContext || null
+      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters || data.counters, championshipEquity: engineChampEq, engineRequest: engineReqForSim, acceptanceBuckets: acceptBuckets, offseasonContext: offseasonCtx })
       setLastTradeResult({
         sideA: sideAPlayers.map(name => ({ name })),
         sideB: sideBPlayers.map(name => ({ name })),
@@ -1982,7 +1983,8 @@ function AFLegacyContent() {
       const engineChampEq2 = ea2?.championshipEquity || data.championshipEquity
       const engineReqForSim2 = rawResponse.engineRequest || undefined
       const acceptBuckets2 = ea2?.acceptanceProbability?.buckets || null
-      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters2 || data.counters, championshipEquity: engineChampEq2, engineRequest: engineReqForSim2, acceptanceBuckets: acceptBuckets2 })
+      const offseasonCtx2 = rawResponse.offseasonContext || null
+      setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters2 || data.counters, championshipEquity: engineChampEq2, engineRequest: engineReqForSim2, acceptanceBuckets: acceptBuckets2, offseasonContext: offseasonCtx2 })
       setLastTradeResult({
         sideA: sideA.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
         sideB: sideB.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
@@ -6948,6 +6950,18 @@ function AFLegacyContent() {
                             )}
                           </div>
 
+                          {inlineTradeResult.offseasonContext?.offseason && (
+                            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-3">
+                              <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center">
+                                <span className="text-amber-300 text-xs font-bold">!</span>
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold text-amber-200">{inlineTradeResult.offseasonContext.offseasonBadge}</div>
+                                <div className="text-xs text-amber-200/60 mt-0.5">{inlineTradeResult.offseasonContext.offseasonNote}</div>
+                              </div>
+                            </div>
+                          )}
+
                           {inlineTradeResult.acceptanceBuckets && Array.isArray(inlineTradeResult.acceptanceBuckets) && inlineTradeResult.acceptanceBuckets.length > 0 && (
                             <div className="mb-6 rounded-xl border border-white/10 bg-white/[0.02] p-4">
                               <div className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-3">Acceptance Drivers</div>
@@ -10027,6 +10041,16 @@ function AFLegacyContent() {
                                   </div>
                                 </div>
                               </div>
+
+                              {inlineTradeResult.offseasonContext?.offseason && (
+                                <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 flex items-center gap-2">
+                                  <span className="text-amber-300 text-xs font-bold">!</span>
+                                  <div>
+                                    <span className="text-xs font-semibold text-amber-200">{inlineTradeResult.offseasonContext.offseasonBadge}</span>
+                                    <span className="text-[10px] text-amber-200/50 ml-2">{inlineTradeResult.offseasonContext.offseasonNote}</span>
+                                  </div>
+                                </div>
+                              )}
 
                               {inlineTradeResult.acceptanceBuckets && Array.isArray(inlineTradeResult.acceptanceBuckets) && inlineTradeResult.acceptanceBuckets.length > 0 && (
                                 <div className="rounded-xl bg-black/30 border border-white/10 p-4">

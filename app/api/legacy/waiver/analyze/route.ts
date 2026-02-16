@@ -218,6 +218,9 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
 
     const leagueType = getLeagueType(leagueInfo)
 
+    const leagueStatus = (leagueInfo as any)?.status || ''
+    const isOffseason = leagueStatus === 'complete' || leagueStatus === 'pre_draft'
+
     const [rosters, allPlayers] = await Promise.all([
       getLeagueRosters(league_id),
       getAllPlayers(),
@@ -448,7 +451,7 @@ Write narrative summary, per-player reasoning, and roster notes.`
     if (deterministicResults.length > 0) {
       const top = deterministicResults[0]
       const topMedia = waiverMediaMap.get(top.playerId)
-      responseData.one_move = {
+      analysis.one_move = {
         player_name: top.playerName,
         player_id: top.playerId,
         position: top.position,
@@ -467,7 +470,7 @@ Write narrative summary, per-player reasoning, and roster notes.`
       }
     }
 
-    responseData.suggestions = deterministicResults.map((t) => {
+    analysis.suggestions = deterministicResults.map((t) => {
       const resolved = waiverMediaMap.get(t.playerId)
       return {
         player_name: t.playerName,
@@ -538,6 +541,14 @@ Write narrative summary, per-player reasoning, and roster notes.`
       })
     }
 
+    const offseasonContext = isOffseason ? {
+      offseason: true,
+      offseasonBadge: leagueStatus === 'pre_draft' ? 'Pre-Draft Mode' : 'Offseason Mode',
+      offseasonNote: leagueStatus === 'pre_draft'
+        ? 'League is in pre-draft. Waiver recommendations use dynasty ADP projections. Weekly scoring data is unavailable.'
+        : 'Season is complete. Waiver analysis uses end-of-season baselines and dynasty outlook. Live stats unavailable.',
+    } : null
+
     return NextResponse.json({
       ok: true,
       analysis,
@@ -559,6 +570,7 @@ Write narrative summary, per-player reasoning, and roster notes.`
       roster_count: userRosterCategorized.length,
       free_agent_count: freeAgents.length,
       remaining: rl.remaining,
+      ...(offseasonContext ? { offseasonContext } : {}),
     })
   } catch (error: any) {
     console.error('Waiver analyze error:', error)
