@@ -377,6 +377,7 @@ async function importLeague(
       teamCount: league.total_rosters,
       draftId: (league as any).draft_id,
       playoffTeams: safeNum((league as any)?.settings?.playoff_teams, 0) || null,
+      avatar: (league as any).avatar ? `https://sleepercdn.com/avatars/thumbs/${(league as any).avatar}` : null,
     },
     create: {
       userId,
@@ -395,6 +396,7 @@ async function importLeague(
       draftId: (league as any).draft_id,
       winnerRosterId: championRosterId,
       playoffTeams: safeNum((league as any)?.settings?.playoff_teams, 0) || null,
+      avatar: (league as any).avatar ? `https://sleepercdn.com/avatars/thumbs/${(league as any).avatar}` : null,
     },
   });
 

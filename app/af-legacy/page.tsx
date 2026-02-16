@@ -147,6 +147,8 @@ interface LeagueHistory {
   is_tep?: boolean
   tep_bonus?: number | null
   team_count: number
+  status?: string
+  avatar?: string | null
   record: string
   wins: number
   losses: number
@@ -567,6 +569,13 @@ function LeagueHistoryAccordion({
                                       className="w-full flex items-center justify-between px-3 py-2 hover:bg-white/5 transition text-left"
                                     >
                                       <div className="flex items-center gap-2 min-w-0">
+                                        {league.avatar ? (
+                                          <img src={league.avatar} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                                        ) : (
+                                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0">
+                                            {(league.name || '?')[0].toUpperCase()}
+                                          </div>
+                                        )}
                                         <span className="text-sm text-white truncate">{league.name}</span>
                                         {league.is_champion && <span title="Champion">🏆</span>}
                                         {league.made_playoffs && !league.is_champion && (
@@ -919,6 +928,7 @@ function AFLegacyContent() {
   const [finderLoading, setFinderLoading] = useState(false)
 
   // Transfer state
+  const [openLeagueDropdown, setOpenLeagueDropdown] = useState<string | null>(null)
   const [transferLeagueId, setTransferLeagueId] = useState('')
   const [transferLoading, setTransferLoading] = useState(false)
   const [transferError, setTransferError] = useState('')
@@ -1219,6 +1229,148 @@ function AFLegacyContent() {
   // Feedback modal state
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
+  const sortLeagues = (leagueList: any[]) => {
+    const currentYear = new Date().getFullYear()
+    const maxSeason = Math.max(...leagueList.map(l => l.season || 0), 0)
+    const inactiveThreshold = currentYear - 2
+    return [...leagueList].sort((a, b) => {
+      const aIsCurrent = a.season >= maxSeason
+      const bIsCurrent = b.season >= maxSeason
+      const aIsInactive = a.season <= inactiveThreshold
+      const bIsInactive = b.season <= inactiveThreshold
+      if (aIsCurrent && !bIsCurrent) return -1
+      if (!aIsCurrent && bIsCurrent) return 1
+      if (aIsInactive && !bIsInactive) return 1
+      if (!aIsInactive && bIsInactive) return -1
+      return (a.name || '').localeCompare(b.name || '')
+    })
+  }
+
+  const renderLeagueDropdown = (
+    id: string,
+    leagueList: any[],
+    selectedValue: string,
+    onSelect: (leagueId: string) => void,
+    placeholder: string = 'Choose a league...',
+    showAllOption?: boolean,
+    className?: string,
+  ) => {
+    const sorted = sortLeagues(leagueList)
+    const currentYear = new Date().getFullYear()
+    const maxSeason = Math.max(...leagueList.map(l => l.season || 0), 0)
+    const selected = leagueList.find(l => l.league_id === selectedValue)
+    const isOpen = openLeagueDropdown === id
+    return (
+      <div className={`relative ${className || ''}`} data-league-dropdown>
+        <button
+          onClick={() => setOpenLeagueDropdown(isOpen ? null : id)}
+          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-800/80 border border-slate-600/50 text-sm text-left hover:border-purple-500/50 transition"
+        >
+          {selected?.avatar ? (
+            <img src={selected.avatar} alt="" className="w-6 h-6 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+          ) : selected ? (
+            <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+              {(selected.name || '?')[0].toUpperCase()}
+            </div>
+          ) : null}
+          <span className={`flex-1 truncate ${selected ? 'text-white' : 'text-white/50'}`}>
+            {selected ? `${selected.name} (${selected.season})` : placeholder}
+          </span>
+          <span className={`text-white/40 transition-transform ${isOpen ? 'rotate-180' : ''}`}>▼</span>
+        </button>
+        {isOpen && (
+          <div className="absolute z-50 w-full mt-1 rounded-xl bg-slate-900 border border-slate-600/50 shadow-xl max-h-[300px] overflow-y-auto">
+            {showAllOption && (
+              <button
+                onClick={() => { onSelect(''); setOpenLeagueDropdown(null) }}
+                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-800 transition ${!selectedValue ? 'bg-purple-500/10 text-purple-300' : 'text-white/60'}`}
+              >
+                All leagues
+              </button>
+            )}
+            {sorted.length > 0 && (() => {
+              const groups: { current: any[]; older: any[]; inactive: any[] } = { current: [], older: [], inactive: [] }
+              sorted.forEach(lg => {
+                if (lg.season >= maxSeason) groups.current.push(lg)
+                else if (lg.season <= currentYear - 2) groups.inactive.push(lg)
+                else groups.older.push(lg)
+              })
+              return (
+                <>
+                  {groups.current.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-emerald-400/70 font-semibold bg-slate-900 sticky top-0">Current Season</div>
+                      {groups.current.map(lg => (
+                        <button
+                          key={lg.league_id}
+                          onClick={() => { onSelect(lg.league_id); setOpenLeagueDropdown(null) }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-800 transition ${selectedValue === lg.league_id ? 'bg-purple-500/10 text-purple-300' : 'text-white'}`}
+                        >
+                          {lg.avatar ? (
+                            <img src={lg.avatar} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0">
+                              {(lg.name || '?')[0].toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">{lg.name}</span>
+                          <span className="text-white/30 text-xs ml-auto flex-shrink-0">{lg.season}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {groups.older.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-amber-400/60 font-semibold bg-slate-900 sticky top-0">Previous Seasons</div>
+                      {groups.older.map(lg => (
+                        <button
+                          key={lg.league_id}
+                          onClick={() => { onSelect(lg.league_id); setOpenLeagueDropdown(null) }}
+                          className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-slate-800 transition ${selectedValue === lg.league_id ? 'bg-purple-500/10 text-purple-300' : 'text-white/70'}`}
+                        >
+                          {lg.avatar ? (
+                            <img src={lg.avatar} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-slate-500 to-slate-600 flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0">
+                              {(lg.name || '?')[0].toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">{lg.name}</span>
+                          <span className="text-white/30 text-xs ml-auto flex-shrink-0">{lg.season}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                  {groups.inactive.length > 0 && (
+                    <>
+                      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-white/30 font-semibold bg-slate-900 sticky top-0">Inactive (2+ years)</div>
+                      {groups.inactive.map(lg => (
+                        <div
+                          key={lg.league_id}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-white/25 cursor-not-allowed"
+                        >
+                          {lg.avatar ? (
+                            <img src={lg.avatar} alt="" className="w-5 h-5 rounded-full object-cover flex-shrink-0 opacity-40" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                          ) : (
+                            <div className="w-5 h-5 rounded-full bg-slate-700 flex items-center justify-center text-[8px] font-bold text-white/30 flex-shrink-0">
+                              {(lg.name || '?')[0].toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">{lg.name}</span>
+                          <span className="text-white/20 text-xs ml-auto flex-shrink-0">{lg.season}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Fetch player names on mount
   useEffect(() => {
     fetch('/api/legacy/players')
@@ -1228,6 +1380,16 @@ function AFLegacyContent() {
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (openLeagueDropdown && !(e.target as HTMLElement).closest('[data-league-dropdown]')) {
+        setOpenLeagueDropdown(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openLeagueDropdown])
 
   // Dynamic SEO titles based on active tab
   useEffect(() => {
@@ -7477,43 +7639,17 @@ function AFLegacyContent() {
 
                           {/* League Selector (single source of truth for the whole tab) */}
                           <div className="max-w-md mx-auto mb-4">
-                            <select
-                              value={reportCardLeague}
-                              onChange={(e) => {
-                                const leagueId = e.target.value
-
-                                // 1) Set the global league
-                                setReportCardLeague(leagueId)
-
-                                // 2) Default to ALL SEASONS on change (most useful view)
-                                setReportCardYear('all')
-                                setReportCardAvailableYears([])
-
-                                if (!leagueId) return
-
-                                // 3) Clear stale state (prevents jitter / double-loading)
-                                setTradeSuggestions([])
-                                setTradeHubManagers([])
-
-                                // 4) Load Trade History Report Card (this section)
-                                loadTradeHistoryReportCard(leagueId, 'all')
-
-                                // 5) Lock the rest of AI Trade Hub to this league
-                                loadTradeHubManagers(leagueId)
-
-                                // 6) Deterministic league analyze (sets finderUserRosterId + suggestions)
-                                runTradeFinderAnalysis(leagueId)
-                              }}
-                              disabled={reportCardLoading}
-                              className="w-full h-12 px-4 rounded-xl bg-black/50 border border-white/20 text-white text-sm focus:outline-none focus:border-purple-400/60 disabled:opacity-50"
-                            >
-                              <option value="">Choose a league...</option>
-                              {leagues.map((lg) => (
-                                <option key={lg.league_id} value={lg.league_id}>
-                                  {lg.name} ({lg.season})
-                                </option>
-                              ))}
-                            </select>
+                            {renderLeagueDropdown('tradeHub', leagues, reportCardLeague, (leagueId) => {
+                              setReportCardLeague(leagueId)
+                              setReportCardYear('all')
+                              setReportCardAvailableYears([])
+                              if (!leagueId) return
+                              setTradeSuggestions([])
+                              setTradeHubManagers([])
+                              loadTradeHistoryReportCard(leagueId, 'all')
+                              loadTradeHubManagers(leagueId)
+                              runTradeFinderAnalysis(leagueId)
+                            })}
                           </div>
 
                           {/* Season Selector */}
@@ -12024,17 +12160,7 @@ function AFLegacyContent() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div>
                             <label className="block text-xs text-white/50 mb-1.5">League</label>
-                            <select
-                              value={waiverSelectedLeague}
-                              onChange={(e) => { setWaiverSelectedLeague(e.target.value); setWaiverAnalysis(null) }}
-                              className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white text-sm focus:outline-none focus:border-cyan-500/50"
-                            >
-                              {waiverDynastyLeagues.map((lg) => (
-                                <option key={lg.league_id} value={lg.league_id}>
-                                  {lg.name} ({lg.season}) - {lg.team_count}T{lg.is_sf ? ' SF' : ''}{lg.league_type ? ` ${lg.league_type}` : ''}
-                                </option>
-                              ))}
-                            </select>
+                            {renderLeagueDropdown('waiver', waiverDynastyLeagues, waiverSelectedLeague, (val) => { setWaiverSelectedLeague(val); setWaiverAnalysis(null) })}
                           </div>
                           <div>
                             <label className="block text-xs text-white/50 mb-1.5">Your Goal</label>
@@ -12446,24 +12572,13 @@ function AFLegacyContent() {
                       <div className="space-y-4">
                         <div>
                           <label className="block text-sm text-white/70 mb-2">Select Dynasty League</label>
-                          <select
-                            value={rankingsSelectedLeague}
-                            onChange={(e) => {
-                              const newLeague = e.target.value
-                              setRankingsSelectedLeague(newLeague)
-                              setRankingsData(null)
-                              if (newLeague && username) {
-                                runRankingsAnalysis(newLeague)
-                              }
-                            }}
-                            className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white focus:outline-none focus:border-cyan-500/50"
-                          >
-                            {rankingsDynastyLeagues.map((lg) => (
-                              <option key={lg.league_id} value={lg.league_id}>
-                                {lg.name} ({lg.season}) - {lg.team_count} teams
-                              </option>
-                            ))}
-                          </select>
+                          {renderLeagueDropdown('rankings', rankingsDynastyLeagues, rankingsSelectedLeague, (newLeague) => {
+                            setRankingsSelectedLeague(newLeague)
+                            setRankingsData(null)
+                            if (newLeague && username) {
+                              runRankingsAnalysis(newLeague)
+                            }
+                          })}
                         </div>
 
                         <button
@@ -14469,21 +14584,7 @@ function AFLegacyContent() {
                             : 'Ask about trades, players, drafts, waivers, or drop a screenshot'}
                         </p>
                       </div>
-                      {username && leagues.length > 0 && (
-                        <select
-                          value={chatLeagueId}
-                          onChange={(e) => setChatLeagueId(e.target.value)}
-                          className="px-2 py-1.5 rounded-lg bg-black/40 border border-white/15 text-xs text-white/80 focus:outline-none focus:border-cyan-400/40 max-w-[160px] sm:max-w-[200px] truncate"
-                          title="Select a league to give AI more context"
-                        >
-                          <option value="">All leagues</option>
-                          {leagues.map((lg) => (
-                            <option key={lg.league_id} value={lg.league_id}>
-                              {lg.name} ({lg.season})
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                      {username && leagues.length > 0 && renderLeagueDropdown('chat', leagues, chatLeagueId, (val) => setChatLeagueId(val), 'All leagues', true, 'max-w-[200px] sm:max-w-[240px]')}
                     </div>
                     
                     <div 
@@ -15144,19 +15245,7 @@ function AFLegacyContent() {
                       {/* League Dropdown Selector */}
                       <div>
                         <label className="block text-sm text-white/70 mb-2">Select Sleeper League</label>
-                        <select
-                          value={transferLeagueId}
-                          onChange={(e) => setTransferLeagueId(e.target.value)}
-                          className="w-full px-4 py-3.5 rounded-xl bg-black/50 border border-white/20 text-white focus:outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 transition appearance-none cursor-pointer"
-                          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23999'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1.5rem' }}
-                        >
-                          <option value="" className="bg-gray-900">Choose a league...</option>
-                          {leagues.map((league) => (
-                            <option key={league.league_id} value={league.league_id} className="bg-gray-900">
-                              {league.name} ({league.season}) - {league.team_count} teams
-                            </option>
-                          ))}
-                        </select>
+                        {renderLeagueDropdown('transfer', leagues, transferLeagueId, (val) => setTransferLeagueId(val))}
                       </div>
 
                       {/* Transfer Button */}

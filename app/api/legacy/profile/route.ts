@@ -253,6 +253,7 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/profile", tool: "Legacy
       tep_bonus: lg.tepBonus || null,
       team_count: lg.teamCount,
       status: lg.status,
+      avatar: (lg as any).avatar || null,
 
       record: recordString(wins, losses, ties),
       wins,
