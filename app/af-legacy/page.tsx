@@ -588,7 +588,7 @@ function LeagueHistoryAccordion({
                                           <div>Teams: <span className="text-white">{league.team_count}</span></div>
                                         </div>
 
-                                        {roster && (roster.starters.length > 0 || roster.bench.length > 0) ? (
+                                        {roster && (league.type === 'Dynasty' || league.type === 'Keeper') && (roster.starters.length > 0 || roster.bench.length > 0) ? (
                                           <div className="space-y-2">
                                             {(() => {
                                               const offStarters = roster.starters.filter(p => !IDP_POSITIONS.has(getPlayerPosition(p)))
