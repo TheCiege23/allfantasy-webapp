@@ -1112,6 +1112,8 @@ function AFLegacyContent() {
   const [rankingsDynastyLeagues, setRankingsDynastyLeagues] = useState<any[]>([])
   const [rankingsLeaguesLoading, setRankingsLeaguesLoading] = useState(false)
   const [rankingsSelectedLeague, setRankingsSelectedLeague] = useState('')
+  const [rankingsShareCopied, setRankingsShareCopied] = useState(false)
+  const [pendingShareLeague, setPendingShareLeague] = useState<string | null>(null)
   const [rankingsLoading, setRankingsLoading] = useState(false)
   const [rankingsError, setRankingsError] = useState('')
   const [rankingsData, setRankingsData] = useState<any>(null)
@@ -2402,10 +2404,11 @@ function AFLegacyContent() {
 
   // Username is entered fresh each time - no localStorage persistence
 
-  // Handle deep linking from email notifications and back navigation
+  // Handle deep linking from email notifications, shared links, and back navigation
   useEffect(() => {
     const tab = searchParams.get('tab')
     const tradeId = searchParams.get('trade')
+    const sharedLeague = searchParams.get('league')
     
     if (tab === 'notifications') {
       setShowTradeNotifs(true)
@@ -2415,7 +2418,10 @@ function AFLegacyContent() {
         const timer = setTimeout(() => setHighlightedTradeId(null), 10000)
         return () => clearTimeout(timer)
       }
-    } else if (tab && ['overview', 'trade', 'finder', 'waiver', 'compare', 'chat', 'share'].includes(tab)) {
+    } else if (tab === 'rankings' && sharedLeague) {
+      handleActiveTabChange('rankings')
+      setPendingShareLeague(sharedLeague)
+    } else if (tab && ['overview', 'trade', 'finder', 'waiver', 'compare', 'chat', 'share', 'rankings'].includes(tab)) {
       handleActiveTabChange(tab as Tab)
     }
   }, [searchParams])
@@ -2522,6 +2528,35 @@ function AFLegacyContent() {
       setLoading(false)
     }
   }
+
+  // Auto-navigate to rankings tab with shared league after import completes
+  useEffect(() => {
+    if (importStatus === 'complete' && username && pendingShareLeague) {
+      const sharedLeague = pendingShareLeague
+      setPendingShareLeague(null)
+      handleActiveTabChange('rankings')
+      const loadAndRun = async () => {
+        try {
+          const res = await fetch(`/api/legacy/waiver/leagues?sleeper_username=${encodeURIComponent(username)}`)
+          const data = await res.json()
+          if (data.ok && data.leagues) {
+            setRankingsDynastyLeagues(data.leagues)
+            const leagueExists = data.leagues.some((l: any) => l.league_id === sharedLeague)
+            if (leagueExists) {
+              setRankingsSelectedLeague(sharedLeague)
+              runRankingsAnalysis(sharedLeague)
+            } else {
+              setRankingsSelectedLeague(data.leagues[0]?.league_id || '')
+              setRankingsError('The shared league was not found in your leagues. Showing your first league instead.')
+            }
+          }
+        } catch {
+          console.error('Failed to auto-load rankings from shared link')
+        }
+      }
+      loadAndRun()
+    }
+  }, [importStatus, username, pendingShareLeague])
 
   // countdown tick
   useEffect(() => {
@@ -3838,6 +3873,18 @@ function AFLegacyContent() {
             {/* subtle background accents */}
             <div className="pointer-events-none absolute -top-10 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full bg-cyan-500/15 blur-3xl" />
             <div className="pointer-events-none absolute top-24 left-1/3 h-64 w-64 -translate-x-1/2 rounded-full bg-purple-500/15 blur-3xl" />
+
+            {pendingShareLeague && (
+              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border border-amber-400/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center text-base flex-shrink-0">🏆</div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-200">Someone shared their league rankings with you!</p>
+                    <p className="text-xs text-white/50 mt-0.5">Enter your Sleeper username below to see where you rank.</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* hero grid */}
             <div className="grid lg:grid-cols-2 gap-8 items-center">
@@ -12194,10 +12241,49 @@ function AFLegacyContent() {
                   <div className="bg-black/30 border border-cyan-500/20 rounded-2xl p-4 sm:p-6">
                     <div className="flex items-start sm:items-center gap-3 mb-4">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500/30 to-amber-500/30 flex items-center justify-center text-xl flex-shrink-0">🏆</div>
-                      <div>
+                      <div className="flex-1">
                         <h3 className="text-lg sm:text-xl font-bold text-cyan-400">League Rankings</h3>
                         <p className="text-xs sm:text-sm text-gray-400">See where you rank in your dynasty leagues</p>
                       </div>
+                      {rankingsSelectedLeague && rankingsData && (
+                        <button
+                          onClick={() => {
+                            const leagueName = rankingsDynastyLeagues.find(l => l.league_id === rankingsSelectedLeague)?.name || 'my league'
+                            const url = `${window.location.origin}/af-legacy?tab=rankings&league=${rankingsSelectedLeague}`
+                            const shareMessage = `Check out where you rank in ${leagueName} on AllFantasy!\n\n${url}\n\nEnter your Sleeper username to see your league rankings instantly.`
+                            navigator.clipboard.writeText(shareMessage).then(() => {
+                              setRankingsShareCopied(true)
+                              setTimeout(() => setRankingsShareCopied(false), 3000)
+                            }).catch(() => {
+                              const ta = document.createElement('textarea')
+                              ta.value = shareMessage
+                              document.body.appendChild(ta)
+                              ta.select()
+                              document.execCommand('copy')
+                              document.body.removeChild(ta)
+                              setRankingsShareCopied(true)
+                              setTimeout(() => setRankingsShareCopied(false), 3000)
+                            })
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition flex-shrink-0 ${
+                            rankingsShareCopied
+                              ? 'bg-emerald-500/20 border border-emerald-400/30 text-emerald-300'
+                              : 'bg-cyan-500/15 border border-cyan-400/20 text-cyan-300 hover:bg-cyan-500/25'
+                          }`}
+                        >
+                          {rankingsShareCopied ? (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                              Share to League
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {rankingsDynastyLeagues.length === 0 && !rankingsLeaguesLoading && (
