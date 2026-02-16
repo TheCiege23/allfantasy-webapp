@@ -1,9 +1,9 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getSleeperUser } from '@/lib/sleeper-client';
 import { rateLimit } from '@/lib/rate-limit';
 import { trackLegacyToolUsage } from '@/lib/analytics-server';
+import { resolveOrCreateLegacyUser } from '@/lib/legacy-user-resolver';
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/import", tool: "LegacyImport" })(async (request: NextRequest) => {
   try {
@@ -27,35 +27,18 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/import", tool: "Legacy
       );
     }
 
-    const username = sleeper_username.trim().toLowerCase();
+    const resolved = await resolveOrCreateLegacyUser(sleeper_username);
 
-    let user = await prisma.legacyUser.findUnique({
-      where: { sleeperUsername: username },
-    });
-
-    if (!user) {
-      const sleeperUser = await getSleeperUser(username);
-      
-      if (!sleeperUser) {
-        return NextResponse.json(
-          { error: 'Sleeper user not found' },
-          { status: 404 }
-        );
-      }
-
-      user = await prisma.legacyUser.create({
-        data: {
-          sleeperUsername: username,
-          sleeperUserId: sleeperUser.user_id,
-          displayName: sleeperUser.display_name || sleeperUser.username,
-          avatar: sleeperUser.avatar ? `https://sleepercdn.com/avatars/thumbs/${sleeperUser.avatar}` : null,
-        },
-      });
+    if (!resolved) {
+      return NextResponse.json(
+        { error: 'Sleeper user not found' },
+        { status: 404 }
+      );
     }
 
     const existingJob = await prisma.legacyImportJob.findFirst({
       where: {
-        userId: user.id,
+        userId: resolved.id,
         status: { in: ['queued', 'running'] },
       },
     });
@@ -67,28 +50,37 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/import", tool: "Legacy
         job_id: existingJob.id,
         status: existingJob.status,
         progress: existingJob.progress,
+        username_changed: resolved.usernameChanged,
+        previous_username: resolved.previousUsername,
       });
     }
 
     const job = await prisma.legacyImportJob.create({
       data: {
-        userId: user.id,
+        userId: resolved.id,
         status: 'queued',
         progress: 0,
       },
     });
 
-    // Track tool usage
-    trackLegacyToolUsage('legacy_import', user.id, null, { username })
+    trackLegacyToolUsage('legacy_import', resolved.id, null, {
+      username: resolved.sleeperUsername,
+      usernameChanged: resolved.usernameChanged,
+      previousUsername: resolved.previousUsername,
+    })
 
     return NextResponse.json({
       success: true,
-      message: 'Import queued',
+      message: resolved.usernameChanged
+        ? `Welcome back! Your username was updated from "${resolved.previousUsername}" to "${resolved.sleeperUsername}". All your data has been preserved.`
+        : 'Import queued',
       job_id: job.id,
-      user_id: user.id,
-      sleeper_user_id: user.sleeperUserId,
-      display_name: user.displayName,
-      avatar: user.avatar,
+      user_id: resolved.id,
+      sleeper_user_id: resolved.sleeperUserId,
+      display_name: resolved.displayName,
+      avatar: resolved.avatar,
+      username_changed: resolved.usernameChanged,
+      previous_username: resolved.previousUsername,
     });
   } catch (error) {
     console.error('Legacy import error:', error);
