@@ -2378,16 +2378,20 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
           const recentTrades = await prisma.leagueTrade.findMany({
             where: {
               history: { sleeperLeagueId: leagueId },
-              executedAt: { gte: thirtyDaysAgo },
+              createdAt: { gte: thirtyDaysAgo },
             },
-            select: { addedPlayerIds: true, droppedPlayerIds: true, rosterIds: true },
+            select: { playersGiven: true, playersReceived: true, picksGiven: true, picksReceived: true, partnerRosterId: true },
           })
           liquidityMetrics.tradesLast30 = recentTrades.length
-          const uniqueManagers = new Set(recentTrades.flatMap((t: any) => t.rosterIds || []))
+          const uniqueManagers = new Set(recentTrades.map((t: any) => t.partnerRosterId).filter(Boolean))
           liquidityMetrics.activeManagers = uniqueManagers.size
           if (recentTrades.length > 0) {
             const totalAssets = recentTrades.reduce((sum: number, t: any) => {
-              return sum + ((t.addedPlayerIds as string[])?.length ?? 0) + ((t.droppedPlayerIds as string[])?.length ?? 0)
+              const given = Array.isArray(t.playersGiven) ? t.playersGiven.length : 0
+              const received = Array.isArray(t.playersReceived) ? t.playersReceived.length : 0
+              const picksG = Array.isArray(t.picksGiven) ? t.picksGiven.length : 0
+              const picksR = Array.isArray(t.picksReceived) ? t.picksReceived.length : 0
+              return sum + given + received + picksG + picksR
             }, 0)
             liquidityMetrics.avgAssetsPerTrade = totalAssets / recentTrades.length
           }
