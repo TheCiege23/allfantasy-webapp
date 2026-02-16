@@ -59,6 +59,33 @@ export interface RiskPoint {
   mitigation: string;
 }
 
+export interface PlayerMove {
+  name: string;
+  position: string;
+  team: string | null;
+  value: number;
+  age: number | null;
+  reason: string;
+}
+
+export interface RosterMoves {
+  sellHigh: PlayerMove[];
+  tradeChips: PlayerMove[];
+  holdCore: PlayerMove[];
+  buyLowTargets: string[];
+  dropCandidates: PlayerMove[];
+  sleepers: PlayerMove[];
+}
+
+export interface DraftStrategy {
+  approach: string;
+  description: string;
+  targetPositions: string[];
+  roundPlan: Array<{ round: string; focus: string; rationale: string }>;
+  picksOwned: number;
+  totalPickValue: number;
+}
+
 export interface StrategyResult {
   classification: 'contender' | 'competitive' | 'rebuilder';
   confidence: number;
@@ -69,9 +96,13 @@ export interface StrategyResult {
   phases: StrategyPhase[];
   tradeWindows: TradeWindow[];
   riskPoints: RiskPoint[];
+  rosterMoves: RosterMoves;
+  draftStrategy: DraftStrategy;
   aiRoadmap: string;
   weekNumber: number;
   isOffseason: boolean;
+  isDynasty: boolean;
+  isSuperFlex: boolean;
 }
 
 interface RosterSummary {
@@ -237,6 +268,9 @@ export async function computeSeasonStrategy(
     classification, metrics, currentWeek, isDynasty, rosterSummary, standingsSummary, userTeam.picks
   );
 
+  const rosterMoves = buildRosterMoves(classification, rosterSummary, metrics, isDynasty);
+  const draftStrategy = buildDraftStrategy(classification, metrics, userTeam.picks, isDynasty, isSuperFlex);
+
   const aiRoadmap = await generateAIRoadmap(
     classification, confidence, metrics, rosterSummary, standingsSummary,
     userTeam.picks, phases, tradeWindows, riskPoints, leagueType, scoringType,
@@ -253,9 +287,13 @@ export async function computeSeasonStrategy(
     phases,
     tradeWindows,
     riskPoints,
+    rosterMoves,
+    draftStrategy,
     aiRoadmap,
     weekNumber: currentWeek,
     isOffseason: isOffseason(currentWeek),
+    isDynasty,
+    isSuperFlex,
   };
 }
 
@@ -437,6 +475,289 @@ function classifyTeam(
   const confidence = Math.min(0.95, 0.6 + distFromBoundary * 2);
 
   return { classification, confidence, contenderScore: Math.round(score * 100) / 100 };
+}
+
+function buildRosterMoves(
+  classification: 'contender' | 'competitive' | 'rebuilder',
+  roster: RosterSummary,
+  metrics: ClassificationMetrics,
+  isDynasty: boolean,
+): RosterMoves {
+  const players = roster.players;
+  const avgValue = roster.totalValue / Math.max(players.length, 1);
+
+  const sellHigh: PlayerMove[] = [];
+  const tradeChips: PlayerMove[] = [];
+  const holdCore: PlayerMove[] = [];
+  const dropCandidates: PlayerMove[] = [];
+  const sleepers: PlayerMove[] = [];
+
+  const positionPeaks: Record<string, number> = { QB: 30, RB: 25, WR: 27, TE: 28 };
+
+  for (const p of players) {
+    const pos = p.position;
+    const age = p.age || 25;
+    const peak = positionPeaks[pos] || 27;
+    const isOld = age >= peak + 2;
+    const isYoung = age <= peak - 2;
+    const isHighValue = p.value >= avgValue * 1.5;
+    const isMidValue = p.value >= avgValue * 0.5 && p.value < avgValue * 1.5;
+    const isLowValue = p.value < avgValue * 0.3;
+    const isMinimal = p.value < 5;
+
+    if (isMinimal && !isYoung) {
+      dropCandidates.push({
+        ...p,
+        reason: `Minimal trade value (${p.value}) — roster spot could be used better`,
+      });
+      continue;
+    }
+
+    if (classification === 'rebuilder') {
+      if (isOld && p.value >= 20) {
+        sellHigh.push({
+          ...p,
+          reason: `Age ${age} past ${pos} peak — sell while value (${p.value}) is still high`,
+        });
+      } else if (isYoung && isHighValue) {
+        holdCore.push({
+          ...p,
+          reason: `Young core piece (age ${age}) — build around this player`,
+        });
+      } else if (isYoung && isLowValue) {
+        sleepers.push({
+          ...p,
+          reason: `Young (${age}) with room to grow — low cost, high ceiling`,
+        });
+      } else if (!isYoung && isMidValue) {
+        tradeChips.push({
+          ...p,
+          reason: `Mid-value asset — package in trades for picks or younger players`,
+        });
+      }
+    } else if (classification === 'contender') {
+      if (isHighValue) {
+        holdCore.push({
+          ...p,
+          reason: `Championship-caliber starter — keep for your title push`,
+        });
+      } else if (isOld && isMidValue && isDynasty) {
+        sellHigh.push({
+          ...p,
+          reason: `Aging (${age}) — could sell after the season if you don't win it all`,
+        });
+      } else if (isLowValue && !isYoung) {
+        tradeChips.push({
+          ...p,
+          reason: `Low impact (${p.value}) — use as trade sweetener for upgrades`,
+        });
+      } else if (isYoung && isLowValue) {
+        sleepers.push({
+          ...p,
+          reason: `Young (${age}), cheap — could break out into a starter`,
+        });
+      }
+    } else {
+      if (isHighValue) {
+        holdCore.push({
+          ...p,
+          reason: `Key asset — hold until you decide to buy or sell`,
+        });
+      } else if (isOld && isMidValue) {
+        sellHigh.push({
+          ...p,
+          reason: `Age ${age} declining — sell if you commit to rebuilding`,
+        });
+      } else if (isYoung && isLowValue) {
+        sleepers.push({
+          ...p,
+          reason: `Young upside (${age}) — worth holding to see development`,
+        });
+      }
+    }
+  }
+
+  const weakPositions = Object.entries(metrics.positionBreakdown)
+    .filter(([pos]) => ['QB', 'RB', 'WR', 'TE'].includes(pos))
+    .sort((a, b) => a[1].value - b[1].value)
+    .slice(0, 2)
+    .map(([pos]) => pos);
+
+  const buyLowTargets: string[] = [];
+  if (classification === 'contender') {
+    for (const pos of weakPositions) {
+      buyLowTargets.push(`Target a ${pos} upgrade — your ${pos} group is among your weakest`);
+    }
+    buyLowTargets.push('Look for underperforming stars on losing teams — buy the dip');
+    buyLowTargets.push('Target players with tough early schedules who face easier matchups later');
+  } else if (classification === 'rebuilder') {
+    buyLowTargets.push('Target young players on contending teams who can\'t afford to keep them');
+    buyLowTargets.push('Buy injured stars at a discount — they\'ll recover and gain value');
+    for (const pos of weakPositions) {
+      buyLowTargets.push(`Acquire young ${pos} talent to build your future foundation`);
+    }
+  } else {
+    buyLowTargets.push('Monitor the waiver wire for breakout players before committing direction');
+    for (const pos of weakPositions) {
+      buyLowTargets.push(`${pos} depth is thin — target low-cost options via trade or waivers`);
+    }
+  }
+
+  return {
+    sellHigh: sellHigh.sort((a, b) => b.value - a.value).slice(0, 5),
+    tradeChips: tradeChips.sort((a, b) => b.value - a.value).slice(0, 5),
+    holdCore: holdCore.sort((a, b) => b.value - a.value).slice(0, 6),
+    buyLowTargets: buyLowTargets.slice(0, 4),
+    dropCandidates: dropCandidates.sort((a, b) => a.value - b.value).slice(0, 5),
+    sleepers: sleepers.sort((a, b) => {
+      const ageA = a.age || 25;
+      const ageB = b.age || 25;
+      return ageA - ageB || b.value - a.value;
+    }).slice(0, 5),
+  };
+}
+
+function buildDraftStrategy(
+  classification: 'contender' | 'competitive' | 'rebuilder',
+  metrics: ClassificationMetrics,
+  picks: PickSummary[],
+  isDynasty: boolean,
+  isSuperFlex: boolean,
+): DraftStrategy {
+  const totalPickValue = picks.reduce((s, p) => s + p.value, 0);
+  const weakPositions = Object.entries(metrics.positionBreakdown)
+    .filter(([pos]) => ['QB', 'RB', 'WR', 'TE'].includes(pos))
+    .sort((a, b) => a[1].value - b[1].value)
+    .map(([pos]) => pos);
+
+  const strongPositions = Object.entries(metrics.positionBreakdown)
+    .filter(([pos]) => ['QB', 'RB', 'WR', 'TE'].includes(pos))
+    .sort((a, b) => b[1].value - a[1].value)
+    .map(([pos]) => pos);
+
+  let approach: string;
+  let description: string;
+  const roundPlan: DraftStrategy['roundPlan'] = [];
+
+  if (classification === 'contender') {
+    approach = 'Best Player Available (BPA)';
+    description = isDynasty
+      ? 'As a contender, draft the best talent available. Don\'t reach for need — your roster is strong enough to absorb BPA picks. Target players who can contribute immediately or develop into future starters.'
+      : 'Draft the highest-upside player on your board. Fill starting lineup gaps early, then stack depth in later rounds.';
+
+    if (isDynasty) {
+      const earlyPicks = picks.filter(p => p.round <= 2);
+      if (earlyPicks.length > 0) {
+        roundPlan.push({
+          round: 'Rounds 1-2',
+          focus: `BPA — lean ${weakPositions[0] || 'WR'} if close`,
+          rationale: 'Elite talent rarely falls, take the best player and worry about fit later',
+        });
+      }
+      roundPlan.push({
+        round: 'Rounds 3-4',
+        focus: `Target ${weakPositions.slice(0, 2).join('/') || 'RB/WR'} depth`,
+        rationale: 'Fill your weakest position groups with high-upside picks',
+      });
+      roundPlan.push({
+        round: 'Late Rounds',
+        focus: 'Swing for upside — backup QBs, athletic TEs, gadget players',
+        rationale: 'Low cost, high ceiling — these picks are lottery tickets',
+      });
+    } else {
+      roundPlan.push({
+        round: 'Early Rounds',
+        focus: `${weakPositions[0] || 'RB'} if top talent available, otherwise BPA`,
+        rationale: 'Address your biggest gap while the talent pool is deep',
+      });
+      roundPlan.push({
+        round: 'Middle Rounds',
+        focus: `Stack ${strongPositions[0] || 'WR'} depth and get your QB if needed`,
+        rationale: 'Build roster depth for bye weeks and injury insurance',
+      });
+      roundPlan.push({
+        round: 'Late Rounds',
+        focus: 'Handcuffs, breakout candidates, and high-upside flyers',
+        rationale: 'Target players with a clear path to increased usage',
+      });
+    }
+  } else if (classification === 'rebuilder') {
+    approach = 'Youth & Upside';
+    description = isDynasty
+      ? 'Accumulate as many picks as possible, especially in rounds 1-2. Draft young, high-ceiling players even if they won\'t produce immediately. Trade back when possible to gain extra picks.'
+      : 'Draft with an eye on the future. Target high-ceiling players at positions of need. Don\'t chase safe floor — you need upside to close the gap.';
+
+    if (isDynasty) {
+      roundPlan.push({
+        round: 'Round 1',
+        focus: `BPA — prioritize ${isSuperFlex ? 'QB, then ' : ''}${weakPositions[0] || 'WR'}`,
+        rationale: 'First-round picks are your most valuable rebuild tool — take elite prospects',
+      });
+      roundPlan.push({
+        round: 'Rounds 2-3',
+        focus: `Target ${weakPositions.slice(0, 2).join(' and ') || 'RB and WR'} prospects`,
+        rationale: 'Address position scarcity while talent is still available',
+      });
+      roundPlan.push({
+        round: 'Rounds 4+',
+        focus: 'High-upside athletes, devy-eligible players, developmental picks',
+        rationale: 'Swing for fences — one hit can accelerate your rebuild by a year',
+      });
+      if (picks.length < 4) {
+        roundPlan.push({
+          round: 'Pre-Draft',
+          focus: 'ACQUIRE MORE PICKS — trade veterans for 2025-2026 draft capital',
+          rationale: `You only have ${picks.length} pick(s) — rebuilders need 5+ picks per draft`,
+        });
+      }
+    } else {
+      roundPlan.push({
+        round: 'Early Rounds',
+        focus: `${weakPositions[0] || 'RB'} — anchor your rebuild with a foundational pick`,
+        rationale: 'Get one cornerstone player you can build around',
+      });
+      roundPlan.push({
+        round: 'Middle Rounds',
+        focus: 'High-ceiling players at positions of need',
+        rationale: 'Target players with breakout potential over safe, boring picks',
+      });
+      roundPlan.push({
+        round: 'Late Rounds',
+        focus: 'Upside-only picks — rookies, second-year breakout candidates',
+        rationale: 'Nothing to lose — maximize your lottery ticket chances',
+      });
+    }
+  } else {
+    approach = 'Balanced — Need + BPA';
+    description = isDynasty
+      ? 'You\'re on the fence between contending and rebuilding. Draft BPA in the early rounds, but lean toward positions of need when talent is close. Avoid trading away picks unless the return is clearly in your favor.'
+      : 'Balance filling starting lineup gaps with taking the best available talent. Don\'t overthink it — take the best player who fills a need.';
+
+    roundPlan.push({
+      round: isDynasty ? 'Rounds 1-2' : 'Early Rounds',
+      focus: `BPA — break ties toward ${weakPositions[0] || 'RB'}`,
+      rationale: 'Get the best talent available while addressing your biggest gap',
+    });
+    roundPlan.push({
+      round: isDynasty ? 'Rounds 3-4' : 'Middle Rounds',
+      focus: `Target ${weakPositions.slice(0, 2).join('/') || 'depth'} directly`,
+      rationale: 'Now is the time to fill specific roster holes',
+    });
+    roundPlan.push({
+      round: isDynasty ? 'Late Rounds' : 'Late Rounds',
+      focus: 'Upside swings and depth',
+      rationale: 'Take shots on high-ceiling players — hedge your direction',
+    });
+  }
+
+  return {
+    approach,
+    description,
+    targetPositions: weakPositions.slice(0, 3),
+    roundPlan,
+    picksOwned: picks.length,
+    totalPickValue,
+  };
 }
 
 function buildDeterministicPlan(
@@ -915,19 +1236,33 @@ export async function getOrComputeStrategy(
     });
 
     if (cached && new Date(cached.expiresAt) > new Date()) {
+      const cachedClassification = cached.classification as 'contender' | 'competitive' | 'rebuilder';
+      const cachedMetrics = cached.metrics as unknown as ClassificationMetrics;
+      const cachedRoster = cached.roster as unknown as RosterSummary;
+      const cachedPicks = cached.draftCapital as unknown as PickSummary[];
+      const cachedPhases = cached.phases as unknown as StrategyPhase[];
+      const extraFlags = (cached.metrics as Record<string, unknown>) || {};
+      const isDynasty = extraFlags._isDynasty === true;
+      const isSuperFlex = extraFlags._isSuperFlex === true;
+      const rosterMoves = buildRosterMoves(cachedClassification, cachedRoster, cachedMetrics, isDynasty);
+      const draftStrategy = buildDraftStrategy(cachedClassification, cachedMetrics, cachedPicks, isDynasty, isSuperFlex);
       return {
-        classification: cached.classification as 'contender' | 'competitive' | 'rebuilder',
+        classification: cachedClassification,
         confidence: cached.confidence,
-        metrics: cached.metrics as unknown as ClassificationMetrics,
-        roster: cached.roster as unknown as RosterSummary,
+        metrics: cachedMetrics,
+        roster: cachedRoster,
         standings: cached.standings as unknown as StandingsSummary,
-        draftCapital: cached.draftCapital as unknown as PickSummary[],
-        phases: cached.phases as unknown as StrategyPhase[],
+        draftCapital: cachedPicks,
+        phases: cachedPhases,
         tradeWindows: cached.tradeWindows as unknown as TradeWindow[],
         riskPoints: cached.riskPoints as unknown as RiskPoint[],
+        rosterMoves,
+        draftStrategy,
         aiRoadmap: cached.aiRoadmap || '',
         weekNumber: cached.weekNumber,
         isOffseason: isOffseason(cached.weekNumber),
+        isDynasty,
+        isSuperFlex,
         fromCache: true,
         snapshotId: cached.id,
       };
@@ -942,7 +1277,7 @@ export async function getOrComputeStrategy(
       sleeperUsername: sleeperUsername || null,
       classification: result.classification,
       confidence: result.confidence,
-      metrics: result.metrics as any,
+      metrics: { ...result.metrics, _isDynasty: result.isDynasty, _isSuperFlex: result.isSuperFlex } as any,
       roster: result.roster as any,
       standings: result.standings as any,
       draftCapital: result.draftCapital as any,
@@ -961,7 +1296,7 @@ export async function getOrComputeStrategy(
       sleeperUsername: sleeperUsername || null,
       classification: result.classification,
       confidence: result.confidence,
-      metrics: result.metrics as any,
+      metrics: { ...result.metrics, _isDynasty: result.isDynasty, _isSuperFlex: result.isSuperFlex } as any,
       roster: result.roster as any,
       standings: result.standings as any,
       draftCapital: result.draftCapital as any,

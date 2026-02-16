@@ -15,6 +15,14 @@ import {
   Zap,
   Clock,
   ArrowRight,
+  ArrowUpRight,
+  ArrowDownRight,
+  Lock,
+  Trash2,
+  Sparkles,
+  ShoppingCart,
+  GraduationCap,
+  Users,
 } from 'lucide-react';
 
 interface StrategyPhase {
@@ -69,6 +77,33 @@ interface StandingsSummary {
   playoffSpots: number;
 }
 
+interface PlayerMove {
+  name: string;
+  position: string;
+  team: string | null;
+  value: number;
+  age: number | null;
+  reason: string;
+}
+
+interface RosterMoves {
+  sellHigh: PlayerMove[];
+  tradeChips: PlayerMove[];
+  holdCore: PlayerMove[];
+  buyLowTargets: string[];
+  dropCandidates: PlayerMove[];
+  sleepers: PlayerMove[];
+}
+
+interface DraftStrategy {
+  approach: string;
+  description: string;
+  targetPositions: string[];
+  roundPlan: Array<{ round: string; focus: string; rationale: string }>;
+  picksOwned: number;
+  totalPickValue: number;
+}
+
 interface StrategyData {
   classification: 'contender' | 'competitive' | 'rebuilder';
   confidence: number;
@@ -77,6 +112,8 @@ interface StrategyData {
   phases: StrategyPhase[];
   tradeWindows: TradeWindow[];
   riskPoints: RiskPoint[];
+  rosterMoves?: RosterMoves;
+  draftStrategy?: DraftStrategy;
   aiRoadmap: string;
   weekNumber: number;
   isOffseason?: boolean;
@@ -512,6 +549,197 @@ export default function StrategyPlanner({ leagues, sleeperUsername }: StrategyPl
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {strategy.rosterMoves && (
+        <div className="space-y-4">
+          <h4 className="text-sm font-semibold text-white/80 flex items-center gap-2">
+            <Users className="w-4 h-4 text-cyan-400" />
+            Roster Move Recommendations
+          </h4>
+
+          {strategy.rosterMoves.holdCore.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Lock className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">Hold — Core Pieces</span>
+              </div>
+              <div className="grid gap-2">
+                {strategy.rosterMoves.holdCore.map((p, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-emerald-500/5 border border-emerald-400/15">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-400/20 flex items-center justify-center text-[10px] font-bold text-emerald-300">{p.position}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white">{p.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50">{p.team || '—'}</span>
+                        {p.age && <span className="text-[10px] text-white/40">Age {p.age}</span>}
+                      </div>
+                      <p className="text-xs text-white/50 mt-0.5">{p.reason}</p>
+                    </div>
+                    <span className="text-xs font-mono text-emerald-300/70">{p.value}v</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {strategy.rosterMoves.sellHigh.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />
+                <span className="text-xs font-semibold text-red-300 uppercase tracking-wider">Sell High</span>
+              </div>
+              <div className="grid gap-2">
+                {strategy.rosterMoves.sellHigh.map((p, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-red-500/5 border border-red-400/15">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-red-500/15 border border-red-400/20 flex items-center justify-center text-[10px] font-bold text-red-300">{p.position}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white">{p.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50">{p.team || '—'}</span>
+                        {p.age && <span className="text-[10px] text-white/40">Age {p.age}</span>}
+                      </div>
+                      <p className="text-xs text-white/50 mt-0.5">{p.reason}</p>
+                    </div>
+                    <span className="text-xs font-mono text-red-300/70">{p.value}v</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {strategy.rosterMoves.tradeChips.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ShoppingCart className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Trade Chips</span>
+              </div>
+              <div className="grid gap-2">
+                {strategy.rosterMoves.tradeChips.map((p, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/5 border border-amber-400/15">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-400/20 flex items-center justify-center text-[10px] font-bold text-amber-300">{p.position}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white">{p.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50">{p.team || '—'}</span>
+                        {p.age && <span className="text-[10px] text-white/40">Age {p.age}</span>}
+                      </div>
+                      <p className="text-xs text-white/50 mt-0.5">{p.reason}</p>
+                    </div>
+                    <span className="text-xs font-mono text-amber-300/70">{p.value}v</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {strategy.rosterMoves.sleepers.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                <span className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Sleepers & Breakout Candidates</span>
+              </div>
+              <div className="grid gap-2">
+                {strategy.rosterMoves.sleepers.map((p, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-purple-500/5 border border-purple-400/15">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-400/20 flex items-center justify-center text-[10px] font-bold text-purple-300">{p.position}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white">{p.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50">{p.team || '—'}</span>
+                        {p.age && <span className="text-[10px] text-white/40">Age {p.age}</span>}
+                      </div>
+                      <p className="text-xs text-white/50 mt-0.5">{p.reason}</p>
+                    </div>
+                    <span className="text-xs font-mono text-purple-300/70">{p.value}v</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {strategy.rosterMoves.buyLowTargets.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowDownRight className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">Buy Low Targets</span>
+              </div>
+              <div className="space-y-1.5">
+                {strategy.rosterMoves.buyLowTargets.map((target, i) => (
+                  <div key={i} className="flex items-start gap-2 p-3 rounded-xl bg-cyan-500/5 border border-cyan-400/15">
+                    <ArrowRight className="w-3 h-3 text-cyan-400 mt-0.5 flex-shrink-0" />
+                    <span className="text-xs text-white/70">{target}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {strategy.rosterMoves.dropCandidates.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Trash2 className="w-3.5 h-3.5 text-white/40" />
+                <span className="text-xs font-semibold text-white/50 uppercase tracking-wider">Drop Candidates</span>
+              </div>
+              <div className="grid gap-2">
+                {strategy.rosterMoves.dropCandidates.map((p, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl bg-white/3 border border-white/8">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-[10px] font-bold text-white/40">{p.position}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-white/60">{p.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-white/40">{p.team || '—'}</span>
+                      </div>
+                      <p className="text-xs text-white/40 mt-0.5">{p.reason}</p>
+                    </div>
+                    <span className="text-xs font-mono text-white/30">{p.value}v</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {strategy.draftStrategy && (
+        <div>
+          <h4 className="text-sm font-semibold text-white/80 mb-3 flex items-center gap-2">
+            <GraduationCap className="w-4 h-4 text-green-400" />
+            Draft Strategy
+          </h4>
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-green-500/5 to-emerald-500/5 border border-green-400/15 space-y-4">
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <span className="text-base font-bold text-white">{strategy.draftStrategy.approach}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-400/20">
+                  {strategy.draftStrategy.picksOwned} pick{strategy.draftStrategy.picksOwned !== 1 ? 's' : ''} owned
+                </span>
+              </div>
+              <p className="text-xs text-white/60 leading-relaxed">{strategy.draftStrategy.description}</p>
+            </div>
+
+            {strategy.draftStrategy.targetPositions.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-white/40 uppercase tracking-wider">Target Positions:</span>
+                {strategy.draftStrategy.targetPositions.map((pos, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-400/20 font-semibold">{pos}</span>
+                ))}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {strategy.draftStrategy.roundPlan.map((rp, i) => (
+                <div key={i} className="p-3 rounded-xl bg-black/20 border border-white/5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xs font-semibold text-green-300">{rp.round}</span>
+                  </div>
+                  <p className="text-sm text-white/80 font-medium">{rp.focus}</p>
+                  <p className="text-[11px] text-white/40 mt-0.5">{rp.rationale}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
