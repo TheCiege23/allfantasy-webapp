@@ -1515,14 +1515,42 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
     const clientRosterA = (reqData.rosterA || []) as RosteredPlayer[]
     const clientRosterB = (reqData.rosterB || []) as RosteredPlayer[]
 
+    let resolvedUserRosterId = userRosterId
+    let resolvedPartnerRosterId = partnerRosterId
+
+    if (leagueMode && (!resolvedUserRosterId || !resolvedPartnerRosterId) && (sleeperA || sleeperB)) {
+      try {
+        const [rostersRes, usersRes] = await Promise.all([
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/rosters`),
+          fetch(`https://api.sleeper.app/v1/league/${leagueId}/users`),
+        ])
+        if (rostersRes.ok && usersRes.ok) {
+          const rosters = await rostersRes.json()
+          const users = await usersRes.json()
+          const resolved = resolveRosterIdsFromLeague({
+            userRosterId: resolvedUserRosterId,
+            partnerRosterId: resolvedPartnerRosterId,
+            users,
+            rosters,
+            sleeperA,
+            sleeperB,
+          })
+          resolvedUserRosterId = resolved.userRosterId
+          resolvedPartnerRosterId = resolved.partnerRosterId
+        }
+      } catch (e) {
+        console.warn('[TradeAnalyze] Failed to resolve roster IDs from Sleeper:', e)
+      }
+    }
+
     if (leagueMode) {
-      if (!userRosterId || !partnerRosterId) {
+      if (!resolvedUserRosterId || !resolvedPartnerRosterId) {
         return NextResponse.json(
           { error: 'League mode requires both user_roster_id and partner_roster_id.' },
           { status: 400 }
         )
       }
-      if (userRosterId === partnerRosterId) {
+      if (resolvedUserRosterId === resolvedPartnerRosterId) {
         return NextResponse.json(
           { error: 'user_roster_id and partner_roster_id cannot be the same.' },
           { status: 400 }
@@ -1572,8 +1600,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
     const ip = getClientIp(request)
 
     let bucketKey = ''
-    if (leagueMode && userRosterId && partnerRosterId) {
-      const pair = [String(userRosterId), String(partnerRosterId)].sort()
+    if (leagueMode && resolvedUserRosterId && resolvedPartnerRosterId) {
+      const pair = [String(resolvedUserRosterId), String(resolvedPartnerRosterId)].sort()
       bucketKey = `trade:${leagueId}:rid:${pair[0]}:${pair[1]}`
     } else {
       const pair = [normalizeName(sleeperA), normalizeName(sleeperB)].sort()
@@ -1664,9 +1692,9 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         for (const r of rosters) rosterById.set(Number(r.roster_id), r)
 
         const rosterAById =
-          userRosterId != null && Number.isFinite(userRosterId) ? rosterById.get(userRosterId) : null
+          resolvedUserRosterId != null && Number.isFinite(resolvedUserRosterId) ? rosterById.get(resolvedUserRosterId) : null
         const rosterBById =
-          partnerRosterId != null && Number.isFinite(partnerRosterId) ? rosterById.get(partnerRosterId) : null
+          resolvedPartnerRosterId != null && Number.isFinite(resolvedPartnerRosterId) ? rosterById.get(resolvedPartnerRosterId) : null
 
         if (rosterAById) sideARoster = shapeRosteredPlayers({ sport, roster: rosterAById, dict })
         if (rosterBById) sideBRoster = shapeRosteredPlayers({ sport, roster: rosterBById, dict })
@@ -1688,8 +1716,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         }
 
         const excludeRosterIds = new Set<number>()
-        if (userRosterId != null && Number.isFinite(userRosterId)) excludeRosterIds.add(userRosterId)
-        if (partnerRosterId != null && Number.isFinite(partnerRosterId)) excludeRosterIds.add(partnerRosterId)
+        if (resolvedUserRosterId != null && Number.isFinite(resolvedUserRosterId)) excludeRosterIds.add(resolvedUserRosterId)
+        if (resolvedPartnerRosterId != null && Number.isFinite(resolvedPartnerRosterId)) excludeRosterIds.add(resolvedPartnerRosterId)
 
         otherManagers = users
           .map((u) => {
@@ -1722,8 +1750,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       leagueId,
       sleeperA,
       sleeperB,
-      userRosterId,
-      partnerRosterId,
+      userRosterId: resolvedUserRosterId,
+      partnerRosterId: resolvedPartnerRosterId,
       sideARosterPlayers: sideARoster?.length ?? 0,
       sideBRosterPlayers: sideBRoster?.length ?? 0,
     })
@@ -1734,15 +1762,15 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       const rosterById = new Map<number, SleeperRoster>()
       for (const r of rosters) rosterById.set(Number(r.roster_id), r)
 
-      if (userRosterId != null) {
-        const rA = rosterById.get(userRosterId)
+      if (resolvedUserRosterId != null) {
+        const rA = rosterById.get(resolvedUserRosterId)
         if (rA?.owner_id) {
           const uA = users.find((u) => u.user_id === rA.owner_id)
           if (uA?.username) canonicalA = uA.username
         }
       }
-      if (partnerRosterId != null) {
-        const rB = rosterById.get(partnerRosterId)
+      if (resolvedPartnerRosterId != null) {
+        const rB = rosterById.get(resolvedPartnerRosterId)
         if (rB?.owner_id) {
           const uB = users.find((u) => u.user_id === rB.owner_id)
           if (uB?.username) canonicalB = uB.username
@@ -1751,7 +1779,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       console.log('[TradeAnalyze] canonical usernames', {
         original: { sleeperA, sleeperB },
         canonical: { canonicalA, canonicalB },
-        rosterIds: { userRosterId, partnerRosterId },
+        rosterIds: { userRosterId: resolvedUserRosterId, partnerRosterId: resolvedPartnerRosterId },
       })
     }
 
@@ -2213,14 +2241,14 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       sideA: {
         username: canonicalA,
         displayName: userADisplay?.display_name ?? canonicalA,
-        rosterId: userRosterId,
+        rosterId: resolvedUserRosterId,
         roster: finalRosterA || undefined,
         summary: summaryA || undefined,
       },
       sideB: {
         username: canonicalB,
         displayName: userBDisplay?.display_name ?? canonicalB,
-        rosterId: partnerRosterId,
+        rosterId: resolvedPartnerRosterId,
         roster: finalRosterB || undefined,
         summary: summaryB || undefined,
       },

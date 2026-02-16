@@ -1945,6 +1945,8 @@ function AFLegacyContent() {
           leagueContext,
           rosterA: enrichRoster(teamA.players),
           rosterB: enrichRoster(teamB.players),
+          user_roster_id: Number(tradeHubTeamA),
+          partner_roster_id: Number(tradeHubTeamB),
         })
       })
       
