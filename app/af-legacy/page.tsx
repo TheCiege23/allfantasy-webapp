@@ -1133,7 +1133,7 @@ function AFLegacyContent() {
   // Historical Ratings state
   const [historicalRatingsData, setHistoricalRatingsData] = useState<any>(null)
   const [historicalRatingsLoading, setHistoricalRatingsLoading] = useState(false)
-  const [historicalRatingsSeason, setHistoricalRatingsSeason] = useState<number>(new Date().getFullYear())
+  const [historicalRatingsSeason, setHistoricalRatingsSeason] = useState<number>(new Date().getFullYear() - 1)
 
   // Compare Teams memoized data - ensures proper reactivity when teams change
   const compareTeamsData = useMemo(() => {
