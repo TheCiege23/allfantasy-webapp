@@ -243,8 +243,10 @@ function clamp01(v: number): number {
 
 function robustPercentileRank(value: number, values: number[]): number {
   const N = values.length
-  if (N < 6) return 0.5
+  if (N < 2) return 0.5
   const sorted = [...values].sort((a, b) => a - b)
+  const allSame = sorted[0] === sorted[sorted.length - 1]
+  if (allSame) return 0.5
   let sumRanks = 0
   let count = 0
   for (let i = 0; i < sorted.length; i++) {
@@ -259,7 +261,11 @@ function robustPercentileRank(value: number, values: number[]): number {
     return idx / Math.max(1, N - 1)
   }
   const avgRank = sumRanks / count
-  return avgRank / Math.max(1, N - 1)
+  const rawPercentile = avgRank / Math.max(1, N - 1)
+  if (N < 6) {
+    return 0.5 + (rawPercentile - 0.5) * 0.7
+  }
+  return rawPercentile
 }
 
 function stddev(arr: number[]): number {
