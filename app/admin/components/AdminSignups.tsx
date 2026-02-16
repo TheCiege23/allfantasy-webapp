@@ -155,9 +155,9 @@ export default function AdminSignups() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   
-  const [apiStats, setApiStats] = useState<{ total: number; confirmed: number; unconfirmed: number; confirmRate: number; last24h: number; last7d: number; todaySignups: Signup[]; serverTime: string } | null>(null);
+  const [apiStats, setApiStats] = useState<{ total: number; confirmed: number; unconfirmed: number; confirmRate: number; last24h: number; last7d: number; recentSignups: Signup[]; serverTime: string } | null>(null);
   const [questionnaireCount, setQuestionnaireCount] = useState<number | null>(null);
-  const [showTodaySignups, setShowTodaySignups] = useState(true);
+  const [showRecentSignups, setShowRecentSignups] = useState(true);
 
   const [quickDeleteEmail, setQuickDeleteEmail] = useState("");
   const [quickDeleting, setQuickDeleting] = useState(false);
@@ -247,7 +247,7 @@ export default function AdminSignups() {
           confirmRate: d.confirmRate,
           last24h: d.last24h ?? 0,
           last7d: d.last7d ?? 0,
-          todaySignups: d.todaySignups ?? [],
+          recentSignups: d.recentSignups ?? [],
           serverTime: d.serverTime ?? new Date().toISOString(),
         });
       })
@@ -266,7 +266,7 @@ export default function AdminSignups() {
 
   const stats = useMemo(() => {
     const total = apiStats?.total ?? signups.length;
-    const today = apiStats?.todaySignups?.length ?? 0;
+    const today = apiStats?.last24h ?? 0;
     const thisWeek = apiStats?.last7d ?? 0;
     return { total, today, thisWeek };
   }, [signups, apiStats]);
@@ -489,26 +489,26 @@ export default function AdminSignups() {
         </div>
       </div>
 
-      {/* Signups Today Card */}
+      {/* Recent Signups Card */}
       <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400" />
-            <h3 className="text-sm sm:text-base font-bold" style={{ color: "var(--text)" }}>Signups Today</h3>
+            <h3 className="text-sm sm:text-base font-bold" style={{ color: "var(--text)" }}>Recent Signups</h3>
             {apiStats && (
               <span className="rounded-full px-2 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                {apiStats.todaySignups.length}
+                {apiStats.recentSignups.length}
               </span>
             )}
           </div>
-          {apiStats && apiStats.todaySignups.length > 0 && (
+          {apiStats && apiStats.recentSignups.length > 0 && (
             <button
-              onClick={() => setShowTodaySignups(!showTodaySignups)}
+              onClick={() => setShowRecentSignups(!showRecentSignups)}
               className="text-xs font-medium transition hover:opacity-80"
               style={{ color: "var(--muted)" }}
             >
-              {showTodaySignups ? 'Hide' : 'Show'}
-              {showTodaySignups ? <ChevronUp className="inline h-3 w-3 ml-1" /> : <ChevronDown className="inline h-3 w-3 ml-1" />}
+              {showRecentSignups ? 'Hide' : 'Show'}
+              {showRecentSignups ? <ChevronUp className="inline h-3 w-3 ml-1" /> : <ChevronDown className="inline h-3 w-3 ml-1" />}
             </button>
           )}
         </div>
@@ -516,19 +516,22 @@ export default function AdminSignups() {
           <div className="flex items-center justify-center py-4">
             <RefreshCw className="h-4 w-4 animate-spin" style={{ color: "var(--muted2)" }} />
           </div>
-        ) : apiStats.todaySignups.length === 0 ? (
+        ) : apiStats.recentSignups.length === 0 ? (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
             <AlertTriangle className="h-5 w-5 text-amber-400 mx-auto mb-2" />
-            <p className="text-xs font-medium text-amber-400">No signups yet today</p>
+            <p className="text-xs font-medium text-amber-400">No signups in the last 48 hours</p>
             <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>
               Server time: {fmtDateTime(apiStats.serverTime)} UTC
             </p>
           </div>
-        ) : showTodaySignups ? (
+        ) : showRecentSignups ? (
           <div className="space-y-2">
-            {apiStats.todaySignups.map((s, i) => {
+            {apiStats.recentSignups.map((s, i) => {
               const trafficLabel = getTrafficSourceLabel(s);
               const style = getTrafficSourceStyle(trafficLabel);
+              const signupTime = new Date(s.createdAt);
+              const hoursAgo = Math.floor((Date.now() - signupTime.getTime()) / (1000 * 60 * 60));
+              const timeLabel = hoursAgo < 1 ? 'Just now' : hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo / 24)}d ago`;
               return (
                 <div key={s.id} className="flex items-center gap-3 rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
                   <span className="text-xs font-bold text-emerald-400 w-5 text-right">{i + 1}</span>
@@ -546,6 +549,7 @@ export default function AdminSignups() {
                       <span className="text-[10px]" style={{ color: "var(--muted)" }}>
                         {fmtDateTime(s.createdAt)}
                       </span>
+                      <span className="text-[10px] font-medium text-cyan-400">{timeLabel}</span>
                       {s.confirmedAt && (
                         <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
                           <CheckCircle className="h-3 w-3" /> Confirmed
@@ -556,13 +560,10 @@ export default function AdminSignups() {
                 </div>
               );
             })}
-            <p className="text-[10px] text-right" style={{ color: "var(--muted2)" }}>
-              Server time: {fmtDateTime(apiStats.serverTime)} UTC
-            </p>
           </div>
         ) : (
           <p className="text-xs text-center py-2" style={{ color: "var(--muted)" }}>
-            {apiStats.todaySignups.length} signup{apiStats.todaySignups.length !== 1 ? 's' : ''} today
+            {apiStats.recentSignups.length} signup{apiStats.recentSignups.length !== 1 ? 's' : ''} in last 48h
           </p>
         )}
       </div>

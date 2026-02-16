@@ -12,16 +12,16 @@ export const GET = withApiUsage({ endpoint: "/api/admin/signups/stats", tool: "A
   try {
     const now = new Date();
     const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const h48 = new Date(now.getTime() - 48 * 60 * 60 * 1000);
     const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-    const [total, confirmed, last24h, last7d, todaySignups] = await Promise.all([
+    const [total, confirmed, last24h, last7d, recentSignups] = await Promise.all([
       prisma.earlyAccessSignup.count(),
       prisma.earlyAccessSignup.count({ where: { confirmedAt: { not: null } } }),
       prisma.earlyAccessSignup.count({ where: { createdAt: { gte: h24 } } }),
       prisma.earlyAccessSignup.count({ where: { createdAt: { gte: d7 } } }),
       prisma.earlyAccessSignup.findMany({
-        where: { createdAt: { gte: todayStart } },
+        where: { createdAt: { gte: h48 } },
         select: {
           id: true,
           email: true,
@@ -58,7 +58,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/signups/stats", tool: "A
       confirmRate,
       last24h,
       last7d,
-      todaySignups,
+      recentSignups,
       serverTime: now.toISOString(),
     });
   } catch (e) {
