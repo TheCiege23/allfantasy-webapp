@@ -113,7 +113,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/social-pulse", tool: "
     ]
 
     const grok = await xaiChatJson({
-      model: "grok-4-1-fast-reasoning",
+      model: "grok-4-fast-non-reasoning",
       messages: [
         { role: "system", content: SYSTEM },
         { role: "user", content: userPrompt },
