@@ -31,21 +31,26 @@ export default function CommunityInsights() {
   const [aiSummary, setAiSummary] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [summarizing, setSummarizing] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchData = async (withSummary = false) => {
     setLoading(true)
+    setError(null)
     if (withSummary) setSummarizing(true)
     try {
       const url = `/api/legacy/community-insights${withSummary ? '?summarize=true' : ''}`
       const res = await fetch(url)
-      if (res.ok) {
-        const data = await res.json()
+      const data = await res.json().catch(() => null)
+      if (res.ok && data) {
         setTrending(data.trending || [])
         setNews(data.recentNews || [])
         setInjuries(data.injuries || [])
         if (data.aiSummary) setAiSummary(data.aiSummary)
+      } else {
+        setError(data?.error || `Request failed (${res.status})`)
       }
     } catch (err) {
+      setError('Failed to connect — please try again')
       console.warn('Failed to fetch community insights:', err)
     } finally {
       setLoading(false)
@@ -81,7 +86,22 @@ export default function CommunityInsights() {
         </button>
       </div>
 
-      {aiSummary && (
+      {error && (
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+          <div className="text-xs text-red-300">{error}</div>
+        </div>
+      )}
+
+      {summarizing && (
+        <div className="p-3 rounded-xl bg-gradient-to-r from-purple-500/10 to-cyan-500/10 border border-purple-500/20">
+          <div className="flex items-center gap-2">
+            <RefreshCw size={14} className="text-purple-400 animate-spin" />
+            <span className="text-xs text-purple-300">Generating AI summary of latest news...</span>
+          </div>
+        </div>
+      )}
+
+      {aiSummary && !summarizing && (
         <div className="p-3 rounded-xl bg-gradient-to-r from-purple-500/10 to-cyan-500/10 border border-purple-500/20">
           <div className="flex items-center gap-1.5 mb-2">
             <Sparkles size={14} className="text-purple-400" />
