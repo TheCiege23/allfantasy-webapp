@@ -340,6 +340,7 @@ function LeagueHistoryAccordion({
   onRefreshPlayoffData,
   getPlayerName,
   getPlayerPosition,
+  navigateToChat,
 }: {
   leagues: LeagueHistory[]
   backfillLoading: boolean
@@ -347,6 +348,7 @@ function LeagueHistoryAccordion({
   onRefreshPlayoffData: () => void
   getPlayerName: (id: string) => string
   getPlayerPosition: (id: string) => string
+  navigateToChat?: (question: string, leagueId?: string) => void
 }) {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set())
@@ -695,7 +697,7 @@ function LeagueHistoryAccordion({
                                           <p className="text-xs text-white/40">No roster data available</p>
                                         )}
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); navigateToChat(`Tell me about my "${league.name}" league (${league.season}). I went ${league.record} in a ${league.team_count}-team ${league.scoring} ${league.type} league. What should I focus on?`, league.league_id) }}
+                                          onClick={(e) => { e.stopPropagation(); navigateToChat?.(`Tell me about my "${league.name}" league (${league.season}). I went ${league.record} in a ${league.team_count}-team ${league.scoring} ${league.type} league. What should I focus on?`, league.league_id) }}
                                           className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-[11px] font-medium hover:bg-cyan-500/20 transition"
                                         >
                                           💬 Ask AI about this league
@@ -6982,6 +6984,7 @@ function AFLegacyContent() {
                       onRefreshPlayoffData={runPlayoffBackfill}
                       getPlayerName={getPlayerName}
                       getPlayerPosition={getPlayerPosition}
+                      navigateToChat={navigateToChat}
                     />
 
                     {/* AI-Powered Panels */}
