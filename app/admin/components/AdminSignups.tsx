@@ -21,6 +21,7 @@ import {
   ClipboardList,
   Activity,
   Clock,
+  Send,
 } from "lucide-react";
 
 type SourceFilter = "all" | "allfantasy.ai" | "allfantasysportsapp.net";
@@ -162,6 +163,46 @@ export default function AdminSignups() {
   const [quickDeleteEmail, setQuickDeleteEmail] = useState("");
   const [quickDeleting, setQuickDeleting] = useState(false);
   const [quickDeleteResult, setQuickDeleteResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [reminderSending, setReminderSending] = useState(false);
+  const [reminderStats, setReminderStats] = useState<{ totalUnconfirmed: number; alreadyReminded: number; eligible: number } | null>(null);
+  const [reminderResult, setReminderResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const loadReminderStats = async () => {
+    setReminderLoading(true);
+    try {
+      const res = await fetch("/api/admin/send-reminders", { cache: "no-store" });
+      const data = await res.json();
+      if (data.ok) {
+        setReminderStats({ totalUnconfirmed: data.totalUnconfirmed, alreadyReminded: data.alreadyReminded, eligible: data.eligible });
+      }
+    } catch {}
+    setReminderLoading(false);
+  };
+
+  const sendReminders = async () => {
+    if (!confirm(`Send confirmation reminder emails to ${reminderStats?.eligible || 0} unconfirmed signups? Each person will only receive one reminder.`)) return;
+    setReminderSending(true);
+    setReminderResult(null);
+    try {
+      const res = await fetch("/api/admin/send-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 50 }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setReminderResult({ ok: true, message: `Sent ${data.sent} reminders${data.failed ? `, ${data.failed} failed` : ''}${data.remaining ? `. ${data.remaining} remaining.` : '.'}` });
+        loadReminderStats();
+      } else {
+        setReminderResult({ ok: false, message: data.error || "Failed to send" });
+      }
+    } catch (e: any) {
+      setReminderResult({ ok: false, message: e.message || "Network error" });
+    }
+    setReminderSending(false);
+  };
 
   const handleQuickDelete = async () => {
     const email = quickDeleteEmail.trim().toLowerCase();
@@ -456,6 +497,83 @@ export default function AdminSignups() {
           ) : (
             <div className="flex items-center justify-center py-4">
               <RefreshCw className="h-4 w-4 animate-spin" style={{ color: "var(--muted2)" }} />
+            </div>
+          )}
+        </div>
+
+        {/* Confirmation Reminders Card */}
+        <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
+          <div className="flex items-center gap-2 mb-3">
+            <Send className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400" />
+            <h3 className="text-sm sm:text-base font-bold" style={{ color: "var(--text)" }}>Confirmation Reminders</h3>
+          </div>
+          <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+            Send a one-time reminder email to unconfirmed signups asking them to confirm their spot.
+          </p>
+
+          {!reminderStats ? (
+            <button
+              onClick={loadReminderStats}
+              disabled={reminderLoading}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium hover:opacity-80 transition"
+              style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)", color: "var(--muted)" }}
+            >
+              {reminderLoading ? (
+                <><RefreshCw className="h-4 w-4 animate-spin" /> Loading...</>
+              ) : (
+                <><Mail className="h-4 w-4" /> Check Unconfirmed Signups</>
+              )}
+            </button>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                  <p className="text-lg font-black tabular-nums" style={{ color: "var(--text)" }}>{reminderStats.totalUnconfirmed}</p>
+                  <p className="text-[10px]" style={{ color: "var(--muted2)" }}>Unconfirmed</p>
+                </div>
+                <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                  <p className="text-lg font-black tabular-nums text-amber-400">{reminderStats.alreadyReminded}</p>
+                  <p className="text-[10px]" style={{ color: "var(--muted2)" }}>Already Sent</p>
+                </div>
+                <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                  <p className="text-lg font-black tabular-nums text-emerald-400">{reminderStats.eligible}</p>
+                  <p className="text-[10px]" style={{ color: "var(--muted2)" }}>Ready to Send</p>
+                </div>
+              </div>
+
+              {reminderStats.eligible > 0 ? (
+                <button
+                  onClick={sendReminders}
+                  disabled={reminderSending}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 transition disabled:opacity-50"
+                >
+                  {reminderSending ? (
+                    <><RefreshCw className="h-4 w-4 animate-spin" /> Sending...</>
+                  ) : (
+                    <><Send className="h-4 w-4" /> Send Reminders ({Math.min(reminderStats.eligible, 50)} at a time)</>
+                  )}
+                </button>
+              ) : (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center">
+                  <CheckCircle className="h-4 w-4 text-emerald-400 mx-auto mb-1" />
+                  <p className="text-xs text-emerald-400 font-medium">All unconfirmed signups have been reminded</p>
+                </div>
+              )}
+
+              <button
+                onClick={loadReminderStats}
+                disabled={reminderLoading}
+                className="w-full flex items-center justify-center gap-1 text-[10px] hover:opacity-80 transition"
+                style={{ color: "var(--muted2)" }}
+              >
+                <RefreshCw className={`h-3 w-3 ${reminderLoading ? 'animate-spin' : ''}`} /> Refresh
+              </button>
+            </div>
+          )}
+
+          {reminderResult && (
+            <div className={`mt-3 rounded-xl border p-3 text-xs ${reminderResult.ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400' : 'border-red-500/30 bg-red-500/10 text-red-400'}`}>
+              {reminderResult.message}
             </div>
           )}
         </div>
