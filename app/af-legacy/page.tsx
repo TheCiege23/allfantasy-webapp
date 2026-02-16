@@ -818,6 +818,13 @@ function AFLegacyContent() {
   const [yahooLoading, setYahooLoading] = useState(false)
   const [yahooError, setYahooError] = useState('')
 
+  // Custom platform state
+  const [customPlatforms, setCustomPlatforms] = useState<Array<{ name: string; leagueCount: number; notes: string }>>([])
+  const [showAddPlatform, setShowAddPlatform] = useState(false)
+  const [newPlatformName, setNewPlatformName] = useState('')
+  const [newPlatformLeagueCount, setNewPlatformLeagueCount] = useState('')
+  const [newPlatformNotes, setNewPlatformNotes] = useState('')
+
   // MFL state
   const [mflConnected, setMflConnected] = useState(false)
   const [mflUsername, setMflUsername] = useState('')
@@ -2450,6 +2457,16 @@ function AFLegacyContent() {
       }
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load custom platforms from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('af_custom_platforms')
+        if (saved) setCustomPlatforms(JSON.parse(saved))
+      } catch {}
+    }
+  }, [])
 
   // Fetch CFB/Devy player data from CFBD API when Fantrax username is available
   useEffect(() => {
@@ -5853,6 +5870,118 @@ function AFLegacyContent() {
                       <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/30 text-[10px]">{fantraxLeagues.length}</span>
                     )}
                   </div>
+
+                  {/* Custom Platform Chips */}
+                  {customPlatforms.length > 0 && (
+                    <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
+                  )}
+                  {customPlatforms.map((cp, idx) => (
+                    <div
+                      key={idx}
+                      className="group flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/15 border border-rose-400/40 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.15)] transition-all"
+                      title={cp.notes || cp.name}
+                    >
+                      <span className="text-sm">🔗</span>
+                      <span>{cp.name}</span>
+                      {cp.leagueCount > 0 && (
+                        <span className="px-1.5 py-0.5 rounded-full bg-rose-500/30 text-[10px]">{cp.leagueCount}</span>
+                      )}
+                      <button
+                        onClick={() => {
+                          const updated = customPlatforms.filter((_, i) => i !== idx)
+                          setCustomPlatforms(updated)
+                          localStorage.setItem('af_custom_platforms', JSON.stringify(updated))
+                        }}
+                        className="opacity-0 group-hover:opacity-100 ml-0.5 w-4 h-4 rounded-full bg-white/10 hover:bg-red-500/30 flex items-center justify-center text-white/50 hover:text-red-300 transition-all text-[10px]"
+                        title="Remove"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Add Platform Button */}
+                  <button
+                    onClick={() => setShowAddPlatform(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-black/20 border border-dashed border-white/15 text-white/40 hover:text-white/70 hover:border-white/30 transition-all"
+                    title="Add another platform"
+                  >
+                    <span className="text-sm">+</span>
+                    <span>Add</span>
+                  </button>
+
+                  {/* Add Platform Modal */}
+                  {showAddPlatform && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setShowAddPlatform(false)}>
+                      <div className="relative w-full max-w-sm rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-rose-500/30 shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        <div className="h-1 bg-gradient-to-r from-rose-400 via-pink-500 to-rose-400" />
+                        <div className="p-5">
+                          <h3 className="text-lg font-bold text-white mb-4">Add Platform</h3>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs text-white/50 mb-1">Platform Name</label>
+                              <input
+                                type="text"
+                                value={newPlatformName}
+                                onChange={(e) => setNewPlatformName(e.target.value)}
+                                placeholder="e.g. NFL.com, CBS, RT Sports"
+                                className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-rose-400/50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-white/50 mb-1">Number of Leagues (optional)</label>
+                              <input
+                                type="number"
+                                value={newPlatformLeagueCount}
+                                onChange={(e) => setNewPlatformLeagueCount(e.target.value)}
+                                placeholder="0"
+                                min="0"
+                                className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-rose-400/50"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-white/50 mb-1">Notes (optional)</label>
+                              <input
+                                type="text"
+                                value={newPlatformNotes}
+                                onChange={(e) => setNewPlatformNotes(e.target.value)}
+                                placeholder="e.g. Dynasty league since 2019"
+                                className="w-full px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-rose-400/50"
+                              />
+                            </div>
+                          </div>
+                          <div className="flex gap-2 mt-5">
+                            <button
+                              onClick={() => setShowAddPlatform(false)}
+                              className="flex-1 py-2 rounded-lg bg-white/5 border border-white/10 text-white/60 text-sm hover:bg-white/10 transition"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!newPlatformName.trim()) return
+                                const updated = [...customPlatforms, {
+                                  name: newPlatformName.trim(),
+                                  leagueCount: parseInt(newPlatformLeagueCount) || 0,
+                                  notes: newPlatformNotes.trim(),
+                                }]
+                                setCustomPlatforms(updated)
+                                localStorage.setItem('af_custom_platforms', JSON.stringify(updated))
+                                setNewPlatformName('')
+                                setNewPlatformLeagueCount('')
+                                setNewPlatformNotes('')
+                                setShowAddPlatform(false)
+                              }}
+                              disabled={!newPlatformName.trim()}
+                              className="flex-1 py-2 rounded-lg bg-gradient-to-r from-rose-500 to-pink-500 text-white text-sm font-medium hover:from-rose-400 hover:to-pink-400 transition disabled:opacity-40"
+                            >
+                              Add Platform
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   
                   {/* Single Trust Line */}
                   <div className="flex-1 hidden sm:flex justify-end">
