@@ -16201,9 +16201,7 @@ function AFLegacyContent() {
                     <div className="rounded-2xl overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #0a1628 0%, #1a3a5c 50%, #0d2442 100%)' }}>
                       {/* AF Crest Watermark */}
                       <div className="absolute top-4 right-4 z-10">
-                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-lg shadow-blue-500/30 border border-cyan-400/30">
-                          <span className="text-white font-bold text-lg">AF</span>
-                        </div>
+                        <img src="/af-crest.jpg" alt="AllFantasy Crest" className="w-14 h-14 rounded-lg shadow-lg shadow-blue-500/30 object-cover" />
                       </div>
                       
                       {/* Header */}
