@@ -11,6 +11,7 @@ import AIGMStatusIndicator from "@/app/components/AIGMStatusIndicator"
 import HeroMetricAI from "@/app/components/HeroMetricAI"
 import PortfolioChart from "@/components/PortfolioChart"
 import PlayerBadge from "@/components/PlayerBadge"
+import PlayerProfileCard from "@/components/PlayerProfileCard"
 import MiniPlayerImg from "@/components/MiniPlayerImg"
 import { headshotUrl, teamLogoUrl } from '@/lib/media-url'
 import { buildSleeperUser } from '@/lib/sleeper-user'
@@ -1181,7 +1182,7 @@ function AFLegacyContent() {
   const [playerSearchLoading, setPlayerSearchLoading] = useState(false)
   const [playerSearchError, setPlayerSearchError] = useState('')
   const [playerSearchResults, setPlayerSearchResults] = useState<any[]>([])
-  const [expandedPlayers, setExpandedPlayers] = useState<Record<string, boolean>>({})
+  const [selectedPlayerCard, setSelectedPlayerCard] = useState<any | null>(null)
 
   // Social Pulse state
   const [pulsePlayerInput, setPulsePlayerInput] = useState('')
@@ -11646,13 +11647,28 @@ function AFLegacyContent() {
                       </div>
                     )}
 
+                    {selectedPlayerCard && (
+                      <div className="mb-6">
+                        <PlayerProfileCard
+                          player={selectedPlayerCard}
+                          onClose={() => setSelectedPlayerCard(null)}
+                        />
+                      </div>
+                    )}
+
                     {playerSearchResults.length > 0 && (
-                      <div className="space-y-4">
-                        {playerSearchResults.map((player) => (
-                          <div key={player.playerId} className="bg-black/40 border border-white/10 rounded-xl overflow-hidden">
+                      <div className="space-y-2">
+                        {playerSearchResults.map((player) => {
+                          const isSelected = selectedPlayerCard?.playerId === player.playerId
+                          return (
                             <button
-                              onClick={() => setExpandedPlayers(prev => ({ ...prev, [player.playerId]: !prev[player.playerId] }))}
-                              className="w-full p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 hover:bg-white/5 transition"
+                              key={player.playerId}
+                              onClick={() => setSelectedPlayerCard(isSelected ? null : player)}
+                              className={`w-full p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 rounded-xl transition ${
+                                isSelected
+                                  ? 'bg-cyan-500/10 border border-cyan-400/30'
+                                  : 'bg-black/40 border border-white/10 hover:bg-white/5'
+                              }`}
                             >
                               <div className="flex flex-wrap items-center gap-2">
                                 <PlayerBadge name={player.playerName} sleeperId={player.playerId} position={player.position} team={player.team} size="md" />
@@ -11719,106 +11735,13 @@ function AFLegacyContent() {
                                 <span className="text-white/60 text-xs">
                                   {player.leagues.length}/{player.ownership?.total || 0}
                                 </span>
-                                <span className={`transform transition ${expandedPlayers[player.playerId] ? 'rotate-180' : ''}`}>
-                                  ▼
-                                </span>
+                                <svg className={`w-4 h-4 text-white/40 transition ${isSelected ? 'text-cyan-400' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
                               </div>
                             </button>
-                            
-                            {expandedPlayers[player.playerId] && (
-                              <div className="border-t border-white/10 p-4 space-y-3">
-                                {player.stock?.reason && (
-                                  <div className={`p-3 rounded-lg mb-3 ${
-                                    player.stock.signal === 'strong_sell' || player.stock.signal === 'sell' 
-                                      ? 'bg-gradient-to-r from-red-500/20 to-orange-500/20 border border-red-500/30' 
-                                      : player.stock.signal === 'strong_buy' || player.stock.signal === 'buy'
-                                      ? 'bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30'
-                                      : 'bg-white/5 border border-white/10'
-                                  }`}>
-                                    <div className="flex items-start gap-2">
-                                      <span className="text-lg">
-                                        {player.stock.signal === 'strong_sell' ? '🔥' : 
-                                         player.stock.signal === 'sell' ? '📊' :
-                                         player.stock.signal === 'strong_buy' ? '💎' :
-                                         player.stock.signal === 'buy' ? '🎯' : '📋'}
-                                      </span>
-                                      <div>
-                                        <div className="text-sm font-semibold text-white mb-1">
-                                          {player.stock.signal === 'strong_sell' ? 'Time to Sell!' : 
-                                           player.stock.signal === 'sell' ? 'Consider Selling' :
-                                           player.stock.signal === 'strong_buy' ? 'Great Buy Opportunity!' :
-                                           player.stock.signal === 'buy' ? 'Buy Opportunity' : 'Hold Position'}
-                                        </div>
-                                        <p className="text-xs text-white/70">{player.stock.reason}</p>
-                                        {player.stock.recentActivity && (
-                                          <div className="flex gap-3 mt-2 text-[10px] text-white/50">
-                                            {player.stock.recentActivity.tradesIn > 0 && (
-                                              <span className="text-green-400">+{player.stock.recentActivity.tradesIn} acquired (30d)</span>
-                                            )}
-                                            {player.stock.recentActivity.tradesOut > 0 && (
-                                              <span className="text-red-400">-{player.stock.recentActivity.tradesOut} traded away (30d)</span>
-                                            )}
-                                            <span className="text-white/30 italic">Based on trade activity</span>
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                )}
-                                
-                                {player.age && (
-                                  <div className="flex gap-4 text-xs text-white/60 mb-3">
-                                    <span>Age: {player.age}</span>
-                                    {player.experience !== null && <span>Experience: {player.experience} year{player.experience !== 1 ? 's' : ''}</span>}
-                                  </div>
-                                )}
-                                
-                                <div className="space-y-2">
-                                  {player.leagues.map((league: any, idx: number) => (
-                                    <div 
-                                      key={idx} 
-                                      className={`flex items-center justify-between p-3 rounded-lg ${
-                                        league.isUserOwned 
-                                          ? 'bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30' 
-                                          : 'bg-white/5'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <span className="text-white font-medium">{league.leagueName}</span>
-                                        <span className="text-white/40 text-xs">{league.season}</span>
-                                        {league.leagueType && (
-                                          <span className="text-xs px-2 py-0.5 bg-purple-500/30 text-purple-300 rounded">
-                                            {league.leagueType}
-                                          </span>
-                                        )}
-                                      </div>
-                                      
-                                      <div className="flex items-center gap-3">
-                                        <span className={`text-xs px-2 py-1 rounded ${
-                                          league.rosterStatus === 'starter' ? 'bg-green-500/30 text-green-300' :
-                                          league.rosterStatus === 'bench' ? 'bg-gray-500/30 text-gray-300' :
-                                          league.rosterStatus === 'taxi' ? 'bg-blue-500/30 text-blue-300' :
-                                          league.rosterStatus === 'ir' ? 'bg-red-500/30 text-red-300' :
-                                          'bg-gray-500/30 text-gray-300'
-                                        }`}>
-                                          {league.rosterStatus === 'starter' ? '⭐ Starter' :
-                                           league.rosterStatus === 'bench' ? '📋 Bench' :
-                                           league.rosterStatus === 'taxi' ? '🚕 Taxi' :
-                                           league.rosterStatus === 'ir' ? '🏥 IR' :
-                                           'Unknown'}
-                                        </span>
-                                        
-                                        <span className={`text-sm ${league.isUserOwned ? 'text-emerald-400 font-semibold' : 'text-white/60'}`}>
-                                          {league.isUserOwned ? '✓ You own' : `Owner: ${league.ownerName || 'Unknown'}`}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
 
