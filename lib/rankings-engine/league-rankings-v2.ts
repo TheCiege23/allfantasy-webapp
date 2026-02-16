@@ -8,6 +8,7 @@ import {
 import { fetchFantasyCalcValues, FantasyCalcPlayer, FantasyCalcSettings } from '../fantasycalc'
 import { prisma } from '../prisma'
 import { getWeekStatsFromCache } from './sleeper-matchup-cache'
+import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../idp-kicker-values'
 
 export interface Driver {
   id: string
@@ -172,6 +173,8 @@ export interface LeagueRankingsV2Output {
   phase: 'offseason' | 'in_season' | 'post_draft' | 'post_season'
   isDynasty: boolean
   isSuperFlex: boolean
+  isIdpLeague: boolean
+  isKickerLeague: boolean
   teams: TeamScore[]
   weeklyPointsDistribution: { rosterId: number; weeklyPoints: number[] }[]
   computedAt: number
@@ -216,6 +219,7 @@ interface LeagueSettings {
   numTeams: number
   status: string
   week: number
+  rosterPositions: string[]
 }
 
 interface RosterRecord {
@@ -313,6 +317,7 @@ async function fetchLeagueSettings(leagueId: string): Promise<LeagueSettings | n
       numTeams: dbLeague.teamCount || 12,
       status,
       week,
+      rosterPositions: sleeperLeague?.roster_positions || [],
     }
   }
 
@@ -337,6 +342,7 @@ async function fetchLeagueSettings(leagueId: string): Promise<LeagueSettings | n
     numTeams: league.total_rosters || 12,
     status: league.status,
     week: Math.max(1, (league.settings as any)?.leg ?? 1),
+    rosterPositions,
   }
 }
 
@@ -450,7 +456,7 @@ function computeSOS(
   return oppWinPctSum / oppCount
 }
 
-interface PlayerValueMap {
+export interface PlayerValueMap {
   sleeperId: string
   value: number
   redraftValue: number
@@ -1823,7 +1829,7 @@ export async function computeLeagueRankingsV2(
   const settings = await fetchLeagueSettings(leagueId)
   if (!settings) return null
 
-  const { name: leagueName, season, isSF, isDynasty, ppr, numTeams, status } = settings
+  const { name: leagueName, season, isSF, isDynasty, ppr, numTeams, status, rosterPositions } = settings
   const week = currentWeek ?? settings.week
   const phase = detectPhase(week, season, status)
 
@@ -1866,6 +1872,22 @@ export async function computeLeagueRankingsV2(
   }
 
   const valueMap = buildPlayerValueMap(fcPlayers)
+
+  const isIdpLeague = detectIdpLeague(rosterPositions)
+  const isKickerLeague = detectKickerLeague(rosterPositions)
+  if (isIdpLeague || isKickerLeague) {
+    const allRosterPlayerIds: string[] = []
+    for (const roster of rosters) {
+      for (const pid of roster.players || []) {
+        allRosterPlayerIds.push(pid)
+      }
+    }
+    const idpKickerValues = await buildIdpKickerValueMap(allRosterPlayerIds, isDynasty)
+    for (const [pid, pv] of idpKickerValues) {
+      valueMap.set(pid, pv)
+    }
+  }
+
   const tradeEfficiency = await fetchTradeMetrics(leagueId, rosterIdToUsername)
 
   const ldiSampleCount = ldiData ? Object.values(ldiData).reduce((s: number, e: any) => s + (e?.sample ?? 0), 0) : 0
@@ -2244,6 +2266,8 @@ export async function computeLeagueRankingsV2(
     phase,
     isDynasty,
     isSuperFlex: isSF,
+    isIdpLeague,
+    isKickerLeague,
     teams,
     weeklyPointsDistribution,
     computedAt: Date.now(),

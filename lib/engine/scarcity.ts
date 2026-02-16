@@ -15,6 +15,9 @@ const BASE_STARTER_POOL: Record<string, number> = {
   TE: 20,
   K: 32,
   DEF: 32,
+  DL: 64,
+  LB: 64,
+  DB: 96,
 }
 
 export function computePositionalScarcity(
@@ -43,6 +46,10 @@ export function computePositionalScarcity(
   }
 
   const positions = ['QB', 'RB', 'WR', 'TE']
+  const idpPositions = Object.keys(startersByPos).filter(p => ['DL', 'LB', 'DB', 'K'].includes(p))
+  for (const idpPos of idpPositions) {
+    if (!positions.includes(idpPos)) positions.push(idpPos)
+  }
 
   for (const pos of positions) {
     const demandSlots = (startersByPos[pos] || 1) * numTeams
@@ -105,14 +112,19 @@ export function scarcityAdjustedValue(
 }
 
 function normalizeSlotToPosition(slot: string): string | null {
-  if (slot === 'QB') return 'QB'
-  if (slot === 'RB') return 'RB'
-  if (slot === 'WR') return 'WR'
-  if (slot === 'TE') return 'TE'
-  if (slot === 'FLEX' || slot === 'REC_FLEX') return null
-  if (slot === 'SUPER_FLEX') return null
-  if (slot === 'K') return 'K'
-  if (slot === 'DEF') return 'DEF'
+  const upper = slot.toUpperCase()
+  if (upper === 'QB') return 'QB'
+  if (upper === 'RB') return 'RB'
+  if (upper === 'WR') return 'WR'
+  if (upper === 'TE') return 'TE'
+  if (upper === 'FLEX' || upper === 'REC_FLEX') return null
+  if (upper === 'SUPER_FLEX') return null
+  if (upper === 'K') return 'K'
+  if (upper === 'DEF') return 'DEF'
+  if (upper === 'DL' || upper === 'DE' || upper === 'DT') return 'DL'
+  if (upper === 'LB' || upper === 'ILB' || upper === 'OLB') return 'LB'
+  if (upper === 'DB' || upper === 'CB' || upper === 'SS' || upper === 'FS' || upper === 'S') return 'DB'
+  if (upper === 'IDP_FLEX') return null
   return null
 }
 

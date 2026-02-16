@@ -2,6 +2,7 @@ import { getHistoricalPlayerValue, getHistoricalPickValueWeighted } from './hist
 import { fetchFantasyCalcValues, findPlayerByName, FantasyCalcPlayer } from './fantasycalc';
 import { pickValue } from './pick-valuation';
 import { computePlayerVorp as computePlayerVorpEngine, computePickVorp as computePickVorpEngine, LeagueRosterConfig } from './vorp-engine';
+import { isIdpPosition, isKickerPosition } from './idp-kicker-values';
 
 export interface ValuationContext {
   asOfDate: string;
@@ -9,6 +10,7 @@ export interface ValuationContext {
   fantasyCalcPlayers?: FantasyCalcPlayer[];
   numTeams?: number;
   rosterConfig?: LeagueRosterConfig;
+  playerPositionOverrides?: Record<string, string>;
 }
 
 export interface AssetValue {
@@ -189,6 +191,29 @@ export interface TradeDelta {
   };
 }
 
+const IDP_KICKER_BASELINE_VALUES: Record<string, number> = {
+  LB: 800,
+  DL: 700,
+  DB: 650,
+  DE: 700,
+  DT: 600,
+  ILB: 800,
+  OLB: 750,
+  CB: 650,
+  SS: 600,
+  FS: 600,
+  S: 600,
+  K: 300,
+}
+
+function getIdpKickerFallbackValue(name: string, position: string): number {
+  const pos = position.toUpperCase()
+  if (isIdpPosition(pos) || isKickerPosition(pos)) {
+    return IDP_KICKER_BASELINE_VALUES[pos] ?? 500
+  }
+  return 0
+}
+
 export async function pricePlayer(
   name: string,
   ctx: ValuationContext
@@ -208,7 +233,8 @@ export async function pricePlayer(
   }
 
   const fcPlayer = findPlayerByName(fcPlayers, name);
-  const position = fcPlayer?.player.position ?? 'WR';
+  const overridePos = ctx.playerPositionOverrides?.[name.toLowerCase().trim()];
+  const position = overridePos || fcPlayer?.player.position || 'WR';
   const age = fcPlayer?.player.maybeAge ?? null;
 
   const historicalResult = getHistoricalPlayerValue(name, ctx.asOfDate, ctx.isSuperFlex);
@@ -241,6 +267,18 @@ export async function pricePlayer(
       source: 'fantasycalc',
       position,
       ...(age != null && { age }),
+    };
+  }
+
+  const idpKickerFallback = getIdpKickerFallbackValue(name, position);
+  if (idpKickerFallback > 0) {
+    return {
+      name,
+      type: 'player',
+      value: idpKickerFallback,
+      assetValue: { marketValue: idpKickerFallback, impactValue: Math.round(idpKickerFallback * 0.6), vorpValue: Math.round(idpKickerFallback * 0.3), volatility: 0.45 },
+      source: 'unknown',
+      position,
     };
   }
 
