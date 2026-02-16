@@ -155,8 +155,9 @@ export default function AdminSignups() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
   
-  const [apiStats, setApiStats] = useState<{ total: number; confirmed: number; unconfirmed: number; confirmRate: number } | null>(null);
+  const [apiStats, setApiStats] = useState<{ total: number; confirmed: number; unconfirmed: number; confirmRate: number; last24h: number; last7d: number; todaySignups: Signup[]; serverTime: string } | null>(null);
   const [questionnaireCount, setQuestionnaireCount] = useState<number | null>(null);
+  const [showTodaySignups, setShowTodaySignups] = useState(true);
 
   const [quickDeleteEmail, setQuickDeleteEmail] = useState("");
   const [quickDeleting, setQuickDeleting] = useState(false);
@@ -238,7 +239,18 @@ export default function AdminSignups() {
   useEffect(() => {
     fetch("/api/admin/signups/stats", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => { if (d.ok) setApiStats({ total: d.total, confirmed: d.confirmed, unconfirmed: d.unconfirmed, confirmRate: d.confirmRate }); })
+      .then((d) => {
+        if (d.ok) setApiStats({
+          total: d.total,
+          confirmed: d.confirmed,
+          unconfirmed: d.unconfirmed,
+          confirmRate: d.confirmRate,
+          last24h: d.last24h ?? 0,
+          last7d: d.last7d ?? 0,
+          todaySignups: d.todaySignups ?? [],
+          serverTime: d.serverTime ?? new Date().toISOString(),
+        });
+      })
       .catch(() => {});
     fetch("/api/admin/questionnaire", { cache: "no-store" })
       .then((r) => r.json())
@@ -253,24 +265,23 @@ export default function AdminSignups() {
   }, [signups, searchQ]);
 
   const stats = useMemo(() => {
-    const total = signups.length;
-    const now = new Date();
-    const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-    
-    const today = signups.filter((s) => new Date(s.createdAt) >= todayStart).length;
-    const thisWeek = signups.filter((s) => new Date(s.createdAt) >= weekStart).length;
+    const total = apiStats?.total ?? signups.length;
+    const today = apiStats?.todaySignups?.length ?? 0;
+    const thisWeek = apiStats?.last7d ?? 0;
     return { total, today, thisWeek };
-  }, [signups]);
+  }, [signups, apiStats]);
 
   const stalenessData = useMemo(() => {
+    if (apiStats) {
+      return { last24h: apiStats.last24h, last7d: apiStats.last7d };
+    }
     const now = new Date();
     const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const last24h = signups.filter((s) => new Date(s.createdAt) >= h24).length;
     const last7d = signups.filter((s) => new Date(s.createdAt) >= d7).length;
     return { last24h, last7d };
-  }, [signups]);
+  }, [signups, apiStats]);
 
   const topSourcesByField = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -476,6 +487,84 @@ export default function AdminSignups() {
             <p className="text-xs py-4 text-center" style={{ color: "var(--muted2)" }}>No data</p>
           )}
         </div>
+      </div>
+
+      {/* Signups Today Card */}
+      <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400" />
+            <h3 className="text-sm sm:text-base font-bold" style={{ color: "var(--text)" }}>Signups Today</h3>
+            {apiStats && (
+              <span className="rounded-full px-2 py-0.5 text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                {apiStats.todaySignups.length}
+              </span>
+            )}
+          </div>
+          {apiStats && apiStats.todaySignups.length > 0 && (
+            <button
+              onClick={() => setShowTodaySignups(!showTodaySignups)}
+              className="text-xs font-medium transition hover:opacity-80"
+              style={{ color: "var(--muted)" }}
+            >
+              {showTodaySignups ? 'Hide' : 'Show'}
+              {showTodaySignups ? <ChevronUp className="inline h-3 w-3 ml-1" /> : <ChevronDown className="inline h-3 w-3 ml-1" />}
+            </button>
+          )}
+        </div>
+        {!apiStats ? (
+          <div className="flex items-center justify-center py-4">
+            <RefreshCw className="h-4 w-4 animate-spin" style={{ color: "var(--muted2)" }} />
+          </div>
+        ) : apiStats.todaySignups.length === 0 ? (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">
+            <AlertTriangle className="h-5 w-5 text-amber-400 mx-auto mb-2" />
+            <p className="text-xs font-medium text-amber-400">No signups yet today</p>
+            <p className="text-[10px] mt-1" style={{ color: "var(--muted2)" }}>
+              Server time: {fmtDateTime(apiStats.serverTime)} UTC
+            </p>
+          </div>
+        ) : showTodaySignups ? (
+          <div className="space-y-2">
+            {apiStats.todaySignups.map((s, i) => {
+              const trafficLabel = getTrafficSourceLabel(s);
+              const style = getTrafficSourceStyle(trafficLabel);
+              return (
+                <div key={s.id} className="flex items-center gap-3 rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                  <span className="text-xs font-bold text-emerald-400 w-5 text-right">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Mail className="h-3 w-3 flex-shrink-0" style={{ color: "var(--muted2)" }} />
+                      <span className="text-xs sm:text-sm font-medium truncate" style={{ color: "var(--text)" }}>{s.email}</span>
+                      <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${style.bg} ${style.border} ${style.text}`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${style.icon}`} />
+                        {trafficLabel}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Clock className="h-3 w-3" style={{ color: "var(--muted2)" }} />
+                      <span className="text-[10px]" style={{ color: "var(--muted)" }}>
+                        {fmtDateTime(s.createdAt)}
+                      </span>
+                      {s.confirmedAt && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+                          <CheckCircle className="h-3 w-3" /> Confirmed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-[10px] text-right" style={{ color: "var(--muted2)" }}>
+              Server time: {fmtDateTime(apiStats.serverTime)} UTC
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-center py-2" style={{ color: "var(--muted)" }}>
+            {apiStats.todaySignups.length} signup{apiStats.todaySignups.length !== 1 ? 's' : ''} today
+          </p>
+        )}
       </div>
 
       {/* Top Days Card */}
