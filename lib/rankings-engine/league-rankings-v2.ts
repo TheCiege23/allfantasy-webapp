@@ -567,7 +567,7 @@ async function fetchTradeMetrics(
   }
 
   rosterIdToUsername.forEach((username, rid) => {
-    const metrics = usernameToMetrics.get(username.toLowerCase())
+    const metrics = username ? usernameToMetrics.get(username.toLowerCase()) : undefined
     result.set(rid, metrics || { tradeCount: 0, avgPremium: 0 })
   })
 
@@ -2033,11 +2033,16 @@ export async function computeLeagueRankingsV2(
       { wins: rWins, losses: rLosses },
     )
 
+    const dbRoster = dbRosterRecords?.get(roster.roster_id)
+    const unownedLabel = roster.owner_id ? null : `Team ${roster.roster_id}`
+    const resolvedUsername = user?.username || user?.display_name || dbRoster?.ownerName || unownedLabel || null
+    const resolvedDisplayName = user?.display_name || user?.username || dbRoster?.ownerName || unownedLabel || null
+
     rawTeams.push({
       rosterId: roster.roster_id,
       ownerId: roster.owner_id,
-      username: user?.username || null,
-      displayName: user?.display_name || null,
+      username: resolvedUsername,
+      displayName: resolvedDisplayName,
       avatar: user?.avatar || null,
 
       winScore,
