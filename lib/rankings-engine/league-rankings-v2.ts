@@ -2,8 +2,10 @@ import {
   getLeagueRosters,
   getLeagueUsers,
   getLeagueInfo,
+  getPlayoffBracket,
   SleeperRoster,
   SleeperUser,
+  SleeperPlayoffBracket,
 } from '../sleeper-client'
 import { fetchFantasyCalcValues, FantasyCalcPlayer, FantasyCalcSettings } from '../fantasycalc'
 import { prisma } from '../prisma'
@@ -611,26 +613,105 @@ function detectPhase(week: number, season: string, leagueStatus?: string): 'offs
   return 'in_season'
 }
 
+interface PlayoffFinishInfo {
+  isChampion: boolean
+  isRunnerUp: boolean
+  playoffWins: number
+  playoffLosses: number
+  bestFinish: number
+  madePlayoffs: boolean
+}
+
+function analyzePlayoffBracket(
+  bracket: SleeperPlayoffBracket[],
+  rosterIds: number[],
+): Map<number, PlayoffFinishInfo> {
+  const result = new Map<number, PlayoffFinishInfo>()
+
+  for (const rid of rosterIds) {
+    result.set(rid, {
+      isChampion: false,
+      isRunnerUp: false,
+      playoffWins: 0,
+      playoffLosses: 0,
+      bestFinish: 999,
+      madePlayoffs: false,
+    })
+  }
+
+  if (!bracket || bracket.length === 0) return result
+
+  const maxRound = Math.max(...bracket.map(m => m.r))
+
+  for (const match of bracket) {
+    const { t1, t2, w, l, r: round } = match
+    if (t1) {
+      const info = result.get(t1)
+      if (info) info.madePlayoffs = true
+    }
+    if (t2) {
+      const info = result.get(t2)
+      if (info) info.madePlayoffs = true
+    }
+    if (w && w > 0) {
+      const winnerInfo = result.get(w)
+      if (winnerInfo) {
+        winnerInfo.playoffWins++
+        if (round === maxRound) {
+          winnerInfo.isChampion = true
+          winnerInfo.bestFinish = 1
+        }
+      }
+    }
+    if (l && l > 0) {
+      const loserInfo = result.get(l)
+      if (loserInfo) {
+        loserInfo.playoffLosses++
+        if (round === maxRound) {
+          loserInfo.isRunnerUp = true
+          loserInfo.bestFinish = Math.min(loserInfo.bestFinish, 2)
+        } else {
+          const finishFromRound = Math.pow(2, maxRound - round) + 1
+          loserInfo.bestFinish = Math.min(loserInfo.bestFinish, finishFromRound)
+        }
+      }
+    }
+  }
+
+  for (const [rid, info] of result) {
+    if (info.isChampion) info.bestFinish = 1
+    else if (info.madePlayoffs && info.bestFinish === 999) {
+      info.bestFinish = rosterIds.length
+    }
+  }
+
+  return result
+}
+
 function computeWinScore(
   winPct: number,
   sos: number,
   phase: string,
   madePlayoffs: boolean,
   isChamp: boolean,
-  playoffSeed: number | null,
+  playoffFinish: PlayoffFinishInfo | null,
   numTeams: number,
 ): number {
   const sosAdj = clamp((sos - 0.5) * 0.10, -0.05, 0.05)
   const wsBase = clamp01(winPct + sosAdj)
 
   if (phase === 'post_season') {
-    let playoffFinishScore = 0.35
-    if (isChamp) playoffFinishScore = 1.0
-    else if (playoffSeed === 2 || (madePlayoffs && playoffSeed !== null && playoffSeed <= 2)) playoffFinishScore = 0.85
-    else if (madePlayoffs && playoffSeed !== null && playoffSeed <= 4) playoffFinishScore = 0.70
-    else if (madePlayoffs && playoffSeed !== null && playoffSeed <= 8) playoffFinishScore = 0.55
-    else if (madePlayoffs) playoffFinishScore = 0.55
-    return Math.round(100 * clamp01(0.70 * winPct + 0.30 * playoffFinishScore))
+    let playoffFinishScore = 0.30
+    const actualChamp = isChamp || (playoffFinish?.isChampion ?? false)
+    const actualRunnerUp = playoffFinish?.isRunnerUp ?? false
+    const bestFinish = playoffFinish?.bestFinish ?? 999
+
+    if (actualChamp) playoffFinishScore = 1.0
+    else if (actualRunnerUp || bestFinish <= 2) playoffFinishScore = 0.80
+    else if (bestFinish <= 4) playoffFinishScore = 0.65
+    else if (bestFinish <= 6) playoffFinishScore = 0.50
+    else if (madePlayoffs) playoffFinishScore = 0.45
+    return Math.round(100 * clamp01(0.45 * winPct + 0.55 * playoffFinishScore))
   }
 
   return Math.round(100 * wsBase)
@@ -838,9 +919,9 @@ function computeComposite(
 
   if (phase === 'post_season') {
     if (isDynasty) {
-      return Math.round(100 * clamp01(0.35 * w + 0.25 * p + 0.15 * s + 0.15 * m + 0.10 * fc))
+      return Math.round(100 * clamp01(0.50 * w + 0.20 * p + 0.10 * s + 0.10 * m + 0.10 * fc))
     }
-    return Math.round(100 * clamp01(0.45 * w + 0.25 * p + 0.15 * s + 0.15 * m))
+    return Math.round(100 * clamp01(0.55 * w + 0.20 * p + 0.10 * s + 0.15 * m))
   }
 
   if (isDynasty) {
@@ -1850,7 +1931,7 @@ export async function computeLeagueRankingsV2(
 
   const dbRosterRecords = await fetchRosterRecords(leagueId)
 
-  const [rosters, users, fcPlayers, ldiData] = await Promise.all([
+  const [rosters, users, fcPlayers, ldiData, playoffBracket] = await Promise.all([
     getLeagueRosters(leagueId),
     getLeagueUsers(leagueId),
     fetchFantasyCalcValues({
@@ -1860,6 +1941,7 @@ export async function computeLeagueRankingsV2(
       ppr,
     }),
     fetchLdiForLeague(leagueId),
+    phase === 'post_season' ? getPlayoffBracket(leagueId) : Promise.resolve([]),
   ])
 
   if (rosters.length === 0) return null
@@ -1885,6 +1967,11 @@ export async function computeLeagueRankingsV2(
       total: r.settings.wins + r.settings.losses + r.settings.ties,
     })
   }
+
+  const playoffFinishMap = analyzePlayoffBracket(
+    playoffBracket,
+    rosters.map(r => r.roster_id),
+  )
 
   const valueMap = buildPlayerValueMap(fcPlayers)
 
@@ -1981,8 +2068,9 @@ export async function computeLeagueRankingsV2(
       : 0.5
 
     const dbRecord = dbRosterRecords?.get(roster.roster_id)
+    const bracketInfo = playoffFinishMap.get(roster.roster_id)
     const playoffSeed = dbRecord?.playoffSeed ?? (roster as any).metadata?.playoff_seed ?? null
-    const isChampion = dbRecord?.isChampion ?? (roster as any).metadata?.is_champ ?? false
+    const isChampion = bracketInfo?.isChampion ?? dbRecord?.isChampion ?? (roster as any).metadata?.is_champ ?? false
 
     const rosterPlayersForPortfolio = (roster.players || []).map((pid: string) => {
       const pVal = valueMap.get(pid) as any
@@ -2036,9 +2124,10 @@ export async function computeLeagueRankingsV2(
   for (const ti of teamIntermediates) {
     const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion, portfolioRaw } = ti
 
-    const madePlayoffs = playoffSeed !== null && playoffSeed > 0
+    const bracketFinish = playoffFinishMap.get(roster.roster_id) || null
+    const madePlayoffs = bracketFinish?.madePlayoffs || (playoffSeed !== null && playoffSeed > 0)
 
-    const winScore = computeWinScore(winPct, sos, phase, madePlayoffs, isChampion, playoffSeed, numTeams)
+    const winScore = computeWinScore(winPct, sos, phase, madePlayoffs, isChampion, bracketFinish, numTeams)
 
     const starterP = robustPercentileRank(rosterValues.starterValue, allStarterValues)
     const benchP = robustPercentileRank(rosterValues.benchValue, allBenchValues)

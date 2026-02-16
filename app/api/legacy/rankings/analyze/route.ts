@@ -50,6 +50,9 @@ interface TeamRanking {
   winRate: number
   futureOutlook: number
   overallScore: number
+  isChampion?: boolean
+  isRunnerUp?: boolean
+  madePlayoffs?: boolean
   isUser: boolean
   wins: number
   losses: number
@@ -107,10 +110,11 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
     }
     const leagueData: any = await leagueRes.json()
 
-    const [rostersRes, usersRes, tradedPicksRes] = await Promise.all([
+    const [rostersRes, usersRes, tradedPicksRes, bracketRes] = await Promise.all([
       fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(league_id)}/rosters`, { next: { revalidate: 0 } }),
       fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(league_id)}/users`, { next: { revalidate: 0 } }),
       fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(league_id)}/traded_picks`, { next: { revalidate: 0 } }),
+      fetch(`https://api.sleeper.app/v1/league/${encodeURIComponent(league_id)}/winners_bracket`, { next: { revalidate: 0 } }).catch(() => null),
     ])
 
     if (!rostersRes.ok || !usersRes.ok) {
@@ -124,6 +128,29 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
     if (tradedPicksRes.ok) {
       tradedPicks = await tradedPicksRes.json()
     }
+
+    let bracketData: any[] = []
+    if (bracketRes && bracketRes.ok) {
+      bracketData = await bracketRes.json().catch(() => [])
+    }
+    const championRosterId = (() => {
+      if (!Array.isArray(bracketData) || bracketData.length === 0) return null
+      const finalMatch = bracketData.find((m: any) => m.r === 3 && m.t1_from?.w !== undefined)
+        || bracketData.find((m: any) => m.r === 3)
+        || bracketData.find((m: any) => m.p === 1)
+      if (!finalMatch) return null
+      if (finalMatch.w != null) return finalMatch.w
+      return null
+    })()
+    const runnerUpRosterId = (() => {
+      if (!Array.isArray(bracketData) || bracketData.length === 0) return null
+      const finalMatch = bracketData.find((m: any) => m.r === 3 && m.t1_from?.w !== undefined)
+        || bracketData.find((m: any) => m.r === 3)
+        || bracketData.find((m: any) => m.p === 1)
+      if (!finalMatch) return null
+      if (finalMatch.l != null) return finalMatch.l
+      return null
+    })()
 
     const rosterPicksMap = new Map<number, string[]>()
 
@@ -209,11 +236,23 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
 
         const futureOutlook = calculateFutureOutlook(rosterPlayers, playersData)
 
+        const isChampion = roster.roster_id === championRosterId
+        const isRunnerUp = roster.roster_id === runnerUpRosterId
+        const madePlayoffs = Array.isArray(bracketData) && bracketData.some(
+          (m: any) => m.t1 === roster.roster_id || m.t2 === roster.roster_id
+        )
+
+        let postseasonBonus = 0
+        if (isChampion) postseasonBonus = 150
+        else if (isRunnerUp) postseasonBonus = 80
+        else if (madePlayoffs) postseasonBonus = 30
+
         const overallScore =
-          rosterValue * 0.35 +
-          pointsFor * 0.25 +
-          winRate * 100 * 0.25 +
-          futureOutlook * 0.15
+          rosterValue * 0.30 +
+          pointsFor * 0.20 +
+          winRate * 100 * 0.20 +
+          futureOutlook * 0.10 +
+          postseasonBonus * 0.20
 
         const ownerAvatarId = ownerInfo?.avatar
         const ownerAvatar = ownerAvatarId ? `https://sleepercdn.com/avatars/thumbs/${ownerAvatarId}` : null
@@ -228,6 +267,9 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
           winRate,
           futureOutlook,
           overallScore,
+          isChampion,
+          isRunnerUp,
+          madePlayoffs,
           isUser: ownerId === user.sleeperUserId,
           wins,
           losses,
@@ -317,6 +359,7 @@ Roster Value Rank: #${rosterValueRank}
 Points For Rank: #${pointsForRank}
 Win Rate Rank: #${winRateRank} (${userTeam?.wins ?? 0}-${userTeam?.losses ?? 0})
 Future Outlook Rank: #${futureOutlookRank}
+${userTeam?.isChampion ? '🏆 LEAGUE CHAMPION' : userTeam?.isRunnerUp ? '🥈 Runner-Up' : userTeam?.madePlayoffs ? '✅ Made Playoffs' : ''}
 
 Top 3 teams: ${teamRankings
         .slice(0, 3)
