@@ -694,6 +694,12 @@ function LeagueHistoryAccordion({
                                         ) : (
                                           <p className="text-xs text-white/40">No roster data available</p>
                                         )}
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); navigateToChat(`Tell me about my "${league.name}" league (${league.season}). I went ${league.record} in a ${league.team_count}-team ${league.scoring} ${league.type} league. What should I focus on?`, league.league_id) }}
+                                          className="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-[11px] font-medium hover:bg-cyan-500/20 transition"
+                                        >
+                                          💬 Ask AI about this league
+                                        </button>
                                       </div>
                                     )}
                                   </div>
@@ -1205,6 +1211,7 @@ function AFLegacyContent() {
   const [chatLoading, setChatLoading] = useState(false)
   const [chatError, setChatError] = useState('')
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null)
+  const [chatLeagueId, setChatLeagueId] = useState<string>('')
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Feedback modal state
@@ -3462,6 +3469,7 @@ function AFLegacyContent() {
           yahooUserId: yahooUserId || undefined,
           fantraxUsername: fantraxUsername || undefined,
           mflUsername: mflUsername || undefined,
+          leagueId: chatLeagueId || undefined,
         }),
       })
       const data = await res.json()
@@ -3864,6 +3872,17 @@ function AFLegacyContent() {
       if ((subs as Tab[]).includes(t)) return main as MainTab
     }
     return 'home'
+  }
+
+  const navigateToChat = (question: string, leagueId?: string) => {
+    setChatInput(question)
+    setChatLeagueId(leagueId || '')
+    setActiveTab('chat')
+    setMobileMainTab(tabToMainTab('chat'))
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('[data-chat-input]')
+      input?.focus()
+    }, 200)
   }
 
   const handleActiveTabChange = (t: Tab) => {
@@ -11693,6 +11712,12 @@ function AFLegacyContent() {
                                     )}
                                   </div>
                                 </div>
+                                <button
+                                  onClick={() => navigateToChat(`Should I trade ${trade.youGive?.join(' + ')} for ${trade.youReceive?.join(' + ')} with ${suggestion.targetDisplayName}? The trade grade is ${trade.tradeGrade}. ${trade.whyYouWin || ''}`, finderSelectedLeague)}
+                                  className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-[11px] font-medium hover:bg-cyan-500/20 transition"
+                                >
+                                  💬 Ask AI more about this trade
+                                </button>
                               </div>
                             ))}
                           </div>
@@ -12629,6 +12654,12 @@ function AFLegacyContent() {
                                                     {vsAvg >= 0 ? '+' : ''}{vsAvg.toLocaleString()} vs avg
                                                   </span>
                                                 </div>
+                                                <button
+                                                  onClick={() => navigateToChat(`Tell me about ${team.displayName || team.username}'s team in my league. They have ${(totalValue / 1000).toFixed(1)}k total value (${vsAvg >= 0 ? '+' : ''}${vsAvg.toLocaleString()} vs avg). What trade opportunities do I have with them?`, rankingsSelectedLeague)}
+                                                  className="mt-2 w-full flex items-center justify-center gap-1.5 px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-400/20 text-cyan-300 text-[10px] font-medium hover:bg-cyan-500/20 transition"
+                                                >
+                                                  💬 Ask AI about this team
+                                                </button>
                                               </div>
                                             )}
                                           </div>
@@ -14365,7 +14396,7 @@ function AFLegacyContent() {
                   <div className="bg-black/30 border border-cyan-500/20 rounded-2xl p-4 sm:p-6 flex flex-col h-[600px] sm:h-[700px]">
                     <div className="flex items-start sm:items-center gap-3 mb-4">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center text-xl flex-shrink-0">💬</div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <h3 className="text-lg sm:text-xl font-bold text-cyan-400">AI Fantasy Coach</h3>
                         <p className="text-xs sm:text-sm text-gray-400">
                           {username 
@@ -14373,6 +14404,21 @@ function AFLegacyContent() {
                             : 'Ask about trades, players, drafts, waivers, or drop a screenshot'}
                         </p>
                       </div>
+                      {username && leagues.length > 0 && (
+                        <select
+                          value={chatLeagueId}
+                          onChange={(e) => setChatLeagueId(e.target.value)}
+                          className="px-2 py-1.5 rounded-lg bg-black/40 border border-white/15 text-xs text-white/80 focus:outline-none focus:border-cyan-400/40 max-w-[160px] sm:max-w-[200px] truncate"
+                          title="Select a league to give AI more context"
+                        >
+                          <option value="">All leagues</option>
+                          {leagues.map((lg) => (
+                            <option key={lg.league_id} value={lg.league_id}>
+                              {lg.name} ({lg.season})
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                     
                     <div 
@@ -14397,7 +14443,16 @@ function AFLegacyContent() {
                             </div>
                           )}
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
-                            {(username ? [
+                            {(username && chatLeagueId ? (() => {
+                              const lg = leagues.find(l => l.league_id === chatLeagueId)
+                              const n = lg?.name || 'this league'
+                              return [
+                                `Who should I trade in my "${n}" league?`,
+                                `What are my weakest positions in "${n}"?`,
+                                `Who are the best trade targets in "${n}"?`,
+                                `What moves should I make to improve in "${n}"?`,
+                              ]
+                            })() : username ? [
                               'Which of my players should I try to sell high on?',
                               'Do I have too much exposure to any one player?',
                               'Based on my trading style, what moves should I make?',
@@ -14420,7 +14475,43 @@ function AFLegacyContent() {
                         </div>
                       )}
                       
-                      {chatMessages.map((msg, idx) => (
+                      {chatMessages.map((msg, idx) => {
+                        const tabMap: Record<string, { tab: Tab; label: string }> = {
+                          trade: { tab: 'trade', label: 'Trade Analyzer' },
+                          finder: { tab: 'finder', label: 'Trade Finder' },
+                          waiver: { tab: 'waiver', label: 'Waiver Wire' },
+                          rankings: { tab: 'rankings', label: 'League Rankings' },
+                          pulse: { tab: 'pulse', label: 'Market Pulse' },
+                          compare: { tab: 'compare', label: 'Player Compare' },
+                          strategy: { tab: 'strategy', label: 'Season Strategy' },
+                          overview: { tab: 'overview', label: 'Overview' },
+                          share: { tab: 'share', label: 'Share' },
+                          'player-finder': { tab: 'player-finder', label: 'Player Finder' },
+                        }
+                        const renderContent = (text: string) => {
+                          const lines = text.split('\n')
+                          return lines.map((line, li) => {
+                            const parts = line.split(/(\[\[tab:[\w-]+\]\])/g)
+                            const rendered = parts.map((part, pi) => {
+                              const m = part.match(/^\[\[tab:([\w-]+)\]\]$/)
+                              if (m && tabMap[m[1]]) {
+                                const { tab, label } = tabMap[m[1]]
+                                return (
+                                  <button
+                                    key={pi}
+                                    onClick={() => handleActiveTabChange(tab)}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 mx-0.5 rounded-lg bg-cyan-500/20 border border-cyan-400/30 text-cyan-300 text-xs font-medium hover:bg-cyan-500/30 transition"
+                                  >
+                                    → {label}
+                                  </button>
+                                )
+                              }
+                              return <span key={pi}>{part}</span>
+                            })
+                            return <span key={li}>{rendered}{li < lines.length - 1 && <br />}</span>
+                          })
+                        }
+                        return (
                         <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                           <div className={`max-w-[85%] sm:max-w-[75%] p-3 rounded-2xl ${
                             msg.role === 'user' 
@@ -14434,10 +14525,15 @@ function AFLegacyContent() {
                                 className="max-w-full max-h-48 rounded-lg mb-2"
                               />
                             )}
-                            <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            {msg.role === 'assistant' ? (
+                              <div className="text-sm">{renderContent(msg.content)}</div>
+                            ) : (
+                              <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                            )}
                           </div>
                         </div>
-                      ))}
+                        )
+                      })}
                       
                       {chatLoading && (
                         <div className="flex justify-start">
@@ -14483,10 +14579,11 @@ function AFLegacyContent() {
                       </label>
                       <input
                         type="text"
+                        data-chat-input
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
-                        placeholder="Ask about trades, players, drafts..."
+                        placeholder={chatLeagueId ? `Ask about ${leagues.find(l => l.league_id === chatLeagueId)?.name || 'this league'}...` : 'Ask about trades, players, drafts...'}
                         className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/20 text-white placeholder:text-gray-500 focus:border-cyan-400/50 focus:outline-none text-sm sm:text-base"
                         disabled={chatLoading}
                       />
