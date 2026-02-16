@@ -1,5 +1,15 @@
 import { TradeDelta } from '@/lib/hybrid-valuation'
 
+function matchesUser(p: { userId?: string; teamName?: string; displayName?: string }, username: string): boolean {
+  const uLower = username?.toLowerCase() || ''
+  if (p.userId === username) return true
+  if ((p as any).displayName?.toLowerCase() === uLower) return true
+  if (p.teamName?.toLowerCase() === uLower) return true
+  if (p.teamName?.toLowerCase()?.includes(uLower) && uLower.length > 2) return true
+  if ((p as any).displayName?.toLowerCase()?.includes(uLower) && uLower.length > 2) return true
+  return false
+}
+
 export interface ThreeLensGrade {
   market: {
     atTimeGrade: string
@@ -166,10 +176,7 @@ function computeLineupImpact(trades: ScoredTrade[], username: string): ThreeLens
   const starterPositions = new Set(['QB', 'RB', 'WR', 'TE'])
 
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p =>
-      p.teamName?.toLowerCase().includes(username.toLowerCase()) ||
-      p.userId === username
-    )
+    const userParty = trade.parties?.find(p => matchesUser(p, username))
 
     if (userParty) {
       const playersIn = userParty.playersReceived || []
@@ -223,14 +230,8 @@ function inferGoal(trades: ScoredTrade[], username: string): 'rebuild' | 'win-no
   let ageCountOut = 0
 
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p =>
-      p.teamName?.toLowerCase().includes(username.toLowerCase()) ||
-      p.userId === username
-    )
-    const otherParty = trade.parties?.find(p =>
-      !p.teamName?.toLowerCase().includes(username.toLowerCase()) &&
-      p.userId !== username
-    )
+    const userParty = trade.parties?.find(p => matchesUser(p, username))
+    const otherParty = trade.parties?.find(p => !matchesUser(p, username))
 
     if (userParty) {
       picksAcquired += (userParty.picksReceived?.length || 0)
@@ -278,14 +279,8 @@ function computeDecisionQuality(trades: ScoredTrade[], username: string): ThreeL
   let reasoning = ''
 
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p =>
-      p.teamName?.toLowerCase().includes(username.toLowerCase()) ||
-      p.userId === username
-    )
-    const otherParty = trade.parties?.find(p =>
-      !p.teamName?.toLowerCase().includes(username.toLowerCase()) &&
-      p.userId !== username
-    )
+    const userParty = trade.parties?.find(p => matchesUser(p, username))
+    const otherParty = trade.parties?.find(p => !matchesUser(p, username))
 
     if (!userParty) continue
     total++
@@ -360,10 +355,7 @@ export function computeSkillRadar(trades: ScoredTrade[], username: string): Skil
   let totalReceived = 0
   const starterPositions = new Set(['QB', 'RB', 'WR', 'TE'])
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p =>
-      p.teamName?.toLowerCase().includes(username.toLowerCase()) ||
-      p.userId === username
-    )
+    const userParty = trade.parties?.find(p => matchesUser(p, username))
     if (userParty) {
       const players = userParty.playersReceived || []
       totalReceived += players.length

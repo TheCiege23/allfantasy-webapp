@@ -2194,10 +2194,12 @@ function AFLegacyContent() {
         return
       }
       
-      // Filter by selected year if not 'all'
-      const filteredTradesByYear: Record<string, any[]> = selectedYear === 'all' 
+      const resolvedYear = selectedYear === 'current' 
+        ? String(new Date().getFullYear()) 
+        : selectedYear
+      const filteredTradesByYear: Record<string, any[]> = resolvedYear === 'all' 
         ? userTradesByYear 
-        : { [selectedYear]: userTradesByYear[selectedYear] || [] }
+        : { [resolvedYear]: userTradesByYear[resolvedYear] || [] }
       
       // Grade trades year by year
       const gradedTradesByYear: Record<string, any[]> = {}
@@ -2246,6 +2248,17 @@ function AFLegacyContent() {
       }
       
       setReportCardTradesByYear(gradedTradesByYear)
+      
+      if (allGradedTrades.length === 0) {
+        setReportCardSummary({ 
+          noTrades: true, 
+          message: resolvedYear === 'all' 
+            ? 'No trades found for you in this league' 
+            : `No trades found for the ${resolvedYear} season`
+        })
+        setReportCardLoading(false)
+        return
+      }
       
       // Calculate summary stats from all graded trades
       const gradeToScore: Record<string, number> = { 'A+': 10, 'A': 9, 'A-': 8, 'B+': 7, 'B': 6, 'B-': 5, 'C+': 4, 'C': 3, 'C-': 2, 'D': 1, 'F': 0 }

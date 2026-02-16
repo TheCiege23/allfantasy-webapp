@@ -25,9 +25,23 @@ interface TradeAnalyticsRequest {
   league?: { qb_format?: string }
 }
 
+function isUserParty(
+  p: { userId?: string; teamName?: string; displayName?: string },
+  sleeperUsername: string,
+  sleeperUserId?: string
+): boolean {
+  const uLower = sleeperUsername?.toLowerCase() || ''
+  if (p.userId === sleeperUsername || (sleeperUserId && p.userId === sleeperUserId)) return true
+  if (p.teamName?.toLowerCase() === uLower || (p as any).displayName?.toLowerCase() === uLower) return true
+  if (p.teamName?.toLowerCase().includes(uLower) && uLower.length > 2) return true
+  if ((p as any).displayName?.toLowerCase().includes(uLower) && uLower.length > 2) return true
+  return false
+}
+
 function adaptTradeForDualMode(
   trade: TradeAnalyticsRequest['trades'][0],
-  sleeperUsername: string
+  sleeperUsername: string,
+  sleeperUserId?: string
 ): {
   date: string;
   sideAPlayers: string[];
@@ -35,14 +49,8 @@ function adaptTradeForDualMode(
   sideAPicks: { year: number; round: number; tier?: 'early' | 'mid' | 'late' }[];
   sideBPicks: { year: number; round: number; tier?: 'early' | 'mid' | 'late' }[];
 } | null {
-  const userParty = trade.parties?.find(p =>
-    p.teamName?.toLowerCase().includes(sleeperUsername?.toLowerCase() || '') ||
-    p.userId === sleeperUsername
-  )
-  const otherParty = trade.parties?.find(p =>
-    !p.teamName?.toLowerCase().includes(sleeperUsername?.toLowerCase() || '') &&
-    p.userId !== sleeperUsername
-  )
+  const userParty = trade.parties?.find(p => isUserParty(p, sleeperUsername, sleeperUserId))
+  const otherParty = trade.parties?.find(p => !isUserParty(p, sleeperUsername, sleeperUserId))
   
   if (!userParty || !otherParty) return null
   
@@ -81,13 +89,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
       return NextResponse.json({ error: 'league_id and trades are required' }, { status: 400 })
     }
 
-    // Filter trades that involve this user (check both username and numeric user ID)
     const userTrades = trades.filter(t => 
-      t.parties?.some(p => 
-        p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '') ||
-        p.userId === sleeper_username ||
-        p.userId === sleeper_user_id
-      )
+      t.parties?.some(p => isUserParty(p, sleeper_username, sleeper_user_id))
     )
     
     console.log(`[trade-analytics] Filtering trades for user: username=${sleeper_username}, user_id=${sleeper_user_id}`)
@@ -245,14 +248,11 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
         worstTrade = trade
       }
 
-      const partner = trade.parties?.find(p => 
-        !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '') &&
-        p.userId !== sleeper_username
-      )
+      const partner = trade.parties?.find(p => !isUserParty(p, sleeper_username, sleeper_user_id))
       
       if (partner) {
         const partnerId = partner.userId || partner.teamName || 'Unknown'
-        const partnerName = partner.teamName || managers?.[partner.userId] || partner.userId || 'Unknown'
+        const partnerName = partner.teamName || (partner as any).displayName || managers?.[partner.userId] || partner.userId || 'Unknown'
         
         if (!partnerStats[partnerId]) {
           partnerStats[partnerId] = {
@@ -268,10 +268,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
         ps.grades.push(trade.grade || 'C')
         ps.tradeValues.push(estimatedValue)
 
-        const userParty = trade.parties?.find((p: any) =>
-          p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '') ||
-          p.userId === sleeper_username || p.userId === sleeper_user_id
-        )
+        const userParty = trade.parties?.find((p: any) => isUserParty(p, sleeper_username, sleeper_user_id))
 
         if (userParty) {
           for (const pl of (userParty.playersReceived || [])) {
@@ -486,11 +483,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
       const isHighConf = gradeVal >= 78 || gradeVal <= 45
       const marketShift = hindsightDelta - atTimeDelta
       const ppgDelta = trade.value / PPG_PROXY_DIVISOR
-      const opponent = trade.parties?.find((p: any) =>
-        !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '') &&
-        p.userId !== sleeper_username && p.userId !== sleeper_user_id
-      )
-      const opponentName = opponent?.teamName || managers?.[opponent?.userId || ''] || opponent?.userId || 'Unknown'
+      const opponent = trade.parties?.find((p: any) => !isUserParty(p, sleeper_username, sleeper_user_id))
+      const opponentName = opponent?.teamName || (opponent as any)?.displayName || managers?.[opponent?.userId || ''] || opponent?.userId || 'Unknown'
       return {
         value: trade.value,
         atTimeDelta,
@@ -658,30 +652,18 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
       
       bestTrade: bestTrade ? {
         value: bestTradeValue,
-        opponent: bestTrade.parties?.find((p: any) => 
-          !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-        )?.teamName || 'Unknown',
+        opponent: (() => { const op = bestTrade.parties?.find((p: any) => !isUserParty(p, sleeper_username, sleeper_user_id)); return op?.teamName || op?.displayName || 'Unknown' })(),
         date: new Date(bestTrade.timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        gave: bestTrade.parties?.find((p: any) => 
-          p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-        )?.playersReceived?.map((pl: any) => pl.name) || [],
-        received: bestTrade.parties?.find((p: any) => 
-          !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-        )?.playersReceived?.map((pl: any) => pl.name) || [],
+        gave: bestTrade.parties?.find((p: any) => isUserParty(p, sleeper_username, sleeper_user_id))?.playersReceived?.map((pl: any) => pl.name) || [],
+        received: bestTrade.parties?.find((p: any) => !isUserParty(p, sleeper_username, sleeper_user_id))?.playersReceived?.map((pl: any) => pl.name) || [],
       } : null,
       
       worstTrade: worstTrade && worstTradeValue < 0 ? {
         value: Math.abs(worstTradeValue),
-        opponent: worstTrade.parties?.find((p: any) => 
-          !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-        )?.teamName || 'Unknown',
+        opponent: (() => { const op = worstTrade.parties?.find((p: any) => !isUserParty(p, sleeper_username, sleeper_user_id)); return op?.teamName || op?.displayName || 'Unknown' })(),
         date: new Date(worstTrade.timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        gave: worstTrade.parties?.find((p: any) => 
-          p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-        )?.playersReceived?.map((pl: any) => pl.name) || [],
-        received: worstTrade.parties?.find((p: any) => 
-          !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-        )?.playersReceived?.map((pl: any) => pl.name) || [],
+        gave: worstTrade.parties?.find((p: any) => isUserParty(p, sleeper_username, sleeper_user_id))?.playersReceived?.map((pl: any) => pl.name) || [],
+        received: worstTrade.parties?.find((p: any) => !isUserParty(p, sleeper_username, sleeper_user_id))?.playersReceived?.map((pl: any) => pl.name) || [],
       } : null,
       
       leagueAwards: {
@@ -739,20 +721,16 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
           source: a.source,
         })) || []
 
+        const opParty = t.parties?.find(p => !isUserParty(p, sleeper_username, sleeper_user_id))
+        const meParty = t.parties?.find(p => isUserParty(p, sleeper_username, sleeper_user_id))
         return {
           id: t.transactionId,
           grade: t.grade || 'C',
-          opponent: t.parties?.find(p =>
-            !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-          )?.teamName || 'Unknown',
+          opponent: opParty?.teamName || (opParty as any)?.displayName || 'Unknown',
           date: new Date(t.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }),
           timestamp: t.timestamp,
-          playersOut: t.parties?.find(p =>
-            p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-          )?.playersReceived?.length || 0,
-          playersIn: t.parties?.find(p =>
-            !p.teamName?.toLowerCase().includes(sleeper_username?.toLowerCase() || '')
-          )?.playersReceived?.length || 0,
+          playersOut: meParty?.playersReceived?.length || 0,
+          playersIn: opParty?.playersReceived?.length || 0,
           netValue: t.value,
           verdict: t.verdict,
           marketShift: Math.round(marketShift),

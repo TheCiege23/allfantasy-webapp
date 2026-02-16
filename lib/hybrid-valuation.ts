@@ -458,14 +458,17 @@ export async function computeTradeDeltaFromUserTrades(
   viewerUserId: string,
   ctx: ValuationContext
 ): Promise<TradeDelta | null> {
-  const viewerParty = trade.parties?.find(p =>
-    p.userId === viewerUserId ||
-    p.teamName?.toLowerCase().includes(viewerUserId.toLowerCase())
-  );
-  const otherParty = trade.parties?.find(p =>
-    p.userId !== viewerUserId &&
-    !p.teamName?.toLowerCase().includes(viewerUserId.toLowerCase())
-  );
+  const matchesViewer = (p: { userId?: string; teamName?: string; displayName?: string }) => {
+    const vLower = viewerUserId?.toLowerCase() || ''
+    if (p.userId === viewerUserId) return true
+    if ((p as any).displayName?.toLowerCase() === vLower) return true
+    if (p.teamName?.toLowerCase() === vLower) return true
+    if (p.teamName?.toLowerCase().includes(vLower) && vLower.length > 2) return true
+    if ((p as any).displayName?.toLowerCase().includes(vLower) && vLower.length > 2) return true
+    return false
+  }
+  const viewerParty = trade.parties?.find(p => matchesViewer(p));
+  const otherParty = trade.parties?.find(p => !matchesViewer(p));
 
   if (!viewerParty || !otherParty) return null;
 
