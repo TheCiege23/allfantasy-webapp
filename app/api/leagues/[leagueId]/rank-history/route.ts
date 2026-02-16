@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getRankHistory } from "@/lib/rankings-engine/snapshots"
 import { withApiUsage } from "@/lib/telemetry/usage"
+import { buildBaselineMeta, ensureArray } from "@/lib/engine/response-guard"
 
 export const GET = withApiUsage({
   endpoint: "/api/leagues/[leagueId]/rank-history",
@@ -17,9 +18,27 @@ export const GET = withApiUsage({
 
   try {
     const rows = await getRankHistory({ leagueId, rosterId, limit })
-    return NextResponse.json({ leagueId, rosterId, rows })
+
+    if (!rows || rows.length === 0) {
+      return NextResponse.json({
+        leagueId,
+        rosterId,
+        rows: [],
+        meta: buildBaselineMeta(
+          "no_snapshot_history",
+          "Rank history will begin tracking once weekly snapshots are stored."
+        ),
+      })
+    }
+
+    return NextResponse.json({ leagueId, rosterId, rows: ensureArray(rows) })
   } catch (err: any) {
     console.error("[Rank History API]", err?.message)
-    return NextResponse.json({ error: "Failed to fetch rank history" }, { status: 500 })
+    return NextResponse.json({
+      leagueId,
+      rosterId,
+      rows: [],
+      meta: buildBaselineMeta("error", "Unable to load rank history at this time."),
+    })
   }
 })

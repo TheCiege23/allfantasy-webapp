@@ -1,21 +1,44 @@
 import { NextResponse } from "next/server"
 import { computeDraftGrades, upsertDraftGrades, getDraftGrades } from "@/lib/rankings-engine/draft-grades"
 import { withApiUsage } from "@/lib/telemetry/usage"
+import { buildBaselineMeta, ensureArray } from "@/lib/engine/response-guard"
 
 export const GET = withApiUsage({
   endpoint: "/api/leagues/[leagueId]/draft-grades",
   tool: "DraftGrades"
 })(async (req: Request, ctx: { params: { leagueId: string } }) => {
-  const { leagueId } = ctx.params
-  const url = new URL(req.url)
-  const season = String(url.searchParams.get("season") ?? "")
+  try {
+    const { leagueId } = ctx.params
+    const url = new URL(req.url)
+    const season = String(url.searchParams.get("season") ?? "")
 
-  if (!leagueId || !season) {
-    return NextResponse.json({ error: "Missing leagueId or season" }, { status: 400 })
+    if (!leagueId || !season) {
+      return NextResponse.json({ error: "Missing leagueId or season" }, { status: 400 })
+    }
+
+    const rows = await getDraftGrades({ leagueId, season })
+
+    if (!rows || rows.length === 0) {
+      return NextResponse.json({
+        leagueId,
+        season,
+        rows: [],
+        meta: buildBaselineMeta(
+          "post_draft_only",
+          "Draft grades are only computed during post-draft phase."
+        ),
+      })
+    }
+
+    return NextResponse.json({ leagueId, season, rows: ensureArray(rows) })
+  } catch (e) {
+    console.error("[DraftGrades GET]", e instanceof Error ? e.message : e)
+    return NextResponse.json({
+      leagueId: ctx.params.leagueId,
+      rows: [],
+      meta: buildBaselineMeta("error", "Unable to load draft grades at this time."),
+    })
   }
-
-  const rows = await getDraftGrades({ leagueId, season })
-  return NextResponse.json({ leagueId, season, rows })
 })
 
 export const POST = withApiUsage({
