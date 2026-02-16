@@ -800,6 +800,13 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                   </div>
 
                   <div className="flex items-center gap-2 min-w-0">
+                    {team.avatar ? (
+                      <img src={`https://sleepercdn.com/avatars/thumbs/${team.avatar}`} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                        {(team.displayName || team.username || '?')[0].toUpperCase()}
+                      </div>
+                    )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-semibold text-white truncate">
@@ -860,6 +867,13 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                     {displayRank}
                   </div>
 
+                  {team.avatar ? (
+                    <img src={`https://sleepercdn.com/avatars/thumbs/${team.avatar}`} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                      {(team.displayName || team.username || '?')[0].toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-semibold text-white truncate">

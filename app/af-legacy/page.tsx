@@ -12964,11 +12964,20 @@ function AFLegacyContent() {
                                               </div>
                                             </td>
                                             <td className="px-3 py-3">
-                                              <div className={`font-medium ${team.isUser ? 'text-yellow-300' : 'text-white'}`}>
-                                                {team.teamName}
-                                                {team.sleeperUsername && team.sleeperUsername !== team.teamName && (
-                                                  <span className="text-slate-500 font-normal text-xs ml-1.5">@{team.sleeperUsername}</span>
+                                              <div className="flex items-center gap-2">
+                                                {team.ownerAvatar ? (
+                                                  <img src={team.ownerAvatar} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                                                ) : (
+                                                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0">
+                                                    {(team.teamName || '?')[0].toUpperCase()}
+                                                  </div>
                                                 )}
+                                                <div className={`font-medium ${team.isUser ? 'text-yellow-300' : 'text-white'}`}>
+                                                  {team.teamName}
+                                                  {team.sleeperUsername && team.sleeperUsername !== team.teamName && (
+                                                    <span className="text-slate-500 font-normal text-xs ml-1.5">@{team.sleeperUsername}</span>
+                                                  )}
+                                                </div>
                                               </div>
                                             </td>
                                             <td className="px-2 py-2 text-center">
@@ -13134,6 +13143,13 @@ function AFLegacyContent() {
                                               {idx + 1}
                                             </span>
                                           </div>
+                                          {team.ownerAvatar ? (
+                                            <img src={team.ownerAvatar} alt="" className="w-8 h-8 rounded-full object-cover flex-shrink-0" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }} />
+                                          ) : (
+                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-600 to-slate-700 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                                              {(team.teamName || '?')[0].toUpperCase()}
+                                            </div>
+                                          )}
                                           <div className="flex-1 min-w-0">
                                             <div className={`font-medium truncate ${team.isUser ? 'text-yellow-300' : 'text-white'}`}>
                                               {team.teamName}

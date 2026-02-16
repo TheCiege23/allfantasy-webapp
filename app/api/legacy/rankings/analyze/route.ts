@@ -215,10 +215,14 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
           winRate * 100 * 0.25 +
           futureOutlook * 0.15
 
+        const ownerAvatarId = ownerInfo?.avatar
+        const ownerAvatar = ownerAvatarId ? `https://sleepercdn.com/avatars/thumbs/${ownerAvatarId}` : null
+
         return {
           userId: ownerId,
           teamName,
           sleeperUsername,
+          ownerAvatar,
           rosterValue,
           pointsFor,
           winRate,
