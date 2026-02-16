@@ -509,10 +509,21 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
   }
 
   if (error) {
+    const isNotFound = error.includes('not found') || error.includes('no data')
     return (
-      <div className="text-center py-12">
-        <p className="text-red-400 text-sm mb-3">{error}</p>
-        <button onClick={fetchRankings} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors">Retry</button>
+      <div className="text-center py-12 px-4">
+        <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3">
+          <span className="text-xl">{isNotFound ? '📭' : '⚠️'}</span>
+        </div>
+        <p className="text-white/70 text-sm font-medium mb-1">
+          {isNotFound ? 'No ranking data available yet' : 'Failed to compute league rankings'}
+        </p>
+        <p className="text-white/30 text-xs mb-4 max-w-xs mx-auto">
+          {isNotFound
+            ? 'This league may be from a previous season or hasn\'t started yet. Rankings require active roster and matchup data.'
+            : error}
+        </p>
+        <button onClick={fetchRankings} className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors px-4 py-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20">Retry</button>
       </div>
     )
   }
