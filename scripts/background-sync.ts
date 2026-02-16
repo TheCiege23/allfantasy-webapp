@@ -157,7 +157,11 @@ async function main(): Promise<void> {
 
   console.log('[BackgroundSync] Running initial sync...');
   for (const task of syncTasks) {
-    await runTask(task);
+    try {
+      await runTask(task);
+    } catch (e) {
+      console.error(`[BackgroundSync] Initial sync failed for ${task.name}:`, e instanceof Error ? e.message : e);
+    }
   }
 
   console.log('[BackgroundSync] Initial sync complete. Starting scheduled loop...\n');
@@ -173,6 +177,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error('[BackgroundSync] Fatal error:', error);
-  process.exit(1);
+  console.error('[BackgroundSync] Fatal error — restarting in 30s:', error);
+  setTimeout(() => {
+    main().catch(() => process.exit(1));
+  }, 30000);
 });

@@ -11781,6 +11781,11 @@ function AFLegacyContent() {
 
                 {activeTab === 'waiver' && (
                   <>
+                  {waiverAnalysis?.meta?.fallbackMode && (
+                    <div className="mb-4 rounded-xl border border-yellow-600/30 bg-yellow-900/15 px-4 py-3 text-yellow-300 text-xs">
+                      {waiverAnalysis.meta.rankingSourceNote}
+                    </div>
+                  )}
                   {waiverAnalysis?.one_move ? (
                     <HeroMetricAI
                       value={waiverAnalysis.one_move.player_name}

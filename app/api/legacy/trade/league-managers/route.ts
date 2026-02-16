@@ -1,5 +1,6 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
+import { ensureArray, ensureNumber } from '@/lib/engine/response-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -359,7 +360,8 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
 
     return NextResponse.json({ 
       success: true, 
-      managers,
+      managers: ensureArray(managers),
+      total: ensureNumber(managers?.length),
       leagueSettings: {
         faabBudget: totalFaabBudget,
         sport,

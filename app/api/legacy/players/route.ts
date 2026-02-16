@@ -1,6 +1,7 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextResponse } from 'next/server';
 import { getAllPlayers } from '@/lib/sleeper-client';
+import { ensureNumber } from '@/lib/engine/response-guard';
 
 export const GET = withApiUsage({ endpoint: "/api/legacy/players", tool: "LegacyPlayers" })(async () => {
   try {
@@ -18,9 +19,12 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/players", tool: "Legacy
       }
     }
     
-    return NextResponse.json({ players: simplified });
+    return NextResponse.json({
+      players: simplified,
+      total: ensureNumber(Object.keys(simplified).length),
+    });
   } catch (error) {
     console.error('Failed to fetch players:', error);
-    return NextResponse.json({ players: {} });
+    return NextResponse.json({ players: {}, total: 0 });
   }
 })

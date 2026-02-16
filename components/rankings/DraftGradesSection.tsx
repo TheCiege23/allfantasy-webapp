@@ -5,7 +5,7 @@ import { useDraftGrades } from "@/hooks/useDraftGrades"
 import { DraftGradesCard } from "@/components/DraftGradesCard"
 
 export function DraftGradesSection(props: { leagueId: string; season: string; defaultWeek: number }) {
-  const { rows, loading, error, computeAndPersist } = useDraftGrades({
+  const { rows, loading, error, meta, computeAndPersist } = useDraftGrades({
     leagueId: props.leagueId,
     season: props.season
   })
@@ -38,6 +38,12 @@ export function DraftGradesSection(props: { leagueId: string; season: string; de
       </div>
 
       {error ? <div className="rounded-2xl bg-zinc-950 p-3 text-sm opacity-80">Note: {error}</div> : null}
+
+      {meta?.fallbackMode && (
+        <div className="rounded-2xl bg-yellow-900/20 border border-yellow-700/30 px-4 py-3 text-yellow-300 text-xs">
+          {meta.rankingSourceNote}
+        </div>
+      )}
 
       <DraftGradesCard rows={rows} />
     </div>

@@ -1,6 +1,7 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
+import { buildBaselineMeta } from '@/lib/engine/response-guard'
 import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client'
 import { consumeRateLimit, getClientIp } from '@/lib/rate-limit'
 import { buildLeagueDecisionContext, summarizeLeagueDecisionContext } from '@/lib/league-decision-context'
@@ -317,18 +318,20 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
     })
 
     if (generatorOutput.candidates.length === 0) {
+      const note = generatorOutput.opportunities.length > 0
+        ? 'No clean market wins today. Best options are below.'
+        : 'Your team is well-balanced — no urgent moves needed right now.'
       return NextResponse.json({
         success: true,
         recommendations: [],
         opportunities: generatorOutput.opportunities,
         meta: {
+          ...buildBaselineMeta("no_trade_opportunities", note),
           partnersEvaluated: generatorOutput.partnersEvaluated,
           rawCandidatesGenerated: generatorOutput.rawCandidatesGenerated,
           prunedTo: 0,
           hasOpportunities: generatorOutput.opportunities.length > 0,
-          message: generatorOutput.opportunities.length > 0
-            ? 'No clean market wins today. Best options are below.'
-            : 'Your team is well-balanced — no urgent moves needed right now.',
+          message: note,
         },
       })
     }

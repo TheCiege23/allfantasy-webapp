@@ -5,6 +5,7 @@ import { computeTradeDrivers, computeBestLineupBySlot, type SlotAssignment } fro
 import { computeManagerTendencies, computeAcceptProbability, type ManagerTendencyProfile, type AcceptProbabilityResult } from '@/lib/trade-engine/manager-tendency-engine'
 import { getCalibratedWeights } from '@/lib/trade-engine/accept-calibration'
 import type { Asset } from '@/lib/trade-engine/types'
+import { buildBaselineMeta } from '@/lib/engine/response-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -153,6 +154,21 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/quick-evaluate",
 
     if (receiveAssets.length === 0 && giveAssets.length === 0) {
       return NextResponse.json({ error: 'No assets provided' }, { status: 400 })
+    }
+
+    const allZero = [...receiveAssets, ...giveAssets].every(a => a.value === 0)
+    if (allZero) {
+      return NextResponse.json({
+        success: true,
+        verdict: "insufficient_data",
+        fairnessScore: 0,
+        acceptProbability: 0,
+        drivers: [],
+        meta: buildBaselineMeta(
+          "insufficient_assets",
+          "Unable to evaluate trade due to missing player valuation data."
+        ),
+      })
     }
 
     const yourRosterAssets = rosterToAssets(yourRoster, fcPlayers, yourStarters)

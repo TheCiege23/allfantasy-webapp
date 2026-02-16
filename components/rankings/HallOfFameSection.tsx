@@ -39,7 +39,7 @@ export function HallOfFameSection(props: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.defaultSeason, normalizedSeasons])
 
-  const { hofRows, seasonRows, loading, error, rebuild } = useHallOfFame({
+  const { hofRows, seasonRows, loading, error, meta, rebuild } = useHallOfFame({
     leagueId: props.leagueId,
     season: season || null
   })
@@ -78,6 +78,12 @@ export function HallOfFameSection(props: {
       {error ? (
         <div className="rounded-2xl bg-zinc-950 p-3 text-sm opacity-80">Error: {error}</div>
       ) : null}
+
+      {meta?.fallbackMode && (
+        <div className="rounded-2xl bg-yellow-900/20 border border-yellow-700/30 px-4 py-3 text-yellow-300 text-xs">
+          {meta.rankingSourceNote}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
         <HallOfFameCard rows={hofRows} />

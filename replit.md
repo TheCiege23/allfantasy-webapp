@@ -70,6 +70,7 @@ Key features include:
 -   **Community & Gamification**: Community Insights Feed and an Achievement Badge System.
 -   **Usage Analytics & Telemetry**: Full observability via `withApiUsage` wrapper, `ApiUsageEvent`/`ApiUsageRollup` models, and client-side logging.
 -   **Enhanced Admin Dashboards**: All admin sections upgraded with Top-N cards, executable quick actions, and real-time metrics.
+-   **Response Hardening System**: Shared defensive utilities (`lib/engine/response-guard.ts`) providing `GuardMeta`, `buildBaselineMeta()`, `ensureArray()`, `ensureNumber()`, `ensureObject()`, `safeDivide()`. Global error wrapper (`lib/engine/with-guard.ts`). All major endpoints (Draft Grades, Hall of Fame, Rank History, Waiver AI, Trade Finder, Instant Trade Check, League Managers, Players) hardened with empty-state guards returning structured `meta` with `fallbackMode` and `rankingSourceNote`. Frontend hooks propagate meta to section components rendering yellow fallback banners. Background Sync hardened with per-task try/catch and auto-restart on fatal error.
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.

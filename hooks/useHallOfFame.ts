@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { apiGet, apiPost } from "@/lib/api"
 
-type HallOfFameGetResponse = { leagueId: string; rows: any[] }
-type SeasonLeaderboardGetResponse = { leagueId: string; season: string; rows: any[] }
+type HallOfFameGetResponse = { leagueId: string; rows: any[]; meta?: { fallbackMode?: boolean; rankingSourceNote?: string } }
+type SeasonLeaderboardGetResponse = { leagueId: string; season: string; rows: any[]; meta?: { fallbackMode?: boolean; rankingSourceNote?: string } }
 
 export function useHallOfFame(args: { leagueId: string; season?: string | null }) {
   const { leagueId, season } = args
@@ -13,6 +13,7 @@ export function useHallOfFame(args: { leagueId: string; season?: string | null }
   const [seasonRows, setSeasonRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [meta, setMeta] = useState<{ fallbackMode?: boolean; rankingSourceNote?: string } | null>(null)
 
   const hofUrl = useMemo(() => {
     if (!leagueId) return null
@@ -31,9 +32,11 @@ export function useHallOfFame(args: { leagueId: string; season?: string | null }
     try {
       const data = await apiGet<HallOfFameGetResponse>(hofUrl)
       setHofRows(data.rows ?? [])
+      setMeta(data.meta ?? null)
       if (seasonUrl) {
         const s = await apiGet<SeasonLeaderboardGetResponse>(seasonUrl)
         setSeasonRows(s.rows ?? [])
+        if (s.meta) setMeta(s.meta)
       } else {
         setSeasonRows([])
       }
@@ -72,5 +75,5 @@ export function useHallOfFame(args: { leagueId: string; season?: string | null }
     }
   }
 
-  return { hofRows, seasonRows, loading, error, rebuild, refresh }
+  return { hofRows, seasonRows, loading, error, meta, rebuild, refresh }
 }

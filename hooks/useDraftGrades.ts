@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { apiGet, apiPost } from "@/lib/api"
 
-type DraftGradesGetResponse = { leagueId: string; season: string; rows: any[] }
+type DraftGradesGetResponse = { leagueId: string; season: string; rows: any[]; meta?: { fallbackMode?: boolean; rankingSourceNote?: string } }
 type DraftGradesPostResponse =
   | { ok: true; leagueId: string; season: string; count: number }
   | { leagueId: string; leagueName: string; season: string; week: number; phase: string; grades: any[]; note?: string }
@@ -14,6 +14,7 @@ export function useDraftGrades(args: { leagueId: string; season?: string | null 
   const [rows, setRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [meta, setMeta] = useState<{ fallbackMode?: boolean; rankingSourceNote?: string } | null>(null)
 
   const url = useMemo(() => {
     if (!leagueId || !season) return null
@@ -28,7 +29,10 @@ export function useDraftGrades(args: { leagueId: string; season?: string | null 
         setLoading(true)
         setError(null)
         const data = await apiGet<DraftGradesGetResponse>(url)
-        if (!cancelled) setRows(data.rows ?? [])
+        if (!cancelled) {
+          setRows(data.rows ?? [])
+          setMeta(data.meta ?? null)
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? "Failed to load draft grades")
       } finally {
@@ -64,5 +68,5 @@ export function useDraftGrades(args: { leagueId: string; season?: string | null 
     }
   }
 
-  return { rows, loading, error, computeAndPersist }
+  return { rows, loading, error, meta, computeAndPersist }
 }

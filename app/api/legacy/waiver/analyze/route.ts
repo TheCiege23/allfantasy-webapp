@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { consumeRateLimit, getClientIp } from '@/lib/rate-limit'
 import { requireAuthOrOrigin, forbiddenResponse } from '@/lib/api-auth'
 import { trackLegacyToolUsage } from '@/lib/analytics-server'
+import { buildBaselineMeta } from '@/lib/engine/response-guard'
 import {
   getSleeperUser,
   getLeagueRosters,
@@ -284,6 +285,43 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
           source: priced.source,
         })
       }
+    }
+
+    if (waiverCandidates.length === 0) {
+      const isOffseasonEmpty = leagueStatus === 'complete' || leagueStatus === 'pre_draft'
+      return NextResponse.json({
+        ok: true,
+        analysis: {
+          one_move: null,
+          suggestions: [],
+          roster_notes: [],
+          meta: buildBaselineMeta(
+            "no_waiver_pool",
+            "No available waiver candidates for this league context."
+          ),
+        },
+        confidenceRisk: {
+          confidence: 0,
+          level: 'low',
+          volatility: 'low',
+          riskProfile: 'unknown',
+          riskTags: [],
+          explanation: 'No waiver candidates available.',
+        },
+        league: {
+          name: leagueInfo?.name || '',
+          id: league_id,
+          sport: leagueInfo?.sport || 'nfl',
+          type: isDynasty ? 'dynasty' : 'redraft',
+          scoring: 'unknown',
+        },
+        roster_count: 0,
+        offseasonContext: isOffseasonEmpty ? {
+          offseason: true,
+          offseasonBadge: leagueStatus === 'pre_draft' ? 'Pre-Draft Mode' : 'Offseason Mode',
+          offseasonNote: 'No waiver candidates available in current league phase.',
+        } : null,
+      })
     }
 
     const rosterPlayers: WaiverRosterPlayer[] = userRosterCategorized.map((p, i) => {
