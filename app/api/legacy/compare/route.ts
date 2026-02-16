@@ -54,10 +54,11 @@ Use letter grades: A+, A, A-, B+, B, B-, C+, C, C-, D, F
 - Rebuilding efficiency (bouncing back from bad seasons)
 - Trade activity and value extraction
 
-### Specialty Leagues - Superflex/IDP (Only if BOTH managers have them)
-- Adaptation to unique formats
-- Positional advantage exploitation
+### Specialty Leagues - Heavy IDP (Only if BOTH managers have them)
+- Adaptation to IDP-heavy formats (3+ IDP starters)
+- Defensive positional advantage exploitation
 - Format-specific expertise
+Note: Superflex leagues are classified under their base type (redraft or dynasty), not specialty.
 
 ## EXCLUDED FORMATS (Track but don't grade for comparison)
 The following are EXCLUDED from head-to-head comparison:
@@ -209,25 +210,24 @@ function getLeagueTypeExtended(league: SleeperLeague): string {
   const positions = league.roster_positions || []
   const nameLower = (league.name || '').toLowerCase()
   
-  // Detect specialty formats that create skewed records
   const isGuillotine = nameLower.includes('guillotine') || nameLower.includes('guilotine') || nameLower.includes('survivor elimination')
   const isSurvivor = nameLower.includes('survivor') && !nameLower.includes('survivor elimination')
   const isDraftOnly = settings['type'] === 3 || nameLower.includes('draft only') || nameLower.includes('draft-only')
   const hasBestball = nameLower.includes('bestball') || nameLower.includes('best ball') || settings['best_ball'] === 1
   
-  // Mark specialty formats that shouldn't count toward main grading
   if (isGuillotine) return 'guillotine'
   if (isSurvivor) return 'survivor'
   if (isDraftOnly) return 'draft_only'
   if (hasBestball) return 'bestball'
   
-  const hasSuperflex = positions.filter((p: string) => p === 'SUPER_FLEX').length > 0
-  const hasIDP = positions.some((p: string) => ['DL', 'LB', 'DB', 'IDP_FLEX'].includes(p))
-  if (hasSuperflex || hasIDP) return 'specialty'
-  
   const type = getLeagueType(league)
-  if (type === 'dynasty' || type === 'keeper') return 'dynasty'
-  
+  const isDynasty = type === 'dynasty' || type === 'keeper'
+
+  const idpSlots = positions.filter((p: string) => ['DL', 'LB', 'DB', 'IDP_FLEX'].includes(p))
+  const isHeavyIDP = idpSlots.length >= 3
+
+  if (isHeavyIDP) return 'specialty'
+  if (isDynasty) return 'dynasty'
   return 'redraft'
 }
 
