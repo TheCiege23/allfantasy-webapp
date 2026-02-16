@@ -14376,7 +14376,7 @@ function AFLegacyContent() {
                   </>
                 )}
 
-                {activeTab === 'share' && aiReport && (
+                {activeTab === 'share' && (
                   <>
                   {/* Hero Metric */}
                   <HeroMetric 
@@ -14659,7 +14659,9 @@ function AFLegacyContent() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(shareText || aiReport.share_text || '')
+                            const text = shareText || aiReport?.share_text || ''
+                            if (!text) { alert('Generate a share post first!'); return }
+                            navigator.clipboard.writeText(text)
                             alert('Copied to clipboard!')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-cyan-500/20 text-cyan-300 rounded-xl hover:bg-cyan-500/30 transition min-h-[44px]"
@@ -14668,7 +14670,7 @@ function AFLegacyContent() {
                         </button>
                         <a
                           href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(
-                            shareText || aiReport.share_text || ''
+                            shareText || aiReport?.share_text || ''
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -14678,7 +14680,7 @@ function AFLegacyContent() {
                         </a>
                         <a
                           href={`https://www.facebook.com/sharer/sharer.php?quote=${encodeURIComponent(
-                            shareText || aiReport.share_text || ''
+                            shareText || aiReport?.share_text || ''
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -14689,7 +14691,7 @@ function AFLegacyContent() {
                         <a
                           href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
                             'https://allfantasy.io/af-legacy'
-                          )}&summary=${encodeURIComponent(shareText || aiReport.share_text || '')}`}
+                          )}&summary=${encodeURIComponent(shareText || aiReport?.share_text || '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 px-4 py-2.5 bg-blue-700/20 text-blue-200 rounded-xl hover:bg-blue-700/30 transition border border-blue-600/30 min-h-[44px]"
@@ -14701,7 +14703,7 @@ function AFLegacyContent() {
                       <div className="flex flex-wrap gap-2">
                         <a
                           href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                            shareText || aiReport.share_text || ''
+                            shareText || aiReport?.share_text || ''
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
@@ -14712,7 +14714,7 @@ function AFLegacyContent() {
                         <a
                           href={`https://www.reddit.com/submit?title=${encodeURIComponent(
                             'My AF Legacy Stats'
-                          )}&text=${encodeURIComponent(shareText || aiReport.share_text || '')}`}
+                          )}&text=${encodeURIComponent(shareText || aiReport?.share_text || '')}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 px-4 py-2.5 bg-orange-600/20 text-orange-300 rounded-xl hover:bg-orange-600/30 transition border border-orange-500/30 min-h-[44px]"
@@ -14721,7 +14723,9 @@ function AFLegacyContent() {
                         </a>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(shareText || aiReport.share_text || '')
+                            const text = shareText || aiReport?.share_text || ''
+                            if (!text) { alert('Generate a share post first!'); return }
+                            navigator.clipboard.writeText(text)
                             alert('Copied! Open Threads and paste in your post.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-gray-600/20 text-gray-200 rounded-xl hover:bg-gray-600/30 transition border border-gray-500/30 min-h-[44px]"
@@ -14730,7 +14734,9 @@ function AFLegacyContent() {
                         </button>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(shareText || aiReport.share_text || '')
+                            const text = shareText || aiReport?.share_text || ''
+                            if (!text) { alert('Generate a share post first!'); return }
+                            navigator.clipboard.writeText(text)
                             alert('Copied! Paste in any Discord channel.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600/20 text-indigo-300 rounded-xl hover:bg-indigo-600/30 transition border border-indigo-500/30 min-h-[44px]"
@@ -14742,7 +14748,9 @@ function AFLegacyContent() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(shareText || aiReport.share_text || '')
+                            const text = shareText || aiReport?.share_text || ''
+                            if (!text) { alert('Generate a share post first!'); return }
+                            navigator.clipboard.writeText(text)
                             alert('Copied! Open TikTok and paste in your caption.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-pink-500/20 text-pink-300 rounded-xl hover:bg-pink-500/30 transition border border-pink-500/30 min-h-[44px]"
@@ -14751,7 +14759,9 @@ function AFLegacyContent() {
                         </button>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(shareText || aiReport.share_text || '')
+                            const text = shareText || aiReport?.share_text || ''
+                            if (!text) { alert('Generate a share post first!'); return }
+                            navigator.clipboard.writeText(text)
                             alert('Copied! Open Instagram and paste in your bio or caption.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-pink-200 rounded-xl hover:from-purple-500/30 hover:to-pink-500/30 transition border border-pink-400/30 min-h-[44px]"
@@ -14760,7 +14770,9 @@ function AFLegacyContent() {
                         </button>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(shareText || aiReport.share_text || '')
+                            const text = shareText || aiReport?.share_text || ''
+                            if (!text) { alert('Generate a share post first!'); return }
+                            navigator.clipboard.writeText(text)
                             alert('Copied! Open Snapchat and paste in your story.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500/20 text-yellow-300 rounded-xl hover:bg-yellow-500/30 transition border border-yellow-500/30 min-h-[44px]"
@@ -14772,7 +14784,7 @@ function AFLegacyContent() {
                             onClick={() => {
                               navigator.share({
                                 title: 'My AF Legacy',
-                                text: shareText || aiReport.share_text || '',
+                                text: shareText || aiReport?.share_text || '',
                               }).catch(() => {})
                             }}
                             className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/20 text-emerald-300 rounded-xl hover:bg-emerald-500/30 transition border border-emerald-500/30 min-h-[44px]"
