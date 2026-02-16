@@ -550,15 +550,43 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
   const heroCards = useMemo(() => {
     if (!data?.teams || data.teams.length === 0) return null
     const champion = sortedTeams[0]
-    const riser = [...data.teams].sort((a, b) => {
-      const aDelta = a.rankDelta ?? 0
-      const bDelta = b.rankDelta ?? 0
-      return aDelta - bDelta
-    })[0]
-    const unluckiest = [...data.teams].sort((a, b) => a.luckDelta - b.luckDelta)[0]
+
+    const hasRankDeltas = data.teams.some(t => t.rankDelta !== null && t.rankDelta !== 0)
+    const hasGames = data.teams.some(t => (t.record?.wins ?? 0) + (t.record?.losses ?? 0) > 0)
+
+    let riser: typeof data.teams[0]
+    let riserDetail: string
+    if (hasRankDeltas) {
+      riser = [...data.teams].sort((a, b) => (a.rankDelta ?? 0) - (b.rankDelta ?? 0))[0]
+      riserDetail = riser.rankDelta !== null && riser.rankDelta < 0
+        ? `+${Math.abs(riser.rankDelta)} spots this week`
+        : 'Strong Starters'
+    } else if (hasGames) {
+      riser = [...data.teams].sort((a, b) => (b.streak ?? 0) - (a.streak ?? 0))[0]
+      riserDetail = (riser.streak ?? 0) > 0
+        ? `${riser.streak}W streak · ${riser.record?.wins}-${riser.record?.losses}`
+        : `${riser.record?.wins}-${riser.record?.losses} · Power ${riser.powerScore}`
+    } else {
+      riser = [...data.teams].sort((a, b) => (b.starterValue ?? 0) - (a.starterValue ?? 0))[0]
+      riserDetail = `Best starters · Value ${(riser.starterValue ?? 0).toLocaleString()}`
+    }
+
+    let unluckiest: typeof data.teams[0]
+    let unluckyDetail: string
+    if (hasGames) {
+      unluckiest = [...data.teams].sort((a, b) => (a.luckDelta ?? 0) - (b.luckDelta ?? 0))[0]
+      const expectedW = Math.round(unluckiest.expectedWins ?? 0)
+      const totalGames = (unluckiest.record?.wins ?? 0) + (unluckiest.record?.losses ?? 0)
+      const expectedL = totalGames - expectedW
+      unluckyDetail = `Should be ${expectedW}-${expectedL} · Luck: ${(unluckiest.luckDelta ?? 0) > 0 ? '+' : ''}${(unluckiest.luckDelta ?? 0).toFixed(1)}`
+    } else {
+      unluckiest = [...data.teams].sort((a, b) => (b.marketValueScore ?? 0) - (a.marketValueScore ?? 0))[0]
+      unluckyDetail = `Highest market value · Score ${unluckiest.marketValueScore}`
+    }
+
     const hotInsight = data.marketInsights?.[0] ?? null
 
-    return { champion, riser, unluckiest, hotInsight }
+    return { champion, riser, riserDetail, unluckiest, unluckyDetail, hotInsight }
   }, [data?.teams, data?.marketInsights, sortedTeams])
 
   const serverAwards = data?.weeklyAwards ?? null
@@ -670,25 +698,23 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
           <HeroCard
             title="Champion Favorite"
             subtitle={heroCards.champion.displayName || heroCards.champion.username || `Team ${heroCards.champion.rosterId}`}
-            detail={`Power Rank #1 · ${heroCards.champion.record.wins}-${heroCards.champion.record.losses} · Score ${heroCards.champion.composite}`}
+            detail={`Rank #${heroCards.champion.rank} · ${heroCards.champion.record.wins}-${heroCards.champion.record.losses} · Score ${heroCards.champion.composite}`}
             accent="bg-gradient-to-br from-amber-900/30 to-amber-800/10 border-amber-500/20"
             icon={BADGE_ICONS.trophy}
           />
           <HeroCard
-            title="Biggest Riser"
+            title={heroCards.riser.rankDelta !== null && heroCards.riser.rankDelta !== 0 ? 'Biggest Riser' : heroCards.riser.streak && heroCards.riser.streak > 0 ? 'Hot Streak' : 'Strongest Roster'}
             subtitle={heroCards.riser.displayName || heroCards.riser.username || `Team ${heroCards.riser.rosterId}`}
-            detail={heroCards.riser.rankDelta !== null && heroCards.riser.rankDelta < 0
-              ? `+${Math.abs(heroCards.riser.rankDelta)} this week`
-              : DRIVER_LABELS[heroCards.riser.explanation?.drivers?.[0]?.id ?? ''] || 'Climbing the ranks'}
+            detail={heroCards.riserDetail}
             accent="bg-gradient-to-br from-emerald-900/30 to-emerald-800/10 border-emerald-500/20"
             icon="⬆️"
           />
           <HeroCard
-            title="Best Process, Worst Luck"
+            title={data.teams.some(t => (t.record?.wins ?? 0) + (t.record?.losses ?? 0) > 0) ? 'Best Process, Worst Luck' : 'Market Leader'}
             subtitle={heroCards.unluckiest.displayName || heroCards.unluckiest.username || `Team ${heroCards.unluckiest.rosterId}`}
-            detail={`Should be ${heroCards.unluckiest.shouldBeRecord?.wins ?? Math.round(heroCards.unluckiest.expectedWins)}-${heroCards.unluckiest.shouldBeRecord?.losses ?? (heroCards.unluckiest.record.wins + heroCards.unluckiest.record.losses - Math.round(heroCards.unluckiest.expectedWins))} · Luck: ${heroCards.unluckiest.luckDelta > 0 ? '+' : ''}${heroCards.unluckiest.luckDelta ?? (heroCards.unluckiest.record.wins - heroCards.unluckiest.expectedWins).toFixed(1)}`}
+            detail={heroCards.unluckyDetail}
             accent="bg-gradient-to-br from-purple-900/30 to-purple-800/10 border-purple-500/20"
-            icon={'\u{1F340}'}
+            icon={data.teams.some(t => (t.record?.wins ?? 0) + (t.record?.losses ?? 0) > 0) ? '\u{1F340}' : '💰'}
           />
           <HeroCard
             title="Trade Market"
