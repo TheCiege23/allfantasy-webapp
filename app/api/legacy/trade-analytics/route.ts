@@ -711,14 +711,32 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
 
         const opParty = t.parties?.find(p => !isUserParty(p, sleeper_username, sleeper_user_id))
         const meParty = t.parties?.find(p => isUserParty(p, sleeper_username, sleeper_user_id))
+
+        const receivedPlayers = meParty?.playersReceived?.map((p: any) => ({ name: p.name, position: p.position || null })) || []
+        const gavePlayers = opParty?.playersReceived?.map((p: any) => ({ name: p.name, position: p.position || null })) || []
+        const receivedPicks = meParty?.picksReceived?.map((pk: any) => ({
+          round: pk.round,
+          season: pk.season,
+          label: `${pk.season} Round ${pk.round}${pk.slot ? ` (${pk.slot})` : ''}`
+        })) || []
+        const gavePicks = opParty?.picksReceived?.map((pk: any) => ({
+          round: pk.round,
+          season: pk.season,
+          label: `${pk.season} Round ${pk.round}${pk.slot ? ` (${pk.slot})` : ''}`
+        })) || []
+
         return {
           id: t.transactionId,
           grade: t.grade || 'C',
-          opponent: opParty?.teamName || (opParty as any)?.displayName || 'Unknown',
+          opponent: opParty?.teamName || (opParty as any)?.displayName || managers?.[opParty?.userId || ''] || 'Unknown',
           date: new Date(t.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }),
           timestamp: t.timestamp,
-          playersOut: meParty?.playersReceived?.length || 0,
-          playersIn: opParty?.playersReceived?.length || 0,
+          playersOut: gavePlayers.length + gavePicks.length,
+          playersIn: receivedPlayers.length + receivedPicks.length,
+          receivedPlayers,
+          gavePlayers,
+          receivedPicks,
+          gavePicks,
           netValue: t.value,
           verdict: t.verdict,
           marketShift: Math.round(marketShift),

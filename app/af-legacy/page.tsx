@@ -9110,10 +9110,22 @@ function AFLegacyContent() {
                                           </div>
                                           <div className="flex-1 min-w-0">
                                             <div className="font-medium text-white">vs {trade.opponent}</div>
-                                            <div className="flex items-center gap-2 text-xs text-white/50">
+                                            <div className="text-xs text-white/60 mt-0.5 truncate">
+                                              {(() => {
+                                                const got = (trade.receivedPlayers || []).map((p: any) => p.name)
+                                                const gotPicks = (trade.receivedPicks || []).map((pk: any) => pk.label)
+                                                const gave = (trade.gavePlayers || []).map((p: any) => p.name)
+                                                const gavePicks = (trade.gavePicks || []).map((pk: any) => pk.label)
+                                                const gotAll = [...got, ...gotPicks]
+                                                const gaveAll = [...gave, ...gavePicks]
+                                                if (gotAll.length === 0 && gaveAll.length === 0) return `Got ${trade.playersIn} / Gave ${trade.playersOut}`
+                                                const gotStr = gotAll.length > 2 ? `${gotAll.slice(0, 2).join(', ')} +${gotAll.length - 2}` : gotAll.join(', ')
+                                                const gaveStr = gaveAll.length > 2 ? `${gaveAll.slice(0, 2).join(', ')} +${gaveAll.length - 2}` : gaveAll.join(', ')
+                                                return gotStr && gaveStr ? `Got ${gotStr} for ${gaveStr}` : gotStr ? `Got ${gotStr}` : `Gave ${gaveStr}`
+                                              })()}
+                                            </div>
+                                            <div className="flex items-center gap-2 text-[11px] text-white/40 mt-0.5">
                                               <span>{trade.date}</span>
-                                              <span>•</span>
-                                              <span>{trade.playersOut} out / {trade.playersIn} in</span>
                                               {trade.marketShift !== 0 && (
                                                 <>
                                                   <span>•</span>
@@ -9135,6 +9147,56 @@ function AFLegacyContent() {
                                         
                                         {/* Expanded Driver Panel */}
                                         <div className="mx-2 mb-2 mt-0.5 p-4 rounded-xl bg-slate-950/60 border border-slate-700/30 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                          {/* Trade Breakdown — Players & Picks Exchanged */}
+                                          <div className="grid grid-cols-2 gap-3">
+                                            <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/15">
+                                              <div className="text-[10px] text-emerald-400 uppercase tracking-wider font-semibold mb-2">You Received</div>
+                                              <div className="space-y-1.5">
+                                                {(trade.receivedPlayers || []).map((p: any, pi: number) => (
+                                                  <div key={pi} className="flex items-center gap-2">
+                                                    <MiniPlayerImg name={p.name} size={20} />
+                                                    <div className="min-w-0">
+                                                      <div className="text-xs font-medium text-white truncate">{p.name}</div>
+                                                      {p.position && <div className="text-[9px] text-white/40">{p.position}</div>}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                                {(trade.receivedPicks || []).map((pk: any, pi: number) => (
+                                                  <div key={`pk-${pi}`} className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center text-[9px] text-emerald-400 font-bold flex-shrink-0">R{pk.round}</div>
+                                                    <div className="text-xs text-white/70">{pk.label}</div>
+                                                  </div>
+                                                ))}
+                                                {(trade.receivedPlayers || []).length === 0 && (trade.receivedPicks || []).length === 0 && (
+                                                  <div className="text-xs text-white/30 italic">No assets</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                            <div className="p-3 rounded-xl bg-rose-500/5 border border-rose-500/15">
+                                              <div className="text-[10px] text-rose-400 uppercase tracking-wider font-semibold mb-2">You Gave</div>
+                                              <div className="space-y-1.5">
+                                                {(trade.gavePlayers || []).map((p: any, pi: number) => (
+                                                  <div key={pi} className="flex items-center gap-2">
+                                                    <MiniPlayerImg name={p.name} size={20} />
+                                                    <div className="min-w-0">
+                                                      <div className="text-xs font-medium text-white truncate">{p.name}</div>
+                                                      {p.position && <div className="text-[9px] text-white/40">{p.position}</div>}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                                {(trade.gavePicks || []).map((pk: any, pi: number) => (
+                                                  <div key={`pk-${pi}`} className="flex items-center gap-2">
+                                                    <div className="w-5 h-5 rounded bg-rose-500/20 flex items-center justify-center text-[9px] text-rose-400 font-bold flex-shrink-0">R{pk.round}</div>
+                                                    <div className="text-xs text-white/70">{pk.label}</div>
+                                                  </div>
+                                                ))}
+                                                {(trade.gavePlayers || []).length === 0 && (trade.gavePicks || []).length === 0 && (
+                                                  <div className="text-xs text-white/30 italic">No assets</div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+
                                           {/* Grade Comparison Row */}
                                           <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
