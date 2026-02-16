@@ -683,7 +683,7 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
               )}>
                 <button
                   onClick={() => setExpandedId(isExpanded ? null : team.rosterId)}
-                  className="w-full grid grid-cols-[40px_1fr_60px_140px_60px_24px] md:grid-cols-[40px_1fr_60px_140px_60px_24px] items-center gap-2 px-3 py-3 text-left hover:bg-white/[0.03] transition-colors"
+                  className="w-full hidden md:grid grid-cols-[40px_1fr_60px_140px_60px_24px] items-center gap-2 px-3 py-3 text-left hover:bg-white/[0.03] transition-colors"
                 >
                   <div className="flex items-center gap-1.5">
                     <div className={cx(
@@ -729,13 +729,13 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                     </div>
                   </div>
 
-                  <div className="hidden md:flex flex-col gap-1 px-2">
+                  <div className="flex flex-col gap-1 px-2">
                     <ScoreBar label="WS" value={team.winScore} color="bg-emerald-500" />
                     <ScoreBar label="PS" value={team.powerScore} color="bg-cyan-500" />
                     <ScoreBar label="MVS" value={team.marketValueScore} color="bg-purple-500" />
                   </div>
 
-                  <div className="hidden md:flex justify-center">
+                  <div className="flex justify-center">
                     <MiniSparkline points={recentPts} />
                   </div>
 
@@ -743,6 +743,66 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                     'text-white/20 text-xs transition-transform inline-block text-center',
                     isExpanded ? 'rotate-90' : '',
                   )}>&#x25B6;</span>
+                </button>
+
+                <button
+                  onClick={() => setExpandedId(isExpanded ? null : team.rosterId)}
+                  className="w-full md:hidden flex items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03] transition-colors"
+                >
+                  <div className={cx(
+                    'w-8 h-8 flex items-center justify-center rounded-lg font-bold text-sm shrink-0',
+                    displayRank === 1 ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-black' :
+                    displayRank === 2 ? 'bg-gradient-to-br from-slate-300 to-slate-500 text-black' :
+                    displayRank === 3 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-black' :
+                    'bg-white/10 text-white/50',
+                  )}>
+                    {displayRank}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-semibold text-white truncate">
+                        {team.displayName || team.username || `Team ${team.rosterId}`}
+                      </span>
+                      {isUser && <span className="text-[8px] bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 rounded-full font-bold shrink-0">YOU</span>}
+                      {team.badges.slice(0, 2).map(b => (
+                        <span key={b.id} className="text-xs shrink-0" title={b.label}>{BADGE_ICONS[b.icon] || b.icon}</span>
+                      ))}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-white/35">{team.record.wins}-{team.record.losses}{team.record.ties > 0 ? `-${team.record.ties}` : ''}</span>
+                      <RankMovement delta={team.rankDelta} />
+                      <span className={cx('text-[10px] font-medium', team.streak > 0 ? 'text-emerald-400' : team.streak < 0 ? 'text-red-400' : 'text-white/20')}>
+                        {team.streak > 0 ? `${team.streak}W` : team.streak < 0 ? `${Math.abs(team.streak)}L` : ''}
+                      </span>
+                    </div>
+                    <div className="flex gap-1 mt-1.5">
+                      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${team.winScore}%` }} />
+                      </div>
+                      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-full rounded-full bg-cyan-500" style={{ width: `${team.powerScore}%` }} />
+                      </div>
+                      <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                        <div className="h-full rounded-full bg-purple-500" style={{ width: `${team.marketValueScore}%` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0">
+                    <div className={cx(
+                      'text-xl font-bold tabular-nums',
+                      displayScore >= 75 ? 'text-emerald-400' :
+                      displayScore >= 50 ? 'text-cyan-400' :
+                      displayScore >= 30 ? 'text-amber-400' : 'text-red-400',
+                    )}>
+                      {displayScore}
+                    </div>
+                    <span className={cx(
+                      'text-white/20 text-[10px] transition-transform inline-block',
+                      isExpanded ? 'rotate-90' : '',
+                    )}>&#x25B6; details</span>
+                  </div>
                 </button>
 
                 {isExpanded && (
