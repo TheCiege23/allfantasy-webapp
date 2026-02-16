@@ -253,4 +253,13 @@ export interface TradeEngineResponse {
   }
 
   meta?: Record<string, any>
+
+  playerAnalytics?: Record<string, {
+    comparablePlayers: string[]
+    athleticGrade: { grade: string; score: number; label: string } | null
+    collegeGrade: { grade: string; score: number; label: string } | null
+    combine: { fortyYardDash: number | null; speedScore: number | null; athleticismScore: number | null } | null
+    breakoutAge: number | null
+    weeklyVolatility: number | null
+  }>
 }

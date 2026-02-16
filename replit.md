@@ -1,7 +1,7 @@
 # AllFantasy
 
 ## Overview
-AllFantasy is an AI-powered fantasy sports platform designed to provide AI-driven trade evaluations, waiver wire recommendations, and personalized career insights. Its main purpose is to offer a comprehensive "AF Legacy" hub for league management, sophisticated AI analytical tools, and integrated social sharing capabilities, aiming to be a leading solution in the fantasy sports market.
+AllFantasy is an AI-powered fantasy sports platform providing AI-driven trade evaluations, waiver wire recommendations, and personalized career insights. It aims to be a comprehensive "AF Legacy" hub for league management, sophisticated AI analytical tools, and integrated social sharing, establishing itself as a leading solution in the fantasy sports market.
 
 ## User Preferences
 I want to use the Replit AI Integrations for OpenAI.
@@ -16,62 +16,33 @@ I want the agent to implement a veto layer in dynasty trade evaluations to preve
 I want the agent to consider consolidation penalties and context adjustments (contender/rebuild) in trade analyses.
 
 ## System Architecture
-The project is built with Next.js 14 (App Router) and TypeScript, utilizing Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. API security is managed via signed JWT-like tokens in HTTP-only cookies, with origin/referer validation for AI endpoints.
+The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. API security is managed via signed JWT-like tokens in HTTP-only cookies, with origin/referer validation for AI endpoints.
 
 **UI/UX Decisions:**
-The platform features a mobile-first design system including a persistent Bottom Tab Bar, contextual AI Bottom Sheets, and Universal AI Badges. It emphasizes clear calls to action and tabbed navigation. A universal theme system supports Dark, Light, and AF Legacy modes via CSS custom properties and is managed by `ThemeProvider`.
+The platform features a mobile-first design including a persistent Bottom Tab Bar, contextual AI Bottom Sheets, and Universal AI Badges. It emphasizes clear calls to action and tabbed navigation, with a universal theme system (Dark, Light, AF Legacy modes) managed by `ThemeProvider`.
 
 **Technical Implementations:**
 The core architecture is built upon three pillars:
 1.  **One Scoring Core**: All analytical features use four consistent scoring dimensions: Lineup Delta, Replacement/VORP, Market Value, and Manager Behavior.
 2.  **One Narrative System**: AI-generated narratives must cite specific drivers and evidence, validated via `NarrativeValidationLog`.
 3.  **One Monitoring System**: A Calibration Dashboard (`/admin?tab=calibration`) monitors for quality degradation and facilitates weekly auto-recalibration.
-
-4.  **One Engine API**: Universal shared engine (`lib/engine/*`) providing standardized LeagueContext, PlayerState, Asset models, capability flags, and feature-flagged graceful degradation. All tools consume the same truth: scoring adjustments, positional scarcity, contender/rebuild classification, manager archetypes, and LDI-driven acceptance probability. Includes `runEngine()` universal entry point with DB snapshot caching (`EngineSnapshot` model), production-safe feature flags (`lib/engine/flags.ts`), context builder from Sleeper data, and Replit-safe iteration caps on Monte Carlo (prod: 2,000 max).
+4.  **One Engine API**: A universal shared engine (`lib/engine/*`) provides standardized LeagueContext, PlayerState, Asset models, capability flags, and feature-flagged graceful degradation. It includes `runEngine()` as a universal entry point with DB snapshot caching, production-safe feature flags, and context building from Sleeper data.
 
 Key features include:
--   **Universal Trade Engine** (`lib/engine/trade.ts`): Deterministic `runTradeAnalysis()` pipeline with league scoring awareness (TEP/SF/PPCarry/PPR), devy realism (DraftProjectionScore, breakout age, recruiting, ADP, injury severity), contend/rebuild team direction inference, acceptance probability (sigmoid with fairness/needs/volatility/LDI/partner tendencies/devy signals), counter suggestions, and risk assessment. New API at `/api/engine/trade/analyze`. Legacy route enriched with `engineAnalysis` field.
+-   **Universal Trade Engine**: Deterministic `runTradeAnalysis()` pipeline supporting various league scoring systems, devy realism, team direction inference (contend/rebuild), and acceptance probability modeling.
 -   **AI-Powered Analysis**: Instant Trade Check, Personalized AI Chat, AI Trade Evaluator (with deterministic tiers, pick aging, and veto layer), Deterministic Waiver AI, and a Goal-Driven AI Trade Proposal Generator.
--   **Trade & League Management**: Trade Partner Matchmaking Engine, League Rankings, Trade Notifications, Deterministic Negotiation Toolkit, and Trade Ideas.
--   **Adaptive Consensus + Context Rankings**: A multi-dimensional player ranking system with 4 percentile-normalized scores, 6 view modes, intent-aware weights, and a League Demand Index.
--   **Adaptive Rankings v2 Engine**: Features data-driven weight learning from historical trades per league class, correlation-based weight derivation, and user-specific adaptive layers. Includes a weekly weight re-learning system.
--   **League Demand Index Heatmap**: V2 production heatmap consuming `computeLeagueRankingsV2` meta output, displaying position demand with evidence panels and CTAs.
--   **League Rankings V2 (Team-Level)**: A two-layer team ranking system (Power Rankings and Dynasty Outlook) based on five core scores, with phase-based composite weights and an AI Coach Box. Includes a Motivational Framing System, Luck Meter, and Win Window projection. Dynasty composite includes FutureCapitalScore at 10% weight (in-season: 20% win + 30% power + 8% luck + 17% market + 15% manager + 10% future capital). Includes 5-year portfolio trajectory projection with position-specific age curves (RB peaks 23, WR peaks 24), devy graduation probability by projected round, and year1/year3/year5 volatility bands.
--   **Exploit My League (Trade Hub)**: Displays hot/cold demand, best leverage opportunities, and partner tendencies.
--   **Enhanced Rankings System**: League and user-specific rankings with multiple views, a Team Fit Score, League RankScore, User RankScore, and an AI-generated dynasty roadmap.
+-   **Adaptive Consensus + Context Rankings**: A multi-dimensional player ranking system with percentile-normalized scores, multiple view modes, intent-aware weights, and a League Demand Index.
+-   **Adaptive Rankings v2 Engine**: Features data-driven weight learning from historical trades, correlation-based weight derivation, and user-specific adaptive layers.
+-   **League Rankings V2 (Team-Level)**: A two-layer team ranking system (Power Rankings and Dynasty Outlook) based on five core scores, with phase-based composite weights, an AI Coach Box, Motivational Framing System, Luck Meter, and Win Window projection. Includes 5-year portfolio trajectory projection.
+-   **IDP & Kicker Valuation System**: Internal tier-based valuation for DL/LB/DB/K positions, integrated with league ranking auto-detection and the trade engine.
+-   **Devy Player Classification System**: Comprehensive NCAA to NFL player classification, with an engine for roster ingestion, stats enrichment, graduation detection, and safety guards.
+-   **Devy Intelligence Engine**: Provides comprehensive devy value modeling with DraftProjectionScore, FinalScore, dynasty value computation, and devy-specific acceptance probability drivers.
+-   **Player Analytics Database**: Stores extensive NFL player analytics data (combine metrics, college production, comparables, draft info, advanced NFL stats) for use in valuation and intelligence engines.
+-   **Monte Carlo Simulation Engine**: Performs matchup simulation, season simulation (expected wins, playoff probability), and championship delta computation.
+-   **Acceptance Probability Model**: A logistic regression model with features like fairness, LDI alignment, needs fit, and archetype match to predict trade acceptance.
+-   **Game Theory Counter Builder**: Mathematically optimized counter offers that maximize acceptance probability and championship delta while minimizing value loss.
+-   **Response Hardening System**: Shared defensive utilities for robust API responses, including structured error handling and fallback mechanisms.
 -   **Model Drift Dashboard**: Monitors model health using various event data, tracking calibration, drift, ranking quality, and narrative integrity.
--   **Data & Integrations**: Sports Data Router, Hybrid Valuation System, VORP Engine, and a Trade Engine Scoring Architecture.
--   **AI Confidence & Learning**: Three-tier AI Confidence System, Comprehensive Trade Learning System, AI Decision Guardian, Accept Probability Calibration, and Auto-Recalibration.
--   **Acceptance Probability Model**: Logistic regression model (`lib/acceptance-model.ts`) with 6 features (fairness, LDI alignment, needs fit, archetype match, deal shape, volatility delta), liquidity-adjusted probability, and customizable weights. Training data stored in `TradeOutcomeTraining` model.
--   **League Liquidity Model**: Dynamic trade activity scoring (`lib/liquidity-model.ts`) from trades/30d, manager participation, and asset complexity. Five tiers (FROZEN→VERY_HIGH) with acceptance modifiers.
--   **Monte Carlo Simulation Engine**: Matchup simulation (`lib/monte-carlo.ts`) with Box-Muller normal distribution, season simulation (expected wins, playoff/bye probability), bracket playoff simulation, and championship delta computation (before/after trade odds).
--   **IDP & Kicker Valuation System**: Internal tier-based valuation (`lib/idp-kicker-values.ts`) for DL/LB/DB/K positions since FantasyCalc API only covers QB/RB/WR/TE/PICK. Uses Sleeper player search_rank for positional ranking, dynasty age curves (LB peaks 26, DL/DB peak 27), position multipliers (LB 1.15x, DL 1.0x, DB 0.95x), and 10-tier value brackets. League rankings auto-detect IDP/K leagues from roster_positions and merge supplemental values. Trade engine uses fallback baseline values for IDP/K players via `hybrid-valuation.ts`.
--   **Portfolio Simulator**: 5-year dynasty simulation (`lib/portfolio-simulator.ts`) with position-specific age curves (QB/RB/WR/TE), devy graduation modeling, pick realization, injury volatility, and year1/year3/year5 projections with asset breakdown.
--   **Game Theory Counter Builder**: Mathematically optimized counter offers (`lib/counter-builder.ts`) maximizing `acceptProb * champDelta - valueLoss * riskWeight`. Auto-builds sweetener candidates from bench, picks, and FAAB.
--   **Real-time Data**: Live Scores System, Background Sync System, Live News Crawl, and Weekly Matchup DB Cache.
--   **Structured AI Interactions**: Structured Trade Evaluation Engine, League Decision Context System, GPT Fail-Closed Enforcement, and Negotiation GPT Contract.
--   **Weekly Awards Engine**: Server-side computation of 8 deterministic weekly awards from cached matchup data.
--   **Trade Hub Shortcuts**: LDI-powered per-team leverage scoring with deterministic CTAs.
--   **Partner Tendencies**: Per-counterparty trade LDI and premium tracking from LeagueTrade data.
--   **V2 Adapter Layer**: Clean isolation layer for V2 output accessors.
--   **Partner Strategy Profiles**: Deterministic partner behavior cards with overpay/discount positions, trade tags, and per-position LDI breakdowns.
--   **Rankings Snapshots**: Weekly rank history persistence for Momentum Sparkline and trend analysis.
--   **Premium Panels (Server-Side)**: Server-side computation of Tier, Win Window, and What Changed summaries.
--   **Momentum Sparkline**: SVG-based rank trend visualization.
--   **Model Drift Storage**: Stores `rankings_weights_snapshot` for V3 adaptive weight learning.
--   **Draft Grades Engine**: Deterministic V1 draft grading with percentile-based scoring and letter grades.
--   **Hall of Fame / All-Time Leaderboard**: Multi-season leaderboard with weighted scoring.
--   **V3 Weights Module**: Guardrailed weight management with normalization, clamped deltas, snapshot persistence, and rollback support.
--   **Drift Metrics Module**: Model health monitoring recording ECE, Brier, AUC, PSI, narrative fail rate.
--   **Premium UI Layer**: Provides fetch helpers, hooks, and orchestrator components for premium features.
--   **Player Media System**: Standardized player headshot and team logo delivery via `lib/player-media.ts`, with historical team affiliations.
--   **Stable User Identity**: `sleeperUser` identity object `{ username, userId }` standardized across core AI endpoints.
--   **Devy Player Classification System**: Comprehensive NCAA→NFL player classification with `DevyPlayer` Prisma model (unique on normalizedName/position/school). Two engines: `lib/devy-classification.ts` (CFBD roster ingestion for 50 teams, stats enrichment, Sleeper API graduation detection) and `lib/devy-classifier.ts` (clean `syncDevyClassification` interface with position-aware matching, `autoGraduateOnDraft` with deterministic disambiguation, `getDevyEligibleOnly`/`isPlayerGraduated` helpers). Strict safety guard: devy board applies double filter (DB query + post-query) preventing graduated NFL players from appearing. Falls back to AI when safeCandidates < 6. APIs: `/api/admin/devy-sync` (daily sync), `/api/admin/devy-graduate` (draft-event graduation). Frontend badges (NCAA/NFL/Graduated) and data source indicators.
--   **Devy Intelligence Engine**: `lib/devy-intel.ts` provides comprehensive devy value modeling with DraftProjectionScore (25% recruiting + 30% production + 15% breakout age + 15% athletic profile + 15% draft capital), FinalScore (40% DPS + 20% ADP market + 20% league need + 10% scarcity + 10% volatility), dynasty value computation with contender/rebuilder time-horizon adjustments, and devy-specific acceptance probability drivers. Includes `DevyAdp` model for market drift tracking, breakout age computation with position-specific thresholds, NFL draft capital curve (Rd1→1.0 to Rd7→0.2), NIL impact scoring, injury severity/volatility assessment, and availability % V2 with ADP-aware computation. Integrated into sync pipeline via `enrichDevyIntelMetrics()` and trade engine via devy-specific AcceptDrivers (projected round, breakout age, injury risk, volatility, partner archetype).
--   **Community & Gamification**: Community Insights Feed and an Achievement Badge System.
--   **Usage Analytics & Telemetry**: Full observability via `withApiUsage` wrapper, `ApiUsageEvent`/`ApiUsageRollup` models, and client-side logging.
--   **Enhanced Admin Dashboards**: All admin sections upgraded with Top-N cards, executable quick actions, and real-time metrics.
--   **Response Hardening System**: Shared defensive utilities (`lib/engine/response-guard.ts`) providing `GuardMeta`, `buildBaselineMeta()`, `ensureArray()`, `ensureNumber()`, `ensureObject()`, `safeDivide()`. Global error wrapper (`lib/engine/with-guard.ts`). All major endpoints (Draft Grades, Hall of Fame, Rank History, Waiver AI, Trade Finder, Instant Trade Check, League Managers, Players) hardened with empty-state guards returning structured `meta` with `fallbackMode` and `rankingSourceNote`. Frontend hooks propagate meta to section components rendering yellow fallback banners. Background Sync hardened with per-task try/catch and auto-restart on fatal error.
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.

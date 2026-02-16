@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, RefreshCw, Trash2, Activity, CheckCircle, XCircle, Clock, TrendingUp, AlertCircle, Zap } from "lucide-react";
+import { AlertTriangle, RefreshCw, Trash2, Activity, CheckCircle, XCircle, Clock, TrendingUp, AlertCircle, Zap, Database, Upload } from "lucide-react";
 
 type PurgeResult = {
   ok: boolean;
@@ -34,6 +34,40 @@ export default function AdminTools() {
   const [topUsed, setTopUsed] = useState<ToolUsage[]>([]);
   const [topFailing, setTopFailing] = useState<ToolUsage[]>([]);
   const [topExpensive, setTopExpensive] = useState<ToolUsage[]>([]);
+
+  const [analyticsStats, setAnalyticsStats] = useState<any>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsImporting, setAnalyticsImporting] = useState(false);
+  const [analyticsResult, setAnalyticsResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const loadAnalyticsStats = async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await fetch("/api/admin/player-analytics", { cache: "no-store" });
+      const data = await res.json();
+      if (data.ok) setAnalyticsStats(data);
+    } catch {}
+    setAnalyticsLoading(false);
+  };
+
+  const runAnalyticsImport = async () => {
+    if (!confirm("Re-import player analytics CSV? This will update all existing records.")) return;
+    setAnalyticsImporting(true);
+    setAnalyticsResult(null);
+    try {
+      const res = await fetch("/api/admin/player-analytics", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        setAnalyticsResult({ ok: true, message: `Imported ${data.imported} players (${data.skipped} skipped)` });
+        loadAnalyticsStats();
+      } else {
+        setAnalyticsResult({ ok: false, message: data.error || "Import failed" });
+      }
+    } catch (e: any) {
+      setAnalyticsResult({ ok: false, message: e.message || "Network error" });
+    }
+    setAnalyticsImporting(false);
+  };
 
   const externalApis = [
     { 
@@ -670,6 +704,104 @@ export default function AdminTools() {
           <Clock className="h-3 w-3" />
           <span>Last checked: {Object.values(apiStatus)[0]?.lastCheck ? new Date(Object.values(apiStatus)[0].lastCheck).toLocaleString() : 'Never'}</span>
         </div>
+      </div>
+
+      {/* Player Analytics Data */}
+      <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: "var(--border)", background: "var(--panel)" }}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Database className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" />
+            <h3 className="text-sm sm:text-base font-bold" style={{ color: "var(--text)" }}>Player Analytics Database</h3>
+          </div>
+          <button
+            onClick={loadAnalyticsStats}
+            disabled={analyticsLoading}
+            className="text-xs flex items-center gap-1 px-3 py-1.5 rounded-lg border hover:opacity-80 transition"
+            style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+          >
+            <RefreshCw className={`h-3 w-3 ${analyticsLoading ? "animate-spin" : ""}`} />
+            {analyticsLoading ? "Loading..." : "Check"}
+          </button>
+        </div>
+
+        <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>
+          NFL player combine metrics, college production, breakout ages, comparable players, and advanced analytics. Feeds into trade analyzer, valuation engine, and draft evaluations.
+        </p>
+
+        {analyticsStats ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                <p className="text-lg font-black tabular-nums" style={{ color: "var(--text)" }}>{analyticsStats.total.toLocaleString()}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted2)" }}>Total Players</p>
+              </div>
+              <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                <p className="text-lg font-black tabular-nums text-cyan-400">{analyticsStats.coverage?.combineData || 0}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted2)" }}>With Combine</p>
+              </div>
+              <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                <p className="text-lg font-black tabular-nums text-emerald-400">{analyticsStats.coverage?.breakoutAge || 0}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted2)" }}>Breakout Age</p>
+              </div>
+              <div className="rounded-lg border p-2 text-center" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                <p className="text-lg font-black tabular-nums text-amber-400">{analyticsStats.coverage?.comparablePlayers || 0}</p>
+                <p className="text-[10px]" style={{ color: "var(--muted2)" }}>Player Comps</p>
+              </div>
+            </div>
+
+            {analyticsStats.byPosition && (
+              <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                <p className="text-[10px] font-bold mb-2" style={{ color: "var(--muted)" }}>BY POSITION</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {analyticsStats.byPosition.map((p: any) => (
+                    <span key={p.position} className="text-[10px] px-2 py-0.5 rounded-full border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+                      {p.position}: {p.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {analyticsStats.lastImport && (
+              <div className="text-[10px] flex items-center gap-1" style={{ color: "var(--muted2)" }}>
+                <Clock className="h-3 w-3" />
+                Last import: {new Date(analyticsStats.lastImport.importedAt).toLocaleString()} ({analyticsStats.lastImport.dataVersion})
+              </div>
+            )}
+
+            <button
+              onClick={runAnalyticsImport}
+              disabled={analyticsImporting}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium hover:opacity-80 transition"
+              style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)", color: "var(--text)" }}
+            >
+              {analyticsImporting ? (
+                <><RefreshCw className="h-4 w-4 animate-spin" /> Importing...</>
+              ) : (
+                <><Upload className="h-4 w-4" /> Re-Import CSV Data</>
+              )}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={loadAnalyticsStats}
+            disabled={analyticsLoading}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium hover:opacity-80 transition"
+            style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)", color: "var(--muted)" }}
+          >
+            {analyticsLoading ? (
+              <><RefreshCw className="h-4 w-4 animate-spin" /> Loading...</>
+            ) : (
+              <><Database className="h-4 w-4" /> View Player Analytics Status</>
+            )}
+          </button>
+        )}
+
+        {analyticsResult && (
+          <div className={`mt-3 rounded-xl border p-3 text-xs ${analyticsResult.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-400"}`}>
+            {analyticsResult.message}
+          </div>
+        )}
       </div>
     </div>
   );

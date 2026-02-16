@@ -4,6 +4,7 @@ import { pickValue } from './pick-valuation';
 import { computePlayerVorp as computePlayerVorpEngine, computePickVorp as computePickVorpEngine, LeagueRosterConfig } from './vorp-engine';
 import { isIdpPosition, isKickerPosition } from './idp-kicker-values';
 import { isUserParty } from './user-matching';
+import { getPlayerAnalytics, type PlayerAnalytics } from './player-analytics';
 
 export interface ValuationContext {
   asOfDate: string;
@@ -61,7 +62,8 @@ function clampVal(x: number, lo: number, hi: number): number {
 function computePlayerVolatility(
   fcPlayer: FantasyCalcPlayer | null,
   position: string,
-  age: number | null
+  age: number | null,
+  analyticsData?: PlayerAnalytics | null
 ): number {
   let vol = POSITION_VOLATILITY_DEFAULTS[position.toUpperCase()] ?? 0.20;
 
@@ -71,6 +73,8 @@ function computePlayerVolatility(
   } else if (fcPlayer?.maybeMovingStandardDeviation != null && fcPlayer.value > 0) {
     const stdRatio = Math.abs(fcPlayer.maybeMovingStandardDeviation) / fcPlayer.value;
     vol = clampVal(stdRatio, 0.05, 0.60);
+  } else if (analyticsData?.weeklyVolatility != null && analyticsData.weeklyVolatility > 0) {
+    vol = clampVal(analyticsData.weeklyVolatility / 100, 0.05, 0.60);
   }
 
   if (age != null) {
@@ -238,12 +242,17 @@ export async function pricePlayer(
   const position = overridePos || fcPlayer?.player.position || 'WR';
   const age = fcPlayer?.player.maybeAge ?? null;
 
+  let analyticsData: PlayerAnalytics | null = null;
+  try {
+    analyticsData = await getPlayerAnalytics(name);
+  } catch {}
+
   const historicalResult = getHistoricalPlayerValue(name, ctx.asOfDate, ctx.isSuperFlex);
   if (historicalResult.value !== null) {
     const mv = historicalResult.value;
     const impact = computeImpactFromMarket(mv, fcPlayer, position);
     const vorp = computeVorp(fcPlayer, position, ctx, fcPlayers);
-    const vol = computePlayerVolatility(fcPlayer, position, age);
+    const vol = computePlayerVolatility(fcPlayer, position, age, analyticsData);
     return {
       name,
       type: 'player',
@@ -259,7 +268,7 @@ export async function pricePlayer(
     const mv = fcPlayer.value;
     const impact = computeImpactFromMarket(mv, fcPlayer, position);
     const vorp = computeVorp(fcPlayer, position, ctx, fcPlayers);
-    const vol = computePlayerVolatility(fcPlayer, position, age);
+    const vol = computePlayerVolatility(fcPlayer, position, age, analyticsData);
     return {
       name,
       type: 'player',
@@ -273,13 +282,27 @@ export async function pricePlayer(
 
   const idpKickerFallback = getIdpKickerFallbackValue(name, position);
   if (idpKickerFallback > 0) {
+    const vol = analyticsData ? computePlayerVolatility(null, position, age, analyticsData) : 0.45;
     return {
       name,
       type: 'player',
       value: idpKickerFallback,
-      assetValue: { marketValue: idpKickerFallback, impactValue: Math.round(idpKickerFallback * 0.6), vorpValue: Math.round(idpKickerFallback * 0.3), volatility: 0.45 },
+      assetValue: { marketValue: idpKickerFallback, impactValue: Math.round(idpKickerFallback * 0.6), vorpValue: Math.round(idpKickerFallback * 0.3), volatility: vol },
       source: 'unknown',
       position,
+    };
+  }
+
+  if (analyticsData && analyticsData.draft.lifetimeValue != null && analyticsData.draft.lifetimeValue > 0) {
+    const mv = Math.round(analyticsData.draft.lifetimeValue);
+    const vol = computePlayerVolatility(null, analyticsData.position, age, analyticsData);
+    return {
+      name,
+      type: 'player',
+      value: mv,
+      assetValue: { marketValue: mv, impactValue: Math.round(mv * 0.5), vorpValue: Math.round(mv * 0.25), volatility: vol },
+      source: 'unknown',
+      position: analyticsData.position || position,
     };
   }
 

@@ -1,4 +1,5 @@
 import type { DevyPlayer } from '@prisma/client'
+import { getPlayerAnalytics, type PlayerAnalytics } from './player-analytics'
 
 export interface DevyIntelMetrics {
   recruitingComposite: number
@@ -451,4 +452,93 @@ export function computeAvailabilityPctV2(
   baseAvailability -= positionRunPenalty
 
   return Math.round(Math.min(95, Math.max(5, baseAvailability)))
+}
+
+export async function enrichDevyWithAnalytics(player: DevyPlayer): Promise<DevyPlayer> {
+  try {
+    const analytics = await getPlayerAnalytics(player.name)
+    if (!analytics) return player
+
+    const enriched = { ...player }
+
+    if (enriched.breakoutAge == null && analytics.college.breakoutAge != null) {
+      enriched.breakoutAge = analytics.college.breakoutAge
+    }
+
+    if (enriched.athleticProfileScore == null && analytics.combine.athleticismScore != null) {
+      const rawScore = analytics.combine.athleticismScore
+      enriched.athleticProfileScore = Math.round(Math.min(100, Math.max(10, (rawScore / 140) * 100)) * 100) / 100
+    }
+
+    if (enriched.heightInches == null && analytics.physical.heightIn != null) {
+      enriched.heightInches = analytics.physical.heightIn
+    }
+    if (enriched.weightLbs == null && analytics.physical.weightLb != null) {
+      enriched.weightLbs = analytics.physical.weightLb
+    }
+
+    if (enriched.nflDraftRound == null && analytics.draft.draftYear != null && analytics.draft.draftPick != null) {
+      const pick = analytics.draft.draftPick
+      if (pick <= 32) enriched.nflDraftRound = 1
+      else if (pick <= 64) enriched.nflDraftRound = 2
+      else if (pick <= 100) enriched.nflDraftRound = 3
+      else if (pick <= 135) enriched.nflDraftRound = 4
+      else if (pick <= 176) enriched.nflDraftRound = 5
+      else if (pick <= 220) enriched.nflDraftRound = 6
+      else enriched.nflDraftRound = 7
+    }
+
+    return enriched
+  } catch {
+    return player
+  }
+}
+
+export async function getPlayerComparables(name: string): Promise<string[]> {
+  try {
+    const analytics = await getPlayerAnalytics(name)
+    return analytics?.comparablePlayers || []
+  } catch {
+    return []
+  }
+}
+
+export async function getPlayerCombineProfile(name: string): Promise<{
+  fortyYardDash: number | null
+  benchPress: number | null
+  broadJump: number | null
+  verticalJump: number | null
+  threeConeDrill: number | null
+  twentyYardShuttle: number | null
+  athleticismScore: number | null
+  speedScore: number | null
+  burstScore: number | null
+  agilityScore: number | null
+  sparqX: number | null
+  armLength: number | null
+  handSize: number | null
+  throwVelocity: number | null
+} | null> {
+  try {
+    const analytics = await getPlayerAnalytics(name)
+    if (!analytics) return null
+    return {
+      fortyYardDash: analytics.combine.fortyYardDash,
+      benchPress: analytics.combine.benchPress,
+      broadJump: analytics.combine.broadJump,
+      verticalJump: analytics.combine.verticalJump,
+      threeConeDrill: analytics.combine.threeConeDrill,
+      twentyYardShuttle: analytics.combine.twentyYardShuttle,
+      athleticismScore: analytics.combine.athleticismScore,
+      speedScore: analytics.combine.speedScore,
+      burstScore: analytics.combine.burstScore,
+      agilityScore: analytics.combine.agilityScore,
+      sparqX: analytics.combine.sparqX,
+      armLength: analytics.physical.armLengthIn,
+      handSize: analytics.physical.handSizeIn,
+      throwVelocity: analytics.physical.throwVelocityMph,
+    }
+  } catch {
+    return null
+  }
 }

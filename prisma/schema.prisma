@@ -1883,3 +1883,80 @@ model EngineSnapshot {
   @@index([leagueId, type])
   @@index([expiresAt])
 }
+
+model PlayerAnalyticsSnapshot {
+  id                        String   @id @default(uuid())
+  normalizedName            String
+  name                      String
+  position                  String
+  status                    String?
+  currentTeam               String?
+  season                    String
+
+  // Combine & Athletic Metrics
+  fortyYardDash             Float?
+  twentyYardShuttle         Float?
+  threeConeDrill            Float?
+  benchPress                Int?
+  broadJump                 Int?
+  verticalJump              Float?
+  athleticismScore          Float?
+  speedScore                Float?
+  burstScore                Float?
+  agilityScore              Float?
+  sparqX                    Float?
+  armLengthIn               Float?
+  handSizeIn                Float?
+  heightIn                  Int?
+  weightLb                  Int?
+  bmi                       Float?
+  catchRadius               Float?
+  throwVelocityMph          Float?
+
+  // College Production
+  breakoutAge               Float?
+  breakoutRating            Float?
+  breakoutYear              Int?
+  college                   String?
+  collegeDominatorRating    Float?
+  collegeDynamicScore       Float?
+  collegeLevelOfCompetition Float?
+  collegeFreshmanYards      Float?
+  collegeTargetShare        Float?
+  collegeReceiverRating     String?
+  collegeYpr                Float?
+  collegeTeammateScore      Float?
+  bestCollegeSeasonYardageShare Float?
+
+  // Draft Info
+  draftPick                 Float?
+  draftYear                 Int?
+  currentAdp                Float?
+  currentAdpTrend           Float?
+  lifetimeValue             Float?
+
+  // Comparables
+  bestComparablePlayers     String?
+
+  // Key Production & Fantasy
+  totalFantasyPoints        Float?
+  fantasyPointsPerGame      Float?
+  expectedFantasyPoints     Float?
+  expectedFantasyPointsPerGame Float?
+  weeklyVolatility          Float?
+
+  // All 355 columns stored as JSON
+  rawData                   Json?
+
+  source                    String   @default("csv_import")
+  dataVersion               String   @default("v1")
+  importedAt                DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([normalizedName, season, source])
+  @@index([normalizedName])
+  @@index([position])
+  @@index([season])
+  @@index([status])
+  @@index([currentTeam])
+}

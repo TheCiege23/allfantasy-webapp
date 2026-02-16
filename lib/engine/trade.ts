@@ -15,6 +15,7 @@ import { normalizeLeagueContext } from './normalize'
 import { computeScoringAdjustments, type ScoringAdjustment } from './scoring'
 
 import { priceAssets } from '@/lib/hybrid-valuation'
+import { getPlayerAnalyticsBatch, computeAthleticGrade, computeCollegeProductionGrade, type PlayerAnalytics } from '@/lib/player-analytics'
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -1040,5 +1041,55 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
         sideB: { count: splitB.devyPlayers.length, mult: devyB.mult },
       },
     },
+    playerAnalytics: await buildPlayerAnalyticsForTrade(
+      [...(splitA.marketAssets || []), ...(splitB.marketAssets || [])],
+      [...(teamA.roster || []), ...(teamB.roster || [])]
+    ),
+  }
+}
+
+async function buildPlayerAnalyticsForTrade(
+  tradeAssets: Asset[],
+  rosters: TradePlayerAsset[]
+): Promise<Record<string, {
+  comparablePlayers: string[];
+  athleticGrade: { grade: string; score: number; label: string } | null;
+  collegeGrade: { grade: string; score: number; label: string } | null;
+  combine: { fortyYardDash: number | null; speedScore: number | null; athleticismScore: number | null } | null;
+  breakoutAge: number | null;
+  weeklyVolatility: number | null;
+}>> {
+  try {
+    const playerNames = new Set<string>()
+    for (const a of tradeAssets) {
+      if (a.type === 'player' && a.player?.name) playerNames.add(a.player.name)
+    }
+    for (const p of rosters) {
+      if (p.name) playerNames.add(p.name)
+    }
+
+    if (playerNames.size === 0) return {}
+
+    const namesArr = Array.from(playerNames).slice(0, 60)
+    const analyticsMap = await getPlayerAnalyticsBatch(namesArr)
+
+    const result: Record<string, any> = {}
+    for (const [name, analytics] of analyticsMap) {
+      result[name] = {
+        comparablePlayers: analytics.comparablePlayers.slice(0, 5),
+        athleticGrade: analytics.combine.athleticismScore != null ? computeAthleticGrade(analytics) : null,
+        collegeGrade: analytics.college.dominatorRating != null || analytics.college.breakoutAge != null ? computeCollegeProductionGrade(analytics) : null,
+        combine: {
+          fortyYardDash: analytics.combine.fortyYardDash,
+          speedScore: analytics.combine.speedScore,
+          athleticismScore: analytics.combine.athleticismScore,
+        },
+        breakoutAge: analytics.college.breakoutAge,
+        weeklyVolatility: analytics.weeklyVolatility,
+      }
+    }
+    return result
+  } catch {
+    return {}
   }
 }
