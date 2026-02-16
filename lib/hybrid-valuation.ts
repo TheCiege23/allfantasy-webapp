@@ -3,6 +3,7 @@ import { fetchFantasyCalcValues, findPlayerByName, FantasyCalcPlayer } from './f
 import { pickValue } from './pick-valuation';
 import { computePlayerVorp as computePlayerVorpEngine, computePickVorp as computePickVorpEngine, LeagueRosterConfig } from './vorp-engine';
 import { isIdpPosition, isKickerPosition } from './idp-kicker-values';
+import { isUserParty } from './user-matching';
 
 export interface ValuationContext {
   asOfDate: string;
@@ -458,17 +459,8 @@ export async function computeTradeDeltaFromUserTrades(
   viewerUserId: string,
   ctx: ValuationContext
 ): Promise<TradeDelta | null> {
-  const matchesViewer = (p: { userId?: string; teamName?: string; displayName?: string }) => {
-    const vLower = viewerUserId?.toLowerCase() || ''
-    if (p.userId === viewerUserId) return true
-    if ((p as any).displayName?.toLowerCase() === vLower) return true
-    if (p.teamName?.toLowerCase() === vLower) return true
-    if (p.teamName?.toLowerCase().includes(vLower) && vLower.length > 2) return true
-    if ((p as any).displayName?.toLowerCase().includes(vLower) && vLower.length > 2) return true
-    return false
-  }
-  const viewerParty = trade.parties?.find(p => matchesViewer(p));
-  const otherParty = trade.parties?.find(p => !matchesViewer(p));
+  const viewerParty = trade.parties?.find(p => isUserParty(p, viewerUserId));
+  const otherParty = trade.parties?.find(p => !isUserParty(p, viewerUserId));
 
   if (!viewerParty || !otherParty) return null;
 

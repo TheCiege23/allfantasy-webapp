@@ -2271,37 +2271,24 @@ function AFLegacyContent() {
         ? Object.entries(gradeToScore).find(([g, s]) => Math.abs(s - avgScore) < 1)?.[0] || 'C'
         : 'N/A'
       
-      // Count wins/losses based on whether the USER was the winner, not trade fairness
+      // Count wins/losses based on whether the USER was the winner
       // winner field contains the displayName of whoever got the better side
-      const userPartyNames = allGradedTrades.map(t => {
-        const userParty = t.parties?.find((p: any) => p.rosterId === t.userRosterId)
-        return userParty?.displayName?.toLowerCase() || username.toLowerCase()
-      })
+      const sleeperUserId = profile?.sleeper_user_id
+      const isWinnerMe = (t: any) => {
+        if (!t.winner || t.winner === 'Even') return null
+        const w = t.winner.toLowerCase()
+        const u = username.toLowerCase()
+        const partyName = t.parties?.find((p: any) => p.rosterId === t.userRosterId)?.displayName?.toLowerCase()
+        if (w === u || (partyName && w === partyName)) return true
+        if (sleeperUserId && w === sleeperUserId) return true
+        if (u.length > 2 && (w.includes(u) || u.includes(w))) return true
+        if (partyName && partyName.length > 2 && (w.includes(partyName) || partyName.includes(w))) return true
+        return false
+      }
       
-      const wins = allGradedTrades.filter((t, i) => {
-        if (!t.winner || t.winner === 'Even') return false
-        const winnerLower = t.winner.toLowerCase()
-        const userNameLower = username.toLowerCase()
-        // Check if winner matches user's name or party name
-        return winnerLower === userNameLower || 
-               winnerLower.includes(userNameLower) || 
-               userNameLower.includes(winnerLower) ||
-               (userPartyNames[i] && winnerLower === userPartyNames[i])
-      }).length
-      
-      const losses = allGradedTrades.filter((t, i) => {
-        if (!t.winner || t.winner === 'Even') return false
-        const winnerLower = t.winner.toLowerCase()
-        const userNameLower = username.toLowerCase()
-        // If there's a winner and it's NOT the user, it's a loss
-        const isUserWinner = winnerLower === userNameLower || 
-                             winnerLower.includes(userNameLower) || 
-                             userNameLower.includes(winnerLower) ||
-                             (userPartyNames[i] && winnerLower === userPartyNames[i])
-        return !isUserWinner
-      }).length
-      
-      const fair = allGradedTrades.filter(t => !t.winner || t.winner === 'Even').length
+      const wins = allGradedTrades.filter(t => isWinnerMe(t) === true).length
+      const losses = allGradedTrades.filter(t => isWinnerMe(t) === false).length
+      const fair = allGradedTrades.filter(t => isWinnerMe(t) === null).length
       
       setReportCardSummary({
         totalTrades: allGradedTrades.length,

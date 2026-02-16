@@ -1,13 +1,8 @@
 import { TradeDelta } from '@/lib/hybrid-valuation'
+import { isUserParty } from '@/lib/user-matching'
 
-function matchesUser(p: { userId?: string; teamName?: string; displayName?: string }, username: string): boolean {
-  const uLower = username?.toLowerCase() || ''
-  if (p.userId === username) return true
-  if ((p as any).displayName?.toLowerCase() === uLower) return true
-  if (p.teamName?.toLowerCase() === uLower) return true
-  if (p.teamName?.toLowerCase()?.includes(uLower) && uLower.length > 2) return true
-  if ((p as any).displayName?.toLowerCase()?.includes(uLower) && uLower.length > 2) return true
-  return false
+function matchesUser(p: { userId?: string; teamName?: string; displayName?: string }, username: string, sleeperUserId?: string): boolean {
+  return isUserParty(p, username, sleeperUserId)
 }
 
 export interface ThreeLensGrade {
@@ -167,7 +162,7 @@ function computeMarketPerformance(trades: ScoredTrade[], username: string): Thre
   }
 }
 
-function computeLineupImpact(trades: ScoredTrade[], username: string): ThreeLensGrade['lineupImpact'] {
+function computeLineupImpact(trades: ScoredTrade[], username: string, sleeperUserId?: string): ThreeLensGrade['lineupImpact'] {
   let starterUpgradeCount = 0
   let totalPlayersReceived = 0
   let estimatedPPGDelta = 0
@@ -176,7 +171,7 @@ function computeLineupImpact(trades: ScoredTrade[], username: string): ThreeLens
   const starterPositions = new Set(['QB', 'RB', 'WR', 'TE'])
 
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p => matchesUser(p, username))
+    const userParty = trade.parties?.find(p => matchesUser(p, username, sleeperUserId))
 
     if (userParty) {
       const playersIn = userParty.playersReceived || []
@@ -219,7 +214,7 @@ function computeLineupImpact(trades: ScoredTrade[], username: string): ThreeLens
   }
 }
 
-function inferGoal(trades: ScoredTrade[], username: string): 'rebuild' | 'win-now' | 'balanced' | 'unknown' {
+function inferGoal(trades: ScoredTrade[], username: string, sleeperUserId?: string): 'rebuild' | 'win-now' | 'balanced' | 'unknown' {
   if (trades.length === 0) return 'unknown'
 
   let picksAcquired = 0
@@ -230,8 +225,8 @@ function inferGoal(trades: ScoredTrade[], username: string): 'rebuild' | 'win-no
   let ageCountOut = 0
 
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p => matchesUser(p, username))
-    const otherParty = trade.parties?.find(p => !matchesUser(p, username))
+    const userParty = trade.parties?.find(p => matchesUser(p, username, sleeperUserId))
+    const otherParty = trade.parties?.find(p => !matchesUser(p, username, sleeperUserId))
 
     if (userParty) {
       picksAcquired += (userParty.picksReceived?.length || 0)
@@ -271,16 +266,16 @@ function inferGoal(trades: ScoredTrade[], username: string): 'rebuild' | 'win-no
   return 'unknown'
 }
 
-function computeDecisionQuality(trades: ScoredTrade[], username: string): ThreeLensGrade['decisionQuality'] {
-  const goal = inferGoal(trades, username)
+function computeDecisionQuality(trades: ScoredTrade[], username: string, sleeperUserId?: string): ThreeLensGrade['decisionQuality'] {
+  const goal = inferGoal(trades, username, sleeperUserId)
 
   let alignmentScore = 0
   let total = 0
   let reasoning = ''
 
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p => matchesUser(p, username))
-    const otherParty = trade.parties?.find(p => !matchesUser(p, username))
+    const userParty = trade.parties?.find(p => matchesUser(p, username, sleeperUserId))
+    const otherParty = trade.parties?.find(p => !matchesUser(p, username, sleeperUserId))
 
     if (!userParty) continue
     total++
@@ -326,7 +321,7 @@ function computeDecisionQuality(trades: ScoredTrade[], username: string): ThreeL
   }
 }
 
-export function computeSkillRadar(trades: ScoredTrade[], username: string): SkillRadar {
+export function computeSkillRadar(trades: ScoredTrade[], username: string, sleeperUserId?: string): SkillRadar {
   const tradeCount = trades.length
   if (tradeCount === 0) {
     return { marketTiming: 50, starterUpgradeEfficiency: 50, riskManagement: 50, negotiationEfficiency: 50 }
@@ -355,7 +350,7 @@ export function computeSkillRadar(trades: ScoredTrade[], username: string): Skil
   let totalReceived = 0
   const starterPositions = new Set(['QB', 'RB', 'WR', 'TE'])
   for (const trade of trades) {
-    const userParty = trade.parties?.find(p => matchesUser(p, username))
+    const userParty = trade.parties?.find(p => matchesUser(p, username, sleeperUserId))
     if (userParty) {
       const players = userParty.playersReceived || []
       totalReceived += players.length
@@ -442,10 +437,11 @@ export function computeAICounterProjection(trades: ScoredTrade[]): AICounterProj
 export function computeReportCard(
   trades: ScoredTrade[],
   username: string,
+  sleeperUserId?: string,
 ): ReportCardResult {
   const market = computeMarketPerformance(trades, username)
-  const lineupImpact = computeLineupImpact(trades, username)
-  const decisionQuality = computeDecisionQuality(trades, username)
+  const lineupImpact = computeLineupImpact(trades, username, sleeperUserId)
+  const decisionQuality = computeDecisionQuality(trades, username, sleeperUserId)
 
   const compositeScore = Math.round(
     market.score * 0.35 +
@@ -464,7 +460,7 @@ export function computeReportCard(
     },
   }
 
-  const skillRadar = computeSkillRadar(trades, username)
+  const skillRadar = computeSkillRadar(trades, username, sleeperUserId)
   const aiCounterProjection = computeAICounterProjection(trades)
 
   return {

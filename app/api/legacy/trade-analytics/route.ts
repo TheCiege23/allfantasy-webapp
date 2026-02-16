@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { computeDualModeTradeDelta, UserTrade, ValuationMode } from '@/lib/hybrid-valuation'
 import { computeReportCard } from '@/lib/trade-engine/report-card-engine'
+import { isUserParty } from '@/lib/user-matching'
 
 interface TradeAnalyticsRequest {
   league_id: string
@@ -23,19 +24,6 @@ interface TradeAnalyticsRequest {
   }>
   managers?: Record<string, string>
   league?: { qb_format?: string }
-}
-
-function isUserParty(
-  p: { userId?: string; teamName?: string; displayName?: string },
-  sleeperUsername: string,
-  sleeperUserId?: string
-): boolean {
-  const uLower = sleeperUsername?.toLowerCase() || ''
-  if (p.userId === sleeperUsername || (sleeperUserId && p.userId === sleeperUserId)) return true
-  if (p.teamName?.toLowerCase() === uLower || (p as any).displayName?.toLowerCase() === uLower) return true
-  if (p.teamName?.toLowerCase().includes(uLower) && uLower.length > 2) return true
-  if ((p as any).displayName?.toLowerCase().includes(uLower) && uLower.length > 2) return true
-  return false
 }
 
 function adaptTradeForDualMode(
@@ -753,7 +741,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
 
     let reportCard = null
     try {
-      reportCard = computeReportCard(scoredTrades, sleeper_username)
+      reportCard = computeReportCard(scoredTrades, sleeper_username, sleeper_user_id)
     } catch (e) {
       console.error('Report card computation error:', e)
     }
