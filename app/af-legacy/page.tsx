@@ -10894,17 +10894,17 @@ function AFLegacyContent() {
                             ).map((proposal: any, idx: number) => {
                               if (!proposal) return null
                               const isBestAcceptance = optimizeForAcceptance && idx === 0 && proposalBestAcceptIdx !== null
-                              const labelColor = proposal.label === 'You Win' ? 'emerald' :
-                                proposal.label === 'Even' ? 'cyan' : 'amber'
+                              const labelColor = proposal.label === 'Slight Edge' ? 'emerald' :
+                                proposal.label === 'Fair & Balanced' ? 'cyan' : 'amber'
                               const borderClass = isBestAcceptance ? 'border-purple-500/40 ring-1 ring-purple-500/20' : `border-${labelColor}-500/30`
-                              const bgGrad = proposal.label === 'You Win' ? 'from-emerald-500/10 to-emerald-500/5' :
-                                proposal.label === 'Even' ? 'from-cyan-500/10 to-cyan-500/5' :
+                              const bgGrad = proposal.label === 'Slight Edge' ? 'from-emerald-500/10 to-emerald-500/5' :
+                                proposal.label === 'Fair & Balanced' ? 'from-cyan-500/10 to-cyan-500/5' :
                                 'from-amber-500/10 to-amber-500/5'
-                              const labelBg = proposal.label === 'You Win' ? 'bg-emerald-500/30 text-emerald-200' :
-                                proposal.label === 'Even' ? 'bg-cyan-500/30 text-cyan-200' :
+                              const labelBg = proposal.label === 'Slight Edge' ? 'bg-emerald-500/30 text-emerald-200' :
+                                proposal.label === 'Fair & Balanced' ? 'bg-cyan-500/30 text-cyan-200' :
                                 'bg-amber-500/30 text-amber-200'
-                              const labelIcon = proposal.label === 'You Win' ? '🏆' :
-                                proposal.label === 'Even' ? '🤝' : '🎁'
+                              const labelIcon = proposal.label === 'Slight Edge' ? '📊' :
+                                proposal.label === 'Fair & Balanced' ? '🤝' : '🎁'
                               return (
                                 <div key={`${proposal.label}-${idx}`} className={`rounded-xl bg-gradient-to-br ${bgGrad} border ${borderClass} overflow-hidden`}>
                                   {isBestAcceptance && (
@@ -10989,6 +10989,11 @@ function AFLegacyContent() {
                                           <div>
                                             <div className="text-[10px] text-purple-400/70 font-semibold uppercase mb-0.5">Trade Pitch</div>
                                             <p className="text-xs text-white/60 italic">&quot;{proposal.tradePitch}&quot;</p>
+                                          </div>
+                                        )}
+                                        {proposal.fairnessNote && (
+                                          <div className="mt-1 pt-2 border-t border-white/5">
+                                            <p className="text-[10px] text-amber-400/70 italic">{proposal.fairnessNote}</p>
                                           </div>
                                         )}
                                       </div>

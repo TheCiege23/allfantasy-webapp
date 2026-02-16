@@ -328,13 +328,16 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/proposal-generat
       }, { status: 400 })
     }
 
-    const availablePool = pricedMyAssets.filter(a => a.value > 0)
+    const MIN_ASSET_VALUE = 5
+    const availablePool = pricedMyAssets.filter(a => a.value >= MIN_ASSET_VALUE)
 
-    const youWin = buildProposal(availablePool, pricedDesired, desiredTotal, 'You Win', 0.70, 0.88, 0.80)
-    const even = buildProposal(availablePool, pricedDesired, desiredTotal, 'Even', 0.92, 1.08, 1.00)
-    const theyWin = buildProposal(availablePool, pricedDesired, desiredTotal, 'They Win', 1.12, 1.35, 1.20)
+    const slightEdge = buildProposal(availablePool, pricedDesired, desiredTotal, 'Slight Edge', 0.88, 0.96, 0.92)
+    const even = buildProposal(availablePool, pricedDesired, desiredTotal, 'Fair & Balanced', 0.96, 1.06, 1.00)
+    const theyWin = buildProposal(availablePool, pricedDesired, desiredTotal, 'Overpay', 1.08, 1.25, 1.15)
 
-    const proposals = [youWin, even, theyWin].filter(Boolean)
+    const MIN_FAIRNESS = 80
+    const proposals = [slightEdge, even, theyWin]
+      .filter((p): p is NonNullable<typeof p> => p != null && p.fairnessScore >= MIN_FAIRNESS)
 
     if (proposals.length === 0) {
       return NextResponse.json({
@@ -392,14 +395,15 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/proposal-generat
           role: 'system',
           content: `You are AllFantasy's trade proposal analyst. You evaluate fantasy football trade proposals and explain why each option works for both managers.
 
-Your philosophy: Trades are their own ecosystem — both teams should feel they gave up value but got better. Never encourage exploiting managers. Be honest and constructive.
+Your philosophy: Trades are their own ecosystem — both teams should feel they gave up value but got better. Never encourage exploiting managers. Be honest and constructive. League integrity matters more than "winning" a trade.
 
 For each proposal, explain:
-1. WHY the other manager would realistically accept this
+1. WHY the other manager would realistically accept this — be honest about weaknesses
 2. What makes this proposal attractive to THEM specifically
 3. A pitch the user could use when proposing this trade
+4. If the trade is lopsided (fairness below 85%), be transparent about that
 
-Keep explanations concise but insightful (2-3 sentences each). Consider team needs, roster construction, and competitive windows.${dnaSystemAddendum}${opponentAddendum}`
+Keep explanations concise but insightful (2-3 sentences each). Consider team needs, roster construction, and competitive windows. If a trade heavily favors one side, say so — don't dress it up.${dnaSystemAddendum}${opponentAddendum}`
         }, {
           role: 'user',
           content: `Analyze these trade proposals between ${username} (${myTeam.displayName}) and ${targetTeam.displayName}.
@@ -413,18 +417,19 @@ ${targetRosterSummary}
 PROPOSALS:
 ${proposalSummaries}
 
-For each proposal (You Win, Even, They Win), provide:
-- "acceptance": how likely ${targetTeam.displayName} accepts (percentage 0-100)
-- "theirPitch": why this trade appeals to ${targetTeam.displayName} (2-3 sentences)
+For each proposal (Slight Edge, Fair & Balanced, Overpay), provide:
+- "acceptance": how likely ${targetTeam.displayName} accepts (percentage 0-100). Be realistic — lopsided trades should have LOW acceptance.
+- "theirPitch": why this trade appeals to ${targetTeam.displayName} (2-3 sentences). Be honest about value gaps.
 - "yourAdvantage": what ${username} gains strategically (1-2 sentences)
 - "tradePitch": a message ${username} could send to propose this trade (1-2 sentences, casual tone)
+- "fairnessNote": a brief honest assessment of the trade's fairness (1 sentence)
 
 Respond in JSON format:
 {
   "proposals": {
-    "youWin": { "acceptance": number, "theirPitch": string, "yourAdvantage": string, "tradePitch": string },
-    "even": { "acceptance": number, "theirPitch": string, "yourAdvantage": string, "tradePitch": string },
-    "theyWin": { "acceptance": number, "theirPitch": string, "yourAdvantage": string, "tradePitch": string }
+    "slightEdge": { "acceptance": number, "theirPitch": string, "yourAdvantage": string, "tradePitch": string, "fairnessNote": string },
+    "even": { "acceptance": number, "theirPitch": string, "yourAdvantage": string, "tradePitch": string, "fairnessNote": string },
+    "overpay": { "acceptance": number, "theirPitch": string, "yourAdvantage": string, "tradePitch": string, "fairnessNote": string }
   }
 }`
         }],
@@ -441,9 +446,9 @@ Respond in JSON format:
     }
 
     const labelToKey: Record<string, string> = {
-      'You Win': 'youWin',
-      'Even': 'even',
-      'They Win': 'theyWin',
+      'Slight Edge': 'slightEdge',
+      'Fair & Balanced': 'even',
+      'Overpay': 'overpay',
     }
 
     const finalProposals = proposals.map(p => {
@@ -482,6 +487,7 @@ Respond in JSON format:
         theirPitch: ai.theirPitch ?? null,
         yourAdvantage: ai.yourAdvantage ?? null,
         tradePitch: ai.tradePitch ?? null,
+        fairnessNote: ai.fairnessNote ?? null,
       }
     }).filter(Boolean)
 
