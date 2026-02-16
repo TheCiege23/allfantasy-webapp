@@ -552,6 +552,7 @@ async function fetchTradeMetrics(
 
   const usernameToMetrics = new Map<string, { tradeCount: number; avgPremium: number }>()
   for (const h of histories) {
+    if (!h.sleeperUsername) continue
     let totalPremium = 0
     let validCount = 0
     for (const t of h.trades) {
