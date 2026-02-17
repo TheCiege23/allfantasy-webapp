@@ -5,6 +5,21 @@ import { requireAdmin } from "@/lib/adminAuth"
 
 export const dynamic = "force-dynamic"
 
+const CORE_EVENTS = [
+  'trade_analysis_completed',
+  'rankings_analysis_completed',
+  'waiver_analysis_completed',
+]
+const CORE_LIST = CORE_EVENTS.map((e) => `'${e}'`).join(",")
+
+function formatTTFV(minutes: number | null) {
+  if (minutes === null) return null
+  if (minutes < 1) return "< 1 min"
+  if (minutes < 60) return `${Math.round(minutes)} min`
+  if (minutes < 1440) return `${Math.round(minutes / 60 * 10) / 10} hrs`
+  return `${Math.round(minutes / 1440 * 10) / 10} days`
+}
+
 export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", tool: "AdminRetention" })(async (request: NextRequest) => {
   const gate = await requireAdmin()
   if (!gate.ok) return gate.res
@@ -15,13 +30,6 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
     const cohortsCount = Math.min(12, Math.max(1, Number(searchParams.get("cohorts") || "8")))
     const cohortSizeDays = Math.min(30, Math.max(1, Number(searchParams.get("cohortSize") || "7")))
 
-    const coreValueEvents = [
-      'trade_analysis_completed',
-      'rankings_analysis_completed',
-      'waiver_analysis_completed',
-    ]
-    const coreValueList = coreValueEvents.map((e) => `'${e}'`).join(",")
-
     const [cohortRows, valueCohortRows] = await Promise.all([
       prisma.$queryRawUnsafe<{
         cohort_start: Date
@@ -30,8 +38,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         returned_users: bigint
       }[]>(`
         WITH cohort_bounds AS (
-          SELECT
-            generate_series(0, $1 - 1) AS idx
+          SELECT generate_series(0, $1 - 1) AS idx
         ),
         cohorts AS (
           SELECT
@@ -40,13 +47,11 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
           FROM cohort_bounds
         )
         SELECT
-          c.cohort_start,
-          c.cohort_end,
+          c.cohort_start, c.cohort_end,
           COUNT(DISTINCT u.id) AS total_users,
           COUNT(DISTINCT e."userId") AS returned_users
         FROM cohorts c
-        LEFT JOIN "LegacyUser" u
-          ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
+        LEFT JOIN "LegacyUser" u ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
         LEFT JOIN "UserEvent" e
           ON e."userId" = u.id
           AND e."eventType" = 'user_login'
@@ -63,8 +68,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         returned_users: bigint
       }[]>(`
         WITH cohort_bounds AS (
-          SELECT
-            generate_series(0, $1 - 1) AS idx
+          SELECT generate_series(0, $1 - 1) AS idx
         ),
         cohorts AS (
           SELECT
@@ -73,16 +77,14 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
           FROM cohort_bounds
         )
         SELECT
-          c.cohort_start,
-          c.cohort_end,
+          c.cohort_start, c.cohort_end,
           COUNT(DISTINCT u.id) AS total_users,
           COUNT(DISTINCT e."userId") AS returned_users
         FROM cohorts c
-        LEFT JOIN "LegacyUser" u
-          ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
+        LEFT JOIN "LegacyUser" u ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
         LEFT JOIN "UserEvent" e
           ON e."userId" = u.id
-          AND e."eventType" IN (${coreValueList})
+          AND e."eventType" IN (${CORE_LIST})
           AND e."createdAt" > u."createdAt"
           AND e."createdAt" <= u."createdAt" + ($3 || ' days')::interval
         GROUP BY c.cohort_start, c.cohort_end
@@ -120,114 +122,127 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         ORDER BY cnt DESC
       `),
       prisma.$queryRawUnsafe<{ total_events: bigint; unique_users: bigint }[]>(`
-        SELECT
-          COUNT(*) AS total_events,
-          COUNT(DISTINCT "userId") AS unique_users
+        SELECT COUNT(*) AS total_events, COUNT(DISTINCT "userId") AS unique_users
         FROM "UserEvent"
       `),
     ])
 
     const summary = summaryRow[0] || { total_events: BigInt(0), unique_users: BigInt(0) }
 
-    const coreList = coreValueList
+    const [activationRows, ttfvRows] = await Promise.all([
+      prisma.$queryRawUnsafe<{
+        cohort_users: bigint
+        activated_24h: bigint
+        activated_24h_rate_pct: number | null
+        activated_7d: bigint
+        activated_7d_rate_pct: number | null
+      }[]>(`
+        WITH cohort AS (
+          SELECT u.id, u."createdAt" AS signup_at
+          FROM "LegacyUser" u
+          WHERE u."createdAt" >= NOW() - INTERVAL '30 days'
+        ),
+        first_core AS (
+          SELECT c.id AS "userId",
+                 c.signup_at,
+                 MIN(e."createdAt") AS first_core_at
+          FROM cohort c
+          LEFT JOIN "UserEvent" e
+            ON e."userId" = c.id
+            AND e."eventType" IN (${CORE_LIST})
+          GROUP BY c.id, c.signup_at
+        )
+        SELECT
+          COUNT(*) AS cohort_users,
+          COUNT(*) FILTER (WHERE first_core_at IS NOT NULL AND first_core_at <= signup_at + INTERVAL '24 hours') AS activated_24h,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE first_core_at IS NOT NULL AND first_core_at <= signup_at + INTERVAL '24 hours') / NULLIF(COUNT(*),0), 1) AS activated_24h_rate_pct,
+          COUNT(*) FILTER (WHERE first_core_at IS NOT NULL AND first_core_at <= signup_at + INTERVAL '7 days') AS activated_7d,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE first_core_at IS NOT NULL AND first_core_at <= signup_at + INTERVAL '7 days') / NULLIF(COUNT(*),0), 1) AS activated_7d_rate_pct
+        FROM first_core
+      `),
 
-    const [activation24h, activation7d, ttfvRows] = await Promise.all([
-      prisma.$queryRawUnsafe<{ total_users: bigint; activated_users: bigint }[]>(`
+      prisma.$queryRawUnsafe<{
+        median_minutes: number | null
+        sample_size: bigint
+      }[]>(`
+        WITH cohort AS (
+          SELECT u.id, u."createdAt" AS signup_at
+          FROM "LegacyUser" u
+          WHERE u."createdAt" >= NOW() - INTERVAL '30 days'
+        ),
+        first_core AS (
+          SELECT c.id AS "userId",
+                 c.signup_at,
+                 MIN(e."createdAt") AS first_core_at
+          FROM cohort c
+          JOIN "UserEvent" e
+            ON e."userId" = c.id
+            AND e."eventType" IN (${CORE_LIST})
+          GROUP BY c.id, c.signup_at
+        )
         SELECT
-          COUNT(DISTINCT u.id) AS total_users,
-          COUNT(DISTINCT e."userId") AS activated_users
-        FROM "LegacyUser" u
-        LEFT JOIN "UserEvent" e
-          ON e."userId" = u.id
-          AND e."eventType" IN (${coreList})
-          AND e."createdAt" <= u."createdAt" + INTERVAL '24 hours'
-      `),
-      prisma.$queryRawUnsafe<{ total_users: bigint; activated_users: bigint }[]>(`
-        SELECT
-          COUNT(DISTINCT u.id) AS total_users,
-          COUNT(DISTINCT e."userId") AS activated_users
-        FROM "LegacyUser" u
-        LEFT JOIN "UserEvent" e
-          ON e."userId" = u.id
-          AND e."eventType" IN (${coreList})
-          AND e."createdAt" <= u."createdAt" + INTERVAL '7 days'
-      `),
-      prisma.$queryRawUnsafe<{ minutes_to_value: number }[]>(`
-        SELECT
-          EXTRACT(EPOCH FROM (MIN(e."createdAt") - u."createdAt")) / 60.0 AS minutes_to_value
-        FROM "LegacyUser" u
-        JOIN "UserEvent" e
-          ON e."userId" = u.id
-          AND e."eventType" IN (${coreList})
-        GROUP BY u.id
-        ORDER BY minutes_to_value ASC
+          ROUND(
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (first_core_at - signup_at))) / 60.0, 1
+          ) AS median_minutes,
+          COUNT(*) AS sample_size
+        FROM first_core
       `),
     ])
 
-    const act24 = activation24h[0] || { total_users: BigInt(0), activated_users: BigInt(0) }
-    const act7 = activation7d[0] || { total_users: BigInt(0), activated_users: BigInt(0) }
+    const act = activationRows[0] || { cohort_users: BigInt(0), activated_24h: BigInt(0), activated_24h_rate_pct: 0, activated_7d: BigInt(0), activated_7d_rate_pct: 0 }
+    const cohortUsers = Number(act.cohort_users)
+    const activated24 = Number(act.activated_24h)
+    const activated24Rate = Number(act.activated_24h_rate_pct ?? 0)
+    const activated7 = Number(act.activated_7d)
+    const activated7Rate = Number(act.activated_7d_rate_pct ?? 0)
 
-    const total24 = Number(act24.total_users)
-    const activated24 = Number(act24.activated_users)
-    const total7 = Number(act7.total_users)
-    const activated7 = Number(act7.activated_users)
+    const ttfv = ttfvRows[0] || { median_minutes: null, sample_size: BigInt(0) }
+    const medianTTFV = ttfv.median_minutes !== null ? Number(ttfv.median_minutes) : null
+    const ttfvSampleSize = Number(ttfv.sample_size)
 
     const [dauRow, wauRow, mauRow] = await Promise.all([
-      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
-        SELECT COUNT(DISTINCT "userId") AS cnt
-        FROM "UserEvent"
-        WHERE "createdAt" >= NOW() - INTERVAL '1 day'
-      `),
-      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
-        SELECT COUNT(DISTINCT "userId") AS cnt
-        FROM "UserEvent"
-        WHERE "createdAt" >= NOW() - INTERVAL '7 days'
-      `),
-      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
-        SELECT COUNT(DISTINCT "userId") AS cnt
-        FROM "UserEvent"
-        WHERE "createdAt" >= NOW() - INTERVAL '30 days'
-      `),
+      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`SELECT COUNT(DISTINCT "userId") AS cnt FROM "UserEvent" WHERE "createdAt" >= NOW() - INTERVAL '1 day'`),
+      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`SELECT COUNT(DISTINCT "userId") AS cnt FROM "UserEvent" WHERE "createdAt" >= NOW() - INTERVAL '7 days'`),
+      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`SELECT COUNT(DISTINCT "userId") AS cnt FROM "UserEvent" WHERE "createdAt" >= NOW() - INTERVAL '30 days'`),
     ])
 
     const dau = Number(dauRow[0]?.cnt ?? 0)
     const wau = Number(wauRow[0]?.cnt ?? 0)
     const mau = Number(mauRow[0]?.cnt ?? 0)
 
-    const ttfvMinutes = ttfvRows.map((r) => r.minutes_to_value).filter((m) => m >= 0)
-    const medianTTFV = ttfvMinutes.length > 0
-      ? ttfvMinutes[Math.floor(ttfvMinutes.length / 2)]
-      : null
-
-    function formatTTFV(minutes: number | null) {
-      if (minutes === null) return null
-      if (minutes < 1) return "< 1 min"
-      if (minutes < 60) return `${Math.round(minutes)} min`
-      if (minutes < 1440) return `${Math.round(minutes / 60 * 10) / 10} hrs`
-      return `${Math.round(minutes / 1440 * 10) / 10} days`
-    }
-
-    const [valueRetention7dRows, depthRows, chatAmplifierRows] = await Promise.all([
+    const [valueRetention7dRows, depthRows, chatAmplifierRows, toolBreakdownRows, oneAndDoneRows] = await Promise.all([
       prisma.$queryRawUnsafe<{
-        week0_users: bigint
-        retained_users: bigint
+        activated_week0: bigint
+        value_retained_7d: bigint
+        value_retention_7d_pct: number | null
       }[]>(`
-        WITH week0_activated AS (
-          SELECT DISTINCT e."userId"
-          FROM "UserEvent" e
-          WHERE e."eventType" IN (${coreList})
-            AND e."createdAt" >= NOW() - INTERVAL '14 days'
-            AND e."createdAt" < NOW() - INTERVAL '7 days'
+        WITH cohort AS (
+          SELECT u.id, u."createdAt" AS signup_at
+          FROM "LegacyUser" u
+          WHERE u."createdAt" >= NOW() - INTERVAL '60 days'
         ),
-        week1_active AS (
-          SELECT DISTINCT e."userId"
+        core AS (
+          SELECT e."userId", e."createdAt"
           FROM "UserEvent" e
-          WHERE e."eventType" IN (${coreList})
-            AND e."createdAt" >= NOW() - INTERVAL '7 days'
+          WHERE e."eventType" IN (${CORE_LIST})
+        ),
+        flags AS (
+          SELECT
+            c.id AS "userId",
+            BOOL_OR(core."createdAt" >= c.signup_at AND core."createdAt" < c.signup_at + INTERVAL '7 days') AS did_core_week0,
+            BOOL_OR(core."createdAt" >= c.signup_at + INTERVAL '7 days' AND core."createdAt" < c.signup_at + INTERVAL '14 days') AS did_core_week1
+          FROM cohort c
+          LEFT JOIN core ON core."userId" = c.id
+          GROUP BY c.id
         )
         SELECT
-          (SELECT COUNT(*) FROM week0_activated) AS week0_users,
-          (SELECT COUNT(*) FROM week0_activated w0 INNER JOIN week1_active w1 ON w0."userId" = w1."userId") AS retained_users
+          COUNT(*) FILTER (WHERE did_core_week0) AS activated_week0,
+          COUNT(*) FILTER (WHERE did_core_week0 AND did_core_week1) AS value_retained_7d,
+          ROUND(
+            100.0 * COUNT(*) FILTER (WHERE did_core_week0 AND did_core_week1)
+            / NULLIF(COUNT(*) FILTER (WHERE did_core_week0), 0), 1
+          ) AS value_retention_7d_pct
+        FROM flags
       `),
 
       prisma.$queryRawUnsafe<{
@@ -239,15 +254,12 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         WITH activated AS (
           SELECT e."userId", e."eventType", COUNT(*) AS cnt
           FROM "UserEvent" e
-          WHERE e."eventType" IN (${coreList})
+          WHERE e."eventType" IN (${CORE_LIST})
             AND e."createdAt" >= NOW() - INTERVAL '30 days'
           GROUP BY e."userId", e."eventType"
         ),
         user_agg AS (
-          SELECT
-            "userId",
-            SUM(cnt) AS total_runs,
-            COUNT(DISTINCT "eventType") AS distinct_tools
+          SELECT "userId", SUM(cnt) AS total_runs, COUNT(DISTINCT "eventType") AS distinct_tools
           FROM activated
           GROUP BY "userId"
         )
@@ -266,51 +278,108 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         chat_activated: bigint
         no_chat_activated: bigint
       }[]>(`
-        WITH activated_30d AS (
+        WITH cohort AS (
+          SELECT u.id, u."createdAt" AS signup_at
+          FROM "LegacyUser" u
+          WHERE u."createdAt" >= NOW() - INTERVAL '60 days'
+        ),
+        activated_30d AS (
           SELECT DISTINCT e."userId"
           FROM "UserEvent" e
-          WHERE e."eventType" IN (${coreList})
+          WHERE e."eventType" IN (${CORE_LIST})
             AND e."createdAt" >= NOW() - INTERVAL '30 days'
         ),
-        chat_in_30d AS (
-          SELECT DISTINCT e."userId"
+        core AS (
+          SELECT e."userId", e."createdAt"
+          FROM "UserEvent" e
+          WHERE e."eventType" IN (${CORE_LIST})
+        ),
+        chat AS (
+          SELECT e."userId", e."createdAt"
           FROM "UserEvent" e
           WHERE e."eventType" = 'ai_chat_used'
-            AND e."createdAt" >= NOW() - INTERVAL '30 days'
         ),
-        week0_activated AS (
-          SELECT DISTINCT e."userId"
-          FROM "UserEvent" e
-          WHERE e."eventType" IN (${coreList})
-            AND e."createdAt" >= NOW() - INTERVAL '14 days'
-            AND e."createdAt" < NOW() - INTERVAL '7 days'
-        ),
-        week1_active AS (
-          SELECT DISTINCT e."userId"
-          FROM "UserEvent" e
-          WHERE e."eventType" IN (${coreList})
-            AND e."createdAt" >= NOW() - INTERVAL '7 days'
-        ),
-        chat_in_week0 AS (
-          SELECT DISTINCT e."userId"
-          FROM "UserEvent" e
-          WHERE e."eventType" = 'ai_chat_used'
-            AND e."createdAt" >= NOW() - INTERVAL '14 days'
-            AND e."createdAt" < NOW() - INTERVAL '7 days'
+        flags AS (
+          SELECT
+            c.id AS "userId",
+            BOOL_OR(core."createdAt" >= c.signup_at AND core."createdAt" < c.signup_at + INTERVAL '7 days') AS did_core_week0,
+            BOOL_OR(core."createdAt" >= c.signup_at + INTERVAL '7 days' AND core."createdAt" < c.signup_at + INTERVAL '14 days') AS did_core_week1,
+            BOOL_OR(chat."createdAt" >= c.signup_at AND chat."createdAt" < c.signup_at + INTERVAL '7 days') AS did_chat_week0
+          FROM cohort c
+          LEFT JOIN core ON core."userId" = c.id
+          LEFT JOIN chat ON chat."userId" = c.id
+          GROUP BY c.id
         )
         SELECT
           (SELECT COUNT(*) FROM activated_30d) AS activated_users,
-          (SELECT COUNT(*) FROM activated_30d a INNER JOIN chat_in_30d c ON a."userId" = c."userId") AS chat_users,
-          (SELECT COUNT(*) FROM week0_activated w0 INNER JOIN week1_active w1 ON w0."userId" = w1."userId" INNER JOIN chat_in_week0 c ON w0."userId" = c."userId") AS chat_retained,
-          (SELECT COUNT(*) FROM week0_activated w0 INNER JOIN week1_active w1 ON w0."userId" = w1."userId" WHERE w0."userId" NOT IN (SELECT "userId" FROM chat_in_week0)) AS no_chat_retained,
-          (SELECT COUNT(*) FROM week0_activated w0 INNER JOIN chat_in_week0 c ON w0."userId" = c."userId") AS chat_activated,
-          (SELECT COUNT(*) FROM week0_activated w0 WHERE w0."userId" NOT IN (SELECT "userId" FROM chat_in_week0)) AS no_chat_activated
+          (SELECT COUNT(*) FROM activated_30d a WHERE EXISTS (SELECT 1 FROM "UserEvent" e2 WHERE e2."userId" = a."userId" AND e2."eventType" = 'ai_chat_used' AND e2."createdAt" >= NOW() - INTERVAL '30 days')) AS chat_users,
+          COUNT(*) FILTER (WHERE did_core_week0 AND did_core_week1 AND did_chat_week0) AS chat_retained,
+          COUNT(*) FILTER (WHERE did_core_week0 AND did_core_week1 AND NOT COALESCE(did_chat_week0, false)) AS no_chat_retained,
+          COUNT(*) FILTER (WHERE did_core_week0 AND did_chat_week0) AS chat_activated,
+          COUNT(*) FILTER (WHERE did_core_week0 AND NOT COALESCE(did_chat_week0, false)) AS no_chat_activated
+        FROM flags
+      `),
+
+      prisma.$queryRawUnsafe<{
+        event_type: string
+        total_uses_7d: bigint
+        unique_users_7d: bigint
+        users_1x: bigint
+        users_2_3x: bigint
+        users_4_9x: bigint
+        users_10x_plus: bigint
+      }[]>(`
+        WITH recent AS (
+          SELECT e."userId", e."eventType"
+          FROM "UserEvent" e
+          WHERE e."createdAt" >= NOW() - INTERVAL '7 days'
+            AND e."eventType" IN (${CORE_LIST})
+        ),
+        counts AS (
+          SELECT "eventType", "userId", COUNT(*) AS uses
+          FROM recent
+          GROUP BY "eventType", "userId"
+        )
+        SELECT
+          "eventType" AS event_type,
+          SUM(uses) AS total_uses_7d,
+          COUNT(*) AS unique_users_7d,
+          COUNT(*) FILTER (WHERE uses = 1) AS users_1x,
+          COUNT(*) FILTER (WHERE uses BETWEEN 2 AND 3) AS users_2_3x,
+          COUNT(*) FILTER (WHERE uses BETWEEN 4 AND 9) AS users_4_9x,
+          COUNT(*) FILTER (WHERE uses >= 10) AS users_10x_plus
+        FROM counts
+        GROUP BY "eventType"
+        ORDER BY total_uses_7d DESC
+      `),
+
+      prisma.$queryRawUnsafe<{
+        user_id: string
+        username: string
+        display_name: string | null
+        signup_at: Date
+      }[]>(`
+        SELECT
+          u.id AS user_id,
+          u."sleeperUsername" AS username,
+          u."displayName" AS display_name,
+          u."createdAt" AS signup_at
+        FROM "LegacyUser" u
+        WHERE u."createdAt" >= NOW() - INTERVAL '7 days'
+          AND NOT EXISTS (
+            SELECT 1 FROM "UserEvent" e
+            WHERE e."userId" = u.id
+              AND e."eventType" IN (${CORE_LIST})
+          )
+        ORDER BY u."createdAt" DESC
+        LIMIT 20
       `),
     ])
 
-    const vr7 = valueRetention7dRows[0] || { week0_users: BigInt(0), retained_users: BigInt(0) }
-    const week0Users = Number(vr7.week0_users)
-    const retainedUsers = Number(vr7.retained_users)
+    const vr7 = valueRetention7dRows[0] || { activated_week0: BigInt(0), value_retained_7d: BigInt(0), value_retention_7d_pct: 0 }
+    const week0Users = Number(vr7.activated_week0)
+    const retainedUsers = Number(vr7.value_retained_7d)
+    const retentionRate7d = Number(vr7.value_retention_7d_pct ?? 0)
 
     const depth = depthRows[0] || { activated_users: BigInt(0), avg_runs: 0, multi_tool_users: BigInt(0), power_users: BigInt(0) }
     const activatedUsers30d = Number(depth.activated_users)
@@ -329,6 +398,12 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
     const noChatRetentionRate = noChatActivatedW0 > 0 ? Math.round((noChatRetained / noChatActivatedW0) * 1000) / 10 : 0
     const retentionMultiplier = noChatRetentionRate > 0 ? Math.round((chatRetentionRate / noChatRetentionRate) * 10) / 10 : 0
 
+    const toolLabels: Record<string, string> = {
+      'trade_analysis_completed': 'Trade Analyzer',
+      'rankings_analysis_completed': 'Rankings',
+      'waiver_analysis_completed': 'Waiver AI',
+    }
+
     const funnelRows = await prisma.$queryRawUnsafe<{
       new_users: bigint
       did_core: bigint
@@ -343,14 +418,11 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         SELECT e."userId", e."eventType", COUNT(*) AS cnt
         FROM "UserEvent" e
         INNER JOIN recent_users ru ON ru.id = e."userId"
-        WHERE e."eventType" IN (${coreList})
+        WHERE e."eventType" IN (${CORE_LIST})
         GROUP BY e."userId", e."eventType"
       ),
       user_agg AS (
-        SELECT
-          "userId",
-          COUNT(DISTINCT "eventType") AS distinct_tools,
-          MAX(cnt) AS max_single_tool
+        SELECT "userId", COUNT(DISTINCT "eventType") AS distinct_tools, MAX(cnt) AS max_single_tool
         FROM user_core
         GROUP BY "userId"
       )
@@ -378,31 +450,25 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
       overall: {
         totalUsers: totalUsersAll,
         returnedUsers: totalReturnedAll,
-        retentionRate: totalUsersAll > 0
-          ? Math.round((totalReturnedAll / totalUsersAll) * 1000) / 10
-          : 0,
+        retentionRate: totalUsersAll > 0 ? Math.round((totalReturnedAll / totalUsersAll) * 1000) / 10 : 0,
         valueReturnedUsers: totalValueReturnedAll,
-        valueRetentionRate: totalUsersAll > 0
-          ? Math.round((totalValueReturnedAll / totalUsersAll) * 1000) / 10
-          : 0,
+        valueRetentionRate: totalUsersAll > 0 ? Math.round((totalValueReturnedAll / totalUsersAll) * 1000) / 10 : 0,
       },
       activation: {
-        coreEvents: coreValueEvents,
-        rate24h: total24 > 0 ? Math.round((activated24 / total24) * 1000) / 10 : 0,
-        rate7d: total7 > 0 ? Math.round((activated7 / total7) * 1000) / 10 : 0,
+        coreEvents: CORE_EVENTS,
+        rate24h: activated24Rate,
+        rate7d: activated7Rate,
         activated24h: activated24,
         activated7d: activated7,
-        totalUsers: total24,
+        totalUsers: cohortUsers,
         timeToFirstValue: {
-          medianMinutes: medianTTFV !== null ? Math.round(medianTTFV * 10) / 10 : null,
+          medianMinutes: medianTTFV,
           medianFormatted: formatTTFV(medianTTFV),
-          sampleSize: ttfvMinutes.length,
+          sampleSize: ttfvSampleSize,
         },
       },
       stickiness: {
-        dau,
-        wau,
-        mau,
+        dau, wau, mau,
         dauWau: wau > 0 ? Math.round((dau / wau) * 1000) / 10 : 0,
         wauMau: mau > 0 ? Math.round((wau / mau) * 1000) / 10 : 0,
       },
@@ -415,18 +481,18 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         })),
       },
       productHealth: {
-        newUsers30d: funnel.newUsers,
-        activation24h: { rate: total24 > 0 ? Math.round((activated24 / total24) * 1000) / 10 : 0, activated: activated24, total: total24 },
-        activation7d: { rate: total7 > 0 ? Math.round((activated7 / total7) * 1000) / 10 : 0, activated: activated7, total: total7 },
+        newUsers30d: cohortUsers,
+        activation24h: { rate: activated24Rate, activated: activated24, total: cohortUsers },
+        activation7d: { rate: activated7Rate, activated: activated7, total: cohortUsers },
         timeToFirstValue: {
-          medianMinutes: medianTTFV !== null ? Math.round(medianTTFV * 10) / 10 : null,
+          medianMinutes: medianTTFV,
           medianFormatted: formatTTFV(medianTTFV),
-          sampleSize: ttfvMinutes.length,
+          sampleSize: ttfvSampleSize,
         },
         valueRetention7d: {
-          week0Users: week0Users,
-          retainedUsers: retainedUsers,
-          rate: week0Users > 0 ? Math.round((retainedUsers / week0Users) * 1000) / 10 : 0,
+          week0Users,
+          retainedUsers,
+          rate: retentionRate7d,
         },
         depthOfEngagement: {
           activatedUsers: activatedUsers30d,
@@ -444,6 +510,22 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
           noChatRetentionRate,
           retentionMultiplier,
         },
+        toolBreakdown7d: toolBreakdownRows.map((t) => ({
+          tool: toolLabels[t.event_type] || t.event_type,
+          eventType: t.event_type,
+          totalUses: Number(t.total_uses_7d),
+          uniqueUsers: Number(t.unique_users_7d),
+          users1x: Number(t.users_1x),
+          users2_3x: Number(t.users_2_3x),
+          users4_9x: Number(t.users_4_9x),
+          users10xPlus: Number(t.users_10x_plus),
+        })),
+        oneAndDone: oneAndDoneRows.map((u) => ({
+          userId: u.user_id,
+          username: u.username,
+          displayName: u.display_name,
+          signupAt: u.signup_at.toISOString(),
+        })),
       },
     })
   } catch (err: unknown) {

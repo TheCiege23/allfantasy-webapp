@@ -107,6 +107,22 @@ type RetentionData = {
       noChatRetentionRate: number;
       retentionMultiplier: number;
     };
+    toolBreakdown7d: {
+      tool: string;
+      eventType: string;
+      totalUses: number;
+      uniqueUsers: number;
+      users1x: number;
+      users2_3x: number;
+      users4_9x: number;
+      users10xPlus: number;
+    }[];
+    oneAndDone: {
+      userId: string;
+      username: string;
+      displayName: string | null;
+      signupAt: string;
+    }[];
   };
 };
 
@@ -427,9 +443,102 @@ function RetentionPanel() {
               </div>
             </div>
 
+            {retention.productHealth.toolBreakdown7d && retention.productHealth.toolBreakdown7d.length > 0 && (
+              <div className="rounded-xl border overflow-hidden mt-4" style={{ borderColor: "var(--border)" }}>
+                <div className="text-sm font-medium p-3 flex items-center justify-between" style={{ color: "var(--text)", borderBottom: "1px solid var(--border)" }}>
+                  <span>Per-Tool Usage (Last 7 Days)</span>
+                  <ExportButton
+                    label="Export Tools CSV"
+                    onClick={() => {
+                      const headers = ["Tool", "Total Uses", "Unique Users", "1x Users", "2-3x Users", "4-9x Users", "10+ Users"];
+                      const rows = retention.productHealth.toolBreakdown7d.map((t) => [t.tool, String(t.totalUses), String(t.uniqueUsers), String(t.users1x), String(t.users2_3x), String(t.users4_9x), String(t.users10xPlus)]);
+                      downloadCsv("tool_breakdown_7d.csv", headers, rows);
+                    }}
+                  />
+                </div>
+                <table className="w-full text-sm">
+                  <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                    <tr>
+                      <th className="p-3 text-left text-xs">Tool</th>
+                      <th className="p-3 text-right text-xs">Uses</th>
+                      <th className="p-3 text-right text-xs">Users</th>
+                      <th className="p-3 text-right text-xs">1x</th>
+                      <th className="p-3 text-right text-xs">2-3x</th>
+                      <th className="p-3 text-right text-xs">4-9x</th>
+                      <th className="p-3 text-right text-xs">10+</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {retention.productHealth.toolBreakdown7d.map((t) => {
+                      const total = t.uniqueUsers || 1;
+                      return (
+                        <tr key={t.eventType} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                          <td className="p-3 text-xs font-medium" style={{ color: "var(--text)" }}>{t.tool}</td>
+                          <td className="p-3 text-right tabular-nums text-xs">{t.totalUses}</td>
+                          <td className="p-3 text-right tabular-nums text-xs">{t.uniqueUsers}</td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: "var(--muted)" }}>{t.users1x}</span>
+                            <span className="text-[10px] ml-1" style={{ color: "var(--muted)" }}>({Math.round((t.users1x / total) * 100)}%)</span>
+                          </td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: "#60a5fa" }}>{t.users2_3x}</span>
+                            <span className="text-[10px] ml-1" style={{ color: "var(--muted)" }}>({Math.round((t.users2_3x / total) * 100)}%)</span>
+                          </td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: "#a855f7" }}>{t.users4_9x}</span>
+                            <span className="text-[10px] ml-1" style={{ color: "var(--muted)" }}>({Math.round((t.users4_9x / total) * 100)}%)</span>
+                          </td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: "#22c55e" }}>{t.users10xPlus}</span>
+                            <span className="text-[10px] ml-1" style={{ color: "var(--muted)" }}>({Math.round((t.users10xPlus / total) * 100)}%)</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <div className="p-3 flex gap-3 text-[10px]" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                  {retention.productHealth.toolBreakdown7d.map((t) => {
+                    const repeatPct = t.uniqueUsers > 0 ? Math.round(((t.uniqueUsers - t.users1x) / t.uniqueUsers) * 100) : 0;
+                    return (
+                      <span key={t.eventType}>
+                        {t.tool}: <span style={{ color: repeatPct >= 30 ? "#22c55e" : repeatPct >= 15 ? "#eab308" : "#ef4444" }}>{repeatPct}% repeat</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+              {retention.productHealth.oneAndDone && retention.productHealth.oneAndDone.length > 0 && (
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-sm font-medium p-3" style={{ color: "#ef4444", borderBottom: "1px solid var(--border)" }}>
+                    One-and-Done (signed up in 7d, 0 analyzer runs)
+                  </div>
+                  <div className="divide-y" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                    {retention.productHealth.oneAndDone.slice(0, 10).map((u) => (
+                      <div key={u.userId} className="px-3 py-2 flex items-center justify-between">
+                        <div>
+                          <div className="text-xs font-medium" style={{ color: "var(--text)" }}>{u.displayName || u.username}</div>
+                          {u.displayName && <div className="text-[10px]" style={{ color: "var(--muted)" }}>{u.username}</div>}
+                        </div>
+                        <div className="text-[10px]" style={{ color: "var(--muted)" }}>{fmtDate(u.signupAt)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {retention.productHealth.oneAndDone.length > 10 && (
+                    <div className="p-2 text-center text-[10px]" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                      +{retention.productHealth.oneAndDone.length - 10} more
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="mt-3 text-[10px] text-center" style={{ color: "var(--muted)" }}>
               Core analyzers: Trade Analyzer, Rankings, Waiver AI. AI Chat tracked separately as engagement amplifier.
-              <br />Activation: all-time users. Value Retention: week 0 vs week 1 (rolling 14d). Depth &amp; Chat: last 30 days. Chat retention uses same week0/week1 cohort window.
+              <br />Activation: last 30d signups. TTFV: percentile_cont median. Value Retention: per-user week 0→1 (60d cohort). Depth: 30d. Tool breakdown: 7d.
             </div>
           </div>
         </div>
