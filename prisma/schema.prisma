@@ -258,8 +258,23 @@ model LegacyUser {
   importJobs      LegacyImportJob[]
   leagues         LegacyLeague[]
   rankCache       LegacyUserRankCache?
+  userEvents      UserEvent[]
 
   @@index([sleeperUsername])
+}
+
+model UserEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  eventType String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      LegacyUser @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([userId, eventType])
 }
 
 model LegacyUserRankCache {
