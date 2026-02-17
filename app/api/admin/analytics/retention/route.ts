@@ -15,54 +15,103 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
     const cohortsCount = Math.min(12, Math.max(1, Number(searchParams.get("cohorts") || "8")))
     const cohortSizeDays = Math.min(30, Math.max(1, Number(searchParams.get("cohortSize") || "7")))
 
-    const cohortRows = await prisma.$queryRawUnsafe<{
-      cohort_start: Date
-      cohort_end: Date
-      total_users: bigint
-      returned_users: bigint
-    }[]>(`
-      WITH cohort_bounds AS (
-        SELECT
-          generate_series(0, $1 - 1) AS idx
-      ),
-      cohorts AS (
-        SELECT
-          (CURRENT_DATE - (idx * $2 + $2 - 1) * INTERVAL '1 day')::date AS cohort_start,
-          (CURRENT_DATE - idx * $2 * INTERVAL '1 day')::date AS cohort_end
-        FROM cohort_bounds
-      )
-      SELECT
-        c.cohort_start,
-        c.cohort_end,
-        COUNT(DISTINCT u.id) AS total_users,
-        COUNT(DISTINCT e."userId") AS returned_users
-      FROM cohorts c
-      LEFT JOIN "LegacyUser" u
-        ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
-      LEFT JOIN "UserEvent" e
-        ON e."userId" = u.id
-        AND e."eventType" = 'user_login'
-        AND e."createdAt" > u."createdAt"
-        AND e."createdAt" <= u."createdAt" + ($3 || ' days')::interval
-      GROUP BY c.cohort_start, c.cohort_end
-      ORDER BY c.cohort_start ASC
-    `, cohortsCount, cohortSizeDays, String(windowDays))
+    const coreValueEvents = [
+      'trade_analysis_completed',
+      'rankings_analysis_completed',
+      'waiver_analysis_completed',
+      'ai_chat_used',
+    ]
+    const coreValueList = coreValueEvents.map((e) => `'${e}'`).join(",")
 
-    const cohorts = cohortRows.map((r) => {
-      const total = Number(r.total_users)
-      const returned = Number(r.returned_users)
-      return {
-        label: `${r.cohort_start.toISOString().slice(0, 10)} – ${r.cohort_end.toISOString().slice(0, 10)}`,
-        from: r.cohort_start.toISOString(),
-        to: r.cohort_end.toISOString(),
-        totalUsers: total,
-        returnedUsers: returned,
-        retentionRate: total > 0 ? Math.round((returned / total) * 1000) / 10 : 0,
-      }
-    })
+    const [cohortRows, valueCohortRows] = await Promise.all([
+      prisma.$queryRawUnsafe<{
+        cohort_start: Date
+        cohort_end: Date
+        total_users: bigint
+        returned_users: bigint
+      }[]>(`
+        WITH cohort_bounds AS (
+          SELECT
+            generate_series(0, $1 - 1) AS idx
+        ),
+        cohorts AS (
+          SELECT
+            (CURRENT_DATE - (idx * $2 + $2 - 1) * INTERVAL '1 day')::date AS cohort_start,
+            (CURRENT_DATE - idx * $2 * INTERVAL '1 day')::date AS cohort_end
+          FROM cohort_bounds
+        )
+        SELECT
+          c.cohort_start,
+          c.cohort_end,
+          COUNT(DISTINCT u.id) AS total_users,
+          COUNT(DISTINCT e."userId") AS returned_users
+        FROM cohorts c
+        LEFT JOIN "LegacyUser" u
+          ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
+        LEFT JOIN "UserEvent" e
+          ON e."userId" = u.id
+          AND e."eventType" = 'user_login'
+          AND e."createdAt" > u."createdAt"
+          AND e."createdAt" <= u."createdAt" + ($3 || ' days')::interval
+        GROUP BY c.cohort_start, c.cohort_end
+        ORDER BY c.cohort_start ASC
+      `, cohortsCount, cohortSizeDays, String(windowDays)),
+
+      prisma.$queryRawUnsafe<{
+        cohort_start: Date
+        cohort_end: Date
+        total_users: bigint
+        returned_users: bigint
+      }[]>(`
+        WITH cohort_bounds AS (
+          SELECT
+            generate_series(0, $1 - 1) AS idx
+        ),
+        cohorts AS (
+          SELECT
+            (CURRENT_DATE - (idx * $2 + $2 - 1) * INTERVAL '1 day')::date AS cohort_start,
+            (CURRENT_DATE - idx * $2 * INTERVAL '1 day')::date AS cohort_end
+          FROM cohort_bounds
+        )
+        SELECT
+          c.cohort_start,
+          c.cohort_end,
+          COUNT(DISTINCT u.id) AS total_users,
+          COUNT(DISTINCT e."userId") AS returned_users
+        FROM cohorts c
+        LEFT JOIN "LegacyUser" u
+          ON u."createdAt"::date BETWEEN c.cohort_start AND c.cohort_end
+        LEFT JOIN "UserEvent" e
+          ON e."userId" = u.id
+          AND e."eventType" IN (${coreValueList})
+          AND e."createdAt" > u."createdAt"
+          AND e."createdAt" <= u."createdAt" + ($3 || ' days')::interval
+        GROUP BY c.cohort_start, c.cohort_end
+        ORDER BY c.cohort_start ASC
+      `, cohortsCount, cohortSizeDays, String(windowDays)),
+    ])
+
+    function buildCohorts(rows: typeof cohortRows) {
+      return rows.map((r) => {
+        const total = Number(r.total_users)
+        const returned = Number(r.returned_users)
+        return {
+          label: `${r.cohort_start.toISOString().slice(0, 10)} – ${r.cohort_end.toISOString().slice(0, 10)}`,
+          from: r.cohort_start.toISOString(),
+          to: r.cohort_end.toISOString(),
+          totalUsers: total,
+          returnedUsers: returned,
+          retentionRate: total > 0 ? Math.round((returned / total) * 1000) / 10 : 0,
+        }
+      })
+    }
+
+    const cohorts = buildCohorts(cohortRows)
+    const valueCohorts = buildCohorts(valueCohortRows)
 
     const totalUsersAll = cohorts.reduce((s, c) => s + c.totalUsers, 0)
     const totalReturnedAll = cohorts.reduce((s, c) => s + c.returnedUsers, 0)
+    const totalValueReturnedAll = valueCohorts.reduce((s, c) => s + c.returnedUsers, 0)
 
     const [eventBreakdown, summaryRow] = await Promise.all([
       prisma.$queryRawUnsafe<{ event_type: string; cnt: bigint }[]>(`
@@ -81,13 +130,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
 
     const summary = summaryRow[0] || { total_events: BigInt(0), unique_users: BigInt(0) }
 
-    const coreEvents = [
-      'trade_analysis_completed',
-      'rankings_analysis_completed',
-      'waiver_analysis_completed',
-      'ai_chat_used',
-    ]
-    const coreList = coreEvents.map((e) => `'${e}'`).join(",")
+    const coreList = coreValueList
 
     const [activation24h, activation7d, ttfvRows] = await Promise.all([
       prisma.$queryRawUnsafe<{ total_users: bigint; activated_users: bigint }[]>(`
@@ -170,15 +213,20 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
       windowDays,
       cohortSizeDays,
       cohorts,
+      valueCohorts,
       overall: {
         totalUsers: totalUsersAll,
         returnedUsers: totalReturnedAll,
         retentionRate: totalUsersAll > 0
           ? Math.round((totalReturnedAll / totalUsersAll) * 1000) / 10
           : 0,
+        valueReturnedUsers: totalValueReturnedAll,
+        valueRetentionRate: totalUsersAll > 0
+          ? Math.round((totalValueReturnedAll / totalUsersAll) * 1000) / 10
+          : 0,
       },
       activation: {
-        coreEvents,
+        coreEvents: coreValueEvents,
         rate24h: total24 > 0 ? Math.round((activated24 / total24) * 1000) / 10 : 0,
         rate7d: total7 > 0 ? Math.round((activated7 / total7) * 1000) / 10 : 0,
         activated24h: activated24,

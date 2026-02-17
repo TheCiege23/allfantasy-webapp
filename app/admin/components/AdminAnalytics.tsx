@@ -52,7 +52,8 @@ type RetentionData = {
   windowDays: number;
   cohortSizeDays: number;
   cohorts: RetentionCohort[];
-  overall: { totalUsers: number; returnedUsers: number; retentionRate: number };
+  valueCohorts: RetentionCohort[];
+  overall: { totalUsers: number; returnedUsers: number; retentionRate: number; valueReturnedUsers: number; valueRetentionRate: number };
   activation: {
     coreEvents: string[];
     rate24h: number;
@@ -292,49 +293,94 @@ function RetentionPanel() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
                   <div className="text-xl font-bold text-cyan-300">{retention.overall.retentionRate}%</div>
-                  <div className="text-xs" style={{ color: "var(--muted)" }}>{retention.windowDays}-Day Retention</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>{retention.windowDays}-Day Login Retention</div>
+                </div>
+                <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5">
+                  <div className="text-xl font-bold text-green-300">{retention.overall.valueRetentionRate}%</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>{retention.windowDays}-Day Value Retention</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>quote this one</div>
                 </div>
                 <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
                   <div className="text-xl font-bold text-purple-300">{retention.activity.uniqueActiveUsers}</div>
                   <div className="text-xs" style={{ color: "var(--muted)" }}>Active Users</div>
                 </div>
-                <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5">
-                  <div className="text-xl font-bold text-green-300">{retention.activity.totalEvents.toLocaleString()}</div>
+                <div className="p-4 rounded-xl border border-slate-500/20 bg-slate-500/5">
+                  <div className="text-xl font-bold" style={{ color: "var(--text)" }}>{retention.activity.totalEvents.toLocaleString()}</div>
                   <div className="text-xs" style={{ color: "var(--muted)" }}>Total Events</div>
                 </div>
               </div>
 
-              <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: "var(--border)" }}>
-                <table className="w-full text-sm">
-                  <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
-                    <tr>
-                      <th className="p-3 text-left">Cohort</th>
-                      <th className="p-3 text-right">Signed Up</th>
-                      <th className="p-3 text-right">Returned</th>
-                      <th className="p-3 text-right">Retention</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {retention.cohorts.map((c, i) => (
-                      <tr key={i} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
-                        <td className="p-3 text-xs">{c.label}</td>
-                        <td className="p-3 text-right tabular-nums">{c.totalUsers}</td>
-                        <td className="p-3 text-right tabular-nums">{c.returnedUsers}</td>
-                        <td className="p-3 text-right tabular-nums">
-                          <span style={{ color: c.retentionRate >= 30 ? "#4ade80" : c.retentionRate >= 15 ? "#fbbf24" : "#ef4444" }}>
-                            {c.retentionRate}%
-                          </span>
-                        </td>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-xs font-medium p-3 flex items-center gap-2" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+                    <span className="w-2 h-2 rounded-full bg-cyan-500" />
+                    Login Retention (returned &amp; logged in within {retention.windowDays}d)
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                      <tr>
+                        <th className="p-2 text-left text-xs">Cohort</th>
+                        <th className="p-2 text-right text-xs">Users</th>
+                        <th className="p-2 text-right text-xs">Returned</th>
+                        <th className="p-2 text-right text-xs">Rate</th>
                       </tr>
-                    ))}
-                    {retention.cohorts.length === 0 && (
-                      <tr><td colSpan={4} className="p-6 text-center" style={{ color: "var(--muted)" }}>No cohort data yet</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {retention.cohorts.map((c, i) => (
+                        <tr key={i} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                          <td className="p-2 text-[11px]">{c.label}</td>
+                          <td className="p-2 text-right tabular-nums text-xs">{c.totalUsers}</td>
+                          <td className="p-2 text-right tabular-nums text-xs">{c.returnedUsers}</td>
+                          <td className="p-2 text-right tabular-nums text-xs">
+                            <span style={{ color: c.retentionRate >= 30 ? "#4ade80" : c.retentionRate >= 15 ? "#fbbf24" : "#ef4444" }}>
+                              {c.retentionRate}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {retention.cohorts.length === 0 && (
+                        <tr><td colSpan={4} className="p-4 text-center text-xs" style={{ color: "var(--muted)" }}>No data yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-xs font-medium p-3 flex items-center gap-2" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+                    <span className="w-2 h-2 rounded-full bg-green-500" />
+                    Value Retention (returned &amp; completed a core action within {retention.windowDays}d)
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                      <tr>
+                        <th className="p-2 text-left text-xs">Cohort</th>
+                        <th className="p-2 text-right text-xs">Users</th>
+                        <th className="p-2 text-right text-xs">Valued</th>
+                        <th className="p-2 text-right text-xs">Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {retention.valueCohorts.map((c, i) => (
+                        <tr key={i} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                          <td className="p-2 text-[11px]">{c.label}</td>
+                          <td className="p-2 text-right tabular-nums text-xs">{c.totalUsers}</td>
+                          <td className="p-2 text-right tabular-nums text-xs">{c.returnedUsers}</td>
+                          <td className="p-2 text-right tabular-nums text-xs">
+                            <span style={{ color: c.retentionRate >= 30 ? "#4ade80" : c.retentionRate >= 15 ? "#fbbf24" : "#ef4444" }}>
+                              {c.retentionRate}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {retention.valueCohorts.length === 0 && (
+                        <tr><td colSpan={4} className="p-4 text-center text-xs" style={{ color: "var(--muted)" }}>No data yet</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {retention.activity.breakdown.length > 0 && (
