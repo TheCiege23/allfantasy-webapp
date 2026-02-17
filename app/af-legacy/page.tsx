@@ -7642,8 +7642,8 @@ function AFLegacyContent() {
                       </div>
                     ) : (
                       /* Trade History Report Card */
-                      <div className="relative rounded-3xl bg-gradient-to-br from-slate-900/80 to-slate-950/80 border border-white/10 overflow-hidden">
-                        <div className="h-1 bg-gradient-to-r from-purple-500/50 via-cyan-400/50 to-purple-500/50" />
+                      <div className="relative rounded-3xl bg-gradient-to-br from-slate-900/80 to-slate-950/80 border border-white/10 overflow-visible">
+                        <div className="h-1 bg-gradient-to-r from-purple-500/50 via-cyan-400/50 to-purple-500/50 rounded-t-3xl" />
                         <div className="p-6 sm:p-8">
                           <div className="text-center mb-6">
                             <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center text-2xl">
