@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { logUserEventByUsername } from '@/lib/user-events';
 import { TRADE_EVALUATOR_SYSTEM_PROMPT, TradeEvaluationResponseSchema } from '@/lib/trade-evaluator-prompt';
 import { rateLimit } from '@/lib/rate-limit';
 import { getComprehensiveLearningContext } from '@/lib/comprehensive-trade-learning';
@@ -242,6 +243,13 @@ Trade proposal:
     }
 
     const validationResult = TradeEvaluationResponseSchema.safeParse(parsedContent);
+
+    const evalUsername = data.context_scope?.sleeper_username
+    if (evalUsername) {
+      logUserEventByUsername(evalUsername, 'trade_analysis_completed', {
+        source: 'ai_trade_eval',
+      })
+    }
     
     return NextResponse.json({
       success: true,

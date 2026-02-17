@@ -6,6 +6,7 @@ import { consumeRateLimit, getClientIp } from '@/lib/rate-limit'
 import { getOpenAIConfig } from '@/lib/openai-client'
 import { getUniversalAIContext } from '@/lib/ai-player-context'
 import { getPlayerAnalyticsBatch, computeAthleticGrade, computeCollegeProductionGrade, type PlayerAnalytics } from '@/lib/player-analytics'
+import { logUserEventByUsername } from '@/lib/user-events'
 
 const ContextScopeSchema = z.object({
   sleeper_username: z.string(),
@@ -271,6 +272,10 @@ export const POST = withApiUsage({ endpoint: "/api/ai/chat", tool: "AiChat" })(a
     if (!responseText) {
       return NextResponse.json({ error: 'No response from AI' }, { status: 500 })
     }
+
+    logUserEventByUsername(sleeperUsername, 'ai_chat_used', {
+      hasLegacyContext: !!legacyContext,
+    })
 
     return NextResponse.json({
       success: true,

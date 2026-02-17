@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 import { writeSnapshot } from '@/lib/trade-engine/snapshot-store'
+import { logUserEventByUsername } from '@/lib/user-events'
 
 const openai = new OpenAI()
 
@@ -428,6 +429,10 @@ Provide actionable insight about where this team stands and what they should foc
     } catch (snapErr) {
       console.warn('[Rankings] Failed to write snapshot:', snapErr)
     }
+
+    logUserEventByUsername(sleeper_username, 'rankings_analysis_completed', {
+      leagueId: league_id,
+    })
 
     return NextResponse.json(responsePayload)
   } catch (error: any) {

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { rateLimit } from '@/lib/rate-limit';
 import { trackLegacyToolUsage } from '@/lib/analytics-server';
 import { resolveOrCreateLegacyUser } from '@/lib/legacy-user-resolver';
+import { logUserEvent } from '@/lib/user-events';
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/import", tool: "LegacyImport" })(async (request: NextRequest) => {
   try {
@@ -67,6 +68,12 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/import", tool: "Legacy
       username: resolved.sleeperUsername,
       usernameChanged: resolved.usernameChanged,
       previousUsername: resolved.previousUsername,
+    })
+
+    logUserEvent(resolved.id, 'league_imported', {
+      username: resolved.sleeperUsername,
+      jobId: job.id,
+      usernameChanged: resolved.usernameChanged,
     })
 
     return NextResponse.json({

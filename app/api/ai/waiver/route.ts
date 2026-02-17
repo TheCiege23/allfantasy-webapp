@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { logUserEventByUsername } from '@/lib/user-events';
 import { prisma } from '@/lib/prisma';
 import { 
   WaiverRequestSchema, 
@@ -130,10 +131,10 @@ Consider this manager's style when making recommendations.
     const aiResponse = JSON.parse(responseText);
     const validatedResponse = WaiverResponseSchema.safeParse(aiResponse);
 
-    // Track tool usage
     const sleeperUsername = waiverRequest.context_scope?.sleeper_username
     if (sleeperUsername) {
       trackLegacyToolUsage('waiver_ai', null, null, { sleeperUsername })
+      logUserEventByUsername(sleeperUsername, 'waiver_analysis_completed')
     }
 
     return NextResponse.json({

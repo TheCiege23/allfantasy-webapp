@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { setUserSessionCookie, getUserSessionFromCookie, clearUserSessionCookie, validateRequestOrigin } from '@/lib/api-auth'
 import { consumeRateLimit, getClientIp } from '@/lib/rate-limit'
+import { logUserEventByUsername } from '@/lib/user-events'
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/session", tool: "LegacySession" })(async (req: NextRequest) => {
   try {
@@ -34,6 +35,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/session", tool: "Legac
       sleeperUsername,
       sleeperId,
     })
+
+    logUserEventByUsername(sleeperUsername, 'user_login')
 
     return NextResponse.json({ success: true, username: sleeperUsername })
   } catch (e) {

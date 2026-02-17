@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { computeDualModeTradeDelta, UserTrade, ValuationMode } from '@/lib/hybrid-valuation'
 import { computeReportCard } from '@/lib/trade-engine/report-card-engine'
 import { isUserParty } from '@/lib/user-matching'
+import { logUserEventByUsername } from '@/lib/user-events'
 
 interface TradeAnalyticsRequest {
   league_id: string
@@ -762,6 +763,14 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
       reportCard = computeReportCard(scoredTrades, sleeper_username, sleeper_user_id)
     } catch (e) {
       console.error('Report card computation error:', e)
+    }
+
+    if (sleeper_username) {
+      logUserEventByUsername(sleeper_username, 'trade_analysis_completed', {
+        leagueId: league_id,
+        totalTrades: trades.length,
+        userTrades: userTrades.length,
+      })
     }
 
     return NextResponse.json({ ...response, reportCard })
