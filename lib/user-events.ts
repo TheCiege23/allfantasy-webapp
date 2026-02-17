@@ -2,11 +2,14 @@ import { prisma } from "@/lib/prisma";
 
 export type UserEventType =
   | "trade_analysis_completed"
+  | "trade_analysis_started"
   | "ai_report_generated"
   | "league_imported"
   | "user_login"
   | "waiver_analysis_completed"
+  | "waiver_analysis_started"
   | "rankings_analysis_completed"
+  | "rankings_analysis_started"
   | "trade_proposal_generated"
   | "trade_finder_used"
   | "ai_chat_used"

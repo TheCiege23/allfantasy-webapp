@@ -78,6 +78,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade-analytics", tool
       return NextResponse.json({ error: 'league_id and trades are required' }, { status: 400 })
     }
 
+    if (sleeper_username) {
+      logUserEventByUsername(sleeper_username, 'trade_analysis_started', { league_id, trade_count: trades.length })
+    }
+
     const userTrades = trades.filter(t => 
       t.parties?.some(p => isUserParty(p, sleeper_username, sleeper_user_id))
     )

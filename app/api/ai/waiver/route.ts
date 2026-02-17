@@ -80,7 +80,12 @@ export const POST = withApiUsage({ endpoint: "/api/ai/waiver", tool: "AiWaiver" 
     }
 
     const waiverRequest = parseResult.data;
-    
+
+    const waiverUsername = waiverRequest.context_scope?.sleeper_username
+    if (waiverUsername) {
+      logUserEventByUsername(waiverUsername, 'waiver_analysis_started')
+    }
+
     let legacyContext = null;
     if (waiverRequest.context_scope?.sleeper_username && waiverRequest.context_scope.include_legacy) {
       legacyContext = await getLegacyContext(waiverRequest.context_scope.sleeper_username);

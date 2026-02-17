@@ -138,6 +138,11 @@ export const POST = withApiUsage({ endpoint: "/api/ai/trade-eval", tool: "AiTrad
     const body = await request.json();
     const data = TradeRequestSchema.parse(body);
 
+    const startUsername = data.context_scope?.sleeper_username
+    if (startUsername) {
+      logUserEventByUsername(startUsername, 'trade_analysis_started')
+    }
+
     let legacyContext = null;
     if (data.context_scope?.sleeper_username && data.context_scope.include_legacy) {
       legacyContext = await getLegacyContext(data.context_scope.sleeper_username);

@@ -86,6 +86,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/analyze", too
       return NextResponse.json({ error: 'Missing sleeper_username or league_id' }, { status: 400 })
     }
 
+    logUserEventByUsername(sleeper_username, 'rankings_analysis_started', { league_id })
+
     const sleeperUsernameLower = sleeper_username.toLowerCase()
     const sleeperUserId = sleeperUser?.userId?.trim() || undefined
 

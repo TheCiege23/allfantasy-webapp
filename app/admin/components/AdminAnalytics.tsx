@@ -103,6 +103,15 @@ type ToolRepeatRate = {
   repeatRate: number;
 };
 
+type CompletionRate = {
+  tool: string;
+  started: number;
+  completed: number;
+  completionRate: number;
+  dropOff: number;
+  dropOffRate: number;
+};
+
 type StickinessData = {
   ok: boolean;
   days: number;
@@ -120,6 +129,7 @@ type StickinessData = {
   dailyActivity: { day: string; events: number; uniqueUsers: number }[];
   toolDistribution: Record<string, { bucket: string; userCount: number }[]>;
   toolRepeatRate: ToolRepeatRate[];
+  completionRates: CompletionRate[];
 };
 
 type SourceQualityRow = {
@@ -550,6 +560,38 @@ function RetentionPanel() {
                   <div className="text-xs" style={{ color: "var(--muted)" }}>One-and-Done</div>
                 </div>
               </div>
+
+              {stickiness.completionRates && stickiness.completionRates.length > 0 && (
+                <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>Completion Rates (Started → Completed)</div>
+                  <div className="space-y-3">
+                    {stickiness.completionRates.map((cr) => (
+                      <div key={cr.tool}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span style={{ color: "var(--text)" }}>{cr.tool}</span>
+                          <span style={{ color: cr.completionRate >= 80 ? "#22c55e" : cr.completionRate >= 50 ? "#eab308" : "#ef4444" }}>
+                            {cr.completionRate}% ({cr.completed}/{cr.started})
+                          </span>
+                        </div>
+                        <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "var(--border)" }}>
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(cr.completionRate, 100)}%`,
+                              background: cr.completionRate >= 80 ? "#22c55e" : cr.completionRate >= 50 ? "#eab308" : "#ef4444",
+                            }}
+                          />
+                        </div>
+                        {cr.dropOff > 0 && (
+                          <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                            {cr.dropOff} drop-offs ({cr.dropOffRate}%)
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {stickiness.dailyActivity.length > 0 && (
                 <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)" }}>

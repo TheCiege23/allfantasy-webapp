@@ -142,6 +142,35 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/stickiness", t
     }
     toolRepeatRate.sort((a, b) => b.repeatRate - a.repeatRate)
 
+    const completionPairs = [
+      { started: 'trade_analysis_started', completed: 'trade_analysis_completed', label: 'Trade Analyzer' },
+      { started: 'waiver_analysis_started', completed: 'waiver_analysis_completed', label: 'Waiver AI' },
+      { started: 'rankings_analysis_started', completed: 'rankings_analysis_completed', label: 'Rankings' },
+    ]
+
+    const completionRates = await Promise.all(
+      completionPairs.map(async (pair) => {
+        const rows = await prisma.$queryRawUnsafe<{
+          started: bigint
+          completed: bigint
+        }[]>(`
+          SELECT
+            (SELECT COUNT(*) FROM "UserEvent" WHERE "eventType" = $1 AND "createdAt" >= NOW() - ($3 || ' days')::interval) AS started,
+            (SELECT COUNT(*) FROM "UserEvent" WHERE "eventType" = $2 AND "createdAt" >= NOW() - ($3 || ' days')::interval) AS completed
+        `, pair.started, pair.completed, days)
+        const s = Number(rows[0]?.started ?? 0)
+        const c = Math.min(Number(rows[0]?.completed ?? 0), s)
+        return {
+          tool: pair.label,
+          started: s,
+          completed: c,
+          completionRate: s > 0 ? Math.min(100, Math.round((c / s) * 1000) / 10) : 0,
+          dropOff: s > 0 ? Math.max(0, s - c) : 0,
+          dropOffRate: s > 0 ? Math.min(100, Math.round((Math.max(0, s - c) / s) * 1000) / 10) : 0,
+        }
+      })
+    )
+
     return NextResponse.json({
       ok: true,
       days,
@@ -167,6 +196,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/stickiness", t
       })),
       toolDistribution,
       toolRepeatRate,
+      completionRates,
     })
   } catch (err: unknown) {
     console.error("Stickiness API error:", err)
