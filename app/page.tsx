@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { ModeToggle } from '@/components/theme/ModeToggle'
+import { gtagEvent } from '@/lib/gtag'
 
 const NewsCrawl = dynamic(() => import('@/components/NewsCrawl'), {
   ssr: false,
@@ -26,13 +27,7 @@ function DeferredNewsCrawl() {
   return <NewsCrawl />
 }
 
-const track = (event: string, params: Record<string, any> = {}) => {
-  if (typeof window === 'undefined') return
-  ;(window as any).gtag?.('event', event, {
-    ...params,
-    page_path: window.location.pathname,
-  })
-}
+const track = gtagEvent
 
 interface UTMParams {
   utm_source: string | null;
@@ -220,6 +215,10 @@ function HomeContent() {
           source_url: window.location.href
         }),
       }).catch((err) => console.warn('Meta CAPI call failed:', err));
+
+      track('early_access_signup_submitted', {
+        is_new: !data?.alreadyExists,
+      })
 
       const encodedEmail = encodeURIComponent(email.trim())
       router.push(`/success?email=${encodedEmail}${data?.alreadyExists ? '&existing=true' : ''}`)

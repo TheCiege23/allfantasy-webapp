@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import confetti from 'canvas-confetti'
+import { gtagEvent } from '@/lib/gtag'
 
 const SPORTS = ['NFL', 'NBA', 'MLB']
 const LEAGUE_TYPES = ['Redraft', 'Dynasty', 'Keeper', 'Best Ball', 'Guillotine', 'Survivor', 'Tournament']
@@ -40,8 +41,8 @@ function SuccessContent() {
   const [toast, setToast] = useState('')
 
   useEffect(() => {
-    if (!isExisting && typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'signup_complete', {
+    if (!isExisting) {
+      gtagEvent('signup_complete', {
         event_category: 'engagement',
         event_label: 'Early Access Signup',
       });
@@ -110,6 +111,11 @@ function SuccessContent() {
       if (res.ok) {
         setSubmitted(true)
         setToast('Saved ✅')
+        gtagEvent('questionnaire_submitted', {
+          favorite_sport: formData.favoriteSport,
+          league_type: formData.favoriteLeagueType,
+          competitiveness: formData.competitiveness,
+        })
         setTimeout(() => setToast(''), 3000)
       } else {
         const data = await res.json()

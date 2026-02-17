@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
+import { gtagEvent } from "@/lib/gtag";
 
 function getOrCreateSessionId() {
   try {
@@ -56,6 +57,7 @@ export function useAnalytics() {
     (toolKey: string, meta?: Record<string, any>) => {
       post("tool_use", { sessionId, toolKey, path: location.pathname, meta: meta || null })
       postUsageLog(toolKey, meta)
+      gtagEvent("ai_tool_used", { tool_name: toolKey, ...meta })
     },
     [sessionId]
   );

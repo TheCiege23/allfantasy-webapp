@@ -15,6 +15,7 @@ import PlayerProfileCard from "@/components/PlayerProfileCard"
 import MiniPlayerImg from "@/components/MiniPlayerImg"
 import { headshotUrl, teamLogoUrl } from '@/lib/media-url'
 import { buildSleeperUser } from '@/lib/sleeper-user'
+import { gtagEvent } from '@/lib/gtag'
 import InsightsPanel from "@/components/InsightsPanel"
 import BadgeDisplay from "@/components/BadgeDisplay"
 import CommunityInsights from "@/components/CommunityInsights"
@@ -1478,6 +1479,7 @@ function AFLegacyContent() {
 
   const fetchFantraxLeagues = async (user: string) => {
     if (!user.trim()) return
+    gtagEvent('league_import_started', { platform: 'fantrax' })
     setFantraxLoading(true)
     setFantraxError(null)
     try {
@@ -1503,6 +1505,7 @@ function AFLegacyContent() {
   }, [platform, fantraxUsername])
 
   const fetchYahooLeagues = async () => {
+    gtagEvent('league_import_started', { platform: 'yahoo' })
     setYahooLoading(true)
     setYahooError('')
     try {
@@ -1555,6 +1558,7 @@ function AFLegacyContent() {
   }
 
   const fetchMflLeagues = async () => {
+    gtagEvent('league_import_started', { platform: 'mfl' })
     setMflLoading(true)
     try {
       const res = await fetch('/api/mfl/leagues')
@@ -1588,6 +1592,7 @@ function AFLegacyContent() {
       setTradeIdeasError('Please select a league')
       return
     }
+    gtagEvent('trade_ideas_started')
     setTradeIdeasLoading(true)
     setTradeIdeasError('')
     setTradeIdeasResults([])
@@ -1629,6 +1634,7 @@ function AFLegacyContent() {
       setProposalError('Could not find team data')
       return
     }
+    gtagEvent('trade_proposal_generated')
     setProposalLoading(true)
     setProposalError('')
     setProposalResults([])
@@ -1699,6 +1705,7 @@ function AFLegacyContent() {
       setGoalProposalError('Select a goal and make sure a league is loaded')
       return
     }
+    gtagEvent('goal_proposal_generated', { goal: goalProposalGoal })
     setGoalProposalLoading(true)
     setGoalProposalError('')
     setGoalProposalResult(null)
@@ -1729,6 +1736,7 @@ function AFLegacyContent() {
       setInlineTradeError('Please enter players for both sides')
       return
     }
+    gtagEvent('trade_analysis_started', { source: 'inline_evaluator' })
     setInlineTradeLoading(true)
     setInlineTradeError('')
     setInlineTradeResult(null)
@@ -1794,6 +1802,7 @@ function AFLegacyContent() {
         leagueType: inlineTradeFormat
       })
       trackToolUse('trade_analyzer', { format: inlineTradeFormat })
+      gtagEvent('trade_analysis_completed', { source: 'inline_evaluator', grade: data.grade, verdict: data.verdict })
     } catch {
       setInlineTradeError('Network error - please try again')
     } finally {
@@ -2002,6 +2011,7 @@ function AFLegacyContent() {
 
   // Generate trade report from Trade Hub selections
   const generateTradeHubReport = async () => {
+    gtagEvent('trade_hub_report_started')
     const teamA = tradeHubManagers.find(m => String(m.rosterId) === tradeHubTeamA)
     const teamB = tradeHubManagers.find(m => String(m.rosterId) === tradeHubTeamB)
     
@@ -2244,6 +2254,7 @@ function AFLegacyContent() {
       return
     }
     
+    gtagEvent('share_reward_claimed', { share_type: shareType })
     setShareRewardLoading(true)
     setShareRewardMessage(null)
     
@@ -2542,6 +2553,7 @@ function AFLegacyContent() {
       setTransferError('Please enter a League ID')
       return
     }
+    gtagEvent('league_transfer_started')
     if (overrideLeagueId) {
       setTransferLeagueId(overrideLeagueId)
     }
@@ -2699,12 +2711,7 @@ function AFLegacyContent() {
         setAiReport(data.latest_ai_report ?? null)
         setRankingPreview(data.ranking_preview ?? null);
         setImportStatus('complete');
-        
-        (window as any).gtag?.('event', 'legacy_import_complete', {
-          event_category: 'Legacy',
-          event_label: 'Import Complete',
-          value: 1,
-        })
+        gtagEvent('league_import_completed', { platform: 'sleeper' })
         
         const tutorialSeen = localStorage.getItem('af-legacy-tutorial-seen')
         if (!tutorialSeen) {
@@ -2784,12 +2791,7 @@ function AFLegacyContent() {
           if (nextJob.status === 'completed') {
             setImportStatus('complete');
             loadProfile(username);
-            
-            (window as any).gtag?.('event', 'legacy_import_complete', {
-              event_category: 'Legacy',
-              event_label: 'Import Complete',
-              value: 1,
-            })
+            gtagEvent('league_import_completed', { platform: 'sleeper' })
             
             const tutorialSeen = localStorage.getItem('af-legacy-tutorial-seen')
             if (!tutorialSeen) {
@@ -2829,6 +2831,7 @@ function AFLegacyContent() {
     setError('')
     setLoading(true)
 
+    gtagEvent('league_import_started', { platform: 'sleeper' })
     try {
       const res = await fetch('/api/legacy/import', {
         method: 'POST',
@@ -2902,6 +2905,7 @@ function AFLegacyContent() {
 
   const loadAIReport = async (forceRefresh = false) => {
     if (!username) return
+    gtagEvent('ai_report_loaded', { force_refresh: forceRefresh })
     setAiLoading(true)
     try {
       const res = await fetch('/api/legacy/ai/run', {
@@ -3076,6 +3080,7 @@ function AFLegacyContent() {
   // Analyze trade for Share tab Trade Vote
   const analyzeShareTrade = async () => {
     if (!shareTradeSideA.trim() || !shareTradeSideB.trim()) return
+    gtagEvent('share_trade_analyzed')
     setShareTradeLoading(true)
     setShareTradeAnalysis(null)
     setShareTradeError('')
@@ -3223,6 +3228,7 @@ function AFLegacyContent() {
   // Submit quiz responses
   const submitQuiz = async () => {
     if (!username) return
+    gtagEvent('trade_quiz_submitted')
     setQuizLoading(true)
     try {
       const responses = Object.entries(quizResponses).map(([id, choice]) => ({
@@ -3311,6 +3317,7 @@ function AFLegacyContent() {
     const leagueId = leagueIdOverride || finderSelectedLeague
     if (!username || !leagueId) return
 
+    gtagEvent('trade_finder_started')
     setFinderLoading(true)
     setFinderError('')
     setFinderWarning('')
@@ -3366,6 +3373,7 @@ function AFLegacyContent() {
     targetManager: string,
     rating: number
   ) => {
+    gtagEvent('trade_feedback_submitted', { rating })
     const feedbackKey = `${finderSelectedLeague}-${managerIdx}-${tradeIdx}`
     setFeedbackLoading((prev) => ({ ...prev, [feedbackKey]: true }))
     
@@ -3557,6 +3565,7 @@ function AFLegacyContent() {
 
   const runWaiverAnalysis = async () => {
     if (!username || !waiverSelectedLeague) return
+    gtagEvent('waiver_analysis_started')
     setWaiverLoading(true)
     setWaiverError('')
     setWaiverAnalysis(null)
@@ -3673,6 +3682,7 @@ function AFLegacyContent() {
       if (!targetLeague) setRankingsError('Please select a league first.')
       return
     }
+    gtagEvent('rankings_analysis_started')
     setRankingsLoading(true)
     setRankingsError('')
     setRankingsData(null)
@@ -4023,6 +4033,7 @@ function AFLegacyContent() {
   }
 
   const handleMobileTabChange = (tab: MainTab) => {
+    gtagEvent('tab_navigation', { tab })
     setMobileMainTab(tab)
     const group = mainTabGroups[tab]
     if (group.length > 0) {
@@ -4050,6 +4061,7 @@ function AFLegacyContent() {
   }
 
   const handleActiveTabChange = (t: Tab) => {
+    gtagEvent('tab_navigation', { tab: t })
     setActiveTab(t)
     setMobileMainTab(tabToMainTab(t))
   }
@@ -5154,11 +5166,7 @@ function AFLegacyContent() {
                               setRankingPreview(null)
                               setImportStatus('complete')
 
-                              ;(window as any).gtag?.('event', 'legacy_import_complete', {
-                                event_category: 'Legacy',
-                                event_label: 'ESPN Import Complete',
-                                value: 1,
-                              })
+                              gtagEvent('league_import_completed', { platform: 'espn' })
                             } catch {
                               setEspnError('Network error — please try again')
                             } finally {
@@ -12521,6 +12529,7 @@ function AFLegacyContent() {
                             const url = `${window.location.origin}/af-legacy?tab=rankings&league=${rankingsSelectedLeague}`
                             const shareMessage = `Check out where you rank in ${leagueName} on AllFantasy!\n\n${url}\n\nEnter your Sleeper username to see your league rankings instantly.`
                             navigator.clipboard.writeText(shareMessage).then(() => {
+                              gtagEvent('share_text_copied', { type: 'rankings_link' })
                               setRankingsShareCopied(true)
                               setTimeout(() => setRankingsShareCopied(false), 3000)
                             }).catch(() => {
@@ -15071,6 +15080,7 @@ function AFLegacyContent() {
                             const text = shareText || aiReport?.share_text || ''
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
+                            gtagEvent('share_text_copied', { type: 'social_post' })
                             alert('Copied to clipboard!')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-cyan-500/20 text-cyan-300 rounded-xl hover:bg-cyan-500/30 transition min-h-[44px]"
@@ -15135,6 +15145,7 @@ function AFLegacyContent() {
                             const text = shareText || aiReport?.share_text || ''
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
+                            gtagEvent('share_text_copied', { type: 'threads' })
                             alert('Copied! Open Threads and paste in your post.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-gray-600/20 text-gray-200 rounded-xl hover:bg-gray-600/30 transition border border-gray-500/30 min-h-[44px]"
@@ -15146,6 +15157,7 @@ function AFLegacyContent() {
                             const text = shareText || aiReport?.share_text || ''
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
+                            gtagEvent('share_text_copied', { type: 'discord' })
                             alert('Copied! Paste in any Discord channel.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600/20 text-indigo-300 rounded-xl hover:bg-indigo-600/30 transition border border-indigo-500/30 min-h-[44px]"
@@ -15160,6 +15172,7 @@ function AFLegacyContent() {
                             const text = shareText || aiReport?.share_text || ''
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
+                            gtagEvent('share_text_copied', { type: 'tiktok' })
                             alert('Copied! Open TikTok and paste in your caption.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-pink-500/20 text-pink-300 rounded-xl hover:bg-pink-500/30 transition border border-pink-500/30 min-h-[44px]"
@@ -15171,6 +15184,7 @@ function AFLegacyContent() {
                             const text = shareText || aiReport?.share_text || ''
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
+                            gtagEvent('share_text_copied', { type: 'instagram' })
                             alert('Copied! Open Instagram and paste in your bio or caption.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-pink-200 rounded-xl hover:from-purple-500/30 hover:to-pink-500/30 transition border border-pink-400/30 min-h-[44px]"
@@ -15182,6 +15196,7 @@ function AFLegacyContent() {
                             const text = shareText || aiReport?.share_text || ''
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
+                            gtagEvent('share_text_copied', { type: 'snapchat' })
                             alert('Copied! Open Snapchat and paste in your story.')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500/20 text-yellow-300 rounded-xl hover:bg-yellow-500/30 transition border border-yellow-500/30 min-h-[44px]"
@@ -15215,6 +15230,7 @@ function AFLegacyContent() {
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(`https://allfantasy.ai/af-legacy?user=${encodeURIComponent(username || '')}`)
+                              gtagEvent('share_text_copied', { type: 'profile_link' })
                               alert('Link copied!')
                             }}
                             className="px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition text-sm"
