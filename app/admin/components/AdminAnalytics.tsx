@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 type AnalyticsRow = {
   id: string;
@@ -40,6 +40,52 @@ type LegacyUsageResponse = {
   tools: LegacyToolStat[];
 };
 
+type RetentionCohort = {
+  label: string;
+  totalUsers: number;
+  returnedUsers: number;
+  retentionRate: number;
+};
+
+type RetentionData = {
+  ok: boolean;
+  windowDays: number;
+  cohortSizeDays: number;
+  cohorts: RetentionCohort[];
+  overall: { totalUsers: number; returnedUsers: number; retentionRate: number };
+  activity: {
+    totalEvents: number;
+    uniqueActiveUsers: number;
+    breakdown: { eventType: string; count: number }[];
+  };
+};
+
+type StickinessUser = {
+  userId: string;
+  username: string;
+  displayName: string | null;
+  uses: number;
+  distinctDays: number;
+  lastUse: string;
+};
+
+type StickinessData = {
+  ok: boolean;
+  days: number;
+  eventFilter: string | null;
+  summary: {
+    totalUses: number;
+    totalUsers: number;
+    avgUsesPerUser: number;
+    powerUsers: number;
+    regularUsers: number;
+    oneAndDone: number;
+  };
+  users: StickinessUser[];
+  eventTypeBreakdown: { eventType: string; count: number; uniqueUsers: number }[];
+  dailyActivity: { day: string; events: number; uniqueUsers: number }[];
+};
+
 function fmtDate(iso: string) {
   try {
     return new Date(iso).toLocaleString();
@@ -50,6 +96,307 @@ function fmtDate(iso: string) {
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
+}
+
+function RetentionPanel() {
+  const [retention, setRetention] = useState<RetentionData | null>(null);
+  const [stickiness, setStickiness] = useState<StickinessData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [retentionWindow, setRetentionWindow] = useState(7);
+  const [stickyDays, setStickyDays] = useState(7);
+  const [stickyEvent, setStickyEvent] = useState("");
+  const [activeTab, setActiveTab] = useState<"retention" | "stickiness">("retention");
+
+  const loadRetention = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/analytics/retention?window=${retentionWindow}`, { cache: "no-store" });
+      if (res.ok) setRetention(await res.json());
+    } catch {}
+    setLoading(false);
+  }, [retentionWindow]);
+
+  const loadStickiness = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ days: String(stickyDays) });
+      if (stickyEvent) params.set("event", stickyEvent);
+      const res = await fetch(`/api/admin/analytics/stickiness?${params}`, { cache: "no-store" });
+      if (res.ok) setStickiness(await res.json());
+    } catch {}
+    setLoading(false);
+  }, [stickyDays, stickyEvent]);
+
+  useEffect(() => { loadRetention(); }, [loadRetention]);
+  useEffect(() => { loadStickiness(); }, [loadStickiness]);
+
+  const eventOptions = stickiness?.eventTypeBreakdown?.map((e) => e.eventType) || [];
+
+  return (
+    <div className="mb-8">
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-base sm:text-xl font-semibold" style={{ color: "var(--text)" }}>
+          Retention & Stickiness
+        </h2>
+        <button
+          className="px-3 py-1.5 rounded-lg border text-sm"
+          style={{ borderColor: "var(--border)", background: "transparent" }}
+          onClick={() => { loadRetention(); loadStickiness(); }}
+          disabled={loading}
+        >
+          {loading ? "Loading\u2026" : "Refresh"}
+        </button>
+      </div>
+
+      <div className="flex gap-2 mb-4">
+        {(["retention", "stickiness"] as const).map((tab) => (
+          <button
+            key={tab}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            style={{
+              background: activeTab === tab ? "var(--accent)" : "transparent",
+              color: activeTab === tab ? "#fff" : "var(--muted)",
+              border: activeTab === tab ? "none" : "1px solid var(--border)",
+            }}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab === "retention" ? "Retention Cohorts" : "Tool Stickiness"}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "retention" && (
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <label className="text-sm" style={{ color: "var(--muted)" }}>Window:</label>
+            {[7, 14, 30].map((d) => (
+              <button
+                key={d}
+                className="px-3 py-1 rounded text-sm"
+                style={{
+                  background: retentionWindow === d ? "var(--accent)" : "transparent",
+                  color: retentionWindow === d ? "#fff" : "var(--muted)",
+                  border: `1px solid ${retentionWindow === d ? "var(--accent)" : "var(--border)"}`,
+                }}
+                onClick={() => setRetentionWindow(d)}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+
+          {retention && (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
+                  <div className="text-xl font-bold text-cyan-300">{retention.overall.retentionRate}%</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>{retention.windowDays}-Day Retention</div>
+                </div>
+                <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
+                  <div className="text-xl font-bold text-purple-300">{retention.activity.uniqueActiveUsers}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>Active Users</div>
+                </div>
+                <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5">
+                  <div className="text-xl font-bold text-green-300">{retention.activity.totalEvents.toLocaleString()}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>Total Events</div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: "var(--border)" }}>
+                <table className="w-full text-sm">
+                  <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                    <tr>
+                      <th className="p-3 text-left">Cohort</th>
+                      <th className="p-3 text-right">Signed Up</th>
+                      <th className="p-3 text-right">Returned</th>
+                      <th className="p-3 text-right">Retention</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {retention.cohorts.map((c, i) => (
+                      <tr key={i} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                        <td className="p-3 text-xs">{c.label}</td>
+                        <td className="p-3 text-right tabular-nums">{c.totalUsers}</td>
+                        <td className="p-3 text-right tabular-nums">{c.returnedUsers}</td>
+                        <td className="p-3 text-right tabular-nums">
+                          <span style={{ color: c.retentionRate >= 30 ? "#4ade80" : c.retentionRate >= 15 ? "#fbbf24" : "#ef4444" }}>
+                            {c.retentionRate}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {retention.cohorts.length === 0 && (
+                      <tr><td colSpan={4} className="p-6 text-center" style={{ color: "var(--muted)" }}>No cohort data yet</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {retention.activity.breakdown.length > 0 && (
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>Event Breakdown (All Time)</div>
+                  <div className="space-y-2">
+                    {retention.activity.breakdown.map((e) => {
+                      const maxCount = retention.activity.breakdown[0]?.count || 1;
+                      return (
+                        <div key={e.eventType} className="flex items-center gap-3">
+                          <div className="text-xs w-48 truncate" style={{ color: "var(--muted)" }}>{e.eventType}</div>
+                          <div className="flex-1 h-4 rounded bg-white/5 overflow-hidden">
+                            <div
+                              className="h-full rounded bg-cyan-500/60"
+                              style={{ width: `${Math.max(2, (e.count / maxCount) * 100)}%` }}
+                            />
+                          </div>
+                          <div className="text-xs tabular-nums w-12 text-right" style={{ color: "var(--muted)" }}>{e.count}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === "stickiness" && (
+        <div>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <label className="text-sm" style={{ color: "var(--muted)" }}>Period:</label>
+            {[7, 14, 30].map((d) => (
+              <button
+                key={d}
+                className="px-3 py-1 rounded text-sm"
+                style={{
+                  background: stickyDays === d ? "var(--accent)" : "transparent",
+                  color: stickyDays === d ? "#fff" : "var(--muted)",
+                  border: `1px solid ${stickyDays === d ? "var(--accent)" : "var(--border)"}`,
+                }}
+                onClick={() => setStickyDays(d)}
+              >
+                {d}d
+              </button>
+            ))}
+            <select
+              className="px-3 py-1 rounded text-sm border"
+              style={{ borderColor: "var(--border)", background: "var(--bg)", color: "var(--text)" }}
+              value={stickyEvent}
+              onChange={(e) => setStickyEvent(e.target.value)}
+            >
+              <option value="">All Events</option>
+              {eventOptions.map((ev) => (
+                <option key={ev} value={ev}>{ev}</option>
+              ))}
+            </select>
+          </div>
+
+          {stickiness && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
+                  <div className="text-xl font-bold text-cyan-300">{stickiness.summary.avgUsesPerUser}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>Avg Uses/User</div>
+                </div>
+                <div className="p-4 rounded-xl border border-green-500/20 bg-green-500/5">
+                  <div className="text-xl font-bold text-green-300">{stickiness.summary.powerUsers}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>Power Users (5+)</div>
+                </div>
+                <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
+                  <div className="text-xl font-bold text-purple-300">{stickiness.summary.regularUsers}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>Regular (2-4)</div>
+                </div>
+                <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                  <div className="text-xl font-bold text-amber-300">{stickiness.summary.oneAndDone}</div>
+                  <div className="text-xs" style={{ color: "var(--muted)" }}>One-and-Done</div>
+                </div>
+              </div>
+
+              {stickiness.dailyActivity.length > 0 && (
+                <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>Daily Activity</div>
+                  <div className="flex items-end gap-1" style={{ height: 80 }}>
+                    {stickiness.dailyActivity.map((d) => {
+                      const maxEvents = Math.max(...stickiness.dailyActivity.map((x) => x.events), 1);
+                      return (
+                        <div key={d.day} className="flex-1 flex flex-col items-center gap-1" title={`${d.day}: ${d.events} events, ${d.uniqueUsers} users`}>
+                          <div
+                            className="w-full rounded-t bg-cyan-500/70"
+                            style={{ height: `${Math.max(4, (d.events / maxEvents) * 70)}px` }}
+                          />
+                          <div className="text-[8px] truncate w-full text-center" style={{ color: "var(--muted)" }}>{d.day.slice(5)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {stickiness.eventTypeBreakdown.length > 0 && (
+                <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>Tool Breakdown ({stickiness.days}d)</div>
+                  <div className="space-y-2">
+                    {stickiness.eventTypeBreakdown.map((e) => {
+                      const max = stickiness.eventTypeBreakdown[0]?.count || 1;
+                      return (
+                        <div key={e.eventType} className="flex items-center gap-3">
+                          <div className="text-xs w-48 truncate" style={{ color: "var(--muted)" }}>{e.eventType}</div>
+                          <div className="flex-1 h-4 rounded bg-white/5 overflow-hidden">
+                            <div className="h-full rounded bg-purple-500/60" style={{ width: `${Math.max(2, (e.count / max) * 100)}%` }} />
+                          </div>
+                          <div className="text-xs tabular-nums w-20 text-right" style={{ color: "var(--muted)" }}>{e.count} ({e.uniqueUsers}u)</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="text-sm font-medium p-3" style={{ color: "var(--text)", borderBottom: "1px solid var(--border)" }}>
+                  Top Users ({stickiness.days}d){stickyEvent ? ` \u2014 ${stickyEvent}` : ""}
+                </div>
+                <table className="w-full text-sm">
+                  <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                    <tr>
+                      <th className="p-3 text-left">User</th>
+                      <th className="p-3 text-right">Uses</th>
+                      <th className="p-3 text-right">Active Days</th>
+                      <th className="p-3 text-right">Last Active</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stickiness.users.slice(0, 20).map((u) => (
+                      <tr key={u.userId} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                        <td className="p-3">
+                          <div className="font-medium">{u.displayName || u.username}</div>
+                          {u.displayName && <div className="text-xs" style={{ color: "var(--muted)" }}>{u.username}</div>}
+                        </td>
+                        <td className="p-3 text-right tabular-nums">
+                          <span style={{ color: u.uses >= 5 ? "#4ade80" : u.uses >= 2 ? "#fbbf24" : "#ef4444" }}>
+                            {u.uses}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right tabular-nums">{u.distinctDays}</td>
+                        <td className="p-3 text-right text-xs" style={{ color: "var(--muted)" }}>{fmtDate(u.lastUse)}</td>
+                      </tr>
+                    ))}
+                    {stickiness.users.length === 0 && (
+                      <tr><td colSpan={4} className="p-6 text-center" style={{ color: "var(--muted)" }}>No user activity in this period</td></tr>
+                    )}
+                  </tbody>
+                </table>
+                {stickiness.users.length > 20 && (
+                  <div className="p-3 text-center text-xs" style={{ color: "var(--muted)", borderTop: "1px solid var(--border)" }}>
+                    Showing top 20 of {stickiness.users.length} users
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function AdminAnalytics() {
@@ -153,6 +500,8 @@ export default function AdminAnalytics() {
 
   return (
     <div className="w-full">
+      <RetentionPanel />
+
       {/* Legacy Tool Usage Stats */}
       <div className="mb-8">
         <div className="flex items-start justify-between gap-4 mb-4">
