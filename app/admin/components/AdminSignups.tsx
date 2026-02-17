@@ -164,6 +164,11 @@ export default function AdminSignups() {
   const [quickDeleting, setQuickDeleting] = useState(false);
   const [quickDeleteResult, setQuickDeleteResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+  type TimeRange = '7d' | '30d' | '60d' | '90d' | '1y' | 'all';
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
+  const timeRangeLabels: Record<TimeRange, string> = { '7d': '7 Days', '30d': '30 Days', '60d': '60 Days', '90d': '90 Days', '1y': '1 Year', 'all': 'All Time' };
+  const timeRangeDays: Record<TimeRange, number | null> = { '7d': 7, '30d': 30, '60d': 60, '90d': 90, '1y': 365, 'all': null };
+
   const [reminderLoading, setReminderLoading] = useState(false);
   const [reminderSending, setReminderSending] = useState(false);
   const [reminderStats, setReminderStats] = useState<{ totalUnconfirmed: number; alreadyReminded: number; eligible: number } | null>(null);
@@ -310,40 +315,50 @@ export default function AdminSignups() {
     return signups.filter((s) => s.email.toLowerCase().includes(q));
   }, [signups, searchQ]);
 
+  const timeFilteredSignups = useMemo(() => {
+    const days = timeRangeDays[timeRange];
+    if (!days) return signups;
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return signups.filter((s) => new Date(s.createdAt) >= cutoff);
+  }, [signups, timeRange]);
+
   const stats = useMemo(() => {
-    const total = apiStats?.total ?? signups.length;
-    const today = apiStats?.last24h ?? 0;
-    const thisWeek = apiStats?.last7d ?? 0;
+    const total = timeRange === 'all' ? (apiStats?.total ?? signups.length) : timeFilteredSignups.length;
+    const now = new Date();
+    const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const today = timeFilteredSignups.filter((s) => new Date(s.createdAt) >= h24).length;
+    const thisWeek = timeFilteredSignups.filter((s) => new Date(s.createdAt) >= d7).length;
     return { total, today, thisWeek };
-  }, [signups, apiStats]);
+  }, [signups, apiStats, timeFilteredSignups, timeRange]);
 
   const stalenessData = useMemo(() => {
-    if (apiStats) {
+    if (timeRange === 'all' && apiStats) {
       return { last24h: apiStats.last24h, last7d: apiStats.last7d };
     }
     const now = new Date();
     const h24 = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const d7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const last24h = signups.filter((s) => new Date(s.createdAt) >= h24).length;
-    const last7d = signups.filter((s) => new Date(s.createdAt) >= d7).length;
+    const last24h = timeFilteredSignups.filter((s) => new Date(s.createdAt) >= h24).length;
+    const last7d = timeFilteredSignups.filter((s) => new Date(s.createdAt) >= d7).length;
     return { last24h, last7d };
-  }, [signups, apiStats]);
+  }, [timeFilteredSignups, apiStats, timeRange]);
 
   const topSourcesByField = useMemo(() => {
     const counts: Record<string, number> = {};
-    signups.forEach((s) => {
+    timeFilteredSignups.forEach((s) => {
       const src = s.source || "unknown";
       counts[src] = (counts[src] || 0) + 1;
     });
     return Object.entries(counts)
-      .map(([label, count]) => ({ label, count, pct: signups.length > 0 ? (count / signups.length) * 100 : 0 }))
+      .map(([label, count]) => ({ label, count, pct: timeFilteredSignups.length > 0 ? (count / timeFilteredSignups.length) * 100 : 0 }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, [signups]);
+  }, [timeFilteredSignups]);
 
   const topDays = useMemo(() => {
     const counts: Record<string, number> = {};
-    signups.forEach((s) => {
+    timeFilteredSignups.forEach((s) => {
       const day = s.createdAt.slice(0, 10);
       counts[day] = (counts[day] || 0) + 1;
     });
@@ -351,16 +366,16 @@ export default function AdminSignups() {
       .map(([day, count]) => ({ day, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, [signups]);
+  }, [timeFilteredSignups]);
 
   const trafficSources = useMemo<TrafficSourceData[]>(() => {
     const counts: Record<string, number> = {};
-    signups.forEach(s => {
+    timeFilteredSignups.forEach(s => {
       const label = getTrafficSourceLabel(s);
       counts[label] = (counts[label] || 0) + 1;
     });
     
-    const total = signups.length || 1;
+    const total = timeFilteredSignups.length || 1;
     return Object.entries(counts)
       .map(([label, count]) => ({
         label,
@@ -368,7 +383,7 @@ export default function AdminSignups() {
         percentage: (count / total) * 100,
       }))
       .sort((a, b) => b.count - a.count);
-  }, [signups]);
+  }, [timeFilteredSignups]);
 
   const onExport = () => {
     const rows = filtered.map((s) => ({
@@ -730,6 +745,24 @@ export default function AdminSignups() {
         )}
       </div>
 
+      {/* Time Range Filter */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Clock className="h-4 w-4" style={{ color: "var(--muted)" }} />
+          <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted)" }}>Signup Stats</span>
+        </div>
+        <select
+          value={timeRange}
+          onChange={(e) => setTimeRange(e.target.value as TimeRange)}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium border cursor-pointer focus:outline-none"
+          style={{ background: "var(--panel)", borderColor: "var(--border)", color: "var(--text)" }}
+        >
+          {(['7d', '30d', '60d', '90d', '1y', 'all'] as TimeRange[]).map((r) => (
+            <option key={r} value={r}>{timeRangeLabels[r]}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Stats Grid - Mobile optimized */}
       <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4">
         <div className="group relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent p-4 sm:p-5 transition-all hover:border-cyan-500/30">
@@ -740,7 +773,7 @@ export default function AdminSignups() {
                 <Users className="h-4 w-4 sm:h-5 sm:w-5 text-cyan-400" />
               </div>
               <div className="min-w-0">
-                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted)" }}>Total</p>
+                <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--muted)" }}>{timeRange === 'all' ? 'Total' : timeRangeLabels[timeRange]}</p>
                 <p className="text-xl sm:text-3xl font-black tabular-nums" style={{ color: "var(--text)" }}>{stats.total}</p>
               </div>
             </div>
