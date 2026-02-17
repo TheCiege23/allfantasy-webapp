@@ -94,6 +94,54 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/stickiness", t
       ORDER BY day ASC
     `, days)
 
+    const toolDistRows = await prisma.$queryRawUnsafe<{
+      event_type: string
+      bucket: string
+      user_count: bigint
+    }[]>(`
+      WITH per_user AS (
+        SELECT "eventType", "userId", COUNT(*) AS uses
+        FROM "UserEvent"
+        WHERE "createdAt" >= NOW() - ($1 || ' days')::interval
+        GROUP BY "eventType", "userId"
+      )
+      SELECT
+        "eventType" AS event_type,
+        CASE
+          WHEN uses = 1 THEN '1'
+          WHEN uses BETWEEN 2 AND 3 THEN '2-3'
+          WHEN uses BETWEEN 4 AND 9 THEN '4-9'
+          ELSE '10+'
+        END AS bucket,
+        COUNT(*) AS user_count
+      FROM per_user
+      GROUP BY "eventType", bucket
+      ORDER BY "eventType", bucket
+    `, days)
+
+    const toolDistribution: Record<string, { bucket: string; userCount: number }[]> = {}
+    for (const r of toolDistRows) {
+      if (!toolDistribution[r.event_type]) toolDistribution[r.event_type] = []
+      toolDistribution[r.event_type].push({
+        bucket: r.bucket,
+        userCount: Number(r.user_count),
+      })
+    }
+
+    const toolRepeatRate: { eventType: string; totalUsers: number; repeatUsers: number; repeatRate: number }[] = []
+    for (const [eventType, buckets] of Object.entries(toolDistribution)) {
+      const total = buckets.reduce((s, b) => s + b.userCount, 0)
+      const oneUse = buckets.find((b) => b.bucket === "1")?.userCount || 0
+      const repeat = total - oneUse
+      toolRepeatRate.push({
+        eventType,
+        totalUsers: total,
+        repeatUsers: repeat,
+        repeatRate: total > 0 ? Math.round((repeat / total) * 1000) / 10 : 0,
+      })
+    }
+    toolRepeatRate.sort((a, b) => b.repeatRate - a.repeatRate)
+
     return NextResponse.json({
       ok: true,
       days,
@@ -117,6 +165,8 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/stickiness", t
         events: Number(d.cnt),
         uniqueUsers: Number(d.unique_users),
       })),
+      toolDistribution,
+      toolRepeatRate,
     })
   } catch (err: unknown) {
     console.error("Stickiness API error:", err)

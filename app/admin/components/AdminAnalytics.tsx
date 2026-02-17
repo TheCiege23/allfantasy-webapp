@@ -66,6 +66,13 @@ type RetentionData = {
       sampleSize: number;
     };
   };
+  stickiness: {
+    dau: number;
+    wau: number;
+    mau: number;
+    dauWau: number;
+    wauMau: number;
+  };
   activity: {
     totalEvents: number;
     uniqueActiveUsers: number;
@@ -80,6 +87,13 @@ type StickinessUser = {
   uses: number;
   distinctDays: number;
   lastUse: string;
+};
+
+type ToolRepeatRate = {
+  eventType: string;
+  totalUsers: number;
+  repeatUsers: number;
+  repeatRate: number;
 };
 
 type StickinessData = {
@@ -97,6 +111,8 @@ type StickinessData = {
   users: StickinessUser[];
   eventTypeBreakdown: { eventType: string; count: number; uniqueUsers: number }[];
   dailyActivity: { day: string; events: number; uniqueUsers: number }[];
+  toolDistribution: Record<string, { bucket: string; userCount: number }[]>;
+  toolRepeatRate: ToolRepeatRate[];
 };
 
 function fmtDate(iso: string) {
@@ -239,6 +255,39 @@ function RetentionPanel() {
                     <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
                       signed up but no core action in 7d
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)", background: "linear-gradient(135deg, rgba(59,130,246,0.05), rgba(6,182,212,0.05))" }}>
+                <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>
+                  Stickiness Ratios
+                  <span className="ml-2 text-xs font-normal" style={{ color: "var(--muted)" }}>
+                    Industry-standard engagement metrics
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="p-3 rounded-lg border border-blue-500/20 bg-blue-500/5">
+                    <div className="text-2xl font-bold text-blue-300">{retention.stickiness.dauWau}%</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>DAU / WAU</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>daily vs weekly</div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-teal-500/20 bg-teal-500/5">
+                    <div className="text-2xl font-bold text-teal-300">{retention.stickiness.wauMau}%</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>WAU / MAU</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>weekly vs monthly</div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-slate-500/20 bg-slate-500/5">
+                    <div className="text-xl font-bold" style={{ color: "var(--text)" }}>{retention.stickiness.dau}</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>DAU</div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-slate-500/20 bg-slate-500/5">
+                    <div className="text-xl font-bold" style={{ color: "var(--text)" }}>{retention.stickiness.wau}</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>WAU</div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-slate-500/20 bg-slate-500/5">
+                    <div className="text-xl font-bold" style={{ color: "var(--text)" }}>{retention.stickiness.mau}</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>MAU</div>
                   </div>
                 </div>
               </div>
@@ -400,6 +449,76 @@ function RetentionPanel() {
                             <div className="h-full rounded bg-purple-500/60" style={{ width: `${Math.max(2, (e.count / max) * 100)}%` }} />
                           </div>
                           <div className="text-xs tabular-nums w-20 text-right" style={{ color: "var(--muted)" }}>{e.count} ({e.uniqueUsers}u)</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {stickiness.toolRepeatRate && stickiness.toolRepeatRate.length > 0 && (
+                <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)", background: "linear-gradient(135deg, rgba(59,130,246,0.05), rgba(168,85,247,0.05))" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>
+                    Tool Repeat Usage ({stickiness.days}d)
+                    <span className="ml-2 text-xs font-normal" style={{ color: "var(--muted)" }}>
+                      Distribution of how many times each user used a tool
+                    </span>
+                  </div>
+                  <div className="space-y-4">
+                    {stickiness.toolRepeatRate.map((tool) => {
+                      const dist = stickiness.toolDistribution[tool.eventType] || [];
+                      const total = tool.totalUsers;
+                      const bucketOrder = ["1", "2-3", "4-9", "10+"];
+                      const bucketColors: Record<string, string> = {
+                        "1": "bg-slate-500/60",
+                        "2-3": "bg-blue-500/60",
+                        "4-9": "bg-purple-500/60",
+                        "10+": "bg-green-500/60",
+                      };
+                      const bucketLabels: Record<string, string> = {
+                        "1": "1 use",
+                        "2-3": "2\u20133",
+                        "4-9": "4\u20139",
+                        "10+": "10+",
+                      };
+                      return (
+                        <div key={tool.eventType}>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-xs truncate" style={{ color: "var(--text)" }}>{tool.eventType}</div>
+                            <div className="text-xs font-medium" style={{ color: tool.repeatRate >= 40 ? "#4ade80" : tool.repeatRate >= 20 ? "#60a5fa" : "var(--muted)" }}>
+                              {tool.repeatRate}% used 2+ times
+                            </div>
+                          </div>
+                          <div className="flex h-5 rounded overflow-hidden bg-white/5">
+                            {bucketOrder.map((bucket) => {
+                              const found = dist.find((d) => d.bucket === bucket);
+                              const count = found?.userCount || 0;
+                              const pct = total > 0 ? (count / total) * 100 : 0;
+                              if (pct === 0) return null;
+                              return (
+                                <div
+                                  key={bucket}
+                                  className={`${bucketColors[bucket]} flex items-center justify-center`}
+                                  style={{ width: `${Math.max(pct, 3)}%` }}
+                                  title={`${bucketLabels[bucket]}: ${count} users (${Math.round(pct)}%)`}
+                                >
+                                  {pct >= 10 && <span className="text-[9px] text-white font-medium">{Math.round(pct)}%</span>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div className="flex gap-3 mt-1">
+                            {bucketOrder.map((bucket) => {
+                              const found = dist.find((d) => d.bucket === bucket);
+                              const count = found?.userCount || 0;
+                              return (
+                                <div key={bucket} className="flex items-center gap-1">
+                                  <div className={`w-2 h-2 rounded-sm ${bucketColors[bucket]}`} />
+                                  <span className="text-[9px]" style={{ color: "var(--muted)" }}>{bucketLabels[bucket]}: {count}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}

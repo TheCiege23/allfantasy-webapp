@@ -130,6 +130,28 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
     const total7 = Number(act7.total_users)
     const activated7 = Number(act7.activated_users)
 
+    const [dauRow, wauRow, mauRow] = await Promise.all([
+      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
+        SELECT COUNT(DISTINCT "userId") AS cnt
+        FROM "UserEvent"
+        WHERE "createdAt" >= NOW() - INTERVAL '1 day'
+      `),
+      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
+        SELECT COUNT(DISTINCT "userId") AS cnt
+        FROM "UserEvent"
+        WHERE "createdAt" >= NOW() - INTERVAL '7 days'
+      `),
+      prisma.$queryRawUnsafe<{ cnt: bigint }[]>(`
+        SELECT COUNT(DISTINCT "userId") AS cnt
+        FROM "UserEvent"
+        WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+      `),
+    ])
+
+    const dau = Number(dauRow[0]?.cnt ?? 0)
+    const wau = Number(wauRow[0]?.cnt ?? 0)
+    const mau = Number(mauRow[0]?.cnt ?? 0)
+
     const ttfvMinutes = ttfvRows.map((r) => r.minutes_to_value).filter((m) => m >= 0)
     const medianTTFV = ttfvMinutes.length > 0
       ? ttfvMinutes[Math.floor(ttfvMinutes.length / 2)]
@@ -167,6 +189,13 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
           medianFormatted: formatTTFV(medianTTFV),
           sampleSize: ttfvMinutes.length,
         },
+      },
+      stickiness: {
+        dau,
+        wau,
+        mau,
+        dauWau: wau > 0 ? Math.round((dau / wau) * 1000) / 10 : 0,
+        wauMau: mau > 0 ? Math.round((wau / mau) * 1000) / 10 : 0,
       },
       activity: {
         totalEvents: Number(summary.total_events),
