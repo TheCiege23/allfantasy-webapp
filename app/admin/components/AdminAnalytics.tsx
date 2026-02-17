@@ -116,6 +116,23 @@ type StickinessData = {
   toolRepeatRate: ToolRepeatRate[];
 };
 
+type SourceQualityRow = {
+  source: string;
+  users: number;
+  activated7d: number;
+  activationRate7d: number;
+  valueRetained7d: number;
+  valueRetentionRate7d: number;
+  avgCoreEvents: number;
+  totalCoreEvents: number;
+};
+
+type SourceQualityData = {
+  ok: boolean;
+  sources: SourceQualityRow[];
+  totalUsers: number;
+};
+
 function fmtDate(iso: string) {
   try {
     return new Date(iso).toLocaleString();
@@ -135,7 +152,8 @@ function RetentionPanel() {
   const [retentionWindow, setRetentionWindow] = useState(7);
   const [stickyDays, setStickyDays] = useState(7);
   const [stickyEvent, setStickyEvent] = useState("");
-  const [activeTab, setActiveTab] = useState<"retention" | "stickiness">("retention");
+  const [sourceQuality, setSourceQuality] = useState<SourceQualityData | null>(null);
+  const [activeTab, setActiveTab] = useState<"retention" | "stickiness" | "sources">("retention");
 
   const loadRetention = useCallback(async () => {
     setLoading(true);
@@ -157,8 +175,18 @@ function RetentionPanel() {
     setLoading(false);
   }, [stickyDays, stickyEvent]);
 
+  const loadSourceQuality = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/analytics/source-quality", { cache: "no-store" });
+      if (res.ok) setSourceQuality(await res.json());
+    } catch {}
+    setLoading(false);
+  }, []);
+
   useEffect(() => { loadRetention(); }, [loadRetention]);
   useEffect(() => { loadStickiness(); }, [loadStickiness]);
+  useEffect(() => { if (activeTab === "sources" && !sourceQuality) loadSourceQuality(); }, [activeTab, sourceQuality, loadSourceQuality]);
 
   const eventOptions = stickiness?.eventTypeBreakdown?.map((e) => e.eventType) || [];
 
@@ -171,7 +199,7 @@ function RetentionPanel() {
         <button
           className="px-3 py-1.5 rounded-lg border text-sm"
           style={{ borderColor: "var(--border)", background: "transparent" }}
-          onClick={() => { loadRetention(); loadStickiness(); }}
+          onClick={() => { loadRetention(); loadStickiness(); if (sourceQuality) loadSourceQuality(); }}
           disabled={loading}
         >
           {loading ? "Loading\u2026" : "Refresh"}
@@ -179,7 +207,7 @@ function RetentionPanel() {
       </div>
 
       <div className="flex gap-2 mb-4">
-        {(["retention", "stickiness"] as const).map((tab) => (
+        {(["retention", "stickiness", "sources"] as const).map((tab) => (
           <button
             key={tab}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
@@ -612,6 +640,101 @@ function RetentionPanel() {
                   </div>
                 )}
               </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {activeTab === "sources" && (
+        <div>
+          {!sourceQuality ? (
+            <div className="text-sm py-8 text-center" style={{ color: "var(--muted)" }}>Loading source quality data...</div>
+          ) : sourceQuality.sources.length === 0 ? (
+            <div className="rounded-xl border p-8 text-center" style={{ borderColor: "var(--border)" }}>
+              <div className="text-sm" style={{ color: "var(--muted)" }}>
+                No traffic source data yet. Source tracking begins when users log in with referrer/UTM data attached.
+              </div>
+              <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>
+                Use UTM parameters on your links (e.g. ?utm_source=google) to start tracking acquisition quality.
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: "var(--border)" }}>
+                <div className="text-xs font-medium p-3 flex items-center justify-between" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
+                  <span>Per-Source Quality ({sourceQuality.totalUsers} total users)</span>
+                  <span>Core actions: trade analysis, rankings, waiver, AI chat</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                      <tr>
+                        <th className="p-3 text-left text-xs">Source</th>
+                        <th className="p-3 text-right text-xs">Users</th>
+                        <th className="p-3 text-right text-xs">Activated (7d)</th>
+                        <th className="p-3 text-right text-xs">Value Retained (7d)</th>
+                        <th className="p-3 text-right text-xs">Avg Core Events / User</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sourceQuality.sources.map((s) => (
+                        <tr key={s.source} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                          <td className="p-3 text-xs font-medium" style={{ color: "var(--text)" }}>{s.source}</td>
+                          <td className="p-3 text-right tabular-nums text-xs">{s.users}</td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: s.activationRate7d >= 40 ? "#4ade80" : s.activationRate7d >= 20 ? "#fbbf24" : "#ef4444" }}>
+                              {s.activationRate7d}%
+                            </span>
+                            <span className="ml-1 text-[10px]" style={{ color: "var(--muted)" }}>({s.activated7d})</span>
+                          </td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: s.valueRetentionRate7d >= 30 ? "#4ade80" : s.valueRetentionRate7d >= 15 ? "#fbbf24" : "#ef4444" }}>
+                              {s.valueRetentionRate7d}%
+                            </span>
+                            <span className="ml-1 text-[10px]" style={{ color: "var(--muted)" }}>({s.valueRetained7d})</span>
+                          </td>
+                          <td className="p-3 text-right tabular-nums text-xs">
+                            <span style={{ color: s.avgCoreEvents >= 3 ? "#4ade80" : s.avgCoreEvents >= 1 ? "#60a5fa" : "var(--muted)" }}>
+                              {s.avgCoreEvents}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {sourceQuality.sources.length > 1 && (
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "linear-gradient(135deg, rgba(6,182,212,0.05), rgba(168,85,247,0.05))" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>Activation Rate by Source</div>
+                  <div className="space-y-2">
+                    {sourceQuality.sources.map((s) => {
+                      const maxRate = Math.max(...sourceQuality.sources.map(x => x.activationRate7d), 1);
+                      return (
+                        <div key={s.source} className="flex items-center gap-3">
+                          <div className="text-xs w-28 truncate" style={{ color: "var(--text)" }}>{s.source}</div>
+                          <div className="flex-1 h-5 rounded bg-white/5 overflow-hidden relative">
+                            <div
+                              className="h-full rounded"
+                              style={{
+                                width: `${Math.max(2, (s.activationRate7d / maxRate) * 100)}%`,
+                                background: s.activationRate7d >= 40 ? "rgba(74,222,128,0.5)" : s.activationRate7d >= 20 ? "rgba(251,191,36,0.5)" : "rgba(239,68,68,0.4)",
+                              }}
+                            />
+                            {s.activationRate7d > 0 && (
+                              <span className="absolute inset-y-0 flex items-center pl-2 text-[10px] font-medium text-white">
+                                {s.activationRate7d}%
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] tabular-nums w-14 text-right" style={{ color: "var(--muted)" }}>{s.users} users</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

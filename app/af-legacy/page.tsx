@@ -2857,12 +2857,17 @@ function AFLegacyContent() {
         import_progress: 0,
       })
 
+      const urlParams = new URLSearchParams(window.location.search)
       fetch('/api/legacy/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           sleeper_username: username.trim(),
           sleeper_id: data.sleeper_user_id,
+          referrer: document.referrer || null,
+          utm_source: urlParams.get('utm_source') || null,
+          utm_medium: urlParams.get('utm_medium') || null,
+          utm_campaign: urlParams.get('utm_campaign') || null,
         }),
       }).catch(() => {})
       
@@ -2892,12 +2897,17 @@ function AFLegacyContent() {
       setAiReport(data.latest_ai_report ?? null)
       setRankingPreview(data.ranking_preview ?? null)
 
+      const urlP = new URLSearchParams(window.location.search)
       fetch('/api/legacy/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           sleeper_username: clean,
           sleeper_id: data.profile?.sleeper_user_id,
+          referrer: document.referrer || null,
+          utm_source: urlP.get('utm_source') || null,
+          utm_medium: urlP.get('utm_medium') || null,
+          utm_campaign: urlP.get('utm_campaign') || null,
         }),
       }).catch(() => {})
     }

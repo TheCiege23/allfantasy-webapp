@@ -36,7 +36,17 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/session", tool: "Legac
       sleeperId,
     })
 
-    logUserEventByUsername(sleeperUsername, 'user_login')
+    const referrer = typeof body.referrer === 'string' ? body.referrer.slice(0, 500) : null
+    const utmSource = typeof body.utm_source === 'string' ? body.utm_source.slice(0, 128) : null
+    const utmMedium = typeof body.utm_medium === 'string' ? body.utm_medium.slice(0, 128) : null
+    const utmCampaign = typeof body.utm_campaign === 'string' ? body.utm_campaign.slice(0, 128) : null
+
+    logUserEventByUsername(sleeperUsername, 'user_login', {
+      ...(referrer ? { referrer } : {}),
+      ...(utmSource ? { utm_source: utmSource } : {}),
+      ...(utmMedium ? { utm_medium: utmMedium } : {}),
+      ...(utmCampaign ? { utm_campaign: utmCampaign } : {}),
+    })
 
     return NextResponse.json({ success: true, username: sleeperUsername })
   } catch (e) {
