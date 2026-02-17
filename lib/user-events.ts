@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 
 export type UserEventType =
   | "trade_analysis_completed"
@@ -26,7 +27,7 @@ export function logUserEvent(
     data: {
       userId,
       eventType,
-      metadata: metadata ?? undefined,
+      metadata: (metadata ?? undefined) as Prisma.InputJsonValue | undefined,
     },
   }).catch(() => {});
 }
