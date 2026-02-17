@@ -157,6 +157,36 @@ function fmtDate(iso: string) {
   }
 }
 
+function downloadCsv(filename: string, headers: string[], rows: string[][]) {
+  const escape = (v: string) => {
+    const s = String(v ?? "");
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers.map(escape).join(","), ...rows.map((r) => r.map(escape).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExportButton({ onClick, label }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+      style={{ background: "var(--accent)", color: "#fff", opacity: 0.9 }}
+      onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+      onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.9")}
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      {label || "Export CSV"}
+    </button>
+  );
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -412,6 +442,20 @@ function RetentionPanel() {
                 </div>
               </div>
 
+              <div className="flex justify-end mb-2">
+                <ExportButton
+                  label="Export Cohorts CSV"
+                  onClick={() => {
+                    if (!retention) return;
+                    const headers = ["Type", "Cohort", "Total Users", "Returned/Valued", "Rate (%)"];
+                    const rows: string[][] = [
+                      ...retention.cohorts.map((c) => ["Login Retention", c.label, String(c.totalUsers), String(c.returnedUsers), String(c.retentionRate)]),
+                      ...retention.valueCohorts.map((c) => ["Value Retention", c.label, String(c.totalUsers), String(c.returnedUsers), String(c.retentionRate)]),
+                    ];
+                    downloadCsv(`cohorts_${retention.cohortSizeDays}d_window${retention.windowDays}d.csv`, headers, rows);
+                  }}
+                />
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
                 <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
                   <div className="text-xs font-medium p-3 flex items-center gap-2" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
@@ -704,8 +748,17 @@ function RetentionPanel() {
               )}
 
               <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-                <div className="text-sm font-medium p-3" style={{ color: "var(--text)", borderBottom: "1px solid var(--border)" }}>
-                  Top Users ({stickiness.days}d){stickyEvent ? ` \u2014 ${stickyEvent}` : ""}
+                <div className="text-sm font-medium p-3 flex items-center justify-between" style={{ color: "var(--text)", borderBottom: "1px solid var(--border)" }}>
+                  <span>Top Users ({stickiness.days}d){stickyEvent ? ` \u2014 ${stickyEvent}` : ""}</span>
+                  <ExportButton
+                    label="Export Users CSV"
+                    onClick={() => {
+                      if (!stickiness) return;
+                      const headers = ["Username", "Display Name", "Total Uses", "Active Days", "Last Active"];
+                      const rows = stickiness.users.map((u) => [u.username, u.displayName || "", String(u.uses), String(u.distinctDays), u.lastUse]);
+                      downloadCsv(`tool_usage_per_user_${stickiness.days}d${stickyEvent ? `_${stickyEvent}` : ""}.csv`, headers, rows);
+                    }}
+                  />
                 </div>
                 <table className="w-full text-sm">
                   <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
@@ -766,7 +819,18 @@ function RetentionPanel() {
               <div className="rounded-xl border overflow-hidden mb-4" style={{ borderColor: "var(--border)" }}>
                 <div className="text-xs font-medium p-3 flex items-center justify-between" style={{ color: "var(--muted)", borderBottom: "1px solid var(--border)" }}>
                   <span>Per-Source Quality ({sourceQuality.totalUsers} total users)</span>
-                  <span>Core actions: trade analysis, rankings, waiver, AI chat</span>
+                  <div className="flex items-center gap-3">
+                    <span>Core actions: trade analysis, rankings, waiver, AI chat</span>
+                    <ExportButton
+                      label="Export Sources CSV"
+                      onClick={() => {
+                        if (!sourceQuality) return;
+                        const headers = ["Source", "Users", "Activated (7d)", "Activation Rate (%)", "Value Retained (7d)", "Value Retention Rate (%)", "Avg Core Events", "Total Core Events"];
+                        const rows = sourceQuality.sources.map((s) => [s.source, String(s.users), String(s.activated7d), String(s.activationRate7d), String(s.valueRetained7d), String(s.valueRetentionRate7d), String(s.avgCoreEvents), String(s.totalCoreEvents)]);
+                        downloadCsv("source_quality.csv", headers, rows);
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
