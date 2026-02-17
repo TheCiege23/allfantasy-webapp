@@ -149,11 +149,7 @@ export const POST = withApiUsage({ endpoint: "/api/admin/send-reminders", tool: 
         console.error(`[REMINDER] Failed:`, msg);
       }
 
-      await new Promise(r => setTimeout(r, 500));
-
-      if ((i + 1) % 5 === 0) {
-        await new Promise(r => setTimeout(r, 1500));
-      }
+      await new Promise(r => setTimeout(r, 650));
     }
 
     await prisma.analyticsEvent.create({
