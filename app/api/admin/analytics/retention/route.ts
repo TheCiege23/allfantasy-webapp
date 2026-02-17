@@ -208,12 +208,52 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
       return `${Math.round(minutes / 1440 * 10) / 10} days`
     }
 
+    const funnelRows = await prisma.$queryRawUnsafe<{
+      new_users: bigint
+      did_core: bigint
+      did_repeat: bigint
+      did_breadth: bigint
+    }[]>(`
+      WITH recent_users AS (
+        SELECT id FROM "LegacyUser"
+        WHERE "createdAt" >= NOW() - INTERVAL '30 days'
+      ),
+      user_core AS (
+        SELECT e."userId", e."eventType", COUNT(*) AS cnt
+        FROM "UserEvent" e
+        INNER JOIN recent_users ru ON ru.id = e."userId"
+        WHERE e."eventType" IN (${coreList})
+        GROUP BY e."userId", e."eventType"
+      ),
+      user_agg AS (
+        SELECT
+          "userId",
+          COUNT(DISTINCT "eventType") AS distinct_tools,
+          MAX(cnt) AS max_single_tool
+        FROM user_core
+        GROUP BY "userId"
+      )
+      SELECT
+        (SELECT COUNT(*) FROM recent_users) AS new_users,
+        (SELECT COUNT(DISTINCT "userId") FROM user_core) AS did_core,
+        (SELECT COUNT(*) FROM user_agg WHERE max_single_tool >= 2) AS did_repeat,
+        (SELECT COUNT(*) FROM user_agg WHERE distinct_tools >= 2) AS did_breadth
+    `)
+
+    const funnel = funnelRows[0] ? {
+      newUsers: Number(funnelRows[0].new_users),
+      didCore: Number(funnelRows[0].did_core),
+      didRepeat: Number(funnelRows[0].did_repeat),
+      didBreadth: Number(funnelRows[0].did_breadth),
+    } : { newUsers: 0, didCore: 0, didRepeat: 0, didBreadth: 0 }
+
     return NextResponse.json({
       ok: true,
       windowDays,
       cohortSizeDays,
       cohorts,
       valueCohorts,
+      funnel,
       overall: {
         totalUsers: totalUsersAll,
         returnedUsers: totalReturnedAll,

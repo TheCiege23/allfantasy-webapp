@@ -53,6 +53,12 @@ type RetentionData = {
   cohortSizeDays: number;
   cohorts: RetentionCohort[];
   valueCohorts: RetentionCohort[];
+  funnel: {
+    newUsers: number;
+    didCore: number;
+    didRepeat: number;
+    didBreadth: number;
+  };
   overall: { totalUsers: number; returnedUsers: number; retentionRate: number; valueReturnedUsers: number; valueRetentionRate: number };
   activation: {
     coreEvents: string[];
@@ -320,6 +326,61 @@ function RetentionPanel() {
                   </div>
                 </div>
               </div>
+
+              {retention.funnel && (
+                <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)", background: "linear-gradient(135deg, rgba(168,85,247,0.05), rgba(6,182,212,0.05))" }}>
+                  <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>
+                    User Funnel
+                    <span className="ml-2 text-xs font-normal" style={{ color: "var(--muted)" }}>
+                      Last 30 days
+                    </span>
+                  </div>
+                  {(() => {
+                    const f = retention.funnel;
+                    const steps = [
+                      { label: "New Users", value: f.newUsers, color: "#94a3b8" },
+                      { label: "Did Any Core Action", value: f.didCore, color: "#60a5fa" },
+                      { label: "Repeated Same Tool", value: f.didRepeat, color: "#a78bfa" },
+                      { label: "Used 2+ Different Tools", value: f.didBreadth, color: "#4ade80" },
+                    ];
+                    const max = Math.max(f.newUsers, 1);
+                    return (
+                      <div className="space-y-2">
+                        {steps.map((step, i) => {
+                          const pct = max > 0 ? Math.round((step.value / max) * 1000) / 10 : 0;
+                          const convFromPrev = i > 0 && steps[i - 1].value > 0
+                            ? Math.round((step.value / steps[i - 1].value) * 1000) / 10
+                            : null;
+                          return (
+                            <div key={step.label}>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-medium" style={{ color: "var(--text)" }}>{step.label}</span>
+                                  {i > 0 && convFromPrev !== null && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)" }}>
+                                      {convFromPrev}% of prev
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs tabular-nums font-bold" style={{ color: step.color }}>{step.value}</span>
+                                  <span className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>({pct}%)</span>
+                                </div>
+                              </div>
+                              <div className="h-6 rounded bg-white/5 overflow-hidden relative">
+                                <div
+                                  className="h-full rounded transition-all"
+                                  style={{ width: `${Math.max(pct, 1)}%`, background: step.color + "80" }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
