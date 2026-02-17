@@ -53,6 +53,19 @@ type RetentionData = {
   cohortSizeDays: number;
   cohorts: RetentionCohort[];
   overall: { totalUsers: number; returnedUsers: number; retentionRate: number };
+  activation: {
+    coreEvents: string[];
+    rate24h: number;
+    rate7d: number;
+    activated24h: number;
+    activated7d: number;
+    totalUsers: number;
+    timeToFirstValue: {
+      medianMinutes: number | null;
+      medianFormatted: string | null;
+      sampleSize: number;
+    };
+  };
   activity: {
     totalEvents: number;
     uniqueActiveUsers: number;
@@ -187,6 +200,49 @@ function RetentionPanel() {
 
           {retention && (
             <>
+              <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)", background: "linear-gradient(135deg, rgba(6,182,212,0.05), rgba(168,85,247,0.05))" }}>
+                <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>
+                  Activation
+                  <span className="ml-2 text-xs font-normal" style={{ color: "var(--muted)" }}>
+                    User completes a core action (trade analysis, rankings, waiver, or AI chat)
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3 rounded-lg border border-cyan-500/20 bg-cyan-500/5">
+                    <div className="text-2xl font-bold text-cyan-300">{retention.activation.rate24h}%</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>24h Activation</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                      {retention.activation.activated24h}/{retention.activation.totalUsers} users
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-purple-500/20 bg-purple-500/5">
+                    <div className="text-2xl font-bold text-purple-300">{retention.activation.rate7d}%</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>7d Activation</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                      {retention.activation.activated7d}/{retention.activation.totalUsers} users
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-green-500/20 bg-green-500/5">
+                    <div className="text-2xl font-bold text-green-300">
+                      {retention.activation.timeToFirstValue.medianFormatted || "N/A"}
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Time to First Value</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                      median, n={retention.activation.timeToFirstValue.sampleSize}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                    <div className="text-2xl font-bold text-amber-300">
+                      {retention.activation.totalUsers - retention.activation.activated7d}
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Never Activated</div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>
+                      signed up but no core action in 7d
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
                   <div className="text-xl font-bold text-cyan-300">{retention.overall.retentionRate}%</div>

@@ -81,6 +81,68 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
 
     const summary = summaryRow[0] || { total_events: BigInt(0), unique_users: BigInt(0) }
 
+    const coreEvents = [
+      'trade_analysis_completed',
+      'rankings_analysis_completed',
+      'waiver_analysis_completed',
+      'ai_chat_used',
+    ]
+    const coreList = coreEvents.map((e) => `'${e}'`).join(",")
+
+    const [activation24h, activation7d, ttfvRows] = await Promise.all([
+      prisma.$queryRawUnsafe<{ total_users: bigint; activated_users: bigint }[]>(`
+        SELECT
+          COUNT(DISTINCT u.id) AS total_users,
+          COUNT(DISTINCT e."userId") AS activated_users
+        FROM "LegacyUser" u
+        LEFT JOIN "UserEvent" e
+          ON e."userId" = u.id
+          AND e."eventType" IN (${coreList})
+          AND e."createdAt" <= u."createdAt" + INTERVAL '24 hours'
+      `),
+      prisma.$queryRawUnsafe<{ total_users: bigint; activated_users: bigint }[]>(`
+        SELECT
+          COUNT(DISTINCT u.id) AS total_users,
+          COUNT(DISTINCT e."userId") AS activated_users
+        FROM "LegacyUser" u
+        LEFT JOIN "UserEvent" e
+          ON e."userId" = u.id
+          AND e."eventType" IN (${coreList})
+          AND e."createdAt" <= u."createdAt" + INTERVAL '7 days'
+      `),
+      prisma.$queryRawUnsafe<{ minutes_to_value: number }[]>(`
+        SELECT
+          EXTRACT(EPOCH FROM (MIN(e."createdAt") - u."createdAt")) / 60.0 AS minutes_to_value
+        FROM "LegacyUser" u
+        JOIN "UserEvent" e
+          ON e."userId" = u.id
+          AND e."eventType" IN (${coreList})
+        GROUP BY u.id
+        ORDER BY minutes_to_value ASC
+      `),
+    ])
+
+    const act24 = activation24h[0] || { total_users: BigInt(0), activated_users: BigInt(0) }
+    const act7 = activation7d[0] || { total_users: BigInt(0), activated_users: BigInt(0) }
+
+    const total24 = Number(act24.total_users)
+    const activated24 = Number(act24.activated_users)
+    const total7 = Number(act7.total_users)
+    const activated7 = Number(act7.activated_users)
+
+    const ttfvMinutes = ttfvRows.map((r) => r.minutes_to_value).filter((m) => m >= 0)
+    const medianTTFV = ttfvMinutes.length > 0
+      ? ttfvMinutes[Math.floor(ttfvMinutes.length / 2)]
+      : null
+
+    function formatTTFV(minutes: number | null) {
+      if (minutes === null) return null
+      if (minutes < 1) return "< 1 min"
+      if (minutes < 60) return `${Math.round(minutes)} min`
+      if (minutes < 1440) return `${Math.round(minutes / 60 * 10) / 10} hrs`
+      return `${Math.round(minutes / 1440 * 10) / 10} days`
+    }
+
     return NextResponse.json({
       ok: true,
       windowDays,
@@ -92,6 +154,19 @@ export const GET = withApiUsage({ endpoint: "/api/admin/analytics/retention", to
         retentionRate: totalUsersAll > 0
           ? Math.round((totalReturnedAll / totalUsersAll) * 1000) / 10
           : 0,
+      },
+      activation: {
+        coreEvents,
+        rate24h: total24 > 0 ? Math.round((activated24 / total24) * 1000) / 10 : 0,
+        rate7d: total7 > 0 ? Math.round((activated7 / total7) * 1000) / 10 : 0,
+        activated24h: activated24,
+        activated7d: activated7,
+        totalUsers: total24,
+        timeToFirstValue: {
+          medianMinutes: medianTTFV !== null ? Math.round(medianTTFV * 10) / 10 : null,
+          medianFormatted: formatTTFV(medianTTFV),
+          sampleSize: ttfvMinutes.length,
+        },
       },
       activity: {
         totalEvents: Number(summary.total_events),
