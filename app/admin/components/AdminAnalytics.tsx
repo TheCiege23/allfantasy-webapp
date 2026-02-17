@@ -85,6 +85,29 @@ type RetentionData = {
     uniqueActiveUsers: number;
     breakdown: { eventType: string; count: number }[];
   };
+  productHealth: {
+    newUsers30d: number;
+    activation24h: { rate: number; activated: number; total: number };
+    activation7d: { rate: number; activated: number; total: number };
+    timeToFirstValue: { medianMinutes: number | null; medianFormatted: string | null; sampleSize: number };
+    valueRetention7d: { week0Users: number; retainedUsers: number; rate: number };
+    depthOfEngagement: {
+      activatedUsers: number;
+      avgRunsPerUser: number;
+      multiToolPct: number;
+      multiToolUsers: number;
+      powerUserPct: number;
+      powerUsers: number;
+    };
+    chatAmplifier: {
+      chatAdoptionPct: number;
+      chatUsers: number;
+      activatedUsers: number;
+      chatRetentionRate: number;
+      noChatRetentionRate: number;
+      retentionMultiplier: number;
+    };
+  };
 };
 
 type StickinessUser = {
@@ -199,7 +222,7 @@ function RetentionPanel() {
   const [stickyDays, setStickyDays] = useState(7);
   const [stickyEvent, setStickyEvent] = useState("");
   const [sourceQuality, setSourceQuality] = useState<SourceQualityData | null>(null);
-  const [activeTab, setActiveTab] = useState<"retention" | "stickiness" | "sources">("retention");
+  const [activeTab, setActiveTab] = useState<"health" | "retention" | "stickiness" | "sources">("health");
 
   const loadRetention = useCallback(async () => {
     setLoading(true);
@@ -252,22 +275,171 @@ function RetentionPanel() {
         </button>
       </div>
 
-      <div className="flex gap-2 mb-4">
-        {(["retention", "stickiness", "sources"] as const).map((tab) => (
-          <button
-            key={tab}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            style={{
-              background: activeTab === tab ? "var(--accent)" : "transparent",
-              color: activeTab === tab ? "#fff" : "var(--muted)",
-              border: activeTab === tab ? "none" : "1px solid var(--border)",
-            }}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab === "retention" ? "Retention Cohorts" : "Tool Stickiness"}
-          </button>
-        ))}
+      <div className="flex flex-wrap gap-2 mb-4">
+        {(["health", "retention", "stickiness", "sources"] as const).map((tab) => {
+          const labels: Record<string, string> = { health: "Product Health", retention: "Retention Cohorts", stickiness: "Tool Stickiness", sources: "Sources" };
+          return (
+            <button
+              key={tab}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                background: activeTab === tab ? "var(--accent)" : "transparent",
+                color: activeTab === tab ? "#fff" : "var(--muted)",
+                border: activeTab === tab ? "none" : "1px solid var(--border)",
+              }}
+              onClick={() => setActiveTab(tab)}
+            >
+              {labels[tab]}
+            </button>
+          );
+        })}
       </div>
+
+      {activeTab === "health" && retention?.productHealth && (
+        <div>
+          <div className="rounded-xl border p-5 mb-4" style={{ borderColor: "var(--border)", background: "linear-gradient(135deg, rgba(6,182,212,0.08), rgba(168,85,247,0.08), rgba(34,197,94,0.08))" }}>
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-sm font-semibold" style={{ color: "var(--text)" }}>Product Health (Last 30 Days)</div>
+              <ExportButton
+                label="Export Health CSV"
+                onClick={() => {
+                  const ph = retention.productHealth;
+                  const headers = ["Metric", "Value", "Detail"];
+                  const rows: string[][] = [
+                    ["New Users (30d)", String(ph.newUsers30d), ""],
+                    ["24h Activation Rate", `${ph.activation24h.rate}%`, `${ph.activation24h.activated}/${ph.activation24h.total}`],
+                    ["7d Activation Rate", `${ph.activation7d.rate}%`, `${ph.activation7d.activated}/${ph.activation7d.total}`],
+                    ["Median Time to First Value", ph.timeToFirstValue.medianFormatted || "N/A", `${ph.timeToFirstValue.sampleSize} samples`],
+                    ["7d Value Retention", `${ph.valueRetention7d.rate}%`, `${ph.valueRetention7d.retainedUsers}/${ph.valueRetention7d.week0Users}`],
+                    ["Avg Analyzer Runs / Activated User", String(ph.depthOfEngagement.avgRunsPerUser), `${ph.depthOfEngagement.activatedUsers} activated`],
+                    ["Multi-Tool Users", `${ph.depthOfEngagement.multiToolPct}%`, `${ph.depthOfEngagement.multiToolUsers} users used 2+ analyzers`],
+                    ["Power Users (3+ runs)", `${ph.depthOfEngagement.powerUserPct}%`, `${ph.depthOfEngagement.powerUsers} users`],
+                    ["AI Chat Adoption", `${ph.chatAmplifier.chatAdoptionPct}%`, `${ph.chatAmplifier.chatUsers}/${ph.chatAmplifier.activatedUsers} activated users`],
+                    ["Chat User Retention", `${ph.chatAmplifier.chatRetentionRate}%`, "vs " + ph.chatAmplifier.noChatRetentionRate + "% without chat"],
+                    ["Retention Multiplier", `${ph.chatAmplifier.retentionMultiplier}x`, "chat users vs non-chat"],
+                  ];
+                  downloadCsv("product_health_30d.csv", headers, rows);
+                }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-5">
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: "var(--text)" }}>{retention.productHealth.newUsers30d}</div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>New Users</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: retention.productHealth.activation24h.rate >= 50 ? "#22c55e" : retention.productHealth.activation24h.rate >= 30 ? "#eab308" : "#ef4444" }}>
+                  {retention.productHealth.activation24h.rate}%
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>24h Activation</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.activation24h.activated}/{retention.productHealth.activation24h.total}</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: retention.productHealth.activation7d.rate >= 60 ? "#22c55e" : retention.productHealth.activation7d.rate >= 40 ? "#eab308" : "#ef4444" }}>
+                  {retention.productHealth.activation7d.rate}%
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>7d Activation</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.activation7d.activated}/{retention.productHealth.activation7d.total}</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: "var(--text)" }}>
+                  {retention.productHealth.timeToFirstValue.medianFormatted || "N/A"}
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Time to First Value</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.timeToFirstValue.sampleSize} users measured</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: retention.productHealth.valueRetention7d.rate >= 40 ? "#22c55e" : retention.productHealth.valueRetention7d.rate >= 20 ? "#eab308" : "#ef4444" }}>
+                  {retention.productHealth.valueRetention7d.rate}%
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>7d Value Retention</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.valueRetention7d.retainedUsers}/{retention.productHealth.valueRetention7d.week0Users} week-over-week</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: "var(--text)" }}>
+                  {retention.productHealth.depthOfEngagement.avgRunsPerUser}
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Avg Runs / Activated User</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.depthOfEngagement.activatedUsers} activated users</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: retention.productHealth.depthOfEngagement.multiToolPct >= 25 ? "#22c55e" : retention.productHealth.depthOfEngagement.multiToolPct >= 10 ? "#eab308" : "#ef4444" }}>
+                  {retention.productHealth.depthOfEngagement.multiToolPct}%
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Multi-Tool Users</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.depthOfEngagement.multiToolUsers} used 2+ analyzers</div>
+              </div>
+              <div className="p-4 rounded-xl border bg-white/5" style={{ borderColor: "var(--border)" }}>
+                <div className="text-2xl font-bold tabular-nums" style={{ color: retention.productHealth.depthOfEngagement.powerUserPct >= 30 ? "#22c55e" : retention.productHealth.depthOfEngagement.powerUserPct >= 15 ? "#eab308" : "#ef4444" }}>
+                  {retention.productHealth.depthOfEngagement.powerUserPct}%
+                </div>
+                <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>3+ Total Analyses</div>
+                <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>{retention.productHealth.depthOfEngagement.powerUsers} power users</div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "rgba(168,85,247,0.06)" }}>
+              <div className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>
+                AI Chat — Engagement Amplifier
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="text-center">
+                  <div className="text-xl font-bold tabular-nums" style={{ color: "#a855f7" }}>
+                    {retention.productHealth.chatAmplifier.chatAdoptionPct}%
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                    of activated users also used AI Chat
+                  </div>
+                  <div className="text-[10px] tabular-nums" style={{ color: "var(--muted)" }}>
+                    {retention.productHealth.chatAmplifier.chatUsers}/{retention.productHealth.chatAmplifier.activatedUsers}
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <div>
+                      <div className="text-lg font-bold tabular-nums" style={{ color: "#22c55e" }}>
+                        {retention.productHealth.chatAmplifier.chatRetentionRate}%
+                      </div>
+                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>w/ Chat</div>
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>vs</div>
+                    <div>
+                      <div className="text-lg font-bold tabular-nums" style={{ color: "var(--muted)" }}>
+                        {retention.productHealth.chatAmplifier.noChatRetentionRate}%
+                      </div>
+                      <div className="text-[10px]" style={{ color: "var(--muted)" }}>w/o Chat</div>
+                    </div>
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>7d Retention Comparison</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xl font-bold tabular-nums" style={{ color: retention.productHealth.chatAmplifier.retentionMultiplier >= 1.5 ? "#22c55e" : retention.productHealth.chatAmplifier.retentionMultiplier >= 1.0 ? "#eab308" : "var(--muted)" }}>
+                    {retention.productHealth.chatAmplifier.retentionMultiplier}x
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+                    Retention Multiplier
+                  </div>
+                  <div className="text-[10px]" style={{ color: "var(--muted)" }}>
+                    Chat users vs non-chat
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 text-[10px] text-center" style={{ color: "var(--muted)" }}>
+              Core analyzers: Trade Analyzer, Rankings, Waiver AI. AI Chat tracked separately as engagement amplifier.
+              <br />Activation: all-time users. Value Retention: week 0 vs week 1 (rolling 14d). Depth &amp; Chat: last 30 days. Chat retention uses same week0/week1 cohort window.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "health" && !retention?.productHealth && (
+        <div className="text-sm py-8 text-center" style={{ color: "var(--muted)" }}>
+          {loading ? "Loading product health data..." : "No product health data available. Click Refresh to load."}
+        </div>
+      )}
 
       {activeTab === "retention" && (
         <div>
