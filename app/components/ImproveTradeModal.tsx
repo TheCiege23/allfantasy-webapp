@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus, Check, Search, Globe, Brain, Zap } from 'lucide-react'
+import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus, Check, Search, Globe, Brain, Zap, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { gtagEvent } from '@/lib/gtag'
 
@@ -56,6 +56,7 @@ export default function ImproveTradeModal({
   const [moreCount, setMoreCount] = useState(0)
   const [lastResetTime, setLastResetTime] = useState<number | null>(null)
   const [thinkingPhase, setThinkingPhase] = useState(0)
+  const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({})
 
   useEffect(() => {
     if (!isOpen) return
@@ -88,6 +89,7 @@ export default function ImproveTradeModal({
     setSuggestions([])
     setStreamText('')
     setError('')
+    setFeedback({})
 
     gtagEvent('improve_trade_modal_opened', {
       league_size: leagueSize,
@@ -337,6 +339,28 @@ export default function ImproveTradeModal({
     navigator.clipboard.writeText(text)
     toast.success('Suggestion copied — paste into your league chat!')
     gtagEvent('improve_trade_suggestion_copied', { scoring, is_dynasty: isDynasty })
+  }
+
+  const submitFeedback = (index: number, direction: 'up' | 'down') => {
+    const prev = feedback[index]
+    if (prev === direction) {
+      setFeedback((f) => { const n = { ...f }; delete n[index]; return n })
+      return
+    }
+    setFeedback((f) => ({ ...f, [index]: direction }))
+    gtagEvent('improve_trade_suggestion_feedback', {
+      direction,
+      suggestion_index: index,
+      suggestion_title: suggestions[index]?.title || '',
+      scoring,
+      is_dynasty: isDynasty,
+      league_size: leagueSize,
+    })
+    if (direction === 'up') {
+      toast.success('Thanks! We\'ll learn from this.')
+    } else {
+      toast('Noted — we\'ll improve future suggestions.', { icon: '📝' })
+    }
   }
 
   useEffect(() => {
@@ -638,14 +662,32 @@ export default function ImproveTradeModal({
                         </div>
                       )}
 
-                      <button
-                        onClick={() => copySuggestion(sug.counter)}
-                        className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.97]"
-                        style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                        Copy counter-offer
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => copySuggestion(sug.counter)}
+                          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.97]"
+                          style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          Copy counter-offer
+                        </button>
+                        <div className="flex items-center gap-1 ml-auto">
+                          <button
+                            onClick={() => submitFeedback(i, 'up')}
+                            className={`p-2 rounded-lg transition-all active:scale-90 ${feedback[i] === 'up' ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-emerald-500/10 text-[var(--muted2)] hover:text-emerald-400'}`}
+                            title="Good suggestion"
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => submitFeedback(i, 'down')}
+                            className={`p-2 rounded-lg transition-all active:scale-90 ${feedback[i] === 'down' ? 'bg-red-500/20 text-red-400' : 'hover:bg-red-500/10 text-[var(--muted2)] hover:text-red-400'}`}
+                            title="Not helpful"
+                          >
+                            <ThumbsDown className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     </motion.div>
                   ))}
 
