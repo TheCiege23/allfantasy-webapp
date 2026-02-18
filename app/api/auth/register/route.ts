@@ -80,7 +80,7 @@ export async function POST(req: Request) {
         displayName: displayName?.trim() || cleanUsername,
         phone: phone?.trim() || null,
         ageConfirmedAt: new Date(),
-        verificationMethod: verificationMethod || "email",
+        verificationMethod: verificationMethod === "PHONE" ? "PHONE" : "EMAIL",
         ...sleeperData,
         profileComplete: false,
       },

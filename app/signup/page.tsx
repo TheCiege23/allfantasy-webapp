@@ -72,7 +72,7 @@ export default function SignupPage() {
           phone: phone.trim() || undefined,
           sleeperUsername: sleeperResult?.found ? sleeperResult.username : undefined,
           ageConfirmed,
-          verificationMethod: "email",
+          verificationMethod: "EMAIL",
         }),
       })
 
