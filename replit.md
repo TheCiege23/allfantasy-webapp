@@ -20,9 +20,9 @@ The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind
 
 **Authentication System:**
 -   **Password signup**: `/signup` page collects username (unique, required), email, password, display name, phone (optional), Sleeper username (optional with live lookup), 18+ age confirmation. Registration via `/api/auth/register`. Sends hashed email verification token on signup.
--   **Email verification**: Separate from login. Token-based with SHA-256 hashed storage (`EmailVerifyToken`). Register sends token email; `/verify` page has "Send verification email" button for resend (requires session). `/api/auth/verify-email?token=` hashes token, validates, sets `AppUser.emailVerified`. Redirects to `/verify?status=success|expired|invalid`.
+-   **Email verification**: Separate from login. Token-based with SHA-256 hashed storage (`EmailVerifyToken`). Register sends token email; `/verify` page has "Send verification email" button for resend (requires session). `/verify/email?token=` hashes token, validates, sets `AppUser.emailVerified`. Redirects to `/verify?verified=email` or `/verify?error=...`.
 -   **Password login**: `/login` page with password-only form. Credentials provider accepts email or username + password. No magic link login.
--   **Password reset**: `/forgot-password` page sends reset email. Token stored hashed (`PasswordResetToken`, 1hr expiry). `/reset-password?token=` page accepts new password. Confirm endpoint at `/api/auth/password/reset/confirm`.
+-   **Password reset**: `/forgot-password` page sends reset email. Token stored hashed (`PasswordResetToken`, 30min expiry). `/reset-password?token=` page accepts new password. Confirm endpoint at `/api/auth/password/reset/confirm`. Password must include letter + number.
 -   **Sleeper connect**: Optional during signup. Server-side lookup via `https://api.sleeper.app/v1/user/{username}`. Stores `sleeperUsername`, `sleeperUserId`, `sleeperLinkedAt`. Display-only, not verified ownership. Badge shows "Connected" not "Verified".
 -   **signIn event**: Only ensures `UserProfile` exists via upsert. Does NOT write `emailVerifiedAt` on login — verification only happens through explicit verify-email flow.
 

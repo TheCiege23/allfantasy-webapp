@@ -26,6 +26,11 @@ function ResetPasswordContent() {
       return
     }
 
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Password must include at least one letter and one number.")
+      return
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.")
       return
@@ -42,7 +47,13 @@ function ResetPasswordContent() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || "Something went wrong.")
+        const errorMap: Record<string, string> = {
+          MISSING_FIELDS: "Token and new password are required.",
+          WEAK_PASSWORD: "Password must be at least 8 characters with a letter and number.",
+          INVALID_OR_USED_TOKEN: "This reset link is invalid or has already been used.",
+          EXPIRED_TOKEN: "This reset link has expired. Please request a new one.",
+        }
+        setError(errorMap[data.error] || data.error || "Something went wrong.")
       } else {
         setSuccess(true)
       }

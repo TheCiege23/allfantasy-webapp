@@ -86,9 +86,9 @@ export async function POST(req: Request) {
       },
     })
 
-    const rawToken = crypto.randomBytes(32).toString("hex")
+    const rawToken = crypto.randomBytes(32).toString("base64url")
     const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex")
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60)
 
     await (prisma as any).emailVerifyToken.create({
       data: {
@@ -103,7 +103,7 @@ export async function POST(req: Request) {
       const { client, fromEmail } = await getResendClient()
 
       const baseUrl = process.env.NEXTAUTH_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`
-      const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${rawToken}`
+      const verifyUrl = `${baseUrl}/verify/email?token=${encodeURIComponent(rawToken)}`
 
       await client.emails.send({
         from: fromEmail || "AllFantasy.ai <noreply@allfantasy.ai>",

@@ -1,37 +1,46 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import crypto from "crypto"
 
-export async function POST() {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: { id?: string; email?: string | null }
-  } | null
+export const runtime = "nodejs"
 
-  if (!session?.user?.id || !session?.user?.email) {
+function sha256Hex(input: string) {
+  return crypto.createHash("sha256").update(input).digest("hex")
+}
+
+function makeToken(bytes = 32) {
+  return crypto.randomBytes(bytes).toString("base64url")
+}
+
+export async function POST(req: Request) {
+  const { getSessionAndProfile } = await import("@/lib/auth-guard")
+  const { userId, email } = await getSessionAndProfile()
+
+  if (!userId) {
     return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 })
   }
 
-  const userId = session.user.id
-  const email = session.user.email
-
-  const appUser = await (prisma as any).appUser.findUnique({
+  const user = await (prisma as any).appUser.findUnique({
     where: { id: userId },
-    select: { emailVerified: true },
-  })
+    select: { emailVerified: true, email: true },
+  }).catch(() => null)
 
-  if (appUser?.emailVerified) {
-    return NextResponse.json({ error: "Email is already verified." }, { status: 400 })
+  const targetEmail = user?.email ?? email
+  if (!targetEmail) {
+    return NextResponse.json({ error: "MISSING_EMAIL" }, { status: 400 })
   }
+
+  if (user?.emailVerified) {
+    return NextResponse.json({ ok: true, alreadyVerified: true })
+  }
+
+  const rawToken = makeToken(32)
+  const tokenHash = sha256Hex(rawToken)
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60)
 
   await (prisma as any).emailVerifyToken.deleteMany({
     where: { userId },
-  }).catch(() => null)
-
-  const rawToken = crypto.randomBytes(32).toString("hex")
-  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex")
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  }).catch(() => {})
 
   await (prisma as any).emailVerifyToken.create({
     data: {
@@ -41,50 +50,59 @@ export async function POST() {
     },
   })
 
-  try {
-    const { getResendClient } = await import("@/lib/resend-client")
-    const { client, fromEmail } = await getResendClient()
+  const baseUrl =
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL?.startsWith("http")
+      ? process.env.VERCEL_URL
+      : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : null)
 
-    const baseUrl = process.env.NEXTAUTH_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`
-    const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${rawToken}`
+  if (!baseUrl) {
+    return NextResponse.json({ error: "MISSING_BASE_URL" }, { status: 500 })
+  }
 
-    await client.emails.send({
-      from: fromEmail || "AllFantasy.ai <noreply@allfantasy.ai>",
-      to: email,
-      subject: "Verify your AllFantasy.ai email",
-      html: `
+  const verifyUrl = `${baseUrl}/verify/email?token=${encodeURIComponent(rawToken)}`
+
+  const { getResendClient } = await import("@/lib/resend-client")
+  const { client, fromEmail } = await getResendClient()
+
+  await client.emails.send({
+    from: fromEmail || "AllFantasy.ai <noreply@allfantasy.ai>",
+    to: targetEmail,
+    subject: "Verify your email for AllFantasy.ai",
+    html: `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-    .container { max-width: 500px; margin: 0 auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; padding: 32px; border: 1px solid #334155; }
+    .container { max-width: 520px; margin: 0 auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; padding: 32px; border: 1px solid #334155; }
     .logo { font-size: 24px; font-weight: 700; background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     .btn { display: inline-block; background: linear-gradient(90deg, #22d3ee, #a855f7); color: white; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; margin-top: 20px; }
-    .footer { text-align: center; margin-top: 24px; font-size: 12px; color: #64748b; }
+    .muted { color:#94a3b8; }
+    .footer { text-align:center; margin-top: 24px; font-size: 12px; color:#64748b; }
   </style>
 </head>
 <body>
   <div class="container">
     <div style="text-align:center;">
       <div class="logo">AllFantasy.ai</div>
-      <h2 style="margin:16px 0 8px;color:#f1f5f9;">Verify Your Email</h2>
-      <p style="color:#94a3b8;">Click the button below to verify your email address.</p>
+      <h2 style="margin:16px 0 8px;color:#f1f5f9;">Verify your email</h2>
+      <p class="muted">Click the button below to verify your email address.</p>
       <a href="${verifyUrl}" class="btn">Verify Email</a>
-      <p style="color:#64748b;font-size:13px;margin-top:16px;">This link expires in 24 hours.</p>
+      <p class="muted" style="font-size:13px;margin-top:16px;">This link expires in 1 hour.</p>
     </div>
     <div class="footer">
-      <p>If you didn't request this, you can safely ignore it.</p>
+      <p>If you didn't request this, you can safely ignore this email.</p>
     </div>
   </div>
 </body>
 </html>`,
-    })
-  } catch (emailErr) {
-    console.error("[verify-email/send] Failed to send:", emailErr)
-    return NextResponse.json({ error: "Failed to send verification email." }, { status: 500 })
-  }
+  })
 
-  return NextResponse.json({ ok: true, message: "Verification email sent." })
+  return NextResponse.json({ ok: true })
 }

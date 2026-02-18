@@ -119,7 +119,7 @@ export default function DashboardContent({ user, profile, leagues, entries }: Da
                     <span className="text-amber-400 text-xs">1</span>
                   </div>
                   Verify your email to unlock all features.
-                  <Link href="/verify?status=pending" className="text-cyan-400 hover:underline ml-auto">
+                  <Link href="/verify" className="text-cyan-400 hover:underline ml-auto">
                     Verify
                   </Link>
                 </div>

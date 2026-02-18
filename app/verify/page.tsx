@@ -8,6 +8,8 @@ import { CheckCircle2, XCircle, Clock, AlertTriangle, Mail, Loader2 } from "luci
 function VerifyContent() {
   const searchParams = useSearchParams()
   const status = searchParams?.get("status")
+  const error = searchParams?.get("error")
+  const verified = searchParams?.get("verified")
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | null>(null)
 
@@ -19,7 +21,7 @@ function VerifyContent() {
       const data = await res.json()
       if (res.status === 401) {
         setSendResult("login_required")
-      } else if (res.status === 400 && data.error?.includes("already")) {
+      } else if (res.ok && data.alreadyVerified) {
         setSendResult("already")
       } else if (res.ok) {
         setSendResult("sent")
@@ -32,6 +34,16 @@ function VerifyContent() {
       setSending(false)
     }
   }
+
+  function resolveState(): string {
+    if (verified === "email" || status === "success") return "success"
+    if (error === "EXPIRED_TOKEN" || status === "expired") return "expired"
+    if (error === "INVALID_OR_USED_TOKEN" || error === "MISSING_TOKEN" || status === "invalid") return "invalid"
+    if (error || status === "error") return "error"
+    return "pending"
+  }
+
+  const state = resolveState()
 
   const configs: Record<string, { icon: React.ReactNode; title: string; message: string; color: string }> = {
     success: {
@@ -66,7 +78,7 @@ function VerifyContent() {
     },
   }
 
-  const config = configs[status || "pending"] || configs.pending
+  const config = configs[state] || configs.pending
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center px-4">
@@ -97,7 +109,7 @@ function VerifyContent() {
         )}
 
         <div className="flex flex-col gap-3 pt-2">
-          {status === "success" ? (
+          {state === "success" ? (
             <Link
               href="/dashboard"
               className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 transition"
@@ -106,24 +118,22 @@ function VerifyContent() {
             </Link>
           ) : (
             <>
-              {(status !== "success") && (
-                <button
-                  onClick={handleSendVerification}
-                  disabled={sending || sendResult === "sent"}
-                  className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
-                >
-                  {sending ? (
-                    <span className="inline-flex items-center justify-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Sending...
-                    </span>
-                  ) : sendResult === "sent" ? (
-                    "Email sent!"
-                  ) : (
-                    "Send verification email"
-                  )}
-                </button>
-              )}
+              <button
+                onClick={handleSendVerification}
+                disabled={sending || sendResult === "sent"}
+                className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+              >
+                {sending ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending...
+                  </span>
+                ) : sendResult === "sent" ? (
+                  "Email sent!"
+                ) : (
+                  "Send verification email"
+                )}
+              </button>
               <Link
                 href="/dashboard"
                 className="rounded-xl bg-white/10 border border-white/10 px-6 py-2.5 text-sm font-medium hover:bg-white/15 transition"
