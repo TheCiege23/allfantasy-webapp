@@ -331,21 +331,37 @@ function HomeContent() {
               </div>
             </form>
 
-            {/* Secondary CTA */}
-            <Link 
-              href="/af-legacy" 
-              className="rounded-xl glow-box inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 text-sm sm:text-base font-semibold w-full sm:w-auto min-h-[48px]
-                         bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20
-                         border border-cyan-400/40
-                         hover:from-cyan-500/30 hover:via-purple-500/30 hover:to-cyan-500/30
-                         hover:border-cyan-400/60
-                         active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition-all duration-300 group"
-              style={{ color: 'var(--text)' }}
-            >
-              <span style={{ color: 'var(--accent-cyan-strong)' }} className="text-lg">⚡</span>
-              <span>See the AI in action with AF Legacy</span>
-              <span className="group-hover:translate-x-1.5 transition-transform duration-300">→</span>
-            </Link>
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
+              <Link 
+                href="/af-legacy" 
+                className="rounded-xl glow-box inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 text-sm sm:text-base font-semibold flex-1 min-h-[48px]
+                           bg-gradient-to-r from-cyan-500/20 via-purple-500/20 to-cyan-500/20
+                           border border-cyan-400/40
+                           hover:from-cyan-500/30 hover:via-purple-500/30 hover:to-cyan-500/30
+                           hover:border-cyan-400/60
+                           active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition-all duration-300 group"
+                style={{ color: 'var(--text)' }}
+              >
+                <span style={{ color: 'var(--accent-cyan-strong)' }} className="text-lg">⚡</span>
+                <span>AF Legacy Tools</span>
+                <span className="group-hover:translate-x-1.5 transition-transform duration-300">→</span>
+              </Link>
+
+              <Link
+                href="/brackets"
+                className="rounded-xl inline-flex items-center justify-center gap-2 sm:gap-2.5 px-5 sm:px-8 py-3.5 text-sm sm:text-base font-semibold flex-1 min-h-[48px]
+                           bg-gradient-to-r from-purple-600/20 via-indigo-500/20 to-purple-600/20
+                           border border-purple-400/40
+                           hover:from-purple-600/30 hover:via-indigo-500/30 hover:to-purple-600/30
+                           hover:border-purple-400/60
+                           active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-purple-400/40 transition-all duration-300 group"
+                style={{ color: 'var(--text)' }}
+              >
+                <span className="text-lg">🏀</span>
+                <span>Bracket Challenge</span>
+                <span className="group-hover:translate-x-1.5 transition-transform duration-300">→</span>
+              </Link>
+            </div>
           </div>
 
           {/* Right: Interactive Instant Trade Analyzer */}
