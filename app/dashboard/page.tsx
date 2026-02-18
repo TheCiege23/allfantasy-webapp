@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import DashboardContent from "./DashboardContent"
 import SyncedRosters from "@/app/components/SyncedRosters"
+import RosterLegacyReport from "@/app/components/RosterLegacyReport"
 
 export const dynamic = "force-dynamic"
 
@@ -115,7 +116,8 @@ export default async function DashboardPage() {
           score: e.score || 0,
         }))}
       />
-      <div className="max-w-6xl mx-auto px-4 pb-12">
+      <div className="max-w-6xl mx-auto px-4 pb-12 space-y-12">
+        <RosterLegacyReport />
         <SyncedRosters />
       </div>
     </>
