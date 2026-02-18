@@ -4,6 +4,7 @@ import { useState } from 'react';
 import RosterLegacyReport from '@/app/components/RosterLegacyReport';
 import SyncedRosters from '@/app/components/SyncedRosters';
 import WaiverAI from '@/app/components/WaiverAI';
+import ChimmyChat from '@/app/components/ChimmyChat';
 
 export default function LegacyOverview() {
   const [activeTab, setActiveTab] = useState<'overview' | 'trade' | 'waiver' | 'chat' | 'transfer'>('overview');
@@ -204,14 +205,7 @@ export default function LegacyOverview() {
 
         {activeTab === 'waiver' && <WaiverAI />}
 
-        {activeTab === 'chat' && (
-          <div className="py-16 text-center">
-            <div className="text-6xl mb-4">💬</div>
-            <h2 className="text-2xl font-bold mb-2">AI Chat</h2>
-            <p className="text-slate-400">Ask your personal AI assistant anything about your fantasy teams.</p>
-            <p className="text-sm text-slate-500 mt-4">Coming soon — AI-powered chat with full roster context.</p>
-          </div>
-        )}
+        {activeTab === 'chat' && <ChimmyChat />}
 
         {activeTab === 'transfer' && (
           <div className="py-16 text-center">
