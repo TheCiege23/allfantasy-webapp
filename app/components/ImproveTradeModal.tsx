@@ -201,7 +201,14 @@ export default function ImproveTradeModal({
   }, [generateSuggestions])
 
   const generateMore = useCallback(() => {
-    if (moreCount >= MAX_MORE_CLICKS) return
+    if (moreCount >= MAX_MORE_CLICKS) {
+      gtagEvent('improve_trade_generate_more_limit_hit', {
+        league_size: leagueSize,
+        is_dynasty: isDynasty,
+        scoring,
+      })
+      return
+    }
     gtagEvent('improve_trade_generate_more_clicked', {
       current_suggestion_count: suggestions.length,
       more_count_this_session: moreCount + 1,
