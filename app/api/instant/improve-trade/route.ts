@@ -5,40 +5,28 @@ import { withApiUsage } from '@/lib/telemetry/usage'
 
 const IMPROVE_TRADE_SYSTEM_PROMPT = `You are the world's best dynasty & redraft fantasy football trade negotiator. You are AGGRESSIVE. Your goal is to flip bad trades into clearly positive ones, or at minimum make them neutral. You are not afraid to ask for significant upgrades — star-for-star-plus-pick swaps, young upside players bundled with picks, or position upgrades that meaningfully change the deal. Still keep it realistic — no absurd asks like "give me Mahomes for free."
 
-Your task:
-Generate 3–5 realistic, creative but plausible counter-offer suggestions that would improve the deal for the "you" side.
-
-For each suggestion:
-1. Short title/description (8–15 words)
-2. The exact counter-offer text in natural language (ready to copy-paste into league chat)
-3. Estimated new fairness impact (e.g. "+12–18% for you", "now even", "slightly in your favor")
-4. 3–5 short bullet points explaining WHY this is better / more fair / more likely to be accepted
-5. One optional "sensitivity note" (when relevant): e.g. "Only do this if you need WR depth", "Avoid if you're already thin at QB"
+Generate exactly 4 realistic, creative but plausible counter-offer suggestions that improve the deal for the "you" side.
 
 Rules:
-- Suggestions must be realistic for 2025–2026 dynasty/redraft values
-- Do NOT invent fake player values or rankings — reason based on general market knowledge
-- Prioritize suggestions with high acceptance likelihood (>60–70% estimated) — the other manager must realistically say yes
-- Prefer adding mid/late future picks (2nd, 3rd rounders) or bench/depth players as sweeteners over demanding star upgrades
-- If the original trade is close to even, focus on small, targeted upgrades rather than demanding huge overpays
-- If the original trade is already very good for "you", suggest small sweeteners to increase acceptance chance
-- If the trade is bad for "you", focus on fixes that bring it closer to even or better
-- Never suggest trades that obviously make the deal worse for the user
-- Order suggestions from most likely to be accepted to least likely
+- Realistic for 2025–2026 dynasty/redraft values — no fake rankings
+- Prioritize high acceptance likelihood (>60–70%) — the other manager must realistically say yes
+- Prefer mid/late future picks (2nd, 3rd rounders) or bench/depth players as sweeteners
+- If close to even, focus on small targeted upgrades, not huge overpays
+- If already good for "you", suggest sweeteners to increase acceptance chance
+- If bad for "you", focus on fixes that flip it to neutral or positive
+- Never make the deal worse for the user
+- Order from most to least likely to be accepted
+- Keep bullet reasons under 12 words each
 
-Return ONLY valid JSON in this exact structure:
-
-{
-  "suggestions": [
-    {
-      "title": "Short title of the counter-offer",
-      "counterOfferText": "I give: X + Y\\nI get: A + B",
-      "estimatedImpact": "+12–18% for you",
-      "whyBetter": ["Reason 1", "Reason 2", "Reason 3"],
-      "sensitivityNote": "Optional context note or null"
-    }
-  ]
-}`
+Return ONLY a JSON array with exactly 4 items. Each item:
+[
+  {
+    "title": "short string (8-15 words)",
+    "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
+    "impact": "+15%",
+    "reasons": ["max 12 words each", "3-4 bullets", "concise and specific"]
+  }
+]`
 
 export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool: 'ImproveTradeAI' })(async (req: Request) => {
   try {
@@ -103,7 +91,8 @@ Generate 3–5 realistic counter-offer suggestions that improve the deal for the
     }
 
     const parsed = parseJsonContentFromChatCompletion(result.json)
-    if (!parsed || !parsed.suggestions || !Array.isArray(parsed.suggestions)) {
+    const rawList = Array.isArray(parsed) ? parsed : parsed?.suggestions
+    if (!rawList || !Array.isArray(rawList) || rawList.length === 0) {
       console.error('[improve-trade] Invalid AI response format')
       return NextResponse.json(
         { error: 'Could not parse AI suggestions. Please try again.' },
@@ -111,12 +100,11 @@ Generate 3–5 realistic counter-offer suggestions that improve the deal for the
       )
     }
 
-    const suggestions = parsed.suggestions.slice(0, 5).map((s: any) => ({
-      title: String(s.title || s.description || 'Alternative trade'),
-      counterOfferText: String(s.counterOfferText || s.copyText || ''),
-      estimatedImpact: String(s.estimatedImpact || s.deltaEstimate || ''),
-      whyBetter: Array.isArray(s.whyBetter) ? s.whyBetter.map(String).slice(0, 5) : [],
-      sensitivityNote: s.sensitivityNote && s.sensitivityNote !== 'null' ? String(s.sensitivityNote) : null,
+    const suggestions = rawList.slice(0, 4).map((s: any) => ({
+      title: String(s.title || 'Alternative trade'),
+      counter: String(s.counter || s.counterOfferText || ''),
+      impact: String(s.impact || s.estimatedImpact || ''),
+      reasons: Array.isArray(s.reasons || s.whyBetter) ? (s.reasons || s.whyBetter).map(String).slice(0, 4) : [],
     }))
 
     return NextResponse.json({ suggestions })

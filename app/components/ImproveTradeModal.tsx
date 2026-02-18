@@ -2,15 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Copy, AlertCircle, Loader2, Info } from 'lucide-react'
+import { X, Sparkles, Copy, AlertCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Suggestion = {
   title: string
-  counterOfferText: string
-  estimatedImpact: string
-  whyBetter: string[]
-  sensitivityNote: string | null
+  counter: string
+  impact: string
+  reasons: string[]
 }
 
 type ImproveTradeModalProps = {
@@ -194,21 +193,21 @@ export default function ImproveTradeModal({
                     >
                       <div className="flex justify-between items-start mb-3 gap-3">
                         <h3 className="font-bold text-base sm:text-lg" style={{ color: 'var(--text)' }}>{sug.title}</h3>
-                        {sug.estimatedImpact && (
+                        {sug.impact && (
                           <span className="px-3 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/20 shrink-0 whitespace-nowrap" style={{ color: 'var(--accent-emerald)' }}>
-                            {sug.estimatedImpact}
+                            {sug.impact}
                           </span>
                         )}
                       </div>
 
-                      {sug.counterOfferText && (
+                      {sug.counter && (
                         <div className="mb-4 p-3 rounded-xl text-sm font-mono whitespace-pre-line" style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
-                          {sug.counterOfferText}
+                          {sug.counter}
                         </div>
                       )}
 
-                      <ul className="space-y-2 mb-4 text-sm">
-                        {sug.whyBetter.map((point, j) => (
+                      <ul className="space-y-1.5 mb-4 text-sm">
+                        {sug.reasons.map((point, j) => (
                           <li key={j} className="flex gap-2">
                             <span className="text-cyan-400 mt-0.5 shrink-0">•</span>
                             <span style={{ color: 'var(--muted)' }}>{point}</span>
@@ -216,15 +215,8 @@ export default function ImproveTradeModal({
                         ))}
                       </ul>
 
-                      {sug.sensitivityNote && (
-                        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-4">
-                          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-400" />
-                          <span className="text-xs" style={{ color: 'var(--muted)' }}>{sug.sensitivityNote}</span>
-                        </div>
-                      )}
-
                       <button
-                        onClick={() => copySuggestion(sug.counterOfferText)}
+                        onClick={() => copySuggestion(sug.counter)}
                         className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.97]"
                         style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}
                       >
