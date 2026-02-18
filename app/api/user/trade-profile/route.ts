@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getUserTradeProfile } from '@/lib/trade-feedback-profile'
+import { getUserTradeProfileFull } from '@/lib/trade-feedback-profile'
 
 export async function GET() {
   try {
@@ -11,10 +11,10 @@ export async function GET() {
       return NextResponse.json({ summary: null, error: 'Not authenticated' }, { status: 401 })
     }
 
-    const summary = await getUserTradeProfile(userId)
-    return NextResponse.json({ summary })
+    const profile = await getUserTradeProfileFull(userId)
+    return NextResponse.json(profile)
   } catch (err) {
     console.error('[trade-profile] GET error:', err)
-    return NextResponse.json({ summary: null, error: 'Failed to load profile' }, { status: 500 })
+    return NextResponse.json({ summary: null, voteCount: 0, version: 0, lastUpdated: null, error: 'Failed to load profile' }, { status: 500 })
   }
 }

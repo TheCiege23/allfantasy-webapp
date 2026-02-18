@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
+import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
 
 const db = prisma as any
 
@@ -7,6 +8,10 @@ const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const PROFILE_STALE_HOURS = 6
 const MIN_VOTES_FOR_PROFILE = 3
+
+const REASON_TO_ENUM: Record<string, string> = Object.fromEntries(
+  FEEDBACK_REASONS.map(r => [r.label, r.enum])
+)
 
 interface VoteRecord {
   id: string
@@ -16,6 +21,7 @@ interface VoteRecord {
   suggestionText: string | null
   vote: string
   reason: string | null
+  feedbackReason: string | null
   leagueSize: number | null
   isDynasty: boolean | null
   scoring: string | null
@@ -45,6 +51,7 @@ export async function persistVote(params: {
       suggestionText: params.suggestionText?.slice(0, 5000) || null,
       vote: params.vote,
       reason: params.reason?.slice(0, 100) || null,
+      feedbackReason: params.reason ? (REASON_TO_ENUM[params.reason] || 'OTHER') : null,
       leagueSize: params.leagueSize || null,
       isDynasty: params.isDynasty ?? null,
       scoring: params.scoring?.slice(0, 20) || null,
@@ -60,14 +67,33 @@ export async function persistVote(params: {
   return vote
 }
 
+export interface TradeProfileResult {
+  summary: string | null
+  voteCount: number
+  version: number
+  lastUpdated: string | null
+}
+
 export async function getUserTradeProfile(userId: string): Promise<string | null> {
+  const result = await getUserTradeProfileFull(userId)
+  return result.summary
+}
+
+export async function getUserTradeProfileFull(userId: string): Promise<TradeProfileResult> {
   try {
     const profile = await db.aIUserProfile.findUnique({
       where: { userId },
-      select: { tradePreferenceProfile: true, tradeProfileUpdatedAt: true },
+      select: {
+        tradePreferenceProfile: true,
+        tradeProfileUpdatedAt: true,
+        tradeProfileVoteCount: true,
+        tradeProfileVersion: true,
+      },
     })
 
-    if (!profile?.tradePreferenceProfile) return null
+    if (!profile?.tradePreferenceProfile) {
+      return { summary: null, voteCount: 0, version: 0, lastUpdated: null }
+    }
 
     if (profile.tradeProfileUpdatedAt) {
       const ageMs = Date.now() - new Date(profile.tradeProfileUpdatedAt).getTime()
@@ -76,10 +102,15 @@ export async function getUserTradeProfile(userId: string): Promise<string | null
       }
     }
 
-    return profile.tradePreferenceProfile as string
+    return {
+      summary: profile.tradePreferenceProfile as string,
+      voteCount: profile.tradeProfileVoteCount || 0,
+      version: profile.tradeProfileVersion || 1,
+      lastUpdated: profile.tradeProfileUpdatedAt ? new Date(profile.tradeProfileUpdatedAt).toISOString() : null,
+    }
   } catch (err) {
     console.error('[trade-feedback-profile] getUserTradeProfile error:', err)
-    return null
+    return { summary: null, voteCount: 0, version: 0, lastUpdated: null }
   }
 }
 
@@ -108,10 +139,20 @@ async function updateUserProfileAsync(userId: string) {
     return `${icon} "${v.suggestionTitle}" (${format}, ${scoring}, ${size}, ${contention})${reasonText}`
   }).join('\n')
 
+  const reasonCounts: Record<string, number> = {}
+  votes.filter((v: VoteRecord) => v.vote === 'down' && v.feedbackReason).forEach((v: VoteRecord) => {
+    const r = v.feedbackReason!
+    reasonCounts[r] = (reasonCounts[r] || 0) + 1
+  })
+  const reasonBreakdown = Object.keys(reasonCounts).length > 0
+    ? `Rejection reasons: ${Object.entries(reasonCounts).map(([r, c]) => `${r}(${c})`).join(', ')}`
+    : null
+
   const contextStats = [
     `Total votes: ${votes.length} (${upCount} helpful, ${downCount} unhelpful)`,
     dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter((v: VoteRecord) => v.vote === 'up').length} up, ${dynastyVotes.filter((v: VoteRecord) => v.vote === 'down').length} down)` : null,
     redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter((v: VoteRecord) => v.vote === 'up').length} up, ${redraftVotes.filter((v: VoteRecord) => v.vote === 'down').length} down)` : null,
+    reasonBreakdown,
   ].filter(Boolean).join('\n')
 
   try {
@@ -150,11 +191,15 @@ Do NOT include preamble or meta-commentary — just the profile.`,
       update: {
         tradePreferenceProfile: summary,
         tradeProfileUpdatedAt: new Date(),
+        tradeProfileVoteCount: votes.length,
+        tradeProfileVersion: { increment: 1 },
       },
       create: {
         userId,
         tradePreferenceProfile: summary,
         tradeProfileUpdatedAt: new Date(),
+        tradeProfileVoteCount: votes.length,
+        tradeProfileVersion: 1,
       },
     })
   } catch (err) {

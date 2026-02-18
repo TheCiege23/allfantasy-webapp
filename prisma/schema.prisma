@@ -491,6 +491,8 @@ model AIUserProfile {
   personalizeEnabled      Boolean  @default(true)
   tradePreferenceProfile  String?  @db.Text
   tradeProfileUpdatedAt   DateTime?
+  tradeProfileVoteCount   Int      @default(0)
+  tradeProfileVersion     Int      @default(1)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -498,24 +500,33 @@ model AIUserProfile {
 }
 
 model TradeSuggestionVote {
-  id               String   @id @default(cuid())
+  id               String          @id @default(cuid())
   userId           String
-  tradeText        String   @db.Text
+  tradeText        String          @db.Text
   suggestionTitle  String
-  suggestionText   String?  @db.Text
+  suggestionText   String?         @db.Text
   vote             String
   reason           String?
+  feedbackReason   FeedbackReason?
   leagueSize       Int?
   isDynasty        Boolean?
   scoring          String?
-  userRoster       String?  @db.Text
+  userRoster       String?         @db.Text
   userContention   String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime        @default(now())
 
   @@index([userId])
   @@index([userId, createdAt])
   @@index([vote])
   @@map("trade_suggestion_votes")
+}
+
+enum FeedbackReason {
+  OVERVALUED
+  TOO_RISKY
+  NOT_MY_STYLE
+  BAD_ROSTER_FIT
+  OTHER
 }
 
 model AILeagueContext {

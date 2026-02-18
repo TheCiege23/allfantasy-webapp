@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus, Check, Search, Globe, Brain, Zap, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { gtagEvent } from '@/lib/gtag'
+import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
 
 type Suggestion = {
   title: string
@@ -59,13 +60,7 @@ export default function ImproveTradeModal({
   const [thinkingPhase, setThinkingPhase] = useState(0)
   const [feedbackGiven, setFeedbackGiven] = useState<Set<string>>(new Set())
   const [selectedDownReason, setSelectedDownReason] = useState<string | null>(null)
-  const downReasons = [
-    'Overvalued player/pick',
-    'Too risky (injury/age)',
-    'Not my style / preference',
-    'Bad roster fit',
-    'Other',
-  ]
+  const downReasons = FEEDBACK_REASONS.map(r => r.label)
 
   useEffect(() => {
     if (!isOpen) return
