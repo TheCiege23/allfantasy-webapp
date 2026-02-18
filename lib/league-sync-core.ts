@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { decrypt } from '@/lib/league-auth-crypto';
+import { decrypt, encrypt } from '@/lib/league-auth-crypto';
 import { XMLParser } from 'fast-xml-parser';
 
 export interface LeaguePayload {
@@ -171,8 +171,166 @@ export async function fetchEspnLeague(platformLeagueId: string, swid: string, s2
   };
 }
 
-export async function fetchYahooLeague(_platformLeagueId: string, _oauthToken: string): Promise<LeaguePayload> {
-  throw new Error('Yahoo sync requires OAuth2 refresh flow — full implementation coming soon.');
+async function refreshYahooToken(userId: string, refreshToken: string): Promise<string> {
+  const clientId = process.env.YAHOO_CLIENT_ID;
+  const clientSecret = process.env.YAHOO_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error('Yahoo OAuth not configured on server');
+
+  const res = await fetch('https://api.login.yahoo.com/oauth2/get_token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+    },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error('[Yahoo Refresh] Failed:', errText);
+    throw new Error('Yahoo token refresh failed — please re-connect Yahoo in League Sync.');
+  }
+
+  const tokens = await res.json();
+
+  await (prisma as any).leagueAuth.update({
+    where: { userId_platform: { userId, platform: 'yahoo' } },
+    data: {
+      oauthToken: encrypt(tokens.access_token),
+      oauthSecret: tokens.refresh_token ? encrypt(tokens.refresh_token) : undefined,
+      updatedAt: new Date(),
+    },
+  });
+
+  return tokens.access_token;
+}
+
+class YahooApiError extends Error {
+  status: number;
+  constructor(status: number, body: string) {
+    super(`Yahoo API error (${status}): ${body}`);
+    this.status = status;
+  }
+}
+
+async function yahooApiFetch(url: string, accessToken: string): Promise<any> {
+  const res = await fetch(url, {
+    headers: { 'Authorization': `Bearer ${accessToken}` },
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new YahooApiError(res.status, errText);
+  }
+
+  return res.json();
+}
+
+export async function fetchYahooLeague(
+  platformLeagueId: string,
+  accessToken: string,
+  userId?: string,
+  refreshToken?: string
+): Promise<LeaguePayload> {
+  let token = accessToken;
+
+  const leagueUrl = `https://fantasysports.yahooapis.com/fantasy/v2/league/${platformLeagueId}?format=json`;
+  let leagueData: any;
+  try {
+    leagueData = await yahooApiFetch(leagueUrl, token);
+  } catch (err: any) {
+    if (err instanceof YahooApiError && err.status === 401 && userId && refreshToken) {
+      token = await refreshYahooToken(userId, refreshToken);
+      leagueData = await yahooApiFetch(leagueUrl, token);
+    } else {
+      throw err;
+    }
+  }
+
+  const league = leagueData?.fantasy_content?.league?.[0] || leagueData?.fantasy_content?.league;
+  if (!league) throw new Error('Could not parse Yahoo league data');
+
+  const leagueName = league.name || 'Yahoo League';
+  const numTeams = parseInt(league.num_teams) || 12;
+  const scoringType = league.scoring_type || '';
+  const isDynasty = scoringType.toLowerCase().includes('keeper') || scoringType.toLowerCase().includes('dynasty');
+
+  let scoring = 'standard';
+  try {
+    const settingsUrl = `https://fantasysports.yahooapis.com/fantasy/v2/league/${platformLeagueId}/settings?format=json`;
+    const settingsData = await yahooApiFetch(settingsUrl, token);
+    const statMods = settingsData?.fantasy_content?.league?.[1]?.settings?.[0]?.stat_modifiers?.stats;
+    if (Array.isArray(statMods)) {
+      const recMod = statMods.find((s: any) => s.stat?.stat_id === '21');
+      const recValue = parseFloat(recMod?.stat?.value || '0');
+      if (recValue >= 1) scoring = 'ppr';
+      else if (recValue >= 0.5) scoring = 'half';
+    }
+  } catch {
+    // fall back to standard
+  }
+
+  const rostersUrl = `https://fantasysports.yahooapis.com/fantasy/v2/league/${platformLeagueId}/teams/roster?format=json`;
+  let rostersData: any;
+  try {
+    rostersData = await yahooApiFetch(rostersUrl, token);
+  } catch {
+    rostersData = null;
+  }
+
+  const rosters: LeaguePayload['rosters'] = [];
+
+  const teamsObj = rostersData?.fantasy_content?.league?.[1]?.teams;
+  if (teamsObj) {
+    for (const teamKey of Object.keys(teamsObj)) {
+      if (teamKey === 'count') continue;
+      const teamArr = teamsObj[teamKey]?.team;
+      if (!Array.isArray(teamArr)) continue;
+
+      const teamInfo: Record<string, any> = {};
+      for (const item of teamArr[0] || []) {
+        if (typeof item === 'object' && !Array.isArray(item)) {
+          Object.assign(teamInfo, item);
+        }
+      }
+
+      const rosterSection = teamArr[1]?.roster?.['0']?.players || teamArr[1]?.roster;
+      const playerIds: string[] = [];
+
+      if (rosterSection) {
+        for (const pk of Object.keys(rosterSection)) {
+          if (pk === 'count') continue;
+          const playerArr = rosterSection[pk]?.player?.[0];
+          if (!Array.isArray(playerArr)) continue;
+          for (const pItem of playerArr) {
+            if (typeof pItem === 'object' && pItem.player_key) {
+              playerIds.push(pItem.player_key);
+            } else if (typeof pItem === 'object' && pItem.player_id) {
+              playerIds.push(String(pItem.player_id));
+            }
+          }
+        }
+      }
+
+      rosters.push({
+        platformUserId: teamInfo.team_key || teamKey,
+        playerData: playerIds,
+        faabRemaining: teamInfo.faab_balance ? parseInt(teamInfo.faab_balance) : null,
+      });
+    }
+  }
+
+  return {
+    name: leagueName,
+    leagueSize: numTeams,
+    scoring,
+    isDynasty,
+    settings: { scoringType, season: league.season },
+    rosters,
+  };
 }
 
 export async function fetchFantraxLeague(_platformLeagueId: string): Promise<LeaguePayload> {
@@ -218,8 +376,8 @@ export async function fetchLeaguePayload(
 
     case 'yahoo': {
       const auth = await getDecryptedAuth(userId, 'yahoo');
-      if (!auth?.oauthToken) throw new Error('Yahoo OAuth not found');
-      return fetchYahooLeague(platformLeagueId, auth.oauthToken);
+      if (!auth?.oauthToken) throw new Error('Yahoo OAuth not connected — click "Connect Yahoo" in League Sync first.');
+      return fetchYahooLeague(platformLeagueId, auth.oauthToken, userId, auth.oauthSecret || undefined);
     }
 
     case 'fantrax':
