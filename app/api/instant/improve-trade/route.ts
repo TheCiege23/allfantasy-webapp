@@ -61,17 +61,34 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
 
     const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
 
-    const userPrompt = `Current trade context:
-League format: ${leagueSize}-team ${isDynasty ? 'dynasty' : 'redraft'} league
-Scoring: ${scoring.toUpperCase()} (assume standard starting requirements unless told otherwise)
-Trade text: """
+    const userPrompt = `You are an elite dynasty fantasy football GM.
+
+Examples of great counter suggestions:
+
+Example 1:
+Original: I give: Justin Jefferson   I get: Garrett Wilson + 2026 1st
+Verdict: Slightly bad for you
+
+Good suggestion:
+{"title":"Add your late 2nd to balance","counter":"I give: Justin Jefferson + my 2026 2.10\\nI get: Garrett Wilson + 2026 early 1st","impact":"Now even to slight edge for you","reasons":["Late 2nd has low cost in dynasty","Early 1st has significantly more value","Makes the pick premium feel fair to opponent"]}
+
+Example 2:
+Original: I give: Breece Hall   I get: Jahmyr Gibbs + Christian Watson
+Verdict: Bad for you
+
+Good suggestion:
+{"title":"Swap Watson for better WR or pick","counter":"I give: Breece Hall\\nI get: Jahmyr Gibbs + Drake London / Zay Flowers","impact":"+20–30% for you","reasons":["London/Flowers >> Watson in dynasty value","Maintains RB youth/upside","Much stronger WR return"]}
+
+Now do the same quality for this trade:
+
+League: ${leagueSize}-team ${scoring.toUpperCase()} ${isDynasty ? 'dynasty' : 'redraft'}
+Trade: """
 ${tradeText}
 """
+Current verdict: ${currentVerdict || 'unknown'}
+Current delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}%
 
-Current AI analysis verdict: ${currentVerdict || 'unknown'}
-Current value delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}% (positive = better for "you")
-
-Generate 3–5 realistic counter-offer suggestions that improve the deal for the "you" side while remaining plausible for the other manager to accept.`
+Return only JSON array of 3–5 suggestions matching the example format.`
 
     const result = await openaiChatJson({
       messages: [
