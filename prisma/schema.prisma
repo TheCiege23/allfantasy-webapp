@@ -2334,6 +2334,7 @@ model Roster {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@unique([leagueId, userId])
   @@index([leagueId])
   @@index([userId])
   @@map("rosters")
