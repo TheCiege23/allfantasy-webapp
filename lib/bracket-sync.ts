@@ -2,6 +2,9 @@ import { prisma } from "@/lib/prisma"
 
 type TheSportsDbEvent = {
   idEvent: string
+  idLeague?: string | null
+  strLeague?: string | null
+  strSport?: string | null
   strEvent?: string | null
   strHomeTeam?: string | null
   strAwayTeam?: string | null
@@ -36,50 +39,15 @@ function normalizeStatus(
   raw?: string | null
 ): "scheduled" | "in_progress" | "final" | "unknown" {
   if (!raw) return "unknown"
-  const s = raw.trim().toLowerCase()
+  const s = raw.trim().toUpperCase()
 
-  if (
-    s === "ft" ||
-    s === "final" ||
-    s.includes("match finished") ||
-    s.includes("finished") ||
-    s.includes("full time") ||
-    s.includes("after")
-  )
-    return "final"
+  if (s === "FT" || s === "AOT") return "final"
+  if (s === "NS" || s === "POST" || s === "CANC") return "scheduled"
 
-  if (
-    s === "ns" ||
-    s.includes("not started") ||
-    s.includes("scheduled") ||
-    s.includes("time") ||
-    s.includes("tbd")
-  )
-    return "scheduled"
-
-  if (
-    s.includes("in progress") ||
-    s.includes("live") ||
-    s.includes("playing") ||
-    s.includes("1h") ||
-    s.includes("2h") ||
-    s.includes("q1") ||
-    s.includes("q2") ||
-    s.includes("q3") ||
-    s.includes("q4") ||
-    s.includes("ot") ||
-    s.includes("halftime") ||
-    s.includes("ht")
-  )
-    return "in_progress"
-
-  if (
-    s.includes("postpon") ||
-    s.includes("cancel") ||
-    s.includes("aband") ||
-    s.includes("interrupt")
-  )
-    return "scheduled"
+  const lower = s.toLowerCase()
+  if (lower.includes("final") || lower.includes("finished")) return "final"
+  if (lower.includes("postpon") || lower.includes("cancel")) return "scheduled"
+  if (lower.includes("live") || lower.includes("progress")) return "in_progress"
 
   return "unknown"
 }
@@ -137,33 +105,54 @@ function marchMadnessWindow(season: number) {
 }
 
 
+function* eachDayIso(start: Date, end: Date) {
+  const d = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())
+  )
+  const endUtc = new Date(
+    Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate())
+  )
+  while (d <= endUtc) {
+    const yyyy = d.getUTCFullYear()
+    const mm = String(d.getUTCMonth() + 1).padStart(2, "0")
+    const dd = String(d.getUTCDate()).padStart(2, "0")
+    yield `${yyyy}-${mm}-${dd}`
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+}
+
 export async function fetchTournamentEvents(
   season: number
 ): Promise<TheSportsDbEvent[]> {
   const apiKey = process.env.THESPORTSDB_API_KEY || "3"
   const leagueId = process.env.THESPORTSDB_NCAAM_LEAGUE_ID || NCAAM_LEAGUE_ID
 
-  const seasonStr = `${season - 1}-${season}`
-  const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsseason.php?id=${leagueId}&s=${seasonStr}`
+  const start = new Date(Date.UTC(season, 2, 10))
+  const end = new Date(Date.UTC(season, 3, 10))
 
-  const res = await fetch(url, { cache: "no-store" })
-  if (!res.ok)
-    throw new Error(`TheSportsDB fetch failed: ${res.status}`)
+  const results: TheSportsDbEvent[] = []
 
-  const json = await res.json()
-  const events: TheSportsDbEvent[] = Array.isArray(json?.events)
-    ? json.events
-    : []
-  if (!events.length) return []
+  for (const day of eachDayIso(start, end)) {
+    try {
+      const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsday.php?d=${day}`
+      const res = await fetch(url, { cache: "no-store" })
+      if (!res.ok) continue
 
-  const { start, end } = marchMadnessWindow(season)
+      const json = await res.json()
+      const events: TheSportsDbEvent[] = Array.isArray(json?.events)
+        ? json.events
+        : []
 
-  return events.filter((ev) => {
-    const dt = parseStartTime(ev.dateEvent ?? null, ev.strTime ?? null)
-    if (!dt) return false
-    if (dt < start || dt > end) return false
-    return true
-  })
+      for (const ev of events) {
+        if (String(ev.idLeague ?? "") !== String(leagueId)) continue
+        results.push(ev)
+      }
+    } catch {
+      continue
+    }
+  }
+
+  return results
 }
 
 export async function upsertEventsToSportsGame(
