@@ -1,55 +1,91 @@
 {
   "name": "NCAA Men's Tournament",
   "sport": "ncaam",
-  "regions": [
-    { "name": "East", "code": "E" },
-    { "name": "West", "code": "W" },
-    { "name": "South", "code": "S" },
-    { "name": "Midwest", "code": "M" }
-  ],
-  "rounds": [
-    { "round": 0, "label": "First Four" },
-    { "round": 1, "label": "Round of 64" },
-    { "round": 2, "label": "Round of 32" },
-    { "round": 3, "label": "Sweet 16" },
-    { "round": 4, "label": "Elite 8" },
-    { "round": 5, "label": "Final Four" },
-    { "round": 6, "label": "Championship" }
-  ],
-  "firstFour": [
-    { "slot": "FF-16-A", "seedHome": 16, "seedAway": 16, "targetSlot": "E-R64-1", "targetSide": "AWAY", "regionCode": "E" },
-    { "slot": "FF-16-B", "seedHome": 16, "seedAway": 16, "targetSlot": "W-R64-1", "targetSide": "AWAY", "regionCode": "W" },
-    { "slot": "FF-11-A", "seedHome": 11, "seedAway": 11, "targetSlot": "S-R64-5", "targetSide": "AWAY", "regionCode": "S" },
-    { "slot": "FF-11-B", "seedHome": 11, "seedAway": 11, "targetSlot": "M-R64-5", "targetSide": "AWAY", "regionCode": "M" }
-  ],
-  "bracketTemplate": {
-    "roundOf64": [
-      { "matchup": 1, "seedHome": 1,  "seedAway": 16 },
-      { "matchup": 2, "seedHome": 8,  "seedAway": 9  },
-      { "matchup": 3, "seedHome": 5,  "seedAway": 12 },
-      { "matchup": 4, "seedHome": 4,  "seedAway": 13 },
-      { "matchup": 5, "seedHome": 6,  "seedAway": 11 },
-      { "matchup": 6, "seedHome": 3,  "seedAway": 14 },
-      { "matchup": 7, "seedHome": 7,  "seedAway": 10 },
-      { "matchup": 8, "seedHome": 2,  "seedAway": 15 }
-    ],
-    "roundOf32": [
-      { "matchup": 1, "feedsFrom": [1, 2] },
-      { "matchup": 2, "feedsFrom": [3, 4] },
-      { "matchup": 3, "feedsFrom": [5, 6] },
-      { "matchup": 4, "feedsFrom": [7, 8] }
-    ],
-    "sweet16": [
-      { "matchup": 1, "feedsFrom": [1, 2] },
-      { "matchup": 2, "feedsFrom": [3, 4] }
-    ],
-    "elite8": [
-      { "matchup": 1, "feedsFrom": [1, 2] }
-    ]
-  },
-  "finalFour": {
-    "semi1": { "slot": "FF-1", "homeRegionCode": "E", "awayRegionCode": "W" },
-    "semi2": { "slot": "FF-2", "homeRegionCode": "S", "awayRegionCode": "M" }
-  },
-  "championship": { "slot": "CHAMP" }
+  "nodes": [
+    { "slot": "FF-16-A", "round": 0, "region": null, "seedHome": 16, "seedAway": 16, "nextSlot": "E-R64-1", "nextSide": "AWAY" },
+    { "slot": "FF-16-B", "round": 0, "region": null, "seedHome": 16, "seedAway": 16, "nextSlot": "W-R64-1", "nextSide": "AWAY" },
+    { "slot": "FF-11-A", "round": 0, "region": null, "seedHome": 11, "seedAway": 11, "nextSlot": "S-R64-5", "nextSide": "AWAY" },
+    { "slot": "FF-11-B", "round": 0, "region": null, "seedHome": 11, "seedAway": 11, "nextSlot": "M-R64-5", "nextSide": "AWAY" },
+
+    { "slot": "E-R64-1", "round": 1, "region": "East", "seedHome": 1,  "seedAway": 16, "nextSlot": "E-R32-1", "nextSide": "HOME" },
+    { "slot": "E-R64-2", "round": 1, "region": "East", "seedHome": 8,  "seedAway": 9,  "nextSlot": "E-R32-1", "nextSide": "AWAY" },
+    { "slot": "E-R64-3", "round": 1, "region": "East", "seedHome": 5,  "seedAway": 12, "nextSlot": "E-R32-2", "nextSide": "HOME" },
+    { "slot": "E-R64-4", "round": 1, "region": "East", "seedHome": 4,  "seedAway": 13, "nextSlot": "E-R32-2", "nextSide": "AWAY" },
+    { "slot": "E-R64-5", "round": 1, "region": "East", "seedHome": 6,  "seedAway": 11, "nextSlot": "E-R32-3", "nextSide": "HOME" },
+    { "slot": "E-R64-6", "round": 1, "region": "East", "seedHome": 3,  "seedAway": 14, "nextSlot": "E-R32-3", "nextSide": "AWAY" },
+    { "slot": "E-R64-7", "round": 1, "region": "East", "seedHome": 7,  "seedAway": 10, "nextSlot": "E-R32-4", "nextSide": "HOME" },
+    { "slot": "E-R64-8", "round": 1, "region": "East", "seedHome": 2,  "seedAway": 15, "nextSlot": "E-R32-4", "nextSide": "AWAY" },
+
+    { "slot": "E-R32-1", "round": 2, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "E-S16-1", "nextSide": "HOME" },
+    { "slot": "E-R32-2", "round": 2, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "E-S16-1", "nextSide": "AWAY" },
+    { "slot": "E-R32-3", "round": 2, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "E-S16-2", "nextSide": "HOME" },
+    { "slot": "E-R32-4", "round": 2, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "E-S16-2", "nextSide": "AWAY" },
+
+    { "slot": "E-S16-1", "round": 3, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "E-E8-1", "nextSide": "HOME" },
+    { "slot": "E-S16-2", "round": 3, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "E-E8-1", "nextSide": "AWAY" },
+
+    { "slot": "E-E8-1",  "round": 4, "region": "East", "seedHome": null, "seedAway": null, "nextSlot": "FF-1", "nextSide": "HOME" },
+
+    { "slot": "W-R64-1", "round": 1, "region": "West", "seedHome": 1,  "seedAway": 16, "nextSlot": "W-R32-1", "nextSide": "HOME" },
+    { "slot": "W-R64-2", "round": 1, "region": "West", "seedHome": 8,  "seedAway": 9,  "nextSlot": "W-R32-1", "nextSide": "AWAY" },
+    { "slot": "W-R64-3", "round": 1, "region": "West", "seedHome": 5,  "seedAway": 12, "nextSlot": "W-R32-2", "nextSide": "HOME" },
+    { "slot": "W-R64-4", "round": 1, "region": "West", "seedHome": 4,  "seedAway": 13, "nextSlot": "W-R32-2", "nextSide": "AWAY" },
+    { "slot": "W-R64-5", "round": 1, "region": "West", "seedHome": 6,  "seedAway": 11, "nextSlot": "W-R32-3", "nextSide": "HOME" },
+    { "slot": "W-R64-6", "round": 1, "region": "West", "seedHome": 3,  "seedAway": 14, "nextSlot": "W-R32-3", "nextSide": "AWAY" },
+    { "slot": "W-R64-7", "round": 1, "region": "West", "seedHome": 7,  "seedAway": 10, "nextSlot": "W-R32-4", "nextSide": "HOME" },
+    { "slot": "W-R64-8", "round": 1, "region": "West", "seedHome": 2,  "seedAway": 15, "nextSlot": "W-R32-4", "nextSide": "AWAY" },
+
+    { "slot": "W-R32-1", "round": 2, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "W-S16-1", "nextSide": "HOME" },
+    { "slot": "W-R32-2", "round": 2, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "W-S16-1", "nextSide": "AWAY" },
+    { "slot": "W-R32-3", "round": 2, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "W-S16-2", "nextSide": "HOME" },
+    { "slot": "W-R32-4", "round": 2, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "W-S16-2", "nextSide": "AWAY" },
+
+    { "slot": "W-S16-1", "round": 3, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "W-E8-1", "nextSide": "HOME" },
+    { "slot": "W-S16-2", "round": 3, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "W-E8-1", "nextSide": "AWAY" },
+
+    { "slot": "W-E8-1",  "round": 4, "region": "West", "seedHome": null, "seedAway": null, "nextSlot": "FF-1", "nextSide": "AWAY" },
+
+    { "slot": "S-R64-1", "round": 1, "region": "South", "seedHome": 1,  "seedAway": 16, "nextSlot": "S-R32-1", "nextSide": "HOME" },
+    { "slot": "S-R64-2", "round": 1, "region": "South", "seedHome": 8,  "seedAway": 9,  "nextSlot": "S-R32-1", "nextSide": "AWAY" },
+    { "slot": "S-R64-3", "round": 1, "region": "South", "seedHome": 5,  "seedAway": 12, "nextSlot": "S-R32-2", "nextSide": "HOME" },
+    { "slot": "S-R64-4", "round": 1, "region": "South", "seedHome": 4,  "seedAway": 13, "nextSlot": "S-R32-2", "nextSide": "AWAY" },
+    { "slot": "S-R64-5", "round": 1, "region": "South", "seedHome": 6,  "seedAway": 11, "nextSlot": "S-R32-3", "nextSide": "HOME" },
+    { "slot": "S-R64-6", "round": 1, "region": "South", "seedHome": 3,  "seedAway": 14, "nextSlot": "S-R32-3", "nextSide": "AWAY" },
+    { "slot": "S-R64-7", "round": 1, "region": "South", "seedHome": 7,  "seedAway": 10, "nextSlot": "S-R32-4", "nextSide": "HOME" },
+    { "slot": "S-R64-8", "round": 1, "region": "South", "seedHome": 2,  "seedAway": 15, "nextSlot": "S-R32-4", "nextSide": "AWAY" },
+
+    { "slot": "S-R32-1", "round": 2, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "S-S16-1", "nextSide": "HOME" },
+    { "slot": "S-R32-2", "round": 2, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "S-S16-1", "nextSide": "AWAY" },
+    { "slot": "S-R32-3", "round": 2, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "S-S16-2", "nextSide": "HOME" },
+    { "slot": "S-R32-4", "round": 2, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "S-S16-2", "nextSide": "AWAY" },
+
+    { "slot": "S-S16-1", "round": 3, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "S-E8-1", "nextSide": "HOME" },
+    { "slot": "S-S16-2", "round": 3, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "S-E8-1", "nextSide": "AWAY" },
+
+    { "slot": "S-E8-1",  "round": 4, "region": "South", "seedHome": null, "seedAway": null, "nextSlot": "FF-2", "nextSide": "HOME" },
+
+    { "slot": "M-R64-1", "round": 1, "region": "Midwest", "seedHome": 1,  "seedAway": 16, "nextSlot": "M-R32-1", "nextSide": "HOME" },
+    { "slot": "M-R64-2", "round": 1, "region": "Midwest", "seedHome": 8,  "seedAway": 9,  "nextSlot": "M-R32-1", "nextSide": "AWAY" },
+    { "slot": "M-R64-3", "round": 1, "region": "Midwest", "seedHome": 5,  "seedAway": 12, "nextSlot": "M-R32-2", "nextSide": "HOME" },
+    { "slot": "M-R64-4", "round": 1, "region": "Midwest", "seedHome": 4,  "seedAway": 13, "nextSlot": "M-R32-2", "nextSide": "AWAY" },
+    { "slot": "M-R64-5", "round": 1, "region": "Midwest", "seedHome": 6,  "seedAway": 11, "nextSlot": "M-R32-3", "nextSide": "HOME" },
+    { "slot": "M-R64-6", "round": 1, "region": "Midwest", "seedHome": 3,  "seedAway": 14, "nextSlot": "M-R32-3", "nextSide": "AWAY" },
+    { "slot": "M-R64-7", "round": 1, "region": "Midwest", "seedHome": 7,  "seedAway": 10, "nextSlot": "M-R32-4", "nextSide": "HOME" },
+    { "slot": "M-R64-8", "round": 1, "region": "Midwest", "seedHome": 2,  "seedAway": 15, "nextSlot": "M-R32-4", "nextSide": "AWAY" },
+
+    { "slot": "M-R32-1", "round": 2, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "M-S16-1", "nextSide": "HOME" },
+    { "slot": "M-R32-2", "round": 2, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "M-S16-1", "nextSide": "AWAY" },
+    { "slot": "M-R32-3", "round": 2, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "M-S16-2", "nextSide": "HOME" },
+    { "slot": "M-R32-4", "round": 2, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "M-S16-2", "nextSide": "AWAY" },
+
+    { "slot": "M-S16-1", "round": 3, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "M-E8-1", "nextSide": "HOME" },
+    { "slot": "M-S16-2", "round": 3, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "M-E8-1", "nextSide": "AWAY" },
+
+    { "slot": "M-E8-1",  "round": 4, "region": "Midwest", "seedHome": null, "seedAway": null, "nextSlot": "FF-2", "nextSide": "AWAY" },
+
+    { "slot": "FF-1",    "round": 5, "region": null, "seedHome": null, "seedAway": null, "nextSlot": "CHAMP", "nextSide": "HOME" },
+    { "slot": "FF-2",    "round": 5, "region": null, "seedHome": null, "seedAway": null, "nextSlot": "CHAMP", "nextSide": "AWAY" },
+
+    { "slot": "CHAMP",   "round": 6, "region": null, "seedHome": null, "seedAway": null, "nextSlot": null, "nextSide": null }
+  ]
 }
