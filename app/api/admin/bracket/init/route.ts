@@ -71,15 +71,30 @@ export const POST = withApiUsage({
   tool: "BracketInit",
 })(async (request: NextRequest) => {
   try {
-    const body = await request.json()
-    const { password, season, firstFour: firstFourInput, finalFour: finalFourInput } = body
+    const headerSecret = request.headers.get("x-admin-secret")
+    const adminSecret = process.env.BRACKET_ADMIN_SECRET || process.env.ADMIN_PASSWORD
 
-    if (password !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 })
+    let body: any = {}
+    try {
+      body = await request.json()
+    } catch {
+      // body may be empty when using query params + header auth
     }
 
-    if (!season || typeof season !== "number") {
-      return NextResponse.json({ error: "season (number) is required" }, { status: 400 })
+    const authenticated =
+      (headerSecret && headerSecret === adminSecret) ||
+      (body.password && body.password === adminSecret)
+
+    if (!authenticated) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const seasonParam = request.nextUrl.searchParams.get("season")
+    const season = body.season ?? (seasonParam ? parseInt(seasonParam, 10) : null)
+    const { firstFour: firstFourInput, finalFour: finalFourInput } = body
+
+    if (!season || isNaN(season)) {
+      return NextResponse.json({ error: "season (number) is required — pass in body or ?season=YYYY" }, { status: 400 })
     }
 
     const existing = await prisma.bracketTournament.findFirst({
