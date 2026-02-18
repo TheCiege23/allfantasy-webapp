@@ -17,13 +17,14 @@ import { useSearchParams } from "next/navigation";
 export default function LoginContent() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams?.get("callbackUrl") || searchParams?.get("next") || "/brackets";
+  const isAdminLogin = callbackUrl.startsWith("/admin");
 
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [showAdmin, setShowAdmin] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(isAdminLogin);
   const [adminPassword, setAdminPassword] = useState("");
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
@@ -128,128 +129,193 @@ export default function LoginContent() {
       </Link>
 
       <div className="w-full max-w-md space-y-4">
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl border border-white/10 bg-black/20 p-2">
-              <Mail className="h-5 w-5 text-cyan-400" />
-            </div>
-            <div>
-              <div className="text-xl font-semibold">Sign in</div>
-              <div className="text-sm text-white/60">
-                Enter your email to get a magic sign-in link.
+        {isAdminLogin ? (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl border border-white/10 bg-black/20 p-2">
+                <Shield className="h-5 w-5 text-cyan-400" />
+              </div>
+              <div>
+                <div className="text-xl font-semibold">Admin Sign In</div>
+                <div className="text-sm text-white/60">
+                  Enter the admin password to continue.
+                </div>
               </div>
             </div>
+
+            {adminError && (
+              <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                <div className="flex items-start gap-2">
+                  <TriangleAlert className="h-5 w-5 mt-0.5 shrink-0" />
+                  <div>
+                    {adminError}
+                    {typeof adminRemaining === "number" && (
+                      <span className="ml-1 text-xs text-red-200/70">
+                        ({adminRemaining} attempts remaining)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminLogin} className="mt-5 space-y-3">
+              <div>
+                <label className="text-sm text-white/70">Password</label>
+                <input
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  type="password"
+                  autoComplete="current-password"
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/20"
+                  placeholder="••••••••"
+                  disabled={adminLoading}
+                  autoFocus
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={adminLoading || !adminPassword.trim()}
+                className="w-full rounded-xl bg-white text-black px-4 py-2.5 text-sm font-medium hover:bg-gray-200 disabled:opacity-60 transition-colors"
+              >
+                {adminLoading ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in...
+                  </span>
+                ) : (
+                  "Sign in"
+                )}
+              </button>
+            </form>
           </div>
-
-          {error && (
-            <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-              <div className="flex items-start gap-2">
-                <TriangleAlert className="h-5 w-5 mt-0.5 shrink-0" />
-                <div>{error}</div>
+        ) : (
+          <>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl">
+              <div className="flex items-start gap-3">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-2">
+                  <Mail className="h-5 w-5 text-cyan-400" />
+                </div>
+                <div>
+                  <div className="text-xl font-semibold">Sign in</div>
+                  <div className="text-sm text-white/60">
+                    Enter your email to get a magic sign-in link.
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
 
-          <form onSubmit={handleEmailSignIn} className="mt-5 space-y-3">
-            <div>
-              <label className="text-sm text-white/70">Email</label>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                type="email"
-                autoComplete="email"
-                className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/20"
-                placeholder="you@example.com"
-                disabled={sending}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={sending || !email.trim()}
-              className="w-full rounded-xl bg-white text-black px-4 py-2.5 text-sm font-medium hover:bg-gray-200 disabled:opacity-60 transition-colors"
-            >
-              {sending ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Sending link...
-                </span>
-              ) : (
-                "Send sign-in link"
-              )}
-            </button>
-          </form>
-
-          <p className="mt-4 text-xs text-white/40 text-center">
-            No password needed. We&apos;ll email you a one-time link to sign in.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 shadow-xl overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setShowAdmin((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3 text-sm text-white/50 hover:text-white/70 transition"
-          >
-            <span className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Admin login
-            </span>
-            <ChevronDown
-              className={`h-4 w-4 transition-transform ${showAdmin ? "rotate-180" : ""}`}
-            />
-          </button>
-
-          {showAdmin && (
-            <div className="px-5 pb-5 pt-1 border-t border-white/5">
-              {adminError && (
-                <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+              {error && (
+                <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
                   <div className="flex items-start gap-2">
                     <TriangleAlert className="h-5 w-5 mt-0.5 shrink-0" />
-                    <div>
-                      {adminError}
-                      {typeof adminRemaining === "number" && (
-                        <span className="ml-1 text-xs text-red-200/70">
-                          ({adminRemaining} attempts remaining)
-                        </span>
-                      )}
-                    </div>
+                    <div>{error}</div>
                   </div>
                 </div>
               )}
 
-              <form onSubmit={handleAdminLogin} className="space-y-3">
+              <form onSubmit={handleEmailSignIn} className="mt-5 space-y-3">
                 <div>
-                  <label className="text-xs text-white/60">Admin password</label>
+                  <label className="text-sm text-white/70">Email</label>
                   <input
-                    value={adminPassword}
-                    onChange={(e) => setAdminPassword(e.target.value)}
-                    type="password"
-                    autoComplete="current-password"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    type="email"
+                    autoComplete="email"
                     className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/20"
-                    placeholder="••••••••"
-                    disabled={adminLoading}
+                    placeholder="you@example.com"
+                    disabled={sending}
                   />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={adminLoading || !adminPassword.trim()}
-                  className="w-full rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15 disabled:opacity-60 transition"
+                  disabled={sending || !email.trim()}
+                  className="w-full rounded-xl bg-white text-black px-4 py-2.5 text-sm font-medium hover:bg-gray-200 disabled:opacity-60 transition-colors"
                 >
-                  {adminLoading ? (
+                  {sending ? (
                     <span className="inline-flex items-center justify-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
-                      Signing in...
+                      Sending link...
                     </span>
                   ) : (
-                    "Admin sign in"
+                    "Send sign-in link"
                   )}
                 </button>
               </form>
+
+              <p className="mt-4 text-xs text-white/40 text-center">
+                No password needed. We&apos;ll email you a one-time link to sign in.
+              </p>
             </div>
-          )}
-        </div>
+
+            <div className="rounded-2xl border border-white/10 bg-white/5 shadow-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowAdmin((v) => !v)}
+                className="w-full flex items-center justify-between px-5 py-3 text-sm text-white/50 hover:text-white/70 transition"
+              >
+                <span className="flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Admin login
+                </span>
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${showAdmin ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              {showAdmin && (
+                <div className="px-5 pb-5 pt-1 border-t border-white/5">
+                  {adminError && (
+                    <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                      <div className="flex items-start gap-2">
+                        <TriangleAlert className="h-5 w-5 mt-0.5 shrink-0" />
+                        <div>
+                          {adminError}
+                          {typeof adminRemaining === "number" && (
+                            <span className="ml-1 text-xs text-red-200/70">
+                              ({adminRemaining} attempts remaining)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleAdminLogin} className="space-y-3">
+                    <div>
+                      <label className="text-xs text-white/60">Admin password</label>
+                      <input
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        type="password"
+                        autoComplete="current-password"
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm outline-none focus:border-white/20"
+                        placeholder="••••••••"
+                        disabled={adminLoading}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={adminLoading || !adminPassword.trim()}
+                      className="w-full rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15 disabled:opacity-60 transition"
+                    >
+                      {adminLoading ? (
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Signing in...
+                        </span>
+                      ) : (
+                        "Admin sign in"
+                      )}
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
