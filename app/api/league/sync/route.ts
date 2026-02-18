@@ -94,13 +94,22 @@ export async function POST(req: NextRequest) {
     const normalizedPlatform = platform.toLowerCase();
 
     const league = await (prisma as any).league.upsert({
-      where: { platform_platformLeagueId: { platform: normalizedPlatform, platformLeagueId } },
+      where: {
+        userId_platform_platformLeagueId: {
+          userId,
+          platform: normalizedPlatform,
+          platformLeagueId,
+        },
+      },
       update: {
         name: leaguePayload.name,
         leagueSize: leaguePayload.leagueSize,
         scoring: leaguePayload.scoring,
         isDynasty: leaguePayload.isDynasty,
         settings: leaguePayload.settings,
+        lastSyncedAt: new Date(),
+        syncStatus: 'success',
+        syncError: null,
         updatedAt: new Date(),
       },
       create: {
@@ -112,6 +121,8 @@ export async function POST(req: NextRequest) {
         scoring: leaguePayload.scoring,
         isDynasty: leaguePayload.isDynasty,
         settings: leaguePayload.settings,
+        lastSyncedAt: new Date(),
+        syncStatus: 'success',
       },
     });
 
@@ -144,9 +155,21 @@ export async function POST(req: NextRequest) {
       rostersSync: rosterCount,
       scoring: leaguePayload.scoring,
       isDynasty: leaguePayload.isDynasty,
+      lastSyncedAt: league.lastSyncedAt,
     });
   } catch (error: any) {
     console.error('[League Sync]', error);
+
+    try {
+      await (prisma as any).league.updateMany({
+        where: { userId, syncStatus: 'pending' },
+        data: {
+          syncStatus: 'error',
+          syncError: (error.message || 'Unknown error').slice(0, 500),
+        },
+      });
+    } catch {}
+
     return NextResponse.json({ error: error.message || 'Sync failed' }, { status: 500 });
   }
 }

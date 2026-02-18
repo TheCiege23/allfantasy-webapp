@@ -2087,6 +2087,8 @@ model AppUser {
   tradeFeedback        Feedback[]
   tradeProfile         TradeProfile?
   waiverPickups        WaiverPickup[]
+  leagues              League[]
+  activeLeagueId       String?
 
   @@map("app_users")
 }
@@ -2304,23 +2306,27 @@ model PasswordResetToken {
 }
 
 model League {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   userId           String
   platform         String
   platformLeagueId String
-  name             String
-  leagueSize       Int
-  scoring          String
-  isDynasty        Boolean
-  settings         Json
+  name             String?
+  leagueSize       Int?
+  scoring          String?
+  isDynasty        Boolean?
+  settings         Json?
+  lastSyncedAt     DateTime?
+  syncStatus       String?
+  syncError        String?
 
   rosters          Roster[]
   waiverPickups    WaiverPickup[]
+  user             AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  @@unique([platform, platformLeagueId])
+  @@unique([userId, platform, platformLeagueId])
   @@index([userId])
   @@map("leagues")
 }
