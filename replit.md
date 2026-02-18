@@ -90,6 +90,11 @@ Key features include:
 -   **Community Trade Value Data**: Locally stored historical NFL player and pick values.
 -   **Etsy Shop Integration**: Displays AllFantasy merchandise.
 
+## Deployment Notes
+-   **Current**: Replit PostgreSQL (Neon-backed) for MVP. Dev server on port 5000.
+-   **Future migration path**: Consider Vercel + Neon/Supabase Postgres for production scaling. Prisma ORM makes migration straightforward — only `DATABASE_URL` needs updating.
+-   **Landing page components**: `EarlyAccessForm` (hero/footer variants) and `InstantTradeAnalyzer` extracted into standalone components under `app/components/`.
+
 ## Player Analytics Integration
 The player analytics database (1,468+ NFL players, 355 columns) is integrated across three core systems:
 -   **Waiver AI** (`lib/waiver-engine/waiver-scoring.ts`): Analytics-enhanced stash scoring (breakout age, athleticism, dominator rating bonuses), refined dynasty ceiling driver with combine/college data, and `wa_age_trajectory` analytics profile driver. Batch analytics fetched in `app/api/legacy/waiver/analyze/route.ts`.
