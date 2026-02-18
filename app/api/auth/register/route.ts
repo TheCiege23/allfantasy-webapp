@@ -1,51 +1,65 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
-import crypto from "crypto"
+import { sha256Hex, makeToken, isStrongPassword } from "@/lib/tokens"
+
+export const runtime = "nodejs"
+
+function normalizeUsername(u: string) {
+  return u.trim().toLowerCase()
+}
+
+function normalizeEmail(e: string) {
+  return e.trim().toLowerCase()
+}
+
+function normalizePhone(p?: string | null) {
+  const s = (p ?? "").trim()
+  return s.length ? s : null
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { username, email, password, displayName, phone, sleeperUsername, ageConfirmed, verificationMethod } = body
+    const { password, displayName, phone, sleeperUsername, ageConfirmed, verificationMethod } = body
 
-    if (!username || !email || !password) {
-      return NextResponse.json({ error: "Username, email, and password are required." }, { status: 400 })
+    const username = normalizeUsername(String(body?.username ?? ""))
+    const email = normalizeEmail(String(body?.email ?? ""))
+
+    if (!username || username.length < 3 || username.length > 30) {
+      return NextResponse.json({ error: "Username must be 3-30 characters." }, { status: 400 })
+    }
+
+    if (!/^[a-z0-9_]+$/.test(username)) {
+      return NextResponse.json({ error: "Username can only contain letters, numbers, and underscores." }, { status: 400 })
+    }
+
+    if (!email || !email.includes("@")) {
+      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
+    }
+
+    if (!isStrongPassword(String(password ?? ""))) {
+      return NextResponse.json({ error: "Password must be at least 8 characters with a letter and number." }, { status: 400 })
     }
 
     if (!ageConfirmed) {
       return NextResponse.json({ error: "You must confirm you are 18 or older." }, { status: 400 })
     }
 
-    const cleanUsername = username.toLowerCase().trim()
-    const cleanEmail = email.toLowerCase().trim()
+    const existing = await (prisma as any).appUser.findFirst({
+      where: { OR: [{ email }, { username }] },
+      select: { id: true, email: true, username: true },
+    })
 
-    if (cleanUsername.length < 3 || cleanUsername.length > 30) {
-      return NextResponse.json({ error: "Username must be 3-30 characters." }, { status: 400 })
-    }
-
-    if (!/^[a-z0-9_]+$/.test(cleanUsername)) {
-      return NextResponse.json({ error: "Username can only contain letters, numbers, and underscores." }, { status: 400 })
-    }
-
-    if (password.length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 })
-    }
-
-    if (!cleanEmail.includes("@")) {
-      return NextResponse.json({ error: "Please enter a valid email address." }, { status: 400 })
-    }
-
-    const existingEmail = await (prisma as any).appUser.findUnique({ where: { email: cleanEmail } })
-    if (existingEmail) {
+    if (existing?.email === email) {
       return NextResponse.json({ error: "An account with this email already exists." }, { status: 409 })
     }
-
-    const existingUsername = await (prisma as any).appUser.findUnique({ where: { username: cleanUsername } })
-    if (existingUsername) {
+    if (existing?.username === username) {
       return NextResponse.json({ error: "This username is already taken." }, { status: 409 })
     }
 
     const passwordHash = await bcrypt.hash(password, 12)
+    const now = new Date()
 
     let sleeperData: { sleeperUsername?: string; sleeperUserId?: string; sleeperLinkedAt?: Date } = {}
     if (sleeperUsername) {
@@ -57,45 +71,45 @@ export async function POST(req: Request) {
             sleeperData = {
               sleeperUsername: sleeperUser.username || sleeperUsername.trim(),
               sleeperUserId: sleeperUser.user_id,
-              sleeperLinkedAt: new Date(),
+              sleeperLinkedAt: now,
             }
           }
         }
-      } catch {
-      }
+      } catch {}
     }
 
-    const user = await (prisma as any).appUser.create({
-      data: {
-        email: cleanEmail,
-        username: cleanUsername,
-        passwordHash,
-        displayName: displayName?.trim() || cleanUsername,
-      },
+    const user = await (prisma as any).$transaction(async (tx: any) => {
+      const created = await tx.appUser.create({
+        data: {
+          email,
+          username,
+          passwordHash,
+          displayName: displayName?.trim() || username,
+        },
+        select: { id: true, email: true, username: true },
+      })
+
+      await tx.userProfile.create({
+        data: {
+          userId: created.id,
+          displayName: displayName?.trim() || username,
+          phone: normalizePhone(phone),
+          ageConfirmedAt: now,
+          verificationMethod: verificationMethod === "PHONE" ? "PHONE" : "EMAIL",
+          ...sleeperData,
+          profileComplete: false,
+        },
+      })
+
+      return created
     })
 
-    await (prisma as any).userProfile.create({
-      data: {
-        userId: user.id,
-        displayName: displayName?.trim() || cleanUsername,
-        phone: phone?.trim() || null,
-        ageConfirmedAt: new Date(),
-        verificationMethod: verificationMethod === "PHONE" ? "PHONE" : "EMAIL",
-        ...sleeperData,
-        profileComplete: false,
-      },
-    })
-
-    const rawToken = crypto.randomBytes(32).toString("base64url")
-    const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex")
+    const rawToken = makeToken(32)
+    const tokenHash = sha256Hex(rawToken)
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60)
 
     await (prisma as any).emailVerifyToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        expiresAt,
-      },
+      data: { userId: user.id, tokenHash, expiresAt },
     })
 
     try {
@@ -108,7 +122,7 @@ export async function POST(req: Request) {
 
       await client.emails.send({
         from: fromEmail || "AllFantasy.ai <noreply@allfantasy.ai>",
-        to: cleanEmail,
+        to: email,
         subject: "Verify your AllFantasy.ai email",
         html: `
 <!DOCTYPE html>
@@ -128,9 +142,9 @@ export async function POST(req: Request) {
     <div style="text-align:center;">
       <div class="logo">AllFantasy.ai</div>
       <h2 style="margin:16px 0 8px;color:#f1f5f9;">Verify Your Email</h2>
-      <p style="color:#94a3b8;">Welcome, ${displayName?.trim() || cleanUsername}! Click the button below to verify your email address.</p>
+      <p style="color:#94a3b8;">Welcome, ${displayName?.trim() || username}! Click the button below to verify your email address.</p>
       <a href="${verifyUrl}" class="btn">Verify Email</a>
-      <p style="color:#64748b;font-size:13px;margin-top:16px;">This link expires in 24 hours.</p>
+      <p style="color:#64748b;font-size:13px;margin-top:16px;">This link expires in 1 hour.</p>
     </div>
     <div class="footer">
       <p>If you didn't create this account, you can safely ignore this email.</p>

@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import crypto from "crypto"
+import { sha256Hex, makeToken } from "@/lib/tokens"
 
 export const runtime = "nodejs"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
-
-function makeToken(bytes = 32) {
-  return crypto.randomBytes(bytes).toString("base64url")
-}
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))

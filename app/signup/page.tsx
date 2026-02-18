@@ -84,7 +84,19 @@ export default function SignupPage() {
         return
       }
 
-      setSuccess(true)
+      const loginRes = await signIn("credentials", {
+        redirect: false,
+        login: email.trim(),
+        password,
+      })
+
+      if (!loginRes?.ok) {
+        setSuccess(true)
+        setLoading(false)
+        return
+      }
+
+      router.push("/verify")
     } catch {
       setError("Something went wrong. Please try again.")
     }
@@ -104,7 +116,7 @@ export default function SignupPage() {
             Click the link to verify your email, then sign in.
           </p>
           <p className="text-xs text-white/40">
-            The link expires in 24 hours. Check your spam folder if you don't see it.
+            The link expires in 1 hour. Check your spam folder if you don't see it.
           </p>
           <Link
             href="/login"

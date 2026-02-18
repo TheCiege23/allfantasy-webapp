@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import crypto from "crypto"
+import { sha256Hex } from "@/lib/tokens"
 
 export const runtime = "nodejs"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
 
 function redirectTo(req: Request, path: string) {
   const origin = new URL(req.url).origin

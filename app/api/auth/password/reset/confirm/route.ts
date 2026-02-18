@@ -1,20 +1,9 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import crypto from "crypto"
 import bcrypt from "bcryptjs"
+import { sha256Hex, isStrongPassword } from "@/lib/tokens"
 
 export const runtime = "nodejs"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
-
-function isStrongPassword(pw: string) {
-  if (pw.length < 8) return false
-  const hasLetter = /[A-Za-z]/.test(pw)
-  const hasNumber = /[0-9]/.test(pw)
-  return hasLetter && hasNumber
-}
 
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))

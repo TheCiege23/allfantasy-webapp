@@ -1,16 +1,8 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import crypto from "crypto"
+import { sha256Hex, makeToken } from "@/lib/tokens"
 
 export const runtime = "nodejs"
-
-function sha256Hex(input: string) {
-  return crypto.createHash("sha256").update(input).digest("hex")
-}
-
-function makeToken(bytes = 32) {
-  return crypto.randomBytes(bytes).toString("base64url")
-}
 
 export async function POST() {
   const { getSessionAndProfile } = await import("@/lib/auth-guard")
@@ -48,17 +40,8 @@ export async function POST() {
   const tokenHash = sha256Hex(rawToken)
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60)
 
-  await (prisma as any).emailVerifyToken.deleteMany({
-    where: { userId },
-  }).catch(() => {})
-
-  await (prisma as any).emailVerifyToken.create({
-    data: {
-      userId,
-      tokenHash,
-      expiresAt,
-    },
-  })
+  await (prisma as any).emailVerifyToken.deleteMany({ where: { userId } }).catch(() => {})
+  await (prisma as any).emailVerifyToken.create({ data: { userId, tokenHash, expiresAt } })
 
   const { getBaseUrl } = await import("@/lib/get-base-url")
   const baseUrl = getBaseUrl()
