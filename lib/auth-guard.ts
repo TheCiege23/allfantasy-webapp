@@ -53,9 +53,15 @@ export async function getSessionAndProfile(): Promise<{
     select: { emailVerified: true },
   }).catch(() => null)
 
-  const profile = await (prisma as any).userProfile.findUnique({
+  let profile = await (prisma as any).userProfile.findUnique({
     where: { userId },
   }).catch(() => null)
+
+  if (!profile) {
+    profile = await (prisma as any).userProfile.create({
+      data: { userId },
+    }).catch(() => null)
+  }
 
   return { userId, email, emailVerified: appUser?.emailVerified ?? null, profile }
 }
@@ -80,9 +86,23 @@ export async function requireVerifiedUser(): Promise<
     select: { emailVerified: true },
   }).catch(() => null)
 
-  const profile = await (prisma as any).userProfile.findUnique({
+  let profile = await (prisma as any).userProfile.findUnique({
     where: { userId: session.user.id },
   }).catch(() => null)
+
+  if (!profile) {
+    try {
+      profile = await (prisma as any).userProfile.create({
+        data: { userId: session.user.id },
+      })
+    } catch (createErr) {
+      console.error("[auth-guard] Failed to create missing profile:", createErr)
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "INTERNAL_ERROR" }, { status: 500 }),
+      }
+    }
+  }
 
   if (!isAgeConfirmed(profile)) {
     return {

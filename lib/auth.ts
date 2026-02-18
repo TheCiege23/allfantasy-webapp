@@ -236,48 +236,52 @@ export const authOptions: NextAuthOptions = {
   },
   events: {
     async signIn({ user }) {
-      if (!user?.id || !user?.email) return
+      if (!user?.id) return
       try {
-        const db = prisma as any
-        const existing = await db.userProfile.findUnique({
-          where: { userId: user.id },
-        }).catch(() => null)
+        const u = await prisma.appUser.findUnique({
+          where: { id: user.id },
+          select: { emailVerified: true, email: true },
+        })
+        if (!u) return
 
-        if (existing) {
-          await db.userProfile.update({
+        const db = prisma as any
+
+        if (u.emailVerified) {
+          await db.userProfile.upsert({
             where: { userId: user.id },
-            data: { emailVerifiedAt: existing.emailVerifiedAt ?? new Date() },
-          })
-        } else {
-          await db.userProfile.create({
-            data: {
-              userId: user.id,
-              emailVerifiedAt: new Date(),
-            },
-          })
+            update: { emailVerifiedAt: u.emailVerified },
+            create: { userId: user.id, emailVerifiedAt: u.emailVerified },
+          }).catch(() => null)
         }
 
-        const pending = await db.pendingSignup.findUnique({
-          where: { email: user.email },
-        }).catch(() => null)
+        if (u.email) {
+          const pending = await db.pendingSignup.findUnique({
+            where: { email: u.email },
+          }).catch(() => null)
 
-        if (pending) {
-          await db.userProfile.update({
-            where: { userId: user.id },
-            data: {
-              ...(pending.displayName && { displayName: pending.displayName }),
-              ...(pending.phone && { phone: pending.phone }),
-            },
-          })
-          if (pending.displayName) {
-            await prisma.appUser.update({
-              where: { id: user.id },
-              data: { displayName: pending.displayName },
+          if (pending) {
+            await db.userProfile.upsert({
+              where: { userId: user.id },
+              update: {
+                ...(pending.displayName && { displayName: pending.displayName }),
+                ...(pending.phone && { phone: pending.phone }),
+              },
+              create: {
+                userId: user.id,
+                ...(pending.displayName && { displayName: pending.displayName }),
+                ...(pending.phone && { phone: pending.phone }),
+              },
+            }).catch(() => null)
+            if (pending.displayName) {
+              await prisma.appUser.update({
+                where: { id: user.id },
+                data: { displayName: pending.displayName },
+              }).catch(() => {})
+            }
+            await db.pendingSignup.delete({
+              where: { email: u.email },
             }).catch(() => {})
           }
-          await (prisma as any).pendingSignup.delete({
-            where: { email: user.email },
-          }).catch(() => {})
         }
       } catch (err) {
         console.error("[auth] signIn event error:", err)
