@@ -3,12 +3,16 @@ import OpenAI from 'openai'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { withApiUsage } from '@/lib/telemetry/usage'
 
-const xai = new OpenAI({
+const grokClient = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
   baseURL: 'https://api.x.ai/v1',
 })
 
-function buildFullPrompt(ctx: {
+const openaiClient = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
+
+function buildSystemPrompt(ctx: {
   tradeText: string
   leagueSize: number
   scoring: string
@@ -20,10 +24,12 @@ function buildFullPrompt(ctx: {
   userFAABRemaining?: number
   userContentionWindow?: string
   userRecord?: string
+  fantasyCalcSnippet?: string
 }) {
   const {
     tradeText, leagueSize, scoring, isDynasty, currentVerdict, currentFairness,
     leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
+    fantasyCalcSnippet,
   } = ctx
 
   const format = isDynasty ? 'Dynasty' : 'Redraft'
@@ -34,9 +40,15 @@ function buildFullPrompt(ctx: {
   const faab = userFAABRemaining != null ? `${userFAABRemaining}%` : 'Not provided'
   const roster = userRoster || 'No roster provided'
   const fairnessStr = `${currentFairness >= 0 ? '+' : ''}${currentFairness}%`
+  const fcBlock = fantasyCalcSnippet ? `\nFantasyCalc objective values (league-size adjusted):\n${fantasyCalcSnippet}\n` : ''
 
-  return `You are the world's most accurate, league-specific, roster-aware fantasy football trade negotiator for 2025-2026 seasons.
-Your analysis must be hyper-personalized to the user's exact situation — no generic advice.
+  return `You are the world's #1 fantasy football trade analyst (2026).
+
+LEAGUE SIZE SPECIFICITY IS CRITICAL:
+- 4-8 team leagues: Picks have almost no value, stars dominate
+- 10-12 team leagues: Balanced pick/player values
+- 14-16 team leagues: Picks gain huge value, depth matters enormously
+- 20-32 team leagues: Even late picks are extremely valuable, roster depth is king
 
 === LEAGUE & USER CONTEXT ===
 League size: ${leagueSize}-team
@@ -46,7 +58,7 @@ Full league settings: ${settingsJson}
 User's contention window: ${contention}
 User's current record: ${record}
 User's FAAB remaining: ${faab}
-
+${fcBlock}
 User's roster (critical for replacement level, positional needs, surplus, age curve, contention fit):
 """
 ${roster}
@@ -66,10 +78,10 @@ Generate 3–5 highly realistic, personalized counter-offer suggestions that mea
 Take EVERYTHING into account:
 - Exact positional scarcity based on league starters, bench size, flex rules, TE-premium, Superflex
 - User's roster needs / surplus / age / injury risk / contention window
-- Dynasty-specific value: future picks (early/mid/late adjusted for league size/format), rookie draft outlook (college prospects, landing spots, team needs)
+- Dynasty-specific value: future picks (early/mid/late adjusted for league size/format), rookie draft outlook
 - Volatility: boom/bust players, injury history, contract situations
 - FAAB implications if relevant
-- Trade history tendencies in this league (if implied by context)
+- FantasyCalc objective values when available — use them to ground your suggestions
 - Acceptance likelihood — suggest counters a rational opponent would consider
 
 For each suggestion return:
@@ -77,7 +89,7 @@ For each suggestion return:
 - Exact natural-language counter-offer text (copy-paste ready, "I give: X\\nI get: Y" format)
 - Estimated new fairness impact (e.g. "+18% for you", "now strong win", "higher acceptance chance")
 - 3–5 concise, specific bullets explaining WHY it's better (reference roster, league settings, contention, etc.)
-- Optional sensitivity note (one sentence) — e.g. "Only if you're truly win-now", "Avoid if rebuilding", null if not needed
+- Optional sensitivity note (one sentence) — e.g. "Only if you're truly win-now", null if not needed
 
 Rules:
 - Be brutally honest — never suggest trades that hurt the user
@@ -87,18 +99,38 @@ Rules:
 - Keep language clear, confident, conversational — like advising a league mate
 - Order from most to least likely to be accepted
 
-Return ONLY valid JSON — nothing else:
+Return ONLY valid JSON:
 {
   "suggestions": [
     {
       "title": "string (8-15 words)",
-      "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
+      "counter": "exact copy-paste offer (I give: X\\nI get: Y)",
       "impact": "string like +15% for you",
       "reasons": ["max 12 words each", "3-5 bullets"],
       "sensitivityNote": "string or null"
     }
   ]
 }`
+}
+
+async function fetchFantasyCalcValues(isDynasty: boolean, leagueSize: number, scoring: string): Promise<string | undefined> {
+  try {
+    const pprValue = scoring === 'ppr' ? 1 : scoring === 'half' ? 0.5 : 0
+    const url = `https://api.fantasycalc.com/values/current?isDynasty=${isDynasty}&numTeams=${leagueSize}&ppr=${pprValue}&numQbs=1`
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) })
+    if (!res.ok) return undefined
+    const data = await res.json()
+    if (!Array.isArray(data) || data.length === 0) return undefined
+    const top30 = data.slice(0, 30).map((p: any) => ({
+      name: p.player?.name || p.name,
+      pos: p.player?.position || p.position,
+      value: p.value,
+      trend: p.trend30Day,
+    }))
+    return JSON.stringify(top30)
+  } catch {
+    return undefined
+  }
 }
 
 function parseSuggestions(parsed: any) {
@@ -155,22 +187,131 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     }
 
     const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
-    const systemPrompt = buildFullPrompt({
+
+    const fantasyCalcSnippet = await fetchFantasyCalcValues(isDynasty, leagueSize, scoring)
+
+    const systemPrompt = buildSystemPrompt({
       tradeText, leagueSize, scoring, isDynasty,
       currentVerdict: currentVerdict || 'unknown', currentFairness: percentDiff,
       leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
+      fantasyCalcSnippet,
     })
 
-    const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Generate the counter-offer suggestions now. Return only JSON.' },
-    ]
+    if (req.signal?.aborted) {
+      return new Response('Request aborted', { status: 499 })
+    }
+
+    const [grokResult, openaiResult] = await Promise.allSettled([
+      grokClient.chat.completions.create({
+        model: 'grok-4-0709',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: 'Generate the counter-offer suggestions now. Use your real-time awareness of injuries, signings, rookie buzz, and X sentiment. Return only JSON.' },
+        ],
+        temperature: 0.6,
+        max_tokens: 1800,
+        response_format: { type: 'json_object' },
+      }),
+      openaiClient.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt + '\n\nYou are the strategic verification brain. Focus on long-term dynasty implications, roster fit, risk assessment, and acceptance probability. Return only JSON.',
+          },
+          {
+            role: 'user',
+            content: 'Generate the counter-offer suggestions now. Focus on deep strategic reasoning and risk-adjusted value. Return only JSON.',
+          },
+        ],
+        temperature: 0.5,
+        max_tokens: 1400,
+        response_format: { type: 'json_object' },
+      }),
+    ])
+
+    const grokContent = grokResult.status === 'fulfilled'
+      ? (grokResult.value.choices[0]?.message?.content || '{}')
+      : '{"error": "Grok unavailable"}'
+    const openaiContent = openaiResult.status === 'fulfilled'
+      ? (openaiResult.value.choices[0]?.message?.content || '{}')
+      : '{"error": "OpenAI unavailable"}'
+
+    if (grokResult.status === 'rejected') {
+      console.error('[improve-trade] Grok failed, continuing with OpenAI only:', grokResult.reason?.message)
+    }
+    if (openaiResult.status === 'rejected') {
+      console.error('[improve-trade] OpenAI failed, continuing with Grok only:', openaiResult.reason?.message)
+    }
+
+    if (grokResult.status === 'rejected' && openaiResult.status === 'rejected') {
+      return NextResponse.json({ error: 'Both AI models are unavailable. Please try again.' }, { status: 503 })
+    }
+
+    const hasSingleSource = grokResult.status === 'rejected' || openaiResult.status === 'rejected'
+    const singleSourceContent = grokResult.status === 'rejected' ? openaiContent : grokContent
+
+    if (hasSingleSource) {
+      let parsed: any
+      try { parsed = JSON.parse(singleSourceContent) } catch {}
+      const directSuggestions = parsed ? parseSuggestions(parsed) : null
+      if (directSuggestions && directSuggestions.length > 0) {
+        if (shouldStream) {
+          const encoder = new TextEncoder()
+          const readable = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ suggestions: directSuggestions, done: true })}\n\n`))
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              controller.close()
+            },
+          })
+          return new Response(readable, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' },
+          })
+        }
+        return NextResponse.json({ suggestions: directSuggestions })
+      }
+    }
+
+    if (req.signal?.aborted) {
+      return new Response('Request aborted', { status: 499 })
+    }
 
     if (shouldStream) {
-      const stream = await xai.chat.completions.create({
-        model: 'grok-4-0709',
-        messages,
-        temperature: 0.6,
+      const synthesisStream = await openaiClient.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `You are the final synthesizer combining two elite AI trade analysts. Merge Grok's real-time-aware suggestions with OpenAI's strategically deep suggestions into one cohesive, best-possible set of 3-5 counter-offers.
+
+Rules:
+- Pick the strongest suggestions from both sources — deduplicate similar ideas
+- If both AIs agree on a counter, it's high-confidence — rank it first
+- If they disagree, include the more realistic/higher-acceptance option
+- Preserve the exact JSON format with title, counter, impact, reasons, sensitivityNote
+- Order from most to least likely to be accepted
+
+Return ONLY valid JSON:
+{
+  "suggestions": [
+    {
+      "title": "string",
+      "counter": "I give: X\\nI get: Y",
+      "impact": "string",
+      "reasons": ["string"],
+      "sensitivityNote": "string or null"
+    }
+  ]
+}`,
+          },
+          {
+            role: 'user',
+            content: `Grok (real-time aware) output:\n${grokContent}\n\nOpenAI (strategic depth) output:\n${openaiContent}\n\nProduce the final merged 3-5 suggestions.`,
+          },
+        ],
+        temperature: 0.4,
         max_tokens: 1600,
         response_format: { type: 'json_object' },
         stream: true,
@@ -181,7 +322,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
         async start(controller) {
           try {
             let accumulated = ''
-            for await (const chunk of stream) {
+            for await (const chunk of synthesisStream) {
               const delta = chunk.choices[0]?.delta?.content || ''
               if (delta) {
                 accumulated += delta
@@ -209,7 +350,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
             controller.enqueue(encoder.encode('data: [DONE]\n\n'))
             controller.close()
           } catch (err: any) {
-            console.error('[improve-trade] Stream error:', err?.message || err)
+            console.error('[improve-trade] Synthesis stream error:', err?.message || err)
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed. Please try again.' })}\n\n`))
             controller.enqueue(encoder.encode('data: [DONE]\n\n'))
             controller.close()
@@ -227,21 +368,30 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       })
     }
 
-    const completion = await xai.chat.completions.create({
-      model: 'grok-4-0709',
-      messages,
-      temperature: 0.6,
+    const synthesis = await openaiClient.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `You are the final synthesizer combining two elite AI trade analysts. Merge Grok's real-time-aware suggestions with OpenAI's strategically deep suggestions into one cohesive, best-possible set of 3-5 counter-offers. Pick the strongest from both, deduplicate, and order by acceptance likelihood. Return ONLY valid JSON with "suggestions" array.`,
+        },
+        {
+          role: 'user',
+          content: `Grok (real-time aware) output:\n${grokContent}\n\nOpenAI (strategic depth) output:\n${openaiContent}\n\nProduce the final merged 3-5 suggestions in exact JSON format.`,
+        },
+      ],
+      temperature: 0.4,
       max_tokens: 1600,
       response_format: { type: 'json_object' },
     })
 
-    const rawContent = completion.choices[0]?.message?.content || '{}'
+    const rawContent = synthesis.choices[0]?.message?.content || '{}'
 
     let parsed: any
     try {
       parsed = JSON.parse(rawContent)
     } catch {
-      console.error('[improve-trade] Invalid JSON from Grok:', rawContent.slice(0, 200))
+      console.error('[improve-trade] Invalid JSON from synthesis:', rawContent.slice(0, 200))
       return NextResponse.json(
         { error: 'Could not parse AI suggestions. Please try again.' },
         { status: 500 }
@@ -250,7 +400,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
 
     const suggestions = parseSuggestions(parsed)
     if (!suggestions || suggestions.length === 0) {
-      console.error('[improve-trade] No suggestions in response')
+      console.error('[improve-trade] No suggestions in synthesis response')
       return NextResponse.json(
         { error: 'AI returned no suggestions. Please try again.' },
         { status: 500 }
