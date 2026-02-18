@@ -36,33 +36,51 @@ function normalizeStatus(
   raw?: string | null
 ): "scheduled" | "in_progress" | "final" | "unknown" {
   if (!raw) return "unknown"
-  const s = raw.toLowerCase().trim()
+  const s = raw.trim().toLowerCase()
+
   if (
     s === "ft" ||
-    s === "aot" ||
-    s === "aet" ||
-    s.includes("final") ||
-    s === "match finished"
+    s === "final" ||
+    s.includes("match finished") ||
+    s.includes("finished") ||
+    s.includes("full time") ||
+    s.includes("after")
   )
     return "final"
+
+  if (
+    s === "ns" ||
+    s.includes("not started") ||
+    s.includes("scheduled") ||
+    s.includes("time") ||
+    s.includes("tbd")
+  )
+    return "scheduled"
+
   if (
     s.includes("in progress") ||
     s.includes("live") ||
     s.includes("playing") ||
-    /^\d/.test(s)
+    s.includes("1h") ||
+    s.includes("2h") ||
+    s.includes("q1") ||
+    s.includes("q2") ||
+    s.includes("q3") ||
+    s.includes("q4") ||
+    s.includes("ot") ||
+    s.includes("halftime") ||
+    s.includes("ht")
   )
     return "in_progress"
+
   if (
-    s === "ns" ||
-    s === "post" ||
-    s === "canc" ||
-    s.includes("not started") ||
-    s.includes("scheduled") ||
-    s.includes("postponed") ||
-    s.includes("cancelled") ||
-    s.includes("time")
+    s.includes("postpon") ||
+    s.includes("cancel") ||
+    s.includes("aband") ||
+    s.includes("interrupt")
   )
     return "scheduled"
+
   return "unknown"
 }
 
