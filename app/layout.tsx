@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import Script from 'next/script'
+import { Toaster } from 'sonner'
 import { ThemeProvider } from '@/components/theme/ThemeProvider'
 import './globals.css'
 
@@ -77,6 +78,16 @@ export default function RootLayout({
       <body className={`${inter.className} min-h-screen`}>
         <ThemeProvider>
           {children}
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              style: {
+                background: 'var(--panel)',
+                color: 'var(--text)',
+                border: '1px solid var(--border)',
+              },
+            }}
+          />
         </ThemeProvider>
       </body>
     </html>

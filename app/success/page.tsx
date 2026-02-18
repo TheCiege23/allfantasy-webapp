@@ -1,7 +1,11 @@
 'use client'
 
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { toast } from 'sonner'
 import confetti from 'canvas-confetti'
 import { gtagEvent } from '@/lib/gtag'
 
@@ -22,23 +26,42 @@ const EXPERIMENTAL_FORMATS = [
   'No — I prefer traditional leagues'
 ]
 
+const questionnaireSchema = z.object({
+  favoriteSport: z.string().min(1, 'Please select your favorite sport'),
+  favoriteLeagueType: z.string().min(1, 'Please select a league type'),
+  competitiveness: z.string().min(1, 'Please select your competitiveness level'),
+  draftPreference: z.string().min(1, 'Please select a draft preference'),
+  painPoint: z.string().min(1, 'Please select your biggest pain point'),
+  experimentalInterest: z.array(z.string()).min(1, 'Please select at least one option'),
+  freeText: z.string().max(1000).optional(),
+})
+type QuestionnaireForm = z.infer<typeof questionnaireSchema>
+
 function SuccessContent() {
   const searchParams = useSearchParams()
   const email = searchParams.get('email') || ''
   const isExisting = searchParams.get('existing') === 'true'
 
-  const [formData, setFormData] = useState({
-    favoriteSport: '',
-    favoriteLeagueType: '',
-    competitiveness: '',
-    draftPreference: '',
-    painPoint: '',
-    experimentalInterest: [] as string[],
-    freeText: '',
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting, isSubmitSuccessful },
+  } = useForm<QuestionnaireForm>({
+    resolver: zodResolver(questionnaireSchema),
+    defaultValues: {
+      favoriteSport: '',
+      favoriteLeagueType: '',
+      competitiveness: '',
+      draftPreference: '',
+      painPoint: '',
+      experimentalInterest: [],
+      freeText: '',
+    },
   })
-  const [submitting, setSubmitting] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [toast, setToast] = useState('')
+
+  const experimentalInterest = watch('experimentalInterest')
 
   useEffect(() => {
     if (!isExisting) {
@@ -87,20 +110,14 @@ function SuccessContent() {
   }, [])
 
   const handleCheckbox = (value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      experimentalInterest: prev.experimentalInterest.includes(value)
-        ? prev.experimentalInterest.filter(v => v !== value)
-        : [...prev.experimentalInterest, value]
-    }))
+    const current = experimentalInterest || []
+    const updated = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value]
+    setValue('experimentalInterest', updated, { shouldValidate: true })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (submitting || submitted) return
-
-    setSubmitting(true)
-
+  const onSubmit = async (formData: QuestionnaireForm) => {
     try {
       const res = await fetch('/api/questionnaire', {
         method: 'POST',
@@ -109,30 +126,20 @@ function SuccessContent() {
       })
 
       if (res.ok) {
-        setSubmitted(true)
-        setToast('Saved ✅')
+        toast.success('Questionnaire saved!')
         gtagEvent('questionnaire_submitted', {
           favorite_sport: formData.favoriteSport,
           league_type: formData.favoriteLeagueType,
           competitiveness: formData.competitiveness,
         })
-        setTimeout(() => setToast(''), 3000)
       } else {
         const data = await res.json()
-        setToast(data.error || 'Error saving')
-        setTimeout(() => setToast(''), 3000)
+        toast.error(data.error || 'Error saving questionnaire')
       }
     } catch {
-      setToast('Network error')
-      setTimeout(() => setToast(''), 3000)
-    } finally {
-      setSubmitting(false)
+      toast.error('Network error. Please try again.')
     }
   }
-
-  const isValid = formData.favoriteSport && formData.favoriteLeagueType && 
-    formData.competitiveness && formData.draftPreference && 
-    formData.painPoint && formData.experimentalInterest.length > 0
 
   return (
     <main className="min-h-screen flex flex-col items-center px-4 sm:px-6 py-8 sm:py-12 relative">
@@ -140,12 +147,6 @@ function SuccessContent() {
         <div className="absolute top-1/4 left-1/4 w-64 sm:w-96 h-64 sm:h-96 bg-neon-purple/20 rounded-full blur-3xl animate-glow-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-64 sm:w-96 h-64 sm:h-96 bg-neon-cyan/20 rounded-full blur-3xl animate-glow-pulse" style={{ animationDelay: '2s' }} />
       </div>
-
-      {toast && (
-        <div className="fixed top-4 right-4 bg-green-500/90 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg toast z-50 text-sm sm:text-base">
-          {toast}
-        </div>
-      )}
 
       <section className="text-center mb-8 sm:mb-12 relative z-10">
         <h1 className="text-3xl sm:text-5xl md:text-6xl font-bold text-white mb-3 sm:mb-4 neon-text">
@@ -168,31 +169,29 @@ function SuccessContent() {
           <p className="text-base sm:text-lg text-gray-300">Help us build the leagues you actually want.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-dark-800/60 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 border border-white/10 space-y-4 sm:space-y-6">
+        <form onSubmit={handleSubmit(onSubmit)} className="bg-dark-800/60 backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 border border-white/10 space-y-4 sm:space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Favorite Sport *</label>
             <select
-              value={formData.favoriteSport}
-              onChange={e => setFormData(p => ({ ...p, favoriteSport: e.target.value }))}
+              {...register('favoriteSport')}
               className="w-full px-4 py-3 rounded-lg bg-dark-700 border border-white/10 text-white text-base focus:outline-none input-glow min-h-[48px]"
-              required
             >
               <option value="">Select...</option>
               {SPORTS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            {errors.favoriteSport && <p className="text-xs text-red-400 mt-1">{errors.favoriteSport.message}</p>}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Favorite League Type *</label>
             <select
-              value={formData.favoriteLeagueType}
-              onChange={e => setFormData(p => ({ ...p, favoriteLeagueType: e.target.value }))}
+              {...register('favoriteLeagueType')}
               className="w-full px-4 py-3 rounded-lg bg-dark-700 border border-white/10 text-white text-base focus:outline-none input-glow min-h-[48px]"
-              required
             >
               <option value="">Select...</option>
               {LEAGUE_TYPES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            {errors.favoriteLeagueType && <p className="text-xs text-red-400 mt-1">{errors.favoriteLeagueType.message}</p>}
           </div>
 
           <div>
@@ -202,16 +201,15 @@ function SuccessContent() {
                 <label key={c} className="flex items-center gap-2.5 cursor-pointer py-2 px-1 min-h-[44px]">
                   <input
                     type="radio"
-                    name="competitiveness"
                     value={c}
-                    checked={formData.competitiveness === c}
-                    onChange={e => setFormData(p => ({ ...p, competitiveness: e.target.value }))}
+                    {...register('competitiveness')}
                     className="w-5 h-5 accent-neon-cyan"
                   />
                   <span className="text-gray-300 text-sm sm:text-base">{c}</span>
                 </label>
               ))}
             </div>
+            {errors.competitiveness && <p className="text-xs text-red-400 mt-1">{errors.competitiveness.message}</p>}
           </div>
 
           <div>
@@ -221,29 +219,27 @@ function SuccessContent() {
                 <label key={d} className="flex items-center gap-2.5 cursor-pointer py-2 px-1 min-h-[44px]">
                   <input
                     type="radio"
-                    name="draftPreference"
                     value={d}
-                    checked={formData.draftPreference === d}
-                    onChange={e => setFormData(p => ({ ...p, draftPreference: e.target.value }))}
+                    {...register('draftPreference')}
                     className="w-5 h-5 accent-neon-cyan"
                   />
                   <span className="text-gray-300 text-sm sm:text-base">{d}</span>
                 </label>
               ))}
             </div>
+            {errors.draftPreference && <p className="text-xs text-red-400 mt-1">{errors.draftPreference.message}</p>}
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Biggest Pain Point *</label>
             <select
-              value={formData.painPoint}
-              onChange={e => setFormData(p => ({ ...p, painPoint: e.target.value }))}
+              {...register('painPoint')}
               className="w-full px-4 py-3 rounded-lg bg-dark-700 border border-white/10 text-white text-base focus:outline-none input-glow min-h-[48px]"
-              required
             >
               <option value="">Select...</option>
               {PAIN_POINTS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+            {errors.painPoint && <p className="text-xs text-red-400 mt-1">{errors.painPoint.message}</p>}
           </div>
 
           <div>
@@ -256,7 +252,7 @@ function SuccessContent() {
                 <label key={f} className="flex items-center gap-2.5 cursor-pointer py-1.5 px-1 min-h-[40px]">
                   <input
                     type="checkbox"
-                    checked={formData.experimentalInterest.includes(f)}
+                    checked={experimentalInterest?.includes(f) || false}
                     onChange={() => handleCheckbox(f)}
                     className="w-5 h-5 accent-neon-cyan rounded flex-shrink-0"
                   />
@@ -264,6 +260,7 @@ function SuccessContent() {
                 </label>
               ))}
             </div>
+            {errors.experimentalInterest && <p className="text-xs text-red-400 mt-1">{errors.experimentalInterest.message}</p>}
           </div>
 
           <div>
@@ -271,8 +268,7 @@ function SuccessContent() {
               Anything you&apos;d want AllFantasy to do better than other apps? (optional)
             </label>
             <textarea
-              value={formData.freeText}
-              onChange={e => setFormData(p => ({ ...p, freeText: e.target.value }))}
+              {...register('freeText')}
               maxLength={1000}
               rows={3}
               className="w-full px-4 py-3 rounded-lg bg-dark-700 border border-white/10 text-white text-base focus:outline-none input-glow resize-none"
@@ -280,18 +276,18 @@ function SuccessContent() {
             />
           </div>
 
-          {!submitted && (
+          {!isSubmitSuccessful && (
             <button
               type="submit"
-              disabled={!isValid || submitting}
+              disabled={isSubmitting}
               className="w-full px-8 py-4 rounded-lg bg-gradient-to-r from-neon-cyan to-neon-blue text-dark-900 font-semibold glow-button disabled:opacity-50 disabled:cursor-not-allowed min-h-[52px] active:scale-[0.98] transition-transform"
             >
-              {submitting ? 'Saving...' : 'Submit'}
+              {isSubmitting ? 'Saving...' : 'Submit'}
             </button>
           )}
         </form>
 
-        {submitted && (
+        {isSubmitSuccessful && (
           <div className="mt-8 animate-fadeIn">
             <div className="text-center mb-5">
               <div className="inline-flex items-center gap-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full px-4 py-2 text-sm font-medium">

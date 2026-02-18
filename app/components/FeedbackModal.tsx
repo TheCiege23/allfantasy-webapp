@@ -16,6 +16,7 @@ import {
   Image as ImageIcon,
   Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { logFeedbackOpened, logFeedbackSubmitted } from "@/lib/analytics/insight-events";
 import EarlyAccessUpsell from "./EarlyAccessUpsell";
 
@@ -120,12 +121,12 @@ export default function FeedbackModal({
     if (!file) return;
     
     if (!file.type.startsWith("image/")) {
-      setError("Please select an image file");
+      toast.error("Please select an image file");
       return;
     }
     
     if (file.size > 5 * 1024 * 1024) {
-      setError("Screenshot must be less than 5MB");
+      toast.error("Screenshot must be less than 5MB");
       return;
     }
     
@@ -177,15 +178,15 @@ export default function FeedbackModal({
 
   const handleSubmit = async () => {
     if (!feedbackType) {
-      setError("Please select a feedback type");
+      toast.error("Please select a feedback type");
       return;
     }
     if (!tool) {
-      setError("Please select which tool this is about");
+      toast.error("Please select which tool this is about");
       return;
     }
     if (!feedbackText.trim()) {
-      setError("Please enter your feedback");
+      toast.error("Please enter your feedback");
       return;
     }
 
@@ -250,7 +251,9 @@ export default function FeedbackModal({
       });
 
       setSuccess(true);
+      toast.success("Feedback submitted! Thanks for helping improve the AI.");
     } catch (e: any) {
+      toast.error(e.message || "Something went wrong");
       setError(e.message || "Something went wrong");
     } finally {
       setSubmitting(false);

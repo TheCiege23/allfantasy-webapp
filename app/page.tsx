@@ -4,6 +4,10 @@ import React, { useMemo, useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { toast } from 'sonner'
 import { ModeToggle } from '@/components/theme/ModeToggle'
 import { BracketsNavLinks } from '@/components/bracket/BracketsNavLinks'
 import { gtagEvent } from '@/lib/gtag'
@@ -58,10 +62,16 @@ interface InstantTradeResult {
   }
 }
 
+const earlyAccessSchema = z.object({
+  email: z.string().min(1, 'Email is required').email('Please enter a valid email'),
+})
+type EarlyAccessForm = z.infer<typeof earlyAccessSchema>
+
 function HomeContent() {
-  const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const earlyAccess = useForm<EarlyAccessForm>({
+    resolver: zodResolver(earlyAccessSchema),
+    defaultValues: { email: '' },
+  })
   const [tradeText, setTradeText] = useState('')
   const [tradeLoading, setTradeLoading] = useState(false)
   const [tradeResult, setTradeResult] = useState<InstantTradeResult | null>(null)
@@ -171,11 +181,7 @@ function HomeContent() {
     []
   )
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
-
+  const onEarlyAccessSubmit = async (formData: EarlyAccessForm) => {
     try {
       const eventId = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).toString();
       
@@ -183,7 +189,7 @@ function HomeContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          email,
+          email: formData.email,
           eventId,
           ...utmParams,
         }),
@@ -192,7 +198,7 @@ function HomeContent() {
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data?.error || 'Something went wrong. Please try again.')
+        toast.error(data?.error || 'Something went wrong. Please try again.')
         return
       }
 
@@ -210,7 +216,7 @@ function HomeContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           event_id: eventId,
-          email,
+          email: formData.email,
           fbp,
           fbc,
           source_url: window.location.href
@@ -221,12 +227,12 @@ function HomeContent() {
         is_new: !data?.alreadyExists,
       })
 
-      const encodedEmail = encodeURIComponent(email.trim())
+      toast.success('You\'re in! Redirecting...')
+
+      const encodedEmail = encodeURIComponent(formData.email.trim())
       router.push(`/success?email=${encodedEmail}${data?.alreadyExists ? '&existing=true' : ''}`)
     } catch {
-      setError('Network error. Please try again.')
-    } finally {
-      setLoading(false)
+      toast.error('Network error. Please try again.')
     }
   }
 
@@ -293,23 +299,26 @@ function HomeContent() {
             </div>
 
             {/* CTA Form */}
-            <form onSubmit={handleSubmit} className="space-y-3">
+            <form onSubmit={earlyAccess.handleSubmit(onEarlyAccessSubmit)} className="space-y-3">
               <div className="rounded-2xl glow-box-strong backdrop-blur-xl p-2" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
-                  <input
-                    type="email"
-                    required
-                    autoComplete="email"
-                    inputMode="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="flex-1 w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
-                    style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
-                  />
+                  <div className="flex-1 w-full">
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      inputMode="email"
+                      placeholder="Enter your email"
+                      {...earlyAccess.register('email')}
+                      className="w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
+                      style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                    />
+                    {earlyAccess.formState.errors.email && (
+                      <p className="text-xs text-red-400 mt-1 px-1">{earlyAccess.formState.errors.email.message}</p>
+                    )}
+                  </div>
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={earlyAccess.formState.isSubmitting}
                     className="w-full sm:w-auto rounded-xl px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-base text-black min-h-[48px]
                                bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
                                shadow-[0_8px_32px_rgba(34,211,238,0.4),0_0_0_1px_rgba(34,211,238,0.2)]
@@ -318,7 +327,7 @@ function HomeContent() {
                                active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-cyan-400/30
                                disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                   >
-                    {loading ? 'Saving...' : 'Get AI Early Access'}
+                    {earlyAccess.formState.isSubmitting ? 'Saving...' : 'Get AI Early Access'}
                   </button>
                 </div>
               </div>
@@ -328,7 +337,7 @@ function HomeContent() {
                   <span className="text-[11px] sm:text-xs font-medium" style={{ color: 'var(--badge-text-amber)' }}>Founding users get 10 days of AF Pro free</span>
                 </div>
                 <p className="text-xs" style={{ color: 'var(--muted2)' }}>
-                  {error ? <span className="text-red-400">{error}</span> : 'No spam · Cancel anytime'}
+                  No spam · Cancel anytime
                 </p>
               </div>
             </form>
@@ -805,22 +814,25 @@ function HomeContent() {
           </h2>
           <p className="text-sm sm:text-base" style={{ color: 'var(--muted2)' }}>Early access members get priority features, Pro trials, and early league tools.</p>
 
-          <form onSubmit={handleSubmit} className="space-y-3">
+          <form onSubmit={earlyAccess.handleSubmit(onEarlyAccessSubmit)} className="space-y-3">
             <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 p-2 rounded-2xl" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-              <input
-                type="email"
-                required
-                autoComplete="email"
-                inputMode="email"
-                placeholder="Enter your email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="flex-1 w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
-                style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
-              />
+              <div className="flex-1 w-full">
+                <input
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  placeholder="Enter your email"
+                  {...earlyAccess.register('email')}
+                  className="w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
+                  style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+                />
+                {earlyAccess.formState.errors.email && (
+                  <p className="text-xs text-red-400 mt-1 px-1">{earlyAccess.formState.errors.email.message}</p>
+                )}
+              </div>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={earlyAccess.formState.isSubmitting}
                 className="w-full sm:w-auto rounded-xl px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-black min-h-[48px]
                            bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
                            shadow-[0_8px_32px_rgba(34,211,238,0.4)]
@@ -828,7 +840,7 @@ function HomeContent() {
                            active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-cyan-400/30
                            disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
               >
-                {loading ? 'Saving...' : 'Get AI Early Access'}
+                {earlyAccess.formState.isSubmitting ? 'Saving...' : 'Get AI Early Access'}
               </button>
             </div>
           </form>

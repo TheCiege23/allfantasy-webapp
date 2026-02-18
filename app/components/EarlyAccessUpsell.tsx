@@ -1,6 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
 
 type UpsellVariant = "default" | "after_feedback" | "power_user";
 
@@ -24,30 +28,35 @@ const CONTENT = {
   },
 };
 
+const upsellSchema = z.object({
+  email: z.string().min(1, "Email is required").email("Please enter a valid email"),
+});
+type UpsellForm = z.infer<typeof upsellSchema>;
+
 export default function EarlyAccessUpsell({
   variant = "default",
   onClose,
 }: EarlyAccessUpsellProps) {
-  const [email, setEmail] = useState("");
-  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [error, setError] = useState("");
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<UpsellForm>({
+    resolver: zodResolver(upsellSchema),
+    defaultValues: { email: "" },
+  });
 
   const content = CONTENT[variant];
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
-
-    setLoading(true);
-    setError("");
-
+  const onSubmit = async (formData: UpsellForm) => {
     try {
       const res = await fetch("/api/early-access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          email,
+        body: JSON.stringify({
+          email: formData.email,
           utm_source: "af_legacy",
           utm_medium: "inline_upsell",
           utm_campaign: variant,
@@ -57,15 +66,14 @@ export default function EarlyAccessUpsell({
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data?.error || "Something went wrong.");
+        toast.error(data?.error || "Something went wrong.");
         return;
       }
 
       setSuccess(true);
+      toast.success("You're in! We'll be in touch soon.");
     } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setLoading(false);
+      toast.error("Network error. Please try again.");
     }
   };
 
@@ -94,28 +102,27 @@ export default function EarlyAccessUpsell({
       <h3 className="text-lg font-semibold text-white mb-2">{content.title}</h3>
       <p className="text-sm text-white/60 mb-5 leading-relaxed">{content.body}</p>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
         <div className="flex flex-col sm:flex-row gap-2">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email"
-            required
-            className="flex-1 rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-cyan-500/50 focus:outline-none"
-          />
+          <div className="flex-1">
+            <input
+              type="email"
+              {...register("email")}
+              placeholder="Enter your email"
+              className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-cyan-500/50 focus:outline-none"
+            />
+            {errors.email && (
+              <p className="text-xs text-red-400 mt-1">{errors.email.message}</p>
+            )}
+          </div>
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-5 py-3 text-sm font-semibold text-white hover:shadow-lg hover:shadow-cyan-500/20 transition-all disabled:opacity-50"
           >
-            {loading ? "Joining..." : "Join Early Access"}
+            {isSubmitting ? "Joining..." : "Join Early Access"}
           </button>
         </div>
-
-        {error && (
-          <p className="text-xs text-red-400">{error}</p>
-        )}
 
         <p className="text-xs text-white/40">
           Free · No commitment · Built with players
