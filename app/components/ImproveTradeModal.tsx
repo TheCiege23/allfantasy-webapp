@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw } from 'lucide-react'
+import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Suggestion = {
@@ -32,13 +32,14 @@ export default function ImproveTradeModal({
   currentResult,
 }: ImproveTradeModalProps) {
   const [loading, setLoading] = useState(false)
+  const [additionalLoading, setAdditionalLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
 
-  const fetchSuggestions = useCallback(async () => {
+  const generateSuggestions = useCallback(async (append = false) => {
     if (!originalTradeText || originalTradeText.trim().length < 5) {
       setError('Trade text is too short to improve.')
       return
@@ -48,11 +49,15 @@ export default function ImproveTradeModal({
     const controller = new AbortController()
     abortRef.current = controller
 
-    setLoading(true)
-    setStreaming(true)
-    setStreamText('')
+    if (append) {
+      setAdditionalLoading(true)
+    } else {
+      setLoading(true)
+      setStreaming(true)
+      setStreamText('')
+      setSuggestions([])
+    }
     setError('')
-    setSuggestions([])
 
     try {
       const res = await fetch('/api/instant/improve-trade', {
@@ -111,14 +116,19 @@ export default function ImproveTradeModal({
                 break
               }
 
-              if (event.accumulated) {
+              if (!append && event.accumulated) {
                 setStreamText(event.accumulated)
               }
 
               if (event.done && event.suggestions) {
-                setSuggestions(event.suggestions)
+                if (append) {
+                  setSuggestions(prev => [...prev, ...event.suggestions])
+                  toast.success('More suggestions added!')
+                } else {
+                  setSuggestions(event.suggestions)
+                  toast.success('AI suggestions ready!')
+                }
                 receivedSuggestions = true
-                toast.success('AI suggestions ready!')
                 streamDone = true
                 break
               }
@@ -133,16 +143,23 @@ export default function ImproveTradeModal({
 
         setStreaming(false)
         setLoading(false)
+        setAdditionalLoading(false)
         if (!receivedSuggestions && !hadError) {
           setError('No suggestions received. Please try again.')
         }
       } else {
         const data = await res.json()
         if (data.error) throw new Error(data.error)
-        setSuggestions(data.suggestions || [])
-        if (data.suggestions?.length) toast.success('AI suggestions ready!')
+        if (append) {
+          setSuggestions(prev => [...prev, ...(data.suggestions || [])])
+          if (data.suggestions?.length) toast.success('More suggestions added!')
+        } else {
+          setSuggestions(data.suggestions || [])
+          if (data.suggestions?.length) toast.success('AI suggestions ready!')
+        }
         setStreaming(false)
         setLoading(false)
+        setAdditionalLoading(false)
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return
@@ -150,8 +167,12 @@ export default function ImproveTradeModal({
       toast.error('Suggestion generation failed')
       setStreaming(false)
       setLoading(false)
+      setAdditionalLoading(false)
     }
   }, [originalTradeText, leagueSize, scoring, isDynasty, currentResult])
+
+  const fetchSuggestions = useCallback(() => generateSuggestions(false), [generateSuggestions])
+  const generateMore = useCallback(() => generateSuggestions(true), [generateSuggestions])
 
   useEffect(() => {
     if (isOpen) {
@@ -168,6 +189,7 @@ export default function ImproveTradeModal({
     abortRef.current?.abort()
     abortRef.current = null
     setLoading(false)
+    setAdditionalLoading(false)
     setStreaming(false)
     setError('Generation cancelled.')
     toast.info('Generation cancelled')
@@ -296,7 +318,7 @@ export default function ImproveTradeModal({
                       key={i}
                       initial={{ opacity: 0, y: 15 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.1 }}
+                      transition={{ delay: i * 0.05 }}
                       className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-cyan-500/5 to-purple-500/5"
                       style={{ border: '1px solid var(--border)' }}
                     >
@@ -334,6 +356,22 @@ export default function ImproveTradeModal({
                       </button>
                     </motion.div>
                   ))}
+
+                  {additionalLoading && (
+                    <div className="flex items-center justify-center gap-3 py-6">
+                      <Loader2 className="w-5 h-5 animate-spin text-cyan-400" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
+                        Generating more suggestions...
+                      </span>
+                      <button
+                        onClick={cancelRequest}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all active:scale-[0.95]"
+                        style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--accent-red, #ef4444)' }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : !error && !loading ? (
                 <div className="text-center py-12" style={{ color: 'var(--muted2)' }}>
@@ -350,17 +388,27 @@ export default function ImproveTradeModal({
               >
                 Close
               </button>
-              {!loading && suggestions.length > 0 && (
-                <button
-                  onClick={fetchSuggestions}
-                  className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
-                  style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--text)' }}
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Regenerate
-                </button>
+              {!loading && !additionalLoading && suggestions.length > 0 && (
+                <>
+                  <button
+                    onClick={generateMore}
+                    className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
+                    style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: 'var(--text)' }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    More Ideas
+                  </button>
+                  <button
+                    onClick={fetchSuggestions}
+                    className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
+                    style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--text)' }}
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Regenerate
+                  </button>
+                </>
               )}
-              {!loading && error && (
+              {!loading && !additionalLoading && error && suggestions.length === 0 && (
                 <button
                   onClick={fetchSuggestions}
                   className="px-5 py-2.5 rounded-xl text-sm font-semibold text-black bg-gradient-to-r from-cyan-400 to-cyan-300 transition-all active:scale-[0.97]"
