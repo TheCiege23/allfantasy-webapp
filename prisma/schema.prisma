@@ -259,6 +259,7 @@ model LegacyUser {
   leagues         LegacyLeague[]
   rankCache       LegacyUserRankCache?
   userEvents      UserEvent[]
+  appUser         AppUser?
 
   @@index([sleeperUsername])
 }
@@ -1975,4 +1976,63 @@ model PlayerAnalyticsSnapshot {
   @@index([season])
   @@index([status])
   @@index([currentTeam])
+}
+
+model AppUser {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  emailVerified DateTime?
+  displayName   String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  legacyUserId String?     @unique
+  legacyUser   LegacyUser? @relation(fields: [legacyUserId], references: [id], onDelete: SetNull)
+
+  accounts AuthAccount[]
+  sessions AuthSession[]
+
+  @@index([email])
+  @@map("app_users")
+}
+
+model AuthAccount {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("auth_accounts")
+}
+
+model AuthSession {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("auth_sessions")
+}
+
+model AuthVerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("auth_verification_tokens")
 }

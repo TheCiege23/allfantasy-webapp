@@ -16,7 +16,7 @@ I want the agent to implement a veto layer in dynasty trade evaluations to preve
 I want the agent to consider consolidation penalties and context adjustments (contender/rebuild) in trade analyses.
 
 ## System Architecture
-The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. API security is managed via signed JWT-like tokens in HTTP-only cookies, with origin/referer validation for AI endpoints.
+The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. API security is managed via signed JWT-like tokens in HTTP-only cookies, with origin/referer validation for AI endpoints. Auth.js (NextAuth v4) provides email magic link authentication via Resend, using a separate `AppUser` model with optional `LegacyUser` link. Custom Prisma adapter maps to `app_users`, `auth_accounts`, `auth_sessions`, `auth_verification_tokens` tables.
 
 **UI/UX Decisions:**
 The platform features a mobile-first design including a persistent Bottom Tab Bar, contextual AI Bottom Sheets, and Universal AI Badges. It emphasizes clear calls to action and tabbed navigation, with a universal theme system (Dark, Light, AF Legacy modes) managed by `ThemeProvider`.

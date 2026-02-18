@@ -72,3 +72,5 @@ GROK_ENRICH_WAIVERS_CONCURRENCY = "3"
 
 [userenv.development]
 DEV_SIM_TOKEN = "dev_sim_9c2f6b3a3d6e4f1b8a0c"
+NEXTAUTH_SECRET = "e8c78d67fb0437d5179751d3e91a19a719aaac9e170beff6076b37daa8475474"
+NEXTAUTH_URL = "https://f82aba26-6244-4193-8bef-9896941a7dd9-00-3r9lwndog2i1i.janeway.replit.dev"
