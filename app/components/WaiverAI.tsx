@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Loader2, ThumbsUp, ThumbsDown, AlertCircle, Link2 } from 'lucide-react';
+import { Sparkles, Loader2, ThumbsUp, ThumbsDown, AlertCircle, Link2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { gtagEvent } from '@/lib/gtag';
 
@@ -44,10 +44,58 @@ export default function WaiverAI() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncedLeague, setSyncedLeague] = useState<SyncedLeague | null>(null);
 
+  const [activeLeagueId, setActiveLeagueId] = useState<string | null>(null);
+  const [autoRoster, setAutoRoster] = useState('');
+  const [autoLoading, setAutoLoading] = useState(true);
+
   const [userRoster, setUserRoster] = useState('');
   const [userContention, setUserContention] = useState<'win-now' | 'contender' | 'rebuild' | 'unknown'>('unknown');
   const [userFAAB, setUserFAAB] = useState(100);
   const [useRealTimeNews, setUseRealTimeNews] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/user/active-league')
+      .then(r => {
+        if (!r.ok) throw new Error('Not logged in');
+        return r.json();
+      })
+      .then(data => {
+        if (data.activeLeagueId) {
+          setActiveLeagueId(data.activeLeagueId);
+          return fetch(`/api/league/roster?leagueId=${data.activeLeagueId}`)
+            .then(r => r.json())
+            .then(rosterData => {
+              if (rosterData.league) {
+                setSyncedLeague({
+                  leagueId: rosterData.league.id,
+                  leagueName: rosterData.league.name,
+                  platform: rosterData.league.platform || 'sleeper',
+                  scoring: rosterData.league.scoringType || 'ppr',
+                  isDynasty: rosterData.league.isDynasty || false,
+                  rostersSync: rosterData.league.totalTeams || 12,
+                });
+              }
+              if (rosterData.faabRemaining != null) {
+                setUserFAAB(rosterData.faabRemaining);
+              }
+              if (rosterData.players && rosterData.players.length > 0) {
+                const formatted =
+                  (rosterData.faabRemaining != null ? `FAAB: $${rosterData.faabRemaining}\n` : '') +
+                  rosterData.players
+                    .filter((p: any) => p.isStarter)
+                    .map((p: any) => `${p.position}: ${p.name}`)
+                    .join('\n');
+                setAutoRoster(formatted);
+                setUserRoster(formatted);
+              } else if (rosterData.message) {
+                toast.info(rosterData.message);
+              }
+            });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setAutoLoading(false));
+  }, []);
 
   const handleSync = async () => {
     if (!platformLeagueId.trim()) {
@@ -113,7 +161,7 @@ export default function WaiverAI() {
       }
 
       if (hasManualRoster) {
-        payload.userRoster = userRoster;
+        payload.userRoster = autoRoster || userRoster;
       }
 
       if (!hasSyncedLeague) {
@@ -200,7 +248,14 @@ export default function WaiverAI() {
 
         {!syncedLeague && (
           <div>
-            <label className="block text-sm font-medium mb-2">Your Roster (paste key players)</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-sm font-medium">Your Roster (paste key players)</label>
+              {autoRoster && (
+                <span className="flex items-center gap-1 text-xs text-emerald-400">
+                  <Zap className="w-3 h-3" /> Auto-loaded from active league
+                </span>
+              )}
+            </div>
             <textarea
               value={userRoster}
               onChange={(e) => setUserRoster(e.target.value)}
