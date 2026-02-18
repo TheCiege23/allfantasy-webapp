@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus } from 'lucide-react'
+import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus, Check, Search, Globe, Brain, Zap } from 'lucide-react'
 import { toast } from 'sonner'
 import { gtagEvent } from '@/lib/gtag'
 
@@ -55,6 +55,7 @@ export default function ImproveTradeModal({
   const RESET_AFTER_HOURS = 24
   const [moreCount, setMoreCount] = useState(0)
   const [lastResetTime, setLastResetTime] = useState<number | null>(null)
+  const [thinkingPhase, setThinkingPhase] = useState(0)
 
   useEffect(() => {
     if (!isOpen) return
@@ -339,6 +340,19 @@ export default function ImproveTradeModal({
   }
 
   useEffect(() => {
+    if (loading && streaming) {
+      setThinkingPhase(0)
+      const intervals = [0, 2000, 4500, 7500, 11000, 15000]
+      const timers = intervals.map((delay, i) =>
+        setTimeout(() => setThinkingPhase(i), delay)
+      )
+      return () => timers.forEach(clearTimeout)
+    } else {
+      setThinkingPhase(0)
+    }
+  }, [loading, streaming])
+
+  useEffect(() => {
     if (!isOpen) return
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
@@ -513,13 +527,11 @@ export default function ImproveTradeModal({
               )}
 
               {loading && streaming ? (
-                <div className="space-y-6 py-4">
-                  <div className="flex items-center justify-between py-4">
-                    <div className="flex items-center gap-3">
-                      <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
-                      <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
-                        Grok is crafting roster-aware counter-offers...
-                      </span>
+                <div className="space-y-6 min-h-[320px] py-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-cyan-400">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-sm font-semibold">Thinking with real-time data...</span>
                     </div>
                     <button
                       onClick={cancelRequest}
@@ -529,6 +541,47 @@ export default function ImproveTradeModal({
                       Cancel
                     </button>
                   </div>
+
+                  <div className="space-y-2.5 text-sm">
+                    {[
+                      { icon: Globe, label: 'Fetching league-size adjusted values from FantasyCalc', phase: 0 },
+                      { icon: Brain, label: 'Analyzing your roster needs & contention window', phase: 1 },
+                      { icon: Search, label: 'Searching X for latest player buzz & rookie hype', phase: 2 },
+                      { icon: Zap, label: 'Checking injuries, signings & volatility', phase: 3 },
+                      { icon: Sparkles, label: 'Cross-checking with Grok + GPT-4o strategic brain', phase: 4 },
+                      { icon: Brain, label: 'Synthesizing personalized, honest counters...', phase: 5 },
+                    ].map((step) => {
+                      const isActive = thinkingPhase === step.phase
+                      const isComplete = thinkingPhase > step.phase
+                      const isPending = thinkingPhase < step.phase
+                      const Icon = step.icon
+
+                      return (
+                        <motion.div
+                          key={step.phase}
+                          initial={{ opacity: 0, x: -8 }}
+                          animate={{ opacity: isPending ? 0.35 : 1, x: 0 }}
+                          transition={{ delay: step.phase * 0.08, duration: 0.3 }}
+                          className="flex items-center gap-2.5 py-1"
+                        >
+                          {isComplete ? (
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : isActive ? (
+                            <Loader2 className="w-4 h-4 animate-spin text-cyan-400 shrink-0" />
+                          ) : (
+                            <Icon className="w-4 h-4 shrink-0" style={{ color: 'var(--muted2)' }} />
+                          )}
+                          <span
+                            className={`transition-colors duration-300 ${isActive ? 'text-cyan-300 font-medium' : ''}`}
+                            style={{ color: isComplete ? 'var(--muted)' : isActive ? undefined : 'var(--muted2)' }}
+                          >
+                            {step.label}
+                          </span>
+                        </motion.div>
+                      )
+                    })}
+                  </div>
+
                   {streamText && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
@@ -542,13 +595,6 @@ export default function ImproveTradeModal({
                       </div>
                     </motion.div>
                   )}
-                  {!streamText && [1, 2, 3].map((i) => (
-                    <div key={i} className="space-y-3">
-                      <div className="h-5 w-1/2 rounded animate-pulse" style={{ background: 'var(--subtle-bg)' }} />
-                      <div className="h-4 w-full rounded animate-pulse" style={{ background: 'var(--subtle-bg)' }} />
-                      <div className="h-4 w-4/5 rounded animate-pulse" style={{ background: 'var(--subtle-bg)' }} />
-                    </div>
-                  ))}
                 </div>
               ) : suggestions.length > 0 ? (
                 <div className="space-y-5">
