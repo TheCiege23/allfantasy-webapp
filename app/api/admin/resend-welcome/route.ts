@@ -3,16 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getResendClient } from "@/lib/resend-client";
 import { getEarlyAccessWelcomeEmailV2 } from "@/lib/email-templates/early-access-welcome";
 import { prisma } from "@/lib/prisma";
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth";
 
 export const dynamic = 'force-dynamic';
 
 export const POST = withApiUsage({ endpoint: "/api/admin/resend-welcome", tool: "AdminResendWelcome" })(async (req: NextRequest) => {
-  const authHeader = req.headers.get("authorization");
-  const expectedPass = process.env.ADMIN_PASSWORD;
-
-  if (!expectedPass || authHeader !== `Bearer ${expectedPass}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!isAuthorizedRequest(req)) return adminUnauthorized();
 
   try {
     const { email } = await req.json();

@@ -1,6 +1,7 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { signAdminSessionCookie } from "@/lib/adminSession";
 
 type Bucket = { count: number; resetAt: number; lockedUntil?: number };
@@ -69,9 +70,15 @@ export const POST = withApiUsage({ endpoint: "/api/auth/login", tool: "AuthLogin
   const nextRaw = String(body?.next || "/admin");
   const next = sanitizeNext(nextRaw);
 
+  const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH || "";
   const adminPassword = process.env.ADMIN_PASSWORD || "";
 
-  const ok = adminPassword.length > 0 && safeEqual(password, adminPassword);
+  let ok = false;
+  if (adminPasswordHash && password) {
+    ok = await bcrypt.compare(password, adminPasswordHash);
+  } else if (adminPassword && password) {
+    ok = safeEqual(password, adminPassword);
+  }
 
   if (!ok) {
     b.count += 1;

@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server'
 import { runFullDevySync } from '@/lib/devy-classification'
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export async function POST(request: Request) {
   try {
-    const authHeader = request.headers.get('authorization')
-    const adminPassword = process.env.ADMIN_PASSWORD
-    if (!adminPassword || authHeader !== `Bearer ${adminPassword}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
     const result = await runFullDevySync()
 

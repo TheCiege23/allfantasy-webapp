@@ -1,32 +1,13 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { verifyAdminSessionCookie } from '@/lib/adminSession'
 import { prisma } from '@/lib/prisma'
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const dynamic = 'force-dynamic';
 
-function isAdmin(cookieStore: ReturnType<typeof cookies>) {
-  const adminSession = cookieStore.get('admin_session')
-  if (!adminSession?.value) return false
-  const payload = verifyAdminSessionCookie(adminSession.value)
-  if (!payload) return false
-  const role = payload.role?.toLowerCase()
-  if (role === 'admin') return true
-  const email = payload.email?.toLowerCase()
-  const allow = (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-  return email && allow.includes(email)
-}
-
 export const GET = withApiUsage({ endpoint: "/api/admin/share-rewards", tool: "AdminShareRewards" })(async (req: NextRequest) => {
   try {
-    const cookieStore = cookies()
-    if (!isAdmin(cookieStore)) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(req)) return adminUnauthorized()
 
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')

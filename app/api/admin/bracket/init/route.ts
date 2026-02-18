@@ -71,22 +71,16 @@ export const POST = withApiUsage({
   tool: "BracketInit",
 })(async (request: NextRequest) => {
   try {
-    const headerSecret = request.headers.get("x-admin-secret")
-    const adminSecret = process.env.BRACKET_ADMIN_SECRET || process.env.ADMIN_PASSWORD
+    const { isAuthorizedRequest, adminUnauthorized } = await import("@/lib/adminAuth")
 
     let body: any = {}
     try {
       body = await request.json()
     } catch {
-      // body may be empty when using query params + header auth
     }
 
-    const authenticated =
-      (headerSecret && headerSecret === adminSecret) ||
-      (body.password && body.password === adminSecret)
-
-    if (!authenticated) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!isAuthorizedRequest(request)) {
+      return adminUnauthorized()
     }
 
     const seasonParam = request.nextUrl.searchParams.get("season")

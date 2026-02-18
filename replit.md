@@ -25,6 +25,7 @@ The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind
 -   **Password reset**: `/forgot-password` page sends reset email. Token stored hashed (`PasswordResetToken`, 30min expiry). `/reset-password?token=` page accepts new password. Confirm endpoint at `/api/auth/password/reset/confirm`. Password must include letter + number.
 -   **Sleeper connect**: Optional during signup. Server-side lookup via `https://api.sleeper.app/v1/user/{username}`. Stores `sleeperUsername`, `sleeperUserId`, `sleeperLinkedAt`. Display-only, not verified ownership. Badge shows "Connected" not "Verified".
 -   **signIn event**: Only ensures `UserProfile` exists via upsert. Does NOT write `emailVerifiedAt` on login — verification only happens through explicit verify-email flow.
+-   **Admin auth**: Centralized in `lib/adminAuth.ts`. HMAC-signed session cookie (`admin_session`) with timing-safe verification. Login at `/api/auth/login` supports bcrypt-hashed password (`ADMIN_PASSWORD_HASH` env var, falls back to plaintext `ADMIN_PASSWORD`). Rate limited (8 attempts/10min, 15min lockout). All admin API routes use `isAuthorizedRequest()` which accepts both signed cookies and Bearer tokens (for background sync). Admin access gated by role=admin or ADMIN_EMAILS allowlist.
 
 **Verification Gate System:**
 User access to protected features requires age confirmation + email/phone verification. Three-tier gating:

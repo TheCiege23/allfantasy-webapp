@@ -2,17 +2,13 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server';
 import { runBackgroundTradeAnalysis, getLearningContextForAI, aggregateTradeLearningInsights } from '@/lib/trade-learning';
 import { prisma } from '@/lib/prisma';
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth";
 
 export const dynamic = 'force-dynamic';
 
 export const POST = withApiUsage({ endpoint: "/api/admin/trade-learning", tool: "AdminTradeLearning" })(async (request: NextRequest) => {
   try {
-    const authHeader = request.headers.get('authorization');
-    const adminPassword = process.env.ADMIN_PASSWORD;
-    
-    if (!adminPassword || authHeader !== `Bearer ${adminPassword}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized();
 
     const result = await runBackgroundTradeAnalysis();
     

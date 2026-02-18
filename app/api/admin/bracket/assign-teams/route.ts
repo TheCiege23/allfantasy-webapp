@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { withApiUsage } from "@/lib/telemetry/usage"
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const dynamic = "force-dynamic"
 
@@ -10,20 +11,12 @@ type TeamAssignment = {
   awayTeamName?: string | null
 }
 
-function authenticate(request: NextRequest): boolean {
-  const headerSecret = request.headers.get("x-admin-secret")
-  const adminSecret = process.env.BRACKET_ADMIN_SECRET || process.env.ADMIN_PASSWORD
-  return !!(headerSecret && adminSecret && headerSecret === adminSecret)
-}
-
 export const POST = withApiUsage({
   endpoint: "/api/admin/bracket/assign-teams",
   tool: "BracketAssignTeams",
 })(async (request: NextRequest) => {
   try {
-    if (!authenticate(request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
     const body = await request.json()
     const { season, teams } = body as { season?: number; teams?: TeamAssignment[] }

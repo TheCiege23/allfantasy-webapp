@@ -7,13 +7,10 @@ import {
   getWeightHistory,
   SEGMENT_KEYS,
 } from '@/lib/rankings-engine/weekly-weight-learning'
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const POST = withApiUsage({ endpoint: "/api/admin/weekly-weights", tool: "AdminWeeklyWeights" })(async (req: NextRequest) => {
-  const authHeader = req.headers.get('authorization')
-  const adminPass = process.env.ADMIN_PASSWORD
-  if (adminPass && authHeader !== `Bearer ${adminPass}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  if (!isAuthorizedRequest(req)) return adminUnauthorized()
 
   try {
     const body = await req.json().catch(() => ({}))

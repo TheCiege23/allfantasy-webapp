@@ -1,15 +1,8 @@
 import { NextResponse } from "next/server"
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
-
-function requireAdmin(req: Request): boolean {
-  const provided =
-    req.headers.get("x-admin-secret") ?? req.headers.get("x-cron-secret") ?? ""
-  const adminSecret =
-    process.env.BRACKET_ADMIN_SECRET || process.env.ADMIN_PASSWORD
-  return !!(adminSecret && provided === adminSecret)
-}
 
 function marchWindow(season: number) {
   const start = new Date(Date.UTC(season, 2, 1))
@@ -29,9 +22,7 @@ function parseStartTime(
 }
 
 export async function GET(req: Request) {
-  if (!requireAdmin(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  if (!isAuthorizedRequest(req)) return adminUnauthorized()
 
   const url = new URL(req.url)
   const season = Number(

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { withApiUsage } from "@/lib/telemetry/usage"
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const dynamic = "force-dynamic"
 
@@ -10,20 +11,12 @@ type WiringUpdate = {
   nextSide: "HOME" | "AWAY"
 }
 
-function authenticate(request: NextRequest): boolean {
-  const headerSecret = request.headers.get("x-admin-secret")
-  const adminSecret = process.env.BRACKET_ADMIN_SECRET || process.env.ADMIN_PASSWORD
-  return !!(headerSecret && adminSecret && headerSecret === adminSecret)
-}
-
 export const POST = withApiUsage({
   endpoint: "/api/admin/bracket/update-wiring",
   tool: "BracketUpdateWiring",
 })(async (request: NextRequest) => {
   try {
-    if (!authenticate(request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
     const body = await request.json()
     const { tournamentId, season, updates } = body as { tournamentId?: string; season?: number; updates?: WiringUpdate[] }

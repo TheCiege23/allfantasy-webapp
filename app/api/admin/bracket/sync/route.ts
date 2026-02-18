@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { runBracketSync } from "@/lib/bracket-sync"
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const dynamic = "force-dynamic"
 
@@ -9,11 +10,9 @@ export const POST = withApiUsage({
   tool: "BracketSync",
 })(async (request: NextRequest) => {
   try {
-    const { password, season } = await request.json()
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
-    if (password !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 })
-    }
+    const { season } = await request.json()
 
     if (!season || typeof season !== "number") {
       return NextResponse.json({ error: "season (number) is required" }, { status: 400 })

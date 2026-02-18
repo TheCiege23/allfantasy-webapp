@@ -2,16 +2,13 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { runDriftDetection, DriftReport } from '@/lib/trade-engine/drift-detection'
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const dynamic = 'force-dynamic'
 
 export const GET = withApiUsage({ endpoint: "/api/admin/drift-report", tool: "AdminDriftReport" })(async (request: NextRequest) => {
   try {
-    const authHeader = request.headers.get('authorization')
-    const adminPassword = process.env.ADMIN_PASSWORD
-    if (!adminPassword || authHeader !== `Bearer ${adminPassword}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
     const season = parseInt(request.nextUrl.searchParams.get('season') || '2025')
 
@@ -53,11 +50,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/drift-report", tool: "Ad
 
 export const POST = withApiUsage({ endpoint: "/api/admin/drift-report", tool: "AdminDriftReport" })(async (request: NextRequest) => {
   try {
-    const authHeader = request.headers.get('authorization')
-    const adminPassword = process.env.ADMIN_PASSWORD
-    if (!adminPassword || authHeader !== `Bearer ${adminPassword}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
     const season = parseInt(request.nextUrl.searchParams.get('season') || '2025')
 

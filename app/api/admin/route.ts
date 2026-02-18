@@ -1,16 +1,13 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 
 export const dynamic = 'force-dynamic';
 
 export const POST = withApiUsage({ endpoint: "/api/admin", tool: "Admin" })(async (request: NextRequest) => {
   try {
-    const { password } = await request.json()
-    
-    if (password !== process.env.ADMIN_PASSWORD) {
-      return NextResponse.json({ error: 'Invalid password' }, { status: 401 })
-    }
+    if (!isAuthorizedRequest(request)) return adminUnauthorized()
 
     const signups = await prisma.earlyAccessSignup.findMany({
       orderBy: { createdAt: 'desc' }
