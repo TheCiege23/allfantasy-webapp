@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   const token = url.searchParams.get("token")
 
   if (!token) {
-    return redirectTo("/verify?error=MISSING_TOKEN")
+    return redirectTo("/verify?error=INVALID_LINK")
   }
 
   const tokenHash = sha256Hex(token)
@@ -30,12 +30,12 @@ export async function GET(req: Request) {
   }).catch(() => null)
 
   if (!row) {
-    return redirectTo("/verify?error=INVALID_OR_USED_TOKEN")
+    return redirectTo("/verify?error=INVALID_LINK")
   }
 
   if (row.expiresAt && new Date(row.expiresAt).getTime() < Date.now()) {
     await (prisma as any).emailVerifyToken.delete({ where: { tokenHash } }).catch(() => {})
-    return redirectTo("/verify?error=EXPIRED_TOKEN")
+    return redirectTo("/verify?error=EXPIRED_LINK")
   }
 
   await (prisma as any).appUser.update({

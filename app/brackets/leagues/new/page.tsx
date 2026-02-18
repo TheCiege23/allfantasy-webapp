@@ -27,7 +27,7 @@ export default function NewBracketLeaguePage() {
 
       const data = await res.json()
       if (!res.ok) {
-        if (data.error === "VERIFICATION_REQUIRED") {
+        if (data.error === "AGE_REQUIRED" || data.error === "VERIFICATION_REQUIRED") {
           router.push("/onboarding")
           return
         }

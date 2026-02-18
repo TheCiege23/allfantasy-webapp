@@ -1,17 +1,19 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
-import { Suspense, useState } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { CheckCircle2, XCircle, Clock, AlertTriangle, Mail, Loader2 } from "lucide-react"
 
 function VerifyContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const status = searchParams?.get("status")
   const error = searchParams?.get("error")
   const verified = searchParams?.get("verified")
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | null>(null)
+  const [countdown, setCountdown] = useState(3)
 
   async function handleSendVerification() {
     setSending(true)
@@ -37,19 +39,29 @@ function VerifyContent() {
 
   function resolveState(): string {
     if (verified === "email" || status === "success") return "success"
-    if (error === "EXPIRED_TOKEN" || status === "expired") return "expired"
-    if (error === "INVALID_OR_USED_TOKEN" || error === "MISSING_TOKEN" || status === "invalid") return "invalid"
+    if (error === "EXPIRED_LINK" || error === "EXPIRED_TOKEN" || status === "expired") return "expired"
+    if (error === "INVALID_LINK" || error === "INVALID_OR_USED_TOKEN" || error === "MISSING_TOKEN" || status === "invalid") return "invalid"
     if (error || status === "error") return "error"
     return "pending"
   }
 
   const state = resolveState()
 
+  useEffect(() => {
+    if (state !== "success") return
+    if (countdown <= 0) {
+      router.push("/dashboard")
+      return
+    }
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [state, countdown, router])
+
   const configs: Record<string, { icon: React.ReactNode; title: string; message: string; color: string }> = {
     success: {
       icon: <CheckCircle2 className="h-8 w-8 text-emerald-400" />,
       title: "Email verified!",
-      message: "Your email has been verified successfully. You can now access all features.",
+      message: `Your email has been verified successfully. Redirecting to dashboard in ${countdown}s...`,
       color: "border-emerald-500/20 bg-emerald-500/10",
     },
     expired: {
