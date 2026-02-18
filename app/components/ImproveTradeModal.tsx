@@ -42,6 +42,17 @@ export default function ImproveTradeModal({
   const abortRef = useRef<AbortController | null>(null)
   const MAX_MORE_CLICKS = 3
 
+  useEffect(() => {
+    const saved = localStorage.getItem('improve_more_count')
+    if (saved) setMoreCount(parseInt(saved, 10))
+  }, [])
+
+  useEffect(() => {
+    if (moreCount > 0) {
+      localStorage.setItem('improve_more_count', moreCount.toString())
+    }
+  }, [moreCount])
+
   const generateSuggestions = useCallback(async (append = false) => {
     if (!originalTradeText || originalTradeText.trim().length < 5) {
       setError('Trade text is too short to improve.')
@@ -186,7 +197,6 @@ export default function ImproveTradeModal({
   }, [originalTradeText, leagueSize, scoring, isDynasty, currentResult])
 
   const fetchSuggestions = useCallback(() => {
-    setMoreCount(0)
     generateSuggestions(false)
   }, [generateSuggestions])
 
@@ -205,7 +215,6 @@ export default function ImproveTradeModal({
       setSuggestions([])
       setStreamText('')
       setError('')
-      setMoreCount(0)
       gtagEvent('improve_trade_modal_opened', {
         league_size: leagueSize,
         is_dynasty: isDynasty,
