@@ -32,7 +32,7 @@ export default async function BracketsHomePage() {
           {!user?.id ? (
             <Link
               className="rounded-xl bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-200 transition-colors"
-              href="/api/auth/signin"
+              href="/login?callbackUrl=/brackets"
             >
               Sign in
             </Link>

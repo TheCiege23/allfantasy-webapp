@@ -13,14 +13,22 @@ export default function VerifyRequestPage() {
           A sign-in link has been sent to your email address. Open it to confirm your login.
         </p>
         <p className="mt-4 text-xs text-white/40">
-          The link expires in 24 hours. If you don't see it, check your spam folder.
+          The link expires in 24 hours. If you don&apos;t see it, check your spam folder.
         </p>
-        <Link
-          href="/"
-          className="mt-6 inline-block rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15 transition"
-        >
-          Back to Home
-        </Link>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Link
+            href="/brackets"
+            className="inline-block rounded-xl bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-200 transition"
+          >
+            Continue to Brackets
+          </Link>
+          <Link
+            href="/"
+            className="inline-block rounded-xl border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium hover:bg-white/15 transition"
+          >
+            Back to Home
+          </Link>
+        </div>
       </div>
     </div>
   )
