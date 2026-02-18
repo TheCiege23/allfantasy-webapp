@@ -45,6 +45,7 @@ export default function InstantTradeAnalyzer() {
   const [result, setResult] = useState<TradeResult | null>(null)
   const [error, setError] = useState('')
   const [showImproveModal, setShowImproveModal] = useState(false)
+  const [userRosterContext, setUserRosterContext] = useState('')
 
   const runAnalysis = async (overrideText?: string) => {
     const text = overrideText || tradeText
@@ -207,6 +208,19 @@ export default function InstantTradeAnalyzer() {
             <span className="text-[11px] font-medium" style={{ color: 'var(--text)' }}>Dynasty</span>
           </label>
         </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-[10px] font-medium mb-1.5" style={{ color: 'var(--muted2)' }}>Your roster (optional — makes AI suggestions specific to your team)</label>
+        <textarea
+          placeholder={'QB: Josh Allen, Patrick Mahomes\nRB: Bijan Robinson, Breece Hall, Rachaad White\nWR: Justin Jefferson, CeeDee Lamb...\nFAAB remaining: 87%'}
+          value={userRosterContext}
+          onChange={(e) => setUserRosterContext(e.target.value)}
+          rows={3}
+          className="w-full rounded-xl p-3 text-[11px] outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all resize-y"
+          style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+        />
+        <p className="text-[9px] mt-1" style={{ color: 'var(--muted2)' }}>Paste your roster or just key players + FAAB. More detail = better suggestions.</p>
       </div>
 
       <button
@@ -448,6 +462,7 @@ export default function InstantTradeAnalyzer() {
         scoring={scoring}
         isDynasty={isDynasty}
         currentResult={result}
+        userRoster={userRosterContext}
       />
     </div>
   )

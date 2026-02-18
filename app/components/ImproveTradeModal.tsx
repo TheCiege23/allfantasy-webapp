@@ -22,6 +22,7 @@ type ImproveTradeModalProps = {
   scoring: 'ppr' | 'half' | 'standard' | 'superflex'
   isDynasty: boolean
   currentResult: any
+  userRoster?: string
 }
 
 export default function ImproveTradeModal({
@@ -32,6 +33,7 @@ export default function ImproveTradeModal({
   scoring,
   isDynasty,
   currentResult,
+  userRoster,
 }: ImproveTradeModalProps) {
   const [loading, setLoading] = useState(false)
   const [additionalLoading, setAdditionalLoading] = useState(false)
@@ -102,6 +104,7 @@ export default function ImproveTradeModal({
           isDynasty,
           currentVerdict: currentResult?.verdict || 'unknown',
           currentFairness: currentResult?.values?.percentDiff || 0,
+          ...(userRoster?.trim() ? { userRoster: userRoster.trim() } : {}),
         }),
         signal: controller.signal,
       })
