@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { withApiUsage } from "@/lib/telemetry/usage"
-import bracketStructure from "@/data/brackets/ncaam-structure.json"
+import {
+  generateNcaamBracketStructure,
+  type BracketNodeSeedSpec,
+  type FirstFourMapping,
+  type FinalFourMapping,
+  type RegionKey,
+  type Side,
+} from "@/lib/brackets/ncaamStructure"
 
 export const dynamic = "force-dynamic"
 
-type TemplateNode = (typeof bracketStructure.nodes)[number]
-
-function validateNodes(nodes: TemplateNode[]): string[] {
+function validateNodes(nodes: BracketNodeSeedSpec[]): string[] {
   const errors: string[] = []
   const allSlots = new Set(nodes.map((n) => n.slot))
 
@@ -28,12 +33,46 @@ function validateNodes(nodes: TemplateNode[]): string[] {
   return errors
 }
 
+const VALID_REGIONS: RegionKey[] = ["E", "W", "S", "M"]
+const VALID_SIDES: Side[] = ["HOME", "AWAY"]
+
+function parseFirstFour(input: any): FirstFourMapping | null {
+  if (!input || typeof input !== "object") return null
+  const keys = ["ff16A", "ff16B", "ff11A", "ff11B"] as const
+  const result: any = {}
+  for (const k of keys) {
+    const entry = input[k]
+    if (!entry || typeof entry.nextSlot !== "string" || !VALID_SIDES.includes(entry.nextSide)) {
+      return null
+    }
+    result[k] = { nextSlot: entry.nextSlot, nextSide: entry.nextSide }
+  }
+  return result as FirstFourMapping
+}
+
+function parseFinalFour(input: any): FinalFourMapping | null {
+  if (!input || typeof input !== "object") return null
+  const allRegions = new Set<string>()
+  for (const k of ["semi1", "semi2"] as const) {
+    const entry = input[k]
+    if (!entry || !VALID_REGIONS.includes(entry.regionA) || !VALID_REGIONS.includes(entry.regionB)) {
+      return null
+    }
+    if (entry.regionA === entry.regionB) return null
+    allRegions.add(entry.regionA)
+    allRegions.add(entry.regionB)
+  }
+  if (allRegions.size !== 4) return null
+  return input as FinalFourMapping
+}
+
 export const POST = withApiUsage({
   endpoint: "/api/admin/bracket/init",
   tool: "BracketInit",
 })(async (request: NextRequest) => {
   try {
-    const { password, season } = await request.json()
+    const body = await request.json()
+    const { password, season, firstFour: firstFourInput, finalFour: finalFourInput } = body
 
     if (password !== process.env.ADMIN_PASSWORD) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 })
@@ -44,41 +83,55 @@ export const POST = withApiUsage({
     }
 
     const existing = await prisma.bracketTournament.findFirst({
-      where: { sport: bracketStructure.sport, season },
+      where: { sport: "ncaam", season },
     })
     if (existing) {
       return NextResponse.json(
-        { error: `Tournament already exists for ${bracketStructure.sport} ${season}`, tournamentId: existing.id },
+        { error: `Tournament already exists for ncaam ${season}`, tournamentId: existing.id },
         { status: 409 }
       )
     }
 
-    const allNodes = bracketStructure.nodes
+    const firstFour = firstFourInput ? parseFirstFour(firstFourInput) : undefined
+    const finalFour = finalFourInput ? parseFinalFour(finalFourInput) : undefined
 
-    const validationErrors = validateNodes(allNodes)
+    if (firstFourInput && !firstFour) {
+      return NextResponse.json({ error: "Invalid firstFour mapping format" }, { status: 400 })
+    }
+    if (finalFourInput && !finalFour) {
+      return NextResponse.json({ error: "Invalid finalFour mapping format" }, { status: 400 })
+    }
+
+    const structure = generateNcaamBracketStructure({
+      season,
+      firstFour: firstFour ?? undefined,
+      finalFour: finalFour ?? undefined,
+    })
+
+    const validationErrors = validateNodes(structure.nodes)
     if (validationErrors.length > 0) {
       return NextResponse.json({ error: "Bracket structure validation failed", details: validationErrors }, { status: 500 })
     }
 
     const tournament = await prisma.bracketTournament.create({
       data: {
-        name: `${bracketStructure.name} ${season}`,
+        name: `${structure.name} ${season}`,
         season,
-        sport: bracketStructure.sport,
+        sport: structure.sport,
       },
     })
 
     await prisma.$transaction(
-      allNodes.map((n) =>
+      structure.nodes.map((n) =>
         prisma.bracketNode.create({
           data: {
             tournamentId: tournament.id,
             round: n.round,
             region: n.region,
             slot: n.slot,
-            seedHome: n.seedHome,
-            seedAway: n.seedAway,
-            nextNodeSide: n.nextSide,
+            seedHome: n.seedHome ?? null,
+            seedAway: n.seedAway ?? null,
+            nextNodeSide: n.nextSide ?? null,
           },
         })
       )
@@ -90,7 +143,7 @@ export const POST = withApiUsage({
     })
     const slotToId = new Map(createdNodes.map((n) => [n.slot, n.id]))
 
-    const updates = allNodes
+    const updates = structure.nodes
       .filter((n) => n.nextSlot)
       .map((n) => {
         const nodeId = slotToId.get(n.slot)
@@ -108,7 +161,7 @@ export const POST = withApiUsage({
     }
 
     const roundCounts: Record<number, number> = {}
-    for (const n of allNodes) {
+    for (const n of structure.nodes) {
       roundCounts[n.round] = (roundCounts[n.round] || 0) + 1
     }
 
@@ -126,6 +179,10 @@ export const POST = withApiUsage({
         elite8: roundCounts[4] || 0,
         finalFour: roundCounts[5] || 0,
         championship: roundCounts[6] || 0,
+      },
+      config: {
+        firstFourCustom: !!firstFourInput,
+        finalFourCustom: !!finalFourInput,
       },
     }
 
