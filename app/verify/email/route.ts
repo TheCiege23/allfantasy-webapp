@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { getBaseUrl } from "@/lib/get-base-url"
 import crypto from "crypto"
 
 export const runtime = "nodejs"
@@ -8,12 +9,18 @@ function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex")
 }
 
+function redirectTo(path: string) {
+  const base = getBaseUrl()
+  if (base) return NextResponse.redirect(`${base}${path}`)
+  return NextResponse.redirect(path)
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const token = url.searchParams.get("token")
 
   if (!token) {
-    return NextResponse.redirect(new URL("/verify?error=MISSING_TOKEN", url.origin))
+    return redirectTo("/verify?error=MISSING_TOKEN")
   }
 
   const tokenHash = sha256Hex(token)
@@ -23,12 +30,12 @@ export async function GET(req: Request) {
   }).catch(() => null)
 
   if (!row) {
-    return NextResponse.redirect(new URL("/verify?error=INVALID_OR_USED_TOKEN", url.origin))
+    return redirectTo("/verify?error=INVALID_OR_USED_TOKEN")
   }
 
   if (row.expiresAt && new Date(row.expiresAt).getTime() < Date.now()) {
     await (prisma as any).emailVerifyToken.delete({ where: { tokenHash } }).catch(() => {})
-    return NextResponse.redirect(new URL("/verify?error=EXPIRED_TOKEN", url.origin))
+    return redirectTo("/verify?error=EXPIRED_TOKEN")
   }
 
   await (prisma as any).appUser.update({
@@ -45,5 +52,5 @@ export async function GET(req: Request) {
     where: { tokenHash },
   }).catch(() => {})
 
-  return NextResponse.redirect(new URL("/verify?verified=email", url.origin))
+  return redirectTo("/verify?verified=email")
 }
