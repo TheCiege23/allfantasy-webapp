@@ -79,7 +79,9 @@ export default function RootLayout({
         <ThemeProvider>
           {children}
           <Toaster
-            position="top-right"
+            position="top-center"
+            richColors
+            closeButton
             toastOptions={{
               style: {
                 background: 'var(--panel)',
