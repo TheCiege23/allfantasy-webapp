@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
 
 const grok = new OpenAI({ apiKey: process.env.XAI_API_KEY!, baseURL: 'https://api.x.ai/v1' });
@@ -30,6 +31,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Roster is required' }, { status: 400 });
     }
 
+    let pickupClause = '';
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id) {
+      const recentPickups = await prisma.waiverPickup.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+      });
+      if (recentPickups.length > 0) {
+        const pickupSummary = recentPickups.map(p => `${p.playerName} - ${p.outcome || 'unknown'}`).join('\n');
+        pickupClause = `\n\nUser's past waiver pickups (learn from successes/failures):\n${pickupSummary}\nUse this history to calibrate suggestions — recommend more players like past hits, avoid profiles similar to past misses.`;
+      }
+    }
+
     const realTimeClause = useRealTimeNews
       ? `\n\nREAL-TIME DATA ENABLED: Factor in the latest injuries, transactions, signings, coaching changes, rookie draft capital/landing spots, and breaking news buzz when evaluating targets. Flag any time-sensitive pickups.`
       : '';
@@ -54,7 +69,7 @@ Prioritize waiver targets that:
 4. Replace potential busts, aging, or injury-prone players currently on the roster
 5. Are realistic FAAB spends given ${userFAAB}% remaining budget — don't blow the budget on marginal upgrades
 6. Consider roster construction holistically — depth vs ceiling, bye week coverage, handcuff value
-${realTimeClause}
+${pickupClause}${realTimeClause}
 
 For each target, explain WHY they fit THIS specific roster and contention window. Be concrete — reference specific roster players they complement or replace.
 
