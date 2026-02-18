@@ -1,10 +1,27 @@
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 
+const db = prisma as any
+
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const PROFILE_STALE_HOURS = 6
 const MIN_VOTES_FOR_PROFILE = 3
+
+interface VoteRecord {
+  id: string
+  userId: string
+  tradeText: string
+  suggestionTitle: string
+  suggestionText: string | null
+  vote: string
+  leagueSize: number | null
+  isDynasty: boolean | null
+  scoring: string | null
+  userRoster: string | null
+  userContention: string | null
+  createdAt: Date
+}
 
 export async function persistVote(params: {
   userId: string
@@ -18,7 +35,7 @@ export async function persistVote(params: {
   userRoster?: string
   userContention?: string
 }) {
-  const vote = await prisma.tradeSuggestionVote.create({
+  const vote = await db.tradeSuggestionVote.create({
     data: {
       userId: params.userId,
       tradeText: params.tradeText.slice(0, 5000),
@@ -33,7 +50,7 @@ export async function persistVote(params: {
     },
   })
 
-  updateUserProfileAsync(params.userId).catch(err =>
+  updateUserProfileAsync(params.userId).catch((err: Error) =>
     console.error('[trade-feedback-profile] async profile update failed:', err)
   )
 
@@ -42,7 +59,7 @@ export async function persistVote(params: {
 
 export async function getUserTradeProfile(userId: string): Promise<string | null> {
   try {
-    const profile = await prisma.aIUserProfile.findUnique({
+    const profile = await db.aIUserProfile.findUnique({
       where: { userId },
       select: { tradePreferenceProfile: true, tradeProfileUpdatedAt: true },
     })
@@ -50,13 +67,13 @@ export async function getUserTradeProfile(userId: string): Promise<string | null
     if (!profile?.tradePreferenceProfile) return null
 
     if (profile.tradeProfileUpdatedAt) {
-      const ageMs = Date.now() - profile.tradeProfileUpdatedAt.getTime()
+      const ageMs = Date.now() - new Date(profile.tradeProfileUpdatedAt).getTime()
       if (ageMs > PROFILE_STALE_HOURS * 60 * 60 * 1000) {
         updateUserProfileAsync(userId).catch(() => {})
       }
     }
 
-    return profile.tradePreferenceProfile
+    return profile.tradePreferenceProfile as string
   } catch (err) {
     console.error('[trade-feedback-profile] getUserTradeProfile error:', err)
     return null
@@ -64,7 +81,7 @@ export async function getUserTradeProfile(userId: string): Promise<string | null
 }
 
 async function updateUserProfileAsync(userId: string) {
-  const votes = await prisma.tradeSuggestionVote.findMany({
+  const votes: VoteRecord[] = await db.tradeSuggestionVote.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },
     take: 100,
@@ -72,13 +89,13 @@ async function updateUserProfileAsync(userId: string) {
 
   if (votes.length < MIN_VOTES_FOR_PROFILE) return
 
-  const upCount = votes.filter(v => v.vote === 'up').length
-  const downCount = votes.filter(v => v.vote === 'down').length
+  const upCount = votes.filter((v: VoteRecord) => v.vote === 'up').length
+  const downCount = votes.filter((v: VoteRecord) => v.vote === 'down').length
 
-  const dynastyVotes = votes.filter(v => v.isDynasty === true)
-  const redraftVotes = votes.filter(v => v.isDynasty === false)
+  const dynastyVotes = votes.filter((v: VoteRecord) => v.isDynasty === true)
+  const redraftVotes = votes.filter((v: VoteRecord) => v.isDynasty === false)
 
-  const voteLines = votes.map(v => {
+  const voteLines = votes.map((v: VoteRecord) => {
     const icon = v.vote === 'up' ? '👍' : '👎'
     const format = v.isDynasty ? 'dynasty' : v.isDynasty === false ? 'redraft' : 'unknown'
     const scoring = v.scoring || 'unknown'
@@ -89,8 +106,8 @@ async function updateUserProfileAsync(userId: string) {
 
   const contextStats = [
     `Total votes: ${votes.length} (${upCount} helpful, ${downCount} unhelpful)`,
-    dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter(v => v.vote === 'up').length} up, ${dynastyVotes.filter(v => v.vote === 'down').length} down)` : null,
-    redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter(v => v.vote === 'up').length} up, ${redraftVotes.filter(v => v.vote === 'down').length} down)` : null,
+    dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter((v: VoteRecord) => v.vote === 'up').length} up, ${dynastyVotes.filter((v: VoteRecord) => v.vote === 'down').length} down)` : null,
+    redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter((v: VoteRecord) => v.vote === 'up').length} up, ${redraftVotes.filter((v: VoteRecord) => v.vote === 'down').length} down)` : null,
   ].filter(Boolean).join('\n')
 
   try {
@@ -124,7 +141,7 @@ Do NOT include preamble or meta-commentary — just the profile.`,
     const summary = summaryRes.choices[0]?.message?.content?.trim() || ''
     if (!summary) return
 
-    await prisma.aIUserProfile.upsert({
+    await db.aIUserProfile.upsert({
       where: { userId },
       update: {
         tradePreferenceProfile: summary,
@@ -141,9 +158,9 @@ Do NOT include preamble or meta-commentary — just the profile.`,
   }
 }
 
-export async function getRecentVotesForUser(userId: string, limit = 20) {
+export async function getRecentVotesForUser(userId: string, limit = 20): Promise<VoteRecord[]> {
   try {
-    return await prisma.tradeSuggestionVote.findMany({
+    return await db.tradeSuggestionVote.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
