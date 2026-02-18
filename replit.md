@@ -16,15 +16,32 @@ I want the agent to implement a veto layer in dynasty trade evaluations to preve
 I want the agent to consider consolidation penalties and context adjustments (contender/rebuild) in trade analyses.
 
 ## System Architecture
-The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. API security is managed via signed JWT-like tokens in HTTP-only cookies, with origin/referer validation for AI endpoints. Auth.js (NextAuth v4) provides email magic link authentication via Resend, using a separate `AppUser` model with optional `LegacyUser` link. Custom Prisma adapter maps to `app_users`, `auth_accounts`, `auth_sessions`, `auth_verification_tokens` tables.
+The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. Auth.js (NextAuth v4) provides dual authentication: password-based (Credentials provider with bcryptjs) and email magic link (EmailProvider via Resend). Session strategy is JWT. Custom Prisma adapter maps to `app_users`, `auth_accounts`, `auth_sessions`, `auth_verification_tokens` tables.
+
+**Authentication System:**
+-   **Password signup**: `/signup` page collects username (unique, required), email, password, display name, phone (optional), Sleeper username (optional with live lookup), 18+ age confirmation. Registration via `/api/auth/register`.
+-   **Email verification**: Separate from login. Register sends verification token email. User clicks link which hits `/api/auth/verify-email` → sets `AppUser.emailVerified` and `UserProfile.emailVerifiedAt`. Redirects to `/verify?status=success|expired|invalid`.
+-   **Password login**: `/login` page with Password/Magic Link toggle tabs. Credentials provider accepts email or username + password.
+-   **Magic link login**: Still supported via EmailProvider for existing users.
+-   **Sleeper connect**: Optional during signup. Server-side lookup via `https://api.sleeper.app/v1/user/{username}`. Stores `sleeperUsername`, `sleeperUserId`, `sleeperLinkedAt`. Display-only, not verified ownership. Badge shows "Connected" not "Verified".
 
 **Verification Gate System:**
-User access to protected features requires email or phone verification plus profile completion. The gate is enforced at two layers:
--   **API-level**: `requireVerifiedUser()` from `lib/auth-guard.ts` returns 401 for unauthenticated and 403 (VERIFICATION_REQUIRED) for unverified users. Applied to all bracket mutation endpoints (pick, create league, join league, create entry).
--   **Route-level**: `requireVerifiedSession()` from `lib/require-verified.ts` redirects unauthenticated users to /login and unverified users to /onboarding. Applied to protected server pages (league detail, bracket entry).
--   **Verification happens on sign-in**: The `events.signIn` hook in `lib/auth.ts` sets `emailVerifiedAt` on UserProfile and promotes PendingSignup data (displayName, phone) into UserProfile.
--   **Gating rule**: `isUserVerified(profile) = !!emailVerifiedAt || !!phoneVerifiedAt`. Full onboarding requires verification AND `profileComplete=true`.
--   **Client-side pages** (leagues/new, join) handle VERIFICATION_REQUIRED by redirecting to /onboarding.
+User access to protected features requires age confirmation + email/phone verification. Three-tier gating:
+-   **API-level**: `requireVerifiedUser()` from `lib/auth-guard.ts` returns 401 (UNAUTHENTICATED), 403 (AGE_REQUIRED), or 403 (VERIFICATION_REQUIRED). Applied to all bracket mutation endpoints.
+-   **Route-level**: `requireVerifiedSession()` from `lib/require-verified.ts` redirects unauthenticated users to /login and unverified users to /onboarding.
+-   **Canonical email verification**: Trusts `AppUser.emailVerified` (set by verify-email endpoint or magic link sign-in), NOT `UserProfile.emailVerifiedAt`.
+-   **Gating rule**: `isUserVerified(emailVerified, phoneVerifiedAt) = !!emailVerified || !!phoneVerifiedAt`. Full onboarding requires verification AND ageConfirmedAt AND profileComplete=true.
+-   **Post-login routing**: Verified users → `/dashboard`, logged out → `/login`. Dashboard shows setup checklist for unverified users.
+-   **Client-side pages** (leagues/new, join) handle VERIFICATION_REQUIRED and AGE_REQUIRED by redirecting to /onboarding.
+
+**Dashboard (`/dashboard`):**
+Post-login landing page (AI Overview). Server component fetches user data, leagues, entries. Shows:
+-   Welcome banner with username/Sleeper identity
+-   Setup completion checklist (verification, age, profile)
+-   My Leagues grid with member counts
+-   My Bracket Entries grid with scores
+-   Recommended Actions (create league, fill bracket, view brackets, AF Legacy tools)
+-   Top bar with Create League + Join League buttons + profile menu with sign out
 
 **UI/UX Decisions:**
 The platform features a mobile-first design including a persistent Bottom Tab Bar, contextual AI Bottom Sheets, and Universal AI Badges. It emphasizes clear calls to action and tabbed navigation, with a universal theme system (Dark, Light, AF Legacy modes) managed by `ThemeProvider`.

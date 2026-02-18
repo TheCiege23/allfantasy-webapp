@@ -41,7 +41,7 @@ export default function OnboardingForm({
         return
       }
 
-      router.push("/brackets")
+      router.push("/dashboard")
     } catch {
       setError("Something went wrong. Please try again.")
       setLoading(false)

@@ -16,6 +16,7 @@ const nextConfig = {
     'https://*.janeway.replit.dev',
     'https://*.replit.app',
     'https://*.repl.co',
+    `https://${process.env.REPLIT_DEV_DOMAIN || ''}`,
   ],
   async headers() {
     return [

@@ -58,7 +58,7 @@ export default async function OnboardingPage() {
 
         {!emailVerified && (
           <p className="text-sm text-amber-300/80">
-            Your email has not been verified yet. Sign in via the magic link sent to your email to verify.
+            Your email has not been verified yet. Check your inbox for a verification link, or sign in via magic link to verify.
           </p>
         )}
 
