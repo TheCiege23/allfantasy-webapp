@@ -479,20 +479,42 @@ model EmailPreference {
 }
 
 model AIUserProfile {
-  id                 String   @id @default(uuid())
-  userId             String   @unique
-  sleeperUsername    String?
-  toneMode           String   @default("professional")
-  detailLevel        String   @default("concise")
-  riskMode           String   @default("conservative")
-  humorLevel         String   @default("medium")
-  strategyBias       Json     @default("{\"qb_priority\": 0.5, \"rb_aversion\": 0.3, \"prefers_picks\": 0.5, \"prefers_youth\": 0.5}")
-  behaviorMetrics    Json     @default("{\"draft_reach_tendency\": null, \"trade_rate_percentile\": null, \"waiver_rate_percentile\": null}")
-  personalizeEnabled Boolean  @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                      String   @id @default(uuid())
+  userId                  String   @unique
+  sleeperUsername         String?
+  toneMode                String   @default("professional")
+  detailLevel             String   @default("concise")
+  riskMode                String   @default("conservative")
+  humorLevel              String   @default("medium")
+  strategyBias            Json     @default("{\"qb_priority\": 0.5, \"rb_aversion\": 0.3, \"prefers_picks\": 0.5, \"prefers_youth\": 0.5}")
+  behaviorMetrics         Json     @default("{\"draft_reach_tendency\": null, \"trade_rate_percentile\": null, \"waiver_rate_percentile\": null}")
+  personalizeEnabled      Boolean  @default(true)
+  tradePreferenceProfile  String?  @db.Text
+  tradeProfileUpdatedAt   DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
   @@index([sleeperUsername])
+}
+
+model TradeSuggestionVote {
+  id               String   @id @default(cuid())
+  userId           String
+  tradeText        String   @db.Text
+  suggestionTitle  String
+  suggestionText   String?  @db.Text
+  vote             String
+  leagueSize       Int?
+  isDynasty        Boolean?
+  scoring          String?
+  userRoster       String?  @db.Text
+  userContention   String?
+  createdAt        DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([vote])
+  @@map("trade_suggestion_votes")
 }
 
 model AILeagueContext {

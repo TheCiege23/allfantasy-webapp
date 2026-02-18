@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { withApiUsage } from '@/lib/telemetry/usage'
 import { buildFeedbackPromptBlock } from '@/lib/feedback-store'
+import { getUserTradeProfile } from '@/lib/trade-feedback-profile'
 
 const grokClient = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -146,11 +149,12 @@ function buildSystemPrompt(ctx: {
   userRecord?: string
   fantasyCalcSnippet?: string
   feedbackBlock?: string
+  userPreferenceProfile?: string
 }) {
   const {
     tradeText, leagueSize, scoring, isDynasty, currentVerdict, currentFairness,
     leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
-    fantasyCalcSnippet, feedbackBlock,
+    fantasyCalcSnippet, feedbackBlock, userPreferenceProfile,
   } = ctx
 
   const format = isDynasty ? 'Dynasty' : 'Redraft'
@@ -185,7 +189,11 @@ User's roster (critical for replacement level, positional needs, surplus, age cu
 """
 ${roster}
 """
-
+${userPreferenceProfile ? `
+=== USER'S LEARNED TRADE PREFERENCE PROFILE ===
+This profile was built from the user's past feedback on trade suggestions. Tailor your suggestions to match these preferences:
+${userPreferenceProfile}
+` : ''}
 Trade being evaluated (user is the "I give" / "you" side):
 """
 ${tradeText}
@@ -313,6 +321,15 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
 
     const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
 
+    let userPreferenceProfile: string | null = null
+    try {
+      const session = await getServerSession(authOptions)
+      const userId = (session?.user as any)?.id
+      if (userId) {
+        userPreferenceProfile = await getUserTradeProfile(userId)
+      }
+    } catch {}
+
     const fantasyCalcSnippet = await fetchFantasyCalcValues(isDynasty, leagueSize, scoring)
 
     const systemPrompt = buildSystemPrompt({
@@ -321,6 +338,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
       fantasyCalcSnippet,
       feedbackBlock: buildFeedbackPromptBlock(),
+      userPreferenceProfile: userPreferenceProfile || undefined,
     })
 
     if (req.signal?.aborted) {
