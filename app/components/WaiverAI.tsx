@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Sparkles, Loader2, ThumbsUp, ThumbsDown, AlertCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, Loader2, ThumbsUp, ThumbsDown, AlertCircle, Link2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { gtagEvent } from '@/lib/gtag';
 
@@ -22,45 +22,122 @@ type RosterAlert = {
   reason: string;
 };
 
+type SyncedLeague = {
+  leagueId: string;
+  leagueName: string;
+  platform: string;
+  scoring: string;
+  isDynasty: boolean;
+  rostersSync: number;
+};
+
 export default function WaiverAI() {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<WaiverSuggestion[]>([]);
   const [rosterAlerts, setRosterAlerts] = useState<RosterAlert[]>([]);
   const [error, setError] = useState('');
 
+  const [showSyncModal, setShowSyncModal] = useState(false);
+  const [platform, setPlatform] = useState('sleeper');
+  const [platformLeagueId, setPlatformLeagueId] = useState('');
+  const [sleeperUserId, setSleeperUserId] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncedLeague, setSyncedLeague] = useState<SyncedLeague | null>(null);
+
   const [userRoster, setUserRoster] = useState('');
   const [userContention, setUserContention] = useState<'win-now' | 'contender' | 'rebuild' | 'unknown'>('unknown');
   const [userFAAB, setUserFAAB] = useState(100);
   const [useRealTimeNews, setUseRealTimeNews] = useState(true);
 
+  const handleSync = async () => {
+    if (!platformLeagueId.trim()) {
+      toast.error('Enter your league ID');
+      return;
+    }
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/league/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, platformLeagueId: platformLeagueId.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSyncedLeague({
+          leagueId: data.leagueId,
+          leagueName: data.leagueName,
+          platform: data.platform,
+          scoring: data.scoring,
+          isDynasty: data.isDynasty,
+          rostersSync: data.rostersSync,
+        });
+        toast.success(`${data.leagueName} synced! ${data.rostersSync} rosters loaded.`);
+        setShowSyncModal(false);
+        gtagEvent('league_synced', { platform, rosters: data.rostersSync });
+      } else {
+        toast.error(data.error || 'Sync failed');
+      }
+    } catch {
+      toast.error('Failed to sync league');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const generateWaiverSuggestions = async () => {
+    const hasManualRoster = userRoster.trim().length > 0;
+    const hasSyncedLeague = !!syncedLeague;
+
+    if (!hasManualRoster && !hasSyncedLeague) {
+      toast.error('Sync a league or paste your roster first');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuggestions([]);
     setRosterAlerts([]);
 
     try {
+      const payload: any = {
+        userContention,
+        userFAAB,
+        useRealTimeNews,
+      };
+
+      if (hasSyncedLeague) {
+        payload.leagueId = syncedLeague.leagueId;
+        if (sleeperUserId.trim()) {
+          payload.sleeperUserId = sleeperUserId.trim();
+        }
+      }
+
+      if (hasManualRoster) {
+        payload.userRoster = userRoster;
+      }
+
+      if (!hasSyncedLeague) {
+        payload.leagueSize = 12;
+        payload.scoring = 'ppr';
+        payload.isDynasty = true;
+      }
+
       const res = await fetch('/api/waiver-ai/grok', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userRoster,
-          userContention,
-          userFAAB,
-          useRealTimeNews,
-          leagueSize: 12,
-          scoring: 'ppr',
-          isDynasty: true,
-        }),
+        body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error('Failed to fetch suggestions');
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to fetch suggestions');
+      }
 
       const parsed = await res.json();
       setSuggestions(parsed.suggestions || []);
       setRosterAlerts(parsed.rosterAlerts || []);
       toast.success('Waiver gems found!');
-      gtagEvent('waiver_ai_suggestions_generated', { count: parsed.suggestions?.length || 0 });
+      gtagEvent('waiver_ai_suggestions_generated', { count: parsed.suggestions?.length || 0, synced: hasSyncedLeague });
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
       toast.error('Failed to load waiver suggestions');
@@ -69,26 +146,81 @@ export default function WaiverAI() {
     }
   };
 
+  const canGenerate = !loading && (userRoster.trim().length > 0 || !!syncedLeague);
+
   return (
     <div className="rounded-3xl bg-gradient-to-br from-slate-900 to-indigo-950 border border-indigo-500/30 p-6 shadow-2xl">
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Sparkles className="w-7 h-7 text-cyan-400" />
-          <h2 className="text-2xl font-bold">Waiver Wire AI</h2>
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <Sparkles className="w-7 h-7 text-cyan-400" />
+            <h2 className="text-2xl font-bold">Waiver Wire AI</h2>
+          </div>
+          <p className="text-sm text-slate-400">League-aware &middot; Roster-smart &middot; Real-time</p>
         </div>
-        <span className="px-3 py-1 rounded-full text-xs bg-cyan-500/20 text-cyan-300">League-Aware</span>
+        <button
+          onClick={() => setShowSyncModal(true)}
+          className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 flex items-center gap-2 text-sm transition-colors"
+        >
+          <Link2 className="w-4 h-4" /> Sync League
+        </button>
       </div>
 
-      <div className="space-y-6 mb-8">
-        <div>
-          <label className="block text-sm font-medium mb-2">Your Roster (paste or key players)</label>
-          <textarea
-            value={userRoster}
-            onChange={(e) => setUserRoster(e.target.value)}
-            placeholder="QB: Josh Allen&#10;RB: Bijan Robinson, Breece Hall...&#10;FAAB: 87%"
-            className="w-full h-32 rounded-2xl bg-slate-800 border border-slate-700 p-4 text-sm resize-y focus:border-cyan-400 outline-none"
-          />
+      {syncedLeague && (
+        <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between">
+          <div>
+            <p className="font-semibold text-emerald-300">{syncedLeague.leagueName}</p>
+            <p className="text-xs text-slate-400">
+              {syncedLeague.platform.toUpperCase()} &middot; {syncedLeague.scoring.toUpperCase()} &middot;
+              {syncedLeague.isDynasty ? ' Dynasty' : ' Redraft'} &middot; {syncedLeague.rostersSync} teams
+            </p>
+          </div>
+          <button
+            onClick={() => setSyncedLeague(null)}
+            className="text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            Disconnect
+          </button>
         </div>
+      )}
+
+      <div className="space-y-6 mb-8">
+        {syncedLeague && (
+          <div>
+            <label className="block text-sm font-medium mb-2">Your Sleeper User ID (to find your roster)</label>
+            <input
+              type="text"
+              value={sleeperUserId}
+              onChange={(e) => setSleeperUserId(e.target.value)}
+              placeholder="e.g. 123456789012345678"
+              className="w-full rounded-2xl bg-slate-800 border border-slate-700 p-4 text-sm focus:border-cyan-400 outline-none"
+            />
+          </div>
+        )}
+
+        {!syncedLeague && (
+          <div>
+            <label className="block text-sm font-medium mb-2">Your Roster (paste key players)</label>
+            <textarea
+              value={userRoster}
+              onChange={(e) => setUserRoster(e.target.value)}
+              placeholder="QB: Josh Allen&#10;RB: Bijan Robinson, Breece Hall...&#10;WR: Ja'Marr Chase, CeeDee Lamb..."
+              className="w-full h-32 rounded-2xl bg-slate-800 border border-slate-700 p-4 text-sm resize-y focus:border-cyan-400 outline-none"
+            />
+          </div>
+        )}
+
+        {syncedLeague && (
+          <div>
+            <label className="block text-sm font-medium mb-2">Additional Context (optional)</label>
+            <textarea
+              value={userRoster}
+              onChange={(e) => setUserRoster(e.target.value)}
+              placeholder="Any extra context... e.g. 'Looking to trade my RB depth for a WR1'"
+              className="w-full h-20 rounded-2xl bg-slate-800 border border-slate-700 p-4 text-sm resize-y focus:border-cyan-400 outline-none"
+            />
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <div>
@@ -106,11 +238,11 @@ export default function WaiverAI() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">FAAB Remaining</label>
+            <label className="block text-sm font-medium mb-2">FAAB Remaining (%)</label>
             <input
               type="number"
               value={userFAAB}
-              onChange={(e) => setUserFAAB(parseInt(e.target.value) || 100)}
+              onChange={(e) => setUserFAAB(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
               className="w-full rounded-2xl bg-slate-800 border border-slate-700 p-4 text-sm focus:border-cyan-400 outline-none"
             />
           </div>
@@ -123,34 +255,44 @@ export default function WaiverAI() {
             onChange={(e) => setUseRealTimeNews(e.target.checked)}
             className="w-5 h-5 accent-cyan-400"
           />
-          <span className="text-sm">Include latest injuries, news & rookie buzz</span>
+          <span className="text-sm">Include latest injuries, news & rookie buzz (uses real-time search)</span>
         </label>
       </div>
 
       <button
         onClick={generateWaiverSuggestions}
-        disabled={loading || !userRoster.trim()}
+        disabled={!canGenerate}
         className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-600 hover:to-indigo-700 text-white font-bold shadow-lg disabled:opacity-50 transition-all"
       >
-        {loading ? 'Scanning Waivers...' : 'Find Hidden Gems'}
+        {loading ? 'Scanning Waivers...' : syncedLeague ? 'Analyze My League' : 'Find Hidden Gems'}
       </button>
 
       {loading && (
         <div className="mt-8 space-y-4">
           <div className="flex items-center gap-3 text-cyan-400">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span>Thinking with real-time data...</span>
+            <span>Dual-brain analysis running...</span>
           </div>
           <div className="space-y-2 text-sm text-slate-300">
-            <div>Pulling FantasyCalc league-adjusted values</div>
-            <div>Analyzing your roster needs & FAAB strategy</div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0 }}>
+              Grok scanning roster needs & league context
+            </motion.div>
             {useRealTimeNews && (
               <>
-                <div>Searching X for injury/news impact</div>
-                <div>Checking rookie hype & breakout candidates</div>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.5 }}>
+                  Searching web for injury/transaction news
+                </motion.div>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 3 }}>
+                  Checking X for rookie hype & real-time buzz
+                </motion.div>
               </>
             )}
-            <div>Ranking waiver targets for your build...</div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: useRealTimeNews ? 4.5 : 1.5 }}>
+              GPT-4o synthesizing final recommendations
+            </motion.div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: useRealTimeNews ? 6 : 3 }}>
+              Ranking waiver targets for your build...
+            </motion.div>
           </div>
         </div>
       )}
@@ -206,13 +348,13 @@ export default function WaiverAI() {
                 </div>
                 {sug.faabBidRecommendation != null && (
                   <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-sm">
-                    FAAB Bid: ${sug.faabBidRecommendation}
+                    FAAB: {sug.faabBidRecommendation}%
                   </span>
                 )}
               </div>
 
               <ul className="space-y-2 text-sm">
-                {sug.reason.map((r, j) => (
+                {sug.reason.map((r: string, j: number) => (
                   <li key={j} className="flex gap-2">
                     <span className="text-cyan-400">&bull;</span>
                     <span>{r}</span>
@@ -227,10 +369,10 @@ export default function WaiverAI() {
               )}
 
               <div className="flex gap-4 mt-5 pt-4 border-t border-slate-700">
-                <button className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300">
+                <button className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors">
                   <ThumbsUp className="w-5 h-5" /> Helpful
                 </button>
-                <button className="flex items-center gap-2 text-red-400 hover:text-red-300">
+                <button className="flex items-center gap-2 text-red-400 hover:text-red-300 transition-colors">
                   <ThumbsDown className="w-5 h-5" /> Not helpful
                 </button>
               </div>
@@ -245,6 +387,77 @@ export default function WaiverAI() {
           <div>{error}</div>
         </div>
       )}
+
+      <AnimatePresence>
+        {showSyncModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowSyncModal(false); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-slate-900 rounded-3xl p-8 w-full max-w-md border border-slate-700"
+            >
+              <h3 className="text-xl font-bold mb-6">Sync Your League</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-2">Platform</label>
+                  <select
+                    value={platform}
+                    onChange={(e) => setPlatform(e.target.value)}
+                    className="w-full p-4 rounded-2xl bg-slate-800 border border-slate-700 text-sm focus:border-cyan-400 outline-none"
+                  >
+                    <option value="sleeper">Sleeper</option>
+                    <option value="mfl">MyFantasyLeague (MFL)</option>
+                    <option value="yahoo">Yahoo</option>
+                    <option value="espn">ESPN</option>
+                    <option value="fantrax">Fantrax</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-2">League ID</label>
+                  <input
+                    type="text"
+                    placeholder={platform === 'sleeper' ? 'e.g. 1048889471730257920' : 'Your league ID'}
+                    value={platformLeagueId}
+                    onChange={(e) => setPlatformLeagueId(e.target.value)}
+                    className="w-full p-4 rounded-2xl bg-slate-800 border border-slate-700 text-sm focus:border-cyan-400 outline-none"
+                  />
+                </div>
+                {platform !== 'sleeper' && (
+                  <p className="text-xs text-amber-400">
+                    Only Sleeper is fully supported right now. Other platforms are coming soon.
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={handleSync}
+                disabled={isSyncing || !platformLeagueId.trim()}
+                className="w-full mt-6 py-4 bg-cyan-500 hover:bg-cyan-600 disabled:opacity-50 rounded-2xl font-bold transition-colors"
+              >
+                {isSyncing ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Syncing...
+                  </span>
+                ) : (
+                  'Sync League Now'
+                )}
+              </button>
+              <button
+                onClick={() => setShowSyncModal(false)}
+                className="w-full mt-3 py-2 text-sm text-slate-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
