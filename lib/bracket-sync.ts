@@ -36,8 +36,15 @@ function normalizeStatus(
   raw?: string | null
 ): "scheduled" | "in_progress" | "final" | "unknown" {
   if (!raw) return "unknown"
-  const s = raw.toLowerCase()
-  if (s.includes("final") || s === "ft" || s === "aet") return "final"
+  const s = raw.toLowerCase().trim()
+  if (
+    s === "ft" ||
+    s === "aot" ||
+    s === "aet" ||
+    s.includes("final") ||
+    s === "match finished"
+  )
+    return "final"
   if (
     s.includes("in progress") ||
     s.includes("live") ||
@@ -46,11 +53,14 @@ function normalizeStatus(
   )
     return "in_progress"
   if (
+    s === "ns" ||
+    s === "post" ||
+    s === "canc" ||
     s.includes("not started") ||
     s.includes("scheduled") ||
     s.includes("postponed") ||
-    s.includes("time") ||
-    s === "ns"
+    s.includes("cancelled") ||
+    s.includes("time")
   )
     return "scheduled"
   return "unknown"
