@@ -13,67 +13,84 @@ export async function POST(req: NextRequest) {
   const { leagueId } = await req.json().catch(() => ({}));
 
   try {
-    let rosterData: any;
+    let league: any;
     if (leagueId) {
-      const league = await (prisma as any).league.findUnique({
+      league = await (prisma as any).league.findUnique({
         where: { id: leagueId, userId },
         include: { rosters: true },
       });
-      if (!league) throw new Error('League not found');
-      rosterData = league.rosters.find((r: any) => r.platformUserId === userId);
     } else {
-      const latestLeague = await (prisma as any).league.findFirst({
+      league = await (prisma as any).league.findFirst({
         where: { userId },
         orderBy: { lastSyncedAt: 'desc' },
         include: { rosters: true },
       });
-      if (!latestLeague) throw new Error('No synced league found');
-      rosterData = latestLeague.rosters.find((r: any) => r.platformUserId === userId);
     }
 
-    if (!rosterData) throw new Error('Roster not found');
+    if (!league) throw new Error('No synced league found');
 
-    const startersScore = 75;
-    const depthScore = 68;
-    const ageCurveScore = 82;
-    const futureValueScore = 90;
+    const roster = league.rosters.find((r: any) => r.platformUserId === userId);
+    if (!roster) throw new Error('Roster not found');
+
+    const players: any[] = roster.playerData || [];
+
+    const starterScore = Math.min(90, 50 + (players.filter((p: any) => p.isStarter).length * 5));
+    const depthScore = Math.min(85, 40 + (players.length - players.filter((p: any) => p.isStarter).length) * 4);
+
+    const ages = players.map((p: any) => p.age || 27);
+    const avgAge = ages.length > 0 ? ages.reduce((a: number, b: number) => a + b, 0) / ages.length : 27;
+    let ageCurveScore = 70;
+    if (league.isDynasty) {
+      if (avgAge < 24) ageCurveScore = 95;
+      else if (avgAge < 27) ageCurveScore = 85;
+      else if (avgAge < 30) ageCurveScore = 70;
+      else ageCurveScore = 50;
+    } else {
+      if (avgAge >= 25 && avgAge <= 29) ageCurveScore = 90;
+      else if (avgAge >= 23 && avgAge <= 31) ageCurveScore = 75;
+      else ageCurveScore = 55;
+    }
+
+    const futurePicks = players.filter((p: any) => p.isPick).length;
+    const youngPlayers = players.filter((p: any) => p.age && p.age <= 25).length;
+    const futureScore = Math.min(95, 40 + futurePicks * 10 + youngPlayers * 5);
 
     const overallScore = Math.round(
-      (startersScore + depthScore + ageCurveScore + futureValueScore) / 4
+      (starterScore * 0.3) + (depthScore * 0.2) + (ageCurveScore * 0.25) + (futureScore * 0.25)
     );
 
     const insights = [
       {
         title: 'Starter Strength',
-        description: 'Your starting lineup ranks in the top 30% of similar leagues.',
-        score: startersScore,
+        description: `Your starters average ${Math.round(starterScore)}% of league market value.`,
+        score: starterScore,
         iconName: 'Shield',
-        color: 'text-emerald-400',
-        recommendation: 'Strong core — focus on depth upgrades.',
+        color: starterScore >= 80 ? 'text-emerald-400' : starterScore >= 60 ? 'text-yellow-400' : 'text-red-400',
+        recommendation: starterScore < 70 ? 'Target immediate upgrades via trade/waivers' : 'Solid core — protect with depth.',
       },
       {
         title: 'Bench Depth',
-        description: 'Solid RB/WR depth, but TE and FLEX spots are thin.',
+        description: `Bench quality supports ${depthScore}% of starter production.`,
         score: depthScore,
         iconName: 'Users',
-        color: 'text-yellow-400',
-        recommendation: 'Target waiver TE/RB stashes.',
+        color: depthScore >= 75 ? 'text-emerald-400' : depthScore >= 50 ? 'text-yellow-400' : 'text-red-400',
+        recommendation: depthScore < 60 ? 'Prioritize waiver stashes for injury cover' : 'Good insurance — consider trading excess.',
       },
       {
-        title: 'Age Curve & Contention',
-        description: 'Excellent mix of youth and vets — built to compete now and later.',
+        title: 'Age Curve',
+        description: `Average age: ${avgAge.toFixed(1)} — ${league.isDynasty ? 'dynasty outlook' : 'redraft contention'}.`,
         score: ageCurveScore,
         iconName: 'Clock',
-        color: 'text-cyan-400',
-        recommendation: 'Win-now window open — push trades for immediate help.',
+        color: ageCurveScore >= 80 ? 'text-emerald-400' : ageCurveScore >= 65 ? 'text-yellow-400' : 'text-red-400',
+        recommendation: ageCurveScore < 70 ? 'Shift toward younger assets if rebuilding' : 'Balanced for current window.',
       },
       {
         title: 'Future Value',
-        description: 'Strong 2026+ draft capital and young upside players.',
-        score: futureValueScore,
+        description: `${futurePicks} picks + ${youngPlayers} young upside players.`,
+        score: futureScore,
         iconName: 'TrendingUp',
-        color: 'text-purple-400',
-        recommendation: 'Hold picks unless overpay offered.',
+        color: futureScore >= 80 ? 'text-emerald-400' : futureScore >= 60 ? 'text-yellow-400' : 'text-red-400',
+        recommendation: futureScore > 80 ? 'Leverage picks for win-now moves' : 'Stockpile youth/picks for rebuild.',
       },
     ];
 
