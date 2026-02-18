@@ -529,6 +529,54 @@ enum FeedbackReason {
   OTHER
 }
 
+enum VoteType {
+  UP
+  DOWN
+}
+
+model Feedback {
+  id               String          @id @default(uuid())
+  userId           String
+  user             AppUser         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tradeText        String?
+  suggestionTitle  String?
+  suggestionText   String?
+
+  vote             VoteType
+  reason           FeedbackReason?
+
+  leagueSize       Int?
+  isDynasty        Boolean?
+  scoring          String?
+  userContention   String?
+  userRoster       String?
+
+  createdAt        DateTime        @default(now())
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([vote])
+  @@index([reason])
+  @@map("trade_feedback")
+}
+
+model TradeProfile {
+  id                 String    @id @default(uuid())
+  userId             String    @unique
+  user               AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  summary            String    @db.Text
+
+  voteCount          Int       @default(0)
+  lastSummarizedAt   DateTime?
+  version            Int       @default(1)
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@map("trade_profiles")
+}
+
 model AILeagueContext {
   id              String   @id @default(uuid())
   leagueId        String   @unique
@@ -2036,6 +2084,8 @@ model AppUser {
   profile              UserProfile?
   emailVerifyTokens    EmailVerifyToken[]
   passwordResetTokens  PasswordResetToken[]
+  tradeFeedback        Feedback[]
+  tradeProfile         TradeProfile?
 
   @@map("app_users")
 }

@@ -13,15 +13,14 @@ const REASON_TO_ENUM: Record<string, string> = Object.fromEntries(
   FEEDBACK_REASONS.map(r => [r.label, r.enum])
 )
 
-interface VoteRecord {
+interface FeedbackRecord {
   id: string
   userId: string
-  tradeText: string
-  suggestionTitle: string
+  tradeText: string | null
+  suggestionTitle: string | null
   suggestionText: string | null
   vote: string
   reason: string | null
-  feedbackReason: string | null
   leagueSize: number | null
   isDynasty: boolean | null
   scoring: string | null
@@ -43,15 +42,16 @@ export async function persistVote(params: {
   userRoster?: string
   userContention?: string
 }) {
-  const vote = await db.tradeSuggestionVote.create({
+  const feedbackReason = params.reason ? (REASON_TO_ENUM[params.reason] || 'OTHER') : null
+
+  const feedback = await db.feedback.create({
     data: {
       userId: params.userId,
       tradeText: params.tradeText.slice(0, 5000),
       suggestionTitle: params.suggestionTitle.slice(0, 200),
       suggestionText: params.suggestionText?.slice(0, 5000) || null,
-      vote: params.vote,
-      reason: params.reason?.slice(0, 100) || null,
-      feedbackReason: params.reason ? (REASON_TO_ENUM[params.reason] || 'OTHER') : null,
+      vote: params.vote === 'up' ? 'UP' : 'DOWN',
+      reason: feedbackReason,
       leagueSize: params.leagueSize || null,
       isDynasty: params.isDynasty ?? null,
       scoring: params.scoring?.slice(0, 20) || null,
@@ -60,11 +60,11 @@ export async function persistVote(params: {
     },
   })
 
-  updateUserProfileAsync(params.userId).catch((err: Error) =>
+  updateTradeProfileAsync(params.userId).catch((err: Error) =>
     console.error('[trade-feedback-profile] async profile update failed:', err)
   )
 
-  return vote
+  return feedback
 }
 
 export interface TradeProfileResult {
@@ -81,32 +81,26 @@ export async function getUserTradeProfile(userId: string): Promise<string | null
 
 export async function getUserTradeProfileFull(userId: string): Promise<TradeProfileResult> {
   try {
-    const profile = await db.aIUserProfile.findUnique({
+    const profile = await db.tradeProfile.findUnique({
       where: { userId },
-      select: {
-        tradePreferenceProfile: true,
-        tradeProfileUpdatedAt: true,
-        tradeProfileVoteCount: true,
-        tradeProfileVersion: true,
-      },
     })
 
-    if (!profile?.tradePreferenceProfile) {
+    if (!profile?.summary) {
       return { summary: null, voteCount: 0, version: 0, lastUpdated: null }
     }
 
-    if (profile.tradeProfileUpdatedAt) {
-      const ageMs = Date.now() - new Date(profile.tradeProfileUpdatedAt).getTime()
+    if (profile.lastSummarizedAt) {
+      const ageMs = Date.now() - new Date(profile.lastSummarizedAt).getTime()
       if (ageMs > PROFILE_STALE_HOURS * 60 * 60 * 1000) {
-        updateUserProfileAsync(userId).catch(() => {})
+        updateTradeProfileAsync(userId).catch(() => {})
       }
     }
 
     return {
-      summary: profile.tradePreferenceProfile as string,
-      voteCount: profile.tradeProfileVoteCount || 0,
-      version: profile.tradeProfileVersion || 1,
-      lastUpdated: profile.tradeProfileUpdatedAt ? new Date(profile.tradeProfileUpdatedAt).toISOString() : null,
+      summary: profile.summary as string,
+      voteCount: profile.voteCount || 0,
+      version: profile.version || 1,
+      lastUpdated: profile.lastSummarizedAt ? new Date(profile.lastSummarizedAt).toISOString() : null,
     }
   } catch (err) {
     console.error('[trade-feedback-profile] getUserTradeProfile error:', err)
@@ -114,8 +108,8 @@ export async function getUserTradeProfileFull(userId: string): Promise<TradeProf
   }
 }
 
-async function updateUserProfileAsync(userId: string) {
-  const votes: VoteRecord[] = await db.tradeSuggestionVote.findMany({
+async function updateTradeProfileAsync(userId: string) {
+  const votes: FeedbackRecord[] = await db.feedback.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },
     take: 100,
@@ -123,25 +117,25 @@ async function updateUserProfileAsync(userId: string) {
 
   if (votes.length < MIN_VOTES_FOR_PROFILE) return
 
-  const upCount = votes.filter((v: VoteRecord) => v.vote === 'up').length
-  const downCount = votes.filter((v: VoteRecord) => v.vote === 'down').length
+  const upCount = votes.filter((v: FeedbackRecord) => v.vote === 'UP').length
+  const downCount = votes.filter((v: FeedbackRecord) => v.vote === 'DOWN').length
 
-  const dynastyVotes = votes.filter((v: VoteRecord) => v.isDynasty === true)
-  const redraftVotes = votes.filter((v: VoteRecord) => v.isDynasty === false)
+  const dynastyVotes = votes.filter((v: FeedbackRecord) => v.isDynasty === true)
+  const redraftVotes = votes.filter((v: FeedbackRecord) => v.isDynasty === false)
 
-  const voteLines = votes.map((v: VoteRecord) => {
-    const icon = v.vote === 'up' ? '👍' : '👎'
+  const voteLines = votes.map((v: FeedbackRecord) => {
+    const icon = v.vote === 'UP' ? '👍' : '👎'
     const format = v.isDynasty ? 'dynasty' : v.isDynasty === false ? 'redraft' : 'unknown'
     const scoring = v.scoring || 'unknown'
     const size = v.leagueSize ? `${v.leagueSize}-team` : 'unknown size'
     const contention = v.userContention || 'unknown'
-    const reasonText = v.vote === 'down' && v.reason ? ` — Reason: ${v.reason}` : ''
+    const reasonText = v.vote === 'DOWN' && v.reason ? ` — Reason: ${v.reason}` : ''
     return `${icon} "${v.suggestionTitle}" (${format}, ${scoring}, ${size}, ${contention})${reasonText}`
   }).join('\n')
 
   const reasonCounts: Record<string, number> = {}
-  votes.filter((v: VoteRecord) => v.vote === 'down' && v.feedbackReason).forEach((v: VoteRecord) => {
-    const r = v.feedbackReason!
+  votes.filter((v: FeedbackRecord) => v.vote === 'DOWN' && v.reason).forEach((v: FeedbackRecord) => {
+    const r = v.reason!
     reasonCounts[r] = (reasonCounts[r] || 0) + 1
   })
   const reasonBreakdown = Object.keys(reasonCounts).length > 0
@@ -150,8 +144,8 @@ async function updateUserProfileAsync(userId: string) {
 
   const contextStats = [
     `Total votes: ${votes.length} (${upCount} helpful, ${downCount} unhelpful)`,
-    dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter((v: VoteRecord) => v.vote === 'up').length} up, ${dynastyVotes.filter((v: VoteRecord) => v.vote === 'down').length} down)` : null,
-    redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter((v: VoteRecord) => v.vote === 'up').length} up, ${redraftVotes.filter((v: VoteRecord) => v.vote === 'down').length} down)` : null,
+    dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter((v: FeedbackRecord) => v.vote === 'UP').length} up, ${dynastyVotes.filter((v: FeedbackRecord) => v.vote === 'DOWN').length} down)` : null,
+    redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter((v: FeedbackRecord) => v.vote === 'UP').length} up, ${redraftVotes.filter((v: FeedbackRecord) => v.vote === 'DOWN').length} down)` : null,
     reasonBreakdown,
   ].filter(Boolean).join('\n')
 
@@ -186,20 +180,20 @@ Do NOT include preamble or meta-commentary — just the profile.`,
     const summary = summaryRes.choices[0]?.message?.content?.trim() || ''
     if (!summary) return
 
-    await db.aIUserProfile.upsert({
+    await db.tradeProfile.upsert({
       where: { userId },
       update: {
-        tradePreferenceProfile: summary,
-        tradeProfileUpdatedAt: new Date(),
-        tradeProfileVoteCount: votes.length,
-        tradeProfileVersion: { increment: 1 },
+        summary,
+        lastSummarizedAt: new Date(),
+        voteCount: votes.length,
+        version: { increment: 1 },
       },
       create: {
         userId,
-        tradePreferenceProfile: summary,
-        tradeProfileUpdatedAt: new Date(),
-        tradeProfileVoteCount: votes.length,
-        tradeProfileVersion: 1,
+        summary,
+        lastSummarizedAt: new Date(),
+        voteCount: votes.length,
+        version: 1,
       },
     })
   } catch (err) {
@@ -207,9 +201,9 @@ Do NOT include preamble or meta-commentary — just the profile.`,
   }
 }
 
-export async function getRecentVotesForUser(userId: string, limit = 20): Promise<VoteRecord[]> {
+export async function getRecentVotesForUser(userId: string, limit = 20): Promise<FeedbackRecord[]> {
   try {
-    return await db.tradeSuggestionVote.findMany({
+    return await db.feedback.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,
