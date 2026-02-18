@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Copy, AlertCircle, Loader2 } from 'lucide-react'
+import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Suggestion = {
@@ -342,7 +342,7 @@ export default function ImproveTradeModal({
               ) : null}
             </div>
 
-            <div className="sticky bottom-0 p-5 sm:p-6 flex justify-end gap-3 rounded-b-3xl" style={{ borderTop: '1px solid var(--border)', background: 'var(--panel)' }}>
+            <div className="sticky bottom-0 p-5 sm:p-6 flex flex-wrap justify-end gap-3 rounded-b-3xl" style={{ borderTop: '1px solid var(--border)', background: 'var(--panel)' }}>
               <button
                 onClick={onClose}
                 className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all"
@@ -350,12 +350,22 @@ export default function ImproveTradeModal({
               >
                 Close
               </button>
-              {!loading && (error || suggestions.length > 0) && (
+              {!loading && suggestions.length > 0 && (
+                <button
+                  onClick={fetchSuggestions}
+                  className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
+                  style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--text)' }}
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Regenerate
+                </button>
+              )}
+              {!loading && error && (
                 <button
                   onClick={fetchSuggestions}
                   className="px-5 py-2.5 rounded-xl text-sm font-semibold text-black bg-gradient-to-r from-cyan-400 to-cyan-300 transition-all active:scale-[0.97]"
                 >
-                  {error ? 'Try Again' : 'Regenerate'}
+                  Try Again
                 </button>
               )}
             </div>
