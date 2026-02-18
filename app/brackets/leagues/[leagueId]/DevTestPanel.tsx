@@ -2,6 +2,13 @@
 
 import { useState } from "react"
 
+function devHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "content-type": "application/json" }
+  const s = (process.env.NEXT_PUBLIC_BRACKET_DEV_SECRET ?? "").trim()
+  if (s) h["x-dev-secret"] = s
+  return h
+}
+
 const ROUND_LABELS: Record<number, string> = {
   1: "R64",
   2: "R32",
@@ -20,7 +27,7 @@ export default function DevTestPanel({ season }: { season: number }) {
   async function simulateRound(r: number) {
     const res = await fetch("/api/dev/bracket/simulate", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: devHeaders(),
       body: JSON.stringify({ season, round: r }),
     })
     return res.json().catch(() => ({}))
@@ -39,7 +46,7 @@ export default function DevTestPanel({ season }: { season: number }) {
     setResult(null)
     const res = await fetch("/api/dev/bracket/simulate", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: devHeaders(),
       body: JSON.stringify({ season, mode: "full" }),
     })
     const json = await res.json().catch(() => ({}))

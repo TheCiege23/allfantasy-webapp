@@ -93,11 +93,16 @@ export default async function LeagueDetailPage({
               {league.tournament.name} &bull; {league.tournament.season}
             </p>
           </div>
-          <div className="text-xs text-gray-500">
-            Created by{" "}
-            <span className="text-gray-300">
-              {league.owner.displayName || league.owner.email || "Unknown"}
-            </span>
+          <div className="text-right space-y-1">
+            <div className="text-xs text-gray-500">
+              Created by{" "}
+              <span className="text-gray-300">
+                {league.owner.displayName || league.owner.email || "Unknown"}
+              </span>
+            </div>
+            <div className="text-xs text-gray-500">
+              League ID: <span className="font-mono text-gray-300">{league.id}</span>
+            </div>
           </div>
         </div>
 
@@ -125,6 +130,9 @@ export default async function LeagueDetailPage({
             Share this code with friends so they can join your league:
           </p>
           <CopyJoinCode joinCode={league.joinCode} />
+          <p className="text-xs text-gray-500 italic">
+            Picks lock at tip-off for each game.
+          </p>
         </div>
 
         {topStandings.length > 0 && (

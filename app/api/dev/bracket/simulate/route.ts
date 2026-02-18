@@ -4,6 +4,13 @@ import { scoreAndAdvanceFinals } from "@/lib/bracket-sync"
 
 export const runtime = "nodejs"
 
+function requireDevSecret(req: Request) {
+  const secret = process.env.BRACKET_DEV_SECRET
+  if (!secret) return true
+  const provided = req.headers.get("x-dev-secret") ?? ""
+  return provided === secret
+}
+
 function seededScore(nodeId: string, side: "home" | "away"): number {
   let hash = 0
   const key = `${nodeId}-${side}`
@@ -288,6 +295,9 @@ async function runDbAssertions(tournamentId: string, isFullMode: boolean) {
 export async function POST(req: Request) {
   if (process.env.NODE_ENV === "production") {
     return NextResponse.json({ error: "Not allowed in production" }, { status: 403 })
+  }
+  if (!requireDevSecret(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
   const body = await req.json().catch(() => ({}))
