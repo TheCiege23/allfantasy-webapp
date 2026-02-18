@@ -1,37 +1,20 @@
 import { prisma } from '@/lib/prisma'
+import { FeedbackReason, VoteType } from '@prisma/client'
 import OpenAI from 'openai'
 import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
-
-const db = prisma as any
 
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const PROFILE_STALE_HOURS = 6
 const MIN_VOTES_FOR_PROFILE = 3
 
-const REASON_TO_ENUM: Record<string, string> = Object.fromEntries(
-  FEEDBACK_REASONS.map(r => [r.label, r.enum])
-)
+const REASON_TO_ENUM: Record<string, FeedbackReason> = Object.fromEntries(
+  FEEDBACK_REASONS.map(r => [r.label, r.enum as FeedbackReason])
+) as Record<string, FeedbackReason>
 
 const ENUM_TO_LABEL: Record<string, string> = Object.fromEntries(
   FEEDBACK_REASONS.map(r => [r.enum, r.label])
 )
-
-interface FeedbackRecord {
-  id: string
-  userId: string
-  tradeText: string | null
-  suggestionTitle: string | null
-  suggestionText: string | null
-  vote: string
-  reason: string | null
-  leagueSize: number | null
-  isDynasty: boolean | null
-  scoring: string | null
-  userRoster: string | null
-  userContention: string | null
-  createdAt: Date
-}
 
 export async function persistVote(params: {
   userId: string
@@ -46,15 +29,18 @@ export async function persistVote(params: {
   userRoster?: string
   userContention?: string
 }) {
-  const feedbackReason = params.reason ? (REASON_TO_ENUM[params.reason] || 'OTHER') : null
+  const feedbackReason: FeedbackReason | null =
+    params.vote === 'down' && params.reason
+      ? (REASON_TO_ENUM[params.reason] || FeedbackReason.OTHER)
+      : null
 
-  const feedback = await db.feedback.create({
+  const feedback = await prisma.feedback.create({
     data: {
       userId: params.userId,
       tradeText: params.tradeText.slice(0, 5000),
       suggestionTitle: params.suggestionTitle.slice(0, 200),
       suggestionText: params.suggestionText?.slice(0, 5000) || null,
-      vote: params.vote === 'up' ? 'UP' : 'DOWN',
+      vote: params.vote === 'up' ? VoteType.UP : VoteType.DOWN,
       reason: feedbackReason,
       leagueSize: params.leagueSize || null,
       isDynasty: params.isDynasty ?? null,
@@ -85,7 +71,7 @@ export async function getUserTradeProfile(userId: string): Promise<string | null
 
 export async function getUserTradeProfileFull(userId: string): Promise<TradeProfileResult> {
   try {
-    const profile = await db.tradeProfile.findUnique({
+    const profile = await prisma.tradeProfile.findUnique({
       where: { userId },
     })
 
@@ -94,17 +80,17 @@ export async function getUserTradeProfileFull(userId: string): Promise<TradeProf
     }
 
     if (profile.lastSummarizedAt) {
-      const ageMs = Date.now() - new Date(profile.lastSummarizedAt).getTime()
+      const ageMs = Date.now() - profile.lastSummarizedAt.getTime()
       if (ageMs > PROFILE_STALE_HOURS * 60 * 60 * 1000) {
         updateTradeProfileAsync(userId).catch(() => {})
       }
     }
 
     return {
-      summary: profile.summary as string,
-      voteCount: profile.voteCount || 0,
-      version: profile.version || 1,
-      lastUpdated: profile.lastSummarizedAt ? new Date(profile.lastSummarizedAt).toISOString() : null,
+      summary: profile.summary,
+      voteCount: profile.voteCount,
+      version: profile.version,
+      lastUpdated: profile.lastSummarizedAt ? profile.lastSummarizedAt.toISOString() : null,
     }
   } catch (err) {
     console.error('[trade-feedback-profile] getUserTradeProfile error:', err)
@@ -113,33 +99,33 @@ export async function getUserTradeProfileFull(userId: string): Promise<TradeProf
 }
 
 async function updateTradeProfileAsync(userId: string) {
-  const votes: FeedbackRecord[] = await db.feedback.findMany({
+  const recentVotes = await prisma.feedback.findMany({
     where: { userId },
     orderBy: { createdAt: 'desc' },
     take: 100,
   })
 
-  if (votes.length < MIN_VOTES_FOR_PROFILE) return
+  if (recentVotes.length < MIN_VOTES_FOR_PROFILE) return
 
-  const upCount = votes.filter((v: FeedbackRecord) => v.vote === 'UP').length
-  const downCount = votes.filter((v: FeedbackRecord) => v.vote === 'DOWN').length
+  const upCount = recentVotes.filter(v => v.vote === VoteType.UP).length
+  const downCount = recentVotes.filter(v => v.vote === VoteType.DOWN).length
 
-  const dynastyVotes = votes.filter((v: FeedbackRecord) => v.isDynasty === true)
-  const redraftVotes = votes.filter((v: FeedbackRecord) => v.isDynasty === false)
+  const dynastyVotes = recentVotes.filter(v => v.isDynasty === true)
+  const redraftVotes = recentVotes.filter(v => v.isDynasty === false)
 
-  const voteLines = votes.map((v: FeedbackRecord) => {
-    const icon = v.vote === 'UP' ? '👍' : '👎'
+  const voteLines = recentVotes.map(v => {
+    const icon = v.vote === VoteType.UP ? '👍' : '👎'
     const format = v.isDynasty ? 'dynasty' : v.isDynasty === false ? 'redraft' : 'unknown'
     const scoring = v.scoring || 'unknown'
     const size = v.leagueSize ? `${v.leagueSize}-team` : 'unknown size'
     const contention = v.userContention || 'unknown'
     const reasonLabel = v.reason ? (ENUM_TO_LABEL[v.reason] || v.reason) : null
-    const reasonText = v.vote === 'DOWN' && reasonLabel ? ` — Reason: ${reasonLabel}` : ''
-    return `${icon} "${v.suggestionTitle}" (${format}, ${scoring}, ${size}, ${contention})${reasonText}`
+    const reasonText = v.vote === VoteType.DOWN && reasonLabel ? ` — Reason: ${reasonLabel}` : ''
+    return `${icon} "${v.suggestionTitle || 'suggestion'}" (${format}, ${scoring}, ${size}, ${contention})${reasonText}`
   }).join('\n')
 
   const reasonCounts: Record<string, number> = {}
-  votes.filter((v: FeedbackRecord) => v.vote === 'DOWN' && v.reason).forEach((v: FeedbackRecord) => {
+  recentVotes.filter(v => v.vote === VoteType.DOWN && v.reason).forEach(v => {
     const label = ENUM_TO_LABEL[v.reason!] || v.reason!
     reasonCounts[label] = (reasonCounts[label] || 0) + 1
   })
@@ -148,9 +134,9 @@ async function updateTradeProfileAsync(userId: string) {
     : null
 
   const contextStats = [
-    `Total votes: ${votes.length} (${upCount} helpful, ${downCount} unhelpful)`,
-    dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter((v: FeedbackRecord) => v.vote === 'UP').length} up, ${dynastyVotes.filter((v: FeedbackRecord) => v.vote === 'DOWN').length} down)` : null,
-    redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter((v: FeedbackRecord) => v.vote === 'UP').length} up, ${redraftVotes.filter((v: FeedbackRecord) => v.vote === 'DOWN').length} down)` : null,
+    `Total votes: ${recentVotes.length} (${upCount} helpful, ${downCount} unhelpful)`,
+    dynastyVotes.length > 0 ? `Dynasty votes: ${dynastyVotes.length} (${dynastyVotes.filter(v => v.vote === VoteType.UP).length} up, ${dynastyVotes.filter(v => v.vote === VoteType.DOWN).length} down)` : null,
+    redraftVotes.length > 0 ? `Redraft votes: ${redraftVotes.length} (${redraftVotes.filter(v => v.vote === VoteType.UP).length} up, ${redraftVotes.filter(v => v.vote === VoteType.DOWN).length} down)` : null,
     reasonBreakdown,
   ].filter(Boolean).join('\n')
 
@@ -185,20 +171,19 @@ Do NOT include preamble or meta-commentary — just the profile.`,
     const summary = summaryRes.choices[0]?.message?.content?.trim() || ''
     if (!summary) return
 
-    await db.tradeProfile.upsert({
+    await prisma.tradeProfile.upsert({
       where: { userId },
       update: {
         summary,
         lastSummarizedAt: new Date(),
-        voteCount: votes.length,
+        voteCount: recentVotes.length,
         version: { increment: 1 },
       },
       create: {
         userId,
         summary,
         lastSummarizedAt: new Date(),
-        voteCount: votes.length,
-        version: 1,
+        voteCount: recentVotes.length,
       },
     })
   } catch (err) {
@@ -206,9 +191,9 @@ Do NOT include preamble or meta-commentary — just the profile.`,
   }
 }
 
-export async function getRecentVotesForUser(userId: string, limit = 20): Promise<FeedbackRecord[]> {
+export async function getRecentVotesForUser(userId: string, limit = 20) {
   try {
-    return await db.feedback.findMany({
+    return await prisma.feedback.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
       take: limit,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { VoteType } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { addFeedback, getRecentFeedback } from '@/lib/feedback-store'
@@ -94,7 +95,7 @@ export async function GET(req: NextRequest) {
           tradeText: v.tradeText,
           suggestionTitle: v.suggestionTitle,
           suggestionText: v.suggestionText,
-          vote: v.vote === 'UP' ? 'up' : 'down',
+          vote: v.vote === VoteType.UP ? 'up' : 'down',
           reason: v.reason ? (ENUM_TO_LABEL[v.reason] || v.reason) : null,
           leagueSize: v.leagueSize,
           isDynasty: v.isDynasty,
