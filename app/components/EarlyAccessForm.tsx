@@ -6,11 +6,16 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
+import { Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { gtagEvent } from '@/lib/gtag'
 
 const track = gtagEvent
 
 const earlyAccessSchema = z.object({
+  name: z.string().min(2, { message: 'Name is too short' }),
   email: z.string().min(1, 'Email is required').email('Please enter a valid email'),
 })
 type EarlyAccessFormData = z.infer<typeof earlyAccessSchema>
@@ -44,9 +49,10 @@ export default function EarlyAccessForm({ variant = 'hero' }: EarlyAccessFormPro
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
+    reset,
   } = useForm<EarlyAccessFormData>({
     resolver: zodResolver(earlyAccessSchema),
-    defaultValues: { email: '' },
+    defaultValues: { name: '', email: '' },
   })
 
   useEffect(() => {
@@ -68,6 +74,7 @@ export default function EarlyAccessForm({ variant = 'hero' }: EarlyAccessFormPro
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          name: formData.name,
           email: formData.email,
           eventId,
           ...utmParams,
@@ -115,72 +122,109 @@ export default function EarlyAccessForm({ variant = 'hero' }: EarlyAccessFormPro
 
   if (variant === 'footer') {
     return (
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-        <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 p-2 rounded-2xl" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-          <div className="flex-1 w-full">
-            <input
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              placeholder="Enter your email"
-              {...register('email')}
-              className="w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
-              style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label htmlFor="footer-name" className="sr-only">Name</Label>
+            <Input
+              id="footer-name"
+              placeholder="Full name"
+              autoComplete="name"
+              disabled={isSubmitting}
+              {...register('name')}
             />
-            {errors.email && (
-              <p className="text-xs text-red-400 mt-1 px-1">{errors.email.message}</p>
+            {errors.name && (
+              <p className="text-xs text-red-400 mt-1 px-1">{errors.name.message}</p>
             )}
           </div>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full sm:w-auto rounded-xl px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-black min-h-[48px]
-                       bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
-                       shadow-[0_8px_32px_rgba(34,211,238,0.4)]
-                       hover:shadow-[0_12px_40px_rgba(34,211,238,0.5)] hover:translate-y-[-2px] hover:bg-right
-                       active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-cyan-400/30
-                       disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          >
-            {isSubmitting ? 'Saving...' : 'Get AI Early Access'}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <Label htmlFor="footer-email" className="sr-only">Email</Label>
+              <Input
+                id="footer-email"
+                type="email"
+                placeholder="Email address"
+                autoComplete="email"
+                inputMode="email"
+                disabled={isSubmitting}
+                {...register('email')}
+              />
+              {errors.email && (
+                <p className="text-xs text-red-400 mt-1 px-1">{errors.email.message}</p>
+              )}
+            </div>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              size="lg"
+              className="w-full sm:w-auto"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Joining...
+                </>
+              ) : (
+                'Get Early Access →'
+              )}
+            </Button>
+          </div>
         </div>
+        <p className="text-xs text-center pt-1" style={{ color: 'var(--muted2)' }}>
+          No spam · Cancel anytime
+        </p>
       </form>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
-      <div className="rounded-2xl glow-box-strong backdrop-blur-xl p-2" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-        <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
-          <div className="flex-1 w-full">
-            <input
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              placeholder="Enter your email"
-              {...register('email')}
-              className="w-full rounded-xl px-4 sm:px-5 py-3.5 sm:py-4 outline-none text-base focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all min-h-[48px]"
-              style={{ background: 'var(--panel2)', color: 'var(--text)', border: '1px solid var(--border)' }}
-            />
-            {errors.email && (
-              <p className="text-xs text-red-400 mt-1 px-1">{errors.email.message}</p>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full sm:w-auto rounded-xl px-6 sm:px-8 py-3.5 sm:py-4 font-bold text-base text-black min-h-[48px]
-                       bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
-                       shadow-[0_8px_32px_rgba(34,211,238,0.4),0_0_0_1px_rgba(34,211,238,0.2)]
-                       hover:shadow-[0_12px_40px_rgba(34,211,238,0.5),0_0_0_1px_rgba(34,211,238,0.3)]
-                       hover:translate-y-[-2px] hover:bg-right
-                       active:translate-y-0 active:scale-[0.98] focus:outline-none focus:ring-4 focus:ring-cyan-400/30
-                       disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-          >
-            {isSubmitting ? 'Saving...' : 'Get AI Early Access'}
-          </button>
-        </div>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <div>
+        <Label htmlFor="hero-name" className="sr-only">Name</Label>
+        <Input
+          id="hero-name"
+          placeholder="Full name"
+          autoComplete="name"
+          disabled={isSubmitting}
+          {...register('name')}
+        />
+        {errors.name && (
+          <p className="mt-1.5 text-sm text-red-400">{errors.name.message}</p>
+        )}
       </div>
+
+      <div>
+        <Label htmlFor="hero-email" className="sr-only">Email</Label>
+        <Input
+          id="hero-email"
+          type="email"
+          placeholder="Email address"
+          autoComplete="email"
+          inputMode="email"
+          disabled={isSubmitting}
+          {...register('email')}
+        />
+        {errors.email && (
+          <p className="mt-1.5 text-sm text-red-400">{errors.email.message}</p>
+        )}
+      </div>
+
+      <Button
+        type="submit"
+        disabled={isSubmitting}
+        size="lg"
+        className="w-full py-6 text-lg rounded-xl shadow-lg"
+      >
+        {isSubmitting ? (
+          <>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Joining...
+          </>
+        ) : (
+          'Get Early Access →'
+        )}
+      </Button>
+
       <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-3">
         <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-amber-500/15 border border-amber-400/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
           <span className="text-amber-400">🎁</span>

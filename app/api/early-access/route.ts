@@ -78,6 +78,7 @@ export const POST = withApiUsage({ endpoint: "/api/early-access", tool: "EarlyAc
     }
 
     const email = sanitizeString(result.data.email).toLowerCase();
+    const signupName = typeof body?.name === "string" ? sanitizeString(body.name).slice(0, 100) : null;
 
     const incomingSourceRaw =
       typeof body?.source === "string" ? body.source : undefined;
@@ -152,6 +153,7 @@ export const POST = withApiUsage({ endpoint: "/api/early-access", tool: "EarlyAc
     await prisma.earlyAccessSignup.create({
       data: {
         email,
+        name: signupName,
         source: effectiveSource,
         utmSource,
         utmMedium,
@@ -200,6 +202,7 @@ export const POST = withApiUsage({ endpoint: "/api/early-access", tool: "EarlyAc
         subject: `New Early Access Signup - ${adSource}`,
         html: `<div style="font-family:sans-serif;padding:20px;">
 <h2 style="margin:0 0 12px;">New Early Access Signup</h2>
+${signupName ? `<p><strong>Name:</strong> ${signupName}</p>` : ""}
 <p><strong>Email:</strong> ${email}</p>
 <p><strong>Ad Source:</strong> ${adSource}</p>
 ${utmCampaign ? `<p><strong>Campaign:</strong> ${utmCampaign}</p>` : ""}

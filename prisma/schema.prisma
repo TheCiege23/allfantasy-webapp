@@ -10,6 +10,7 @@ datasource db {
 model EarlyAccessSignup {
   id          String    @id @default(cuid())
   email       String    @unique
+  name        String?
   createdAt   DateTime  @default(now())
   confirmedAt DateTime?
   source      String?   @default("allfantasy.ai")
