@@ -1,5 +1,4 @@
 import type { NextAuthOptions } from "next-auth"
-import EmailProvider from "next-auth/providers/email"
 import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaClient } from "@prisma/client"
 import bcrypt from "bcryptjs"
@@ -130,51 +129,9 @@ function customPrismaAdapter() {
   }
 }
 
-async function sendMagicLinkEmail({ identifier, url }: { identifier: string; url: string }) {
-  const { getResendClient } = await import("@/lib/resend-client")
-  const { client, fromEmail } = await getResendClient()
-
-  await client.emails.send({
-    from: fromEmail || "AllFantasy.ai <noreply@allfantasy.ai>",
-    to: identifier,
-    subject: "Sign in to AllFantasy.ai",
-    html: `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-    .container { max-width: 500px; margin: 0 auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; padding: 32px; border: 1px solid #334155; }
-    .logo { font-size: 24px; font-weight: 700; background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .btn { display: inline-block; background: linear-gradient(90deg, #22d3ee, #a855f7); color: white; text-decoration: none; padding: 14px 32px; border-radius: 12px; font-weight: 600; margin-top: 20px; }
-    .footer { text-align: center; margin-top: 24px; font-size: 12px; color: #64748b; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div style="text-align:center;">
-      <div class="logo">AllFantasy.ai</div>
-      <h2 style="margin:16px 0 8px;color:#f1f5f9;">Sign In</h2>
-      <p style="color:#94a3b8;">Click the button below to sign in to your account.</p>
-      <a href="${url}" class="btn">Sign In to AllFantasy</a>
-      <p style="color:#64748b;font-size:13px;margin-top:16px;">This link expires in 24 hours.</p>
-    </div>
-    <div class="footer">
-      <p>If you didn't request this email, you can safely ignore it.</p>
-    </div>
-  </div>
-</body>
-</html>`,
-  })
-}
-
 export const authOptions: NextAuthOptions = {
   adapter: customPrismaAdapter() as any,
   providers: [
-    EmailProvider({
-      sendVerificationRequest: sendMagicLinkEmail,
-    }),
     CredentialsProvider({
       id: "credentials",
       name: "Password",
@@ -215,7 +172,6 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: "/login",
-    verifyRequest: "/auth/verify-request",
     error: "/auth/error",
   },
   callbacks: {
@@ -238,51 +194,12 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user }) {
       if (!user?.id) return
       try {
-        const u = await prisma.appUser.findUnique({
-          where: { id: user.id },
-          select: { emailVerified: true, email: true },
-        })
-        if (!u) return
-
         const db = prisma as any
-
-        if (u.emailVerified) {
-          await db.userProfile.upsert({
-            where: { userId: user.id },
-            update: { emailVerifiedAt: u.emailVerified },
-            create: { userId: user.id, emailVerifiedAt: u.emailVerified },
-          }).catch(() => null)
-        }
-
-        if (u.email) {
-          const pending = await db.pendingSignup.findUnique({
-            where: { email: u.email },
-          }).catch(() => null)
-
-          if (pending) {
-            await db.userProfile.upsert({
-              where: { userId: user.id },
-              update: {
-                ...(pending.displayName && { displayName: pending.displayName }),
-                ...(pending.phone && { phone: pending.phone }),
-              },
-              create: {
-                userId: user.id,
-                ...(pending.displayName && { displayName: pending.displayName }),
-                ...(pending.phone && { phone: pending.phone }),
-              },
-            }).catch(() => null)
-            if (pending.displayName) {
-              await prisma.appUser.update({
-                where: { id: user.id },
-                data: { displayName: pending.displayName },
-              }).catch(() => {})
-            }
-            await db.pendingSignup.delete({
-              where: { email: u.email },
-            }).catch(() => {})
-          }
-        }
+        await db.userProfile.upsert({
+          where: { userId: user.id },
+          update: {},
+          create: { userId: user.id },
+        }).catch(() => null)
       } catch (err) {
         console.error("[auth] signIn event error:", err)
       }

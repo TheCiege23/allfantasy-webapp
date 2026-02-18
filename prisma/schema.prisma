@@ -1999,6 +1999,8 @@ model AppUser {
   bracketMemberships   BracketLeagueMember[]
   bracketEntries       BracketEntry[]
   profile              UserProfile?
+  emailVerifyTokens    EmailVerifyToken[]
+  passwordResetTokens  PasswordResetToken[]
 
   @@index([email])
   @@index([username])
@@ -2184,14 +2186,28 @@ model PendingSignup {
   @@map("pending_signups")
 }
 
-model EmailVerificationToken {
+model EmailVerifyToken {
   id        String   @id @default(cuid())
   userId    String
-  token     String   @unique
+  tokenHash String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
-  @@index([token])
-  @@map("email_verification_tokens")
+  @@map("email_verify_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }

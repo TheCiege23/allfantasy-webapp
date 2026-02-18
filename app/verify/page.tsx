@@ -2,24 +2,48 @@
 
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { Suspense } from "react"
-import { CheckCircle2, XCircle, Clock, AlertTriangle } from "lucide-react"
+import { Suspense, useState } from "react"
+import { CheckCircle2, XCircle, Clock, AlertTriangle, Mail, Loader2 } from "lucide-react"
 
 function VerifyContent() {
   const searchParams = useSearchParams()
   const status = searchParams?.get("status")
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | null>(null)
+
+  async function handleSendVerification() {
+    setSending(true)
+    setSendResult(null)
+    try {
+      const res = await fetch("/api/auth/verify-email/send", { method: "POST" })
+      const data = await res.json()
+      if (res.status === 401) {
+        setSendResult("login_required")
+      } else if (res.status === 400 && data.error?.includes("already")) {
+        setSendResult("already")
+      } else if (res.ok) {
+        setSendResult("sent")
+      } else {
+        setSendResult("error")
+      }
+    } catch {
+      setSendResult("error")
+    } finally {
+      setSending(false)
+    }
+  }
 
   const configs: Record<string, { icon: React.ReactNode; title: string; message: string; color: string }> = {
     success: {
       icon: <CheckCircle2 className="h-8 w-8 text-emerald-400" />,
       title: "Email verified!",
-      message: "Your email has been verified successfully. You can now sign in to your account.",
+      message: "Your email has been verified successfully. You can now access all features.",
       color: "border-emerald-500/20 bg-emerald-500/10",
     },
     expired: {
       icon: <Clock className="h-8 w-8 text-amber-400" />,
       title: "Link expired",
-      message: "This verification link has expired. Please sign in and request a new verification email.",
+      message: "This verification link has expired. Request a new one below.",
       color: "border-amber-500/20 bg-amber-500/10",
     },
     invalid: {
@@ -35,9 +59,9 @@ function VerifyContent() {
       color: "border-red-500/20 bg-red-500/10",
     },
     pending: {
-      icon: <Clock className="h-8 w-8 text-cyan-400" />,
+      icon: <Mail className="h-8 w-8 text-cyan-400" />,
       title: "Verify your email",
-      message: "We sent a verification link to your email. Click the link to verify your account.",
+      message: "You need to verify your email or phone to create and join leagues. Check your inbox for a verification link, or request a new one below.",
       color: "border-cyan-500/20 bg-cyan-500/10",
     },
   }
@@ -51,27 +75,66 @@ function VerifyContent() {
         <h1 className="text-xl font-semibold">{config.title}</h1>
         <p className="text-sm text-white/60">{config.message}</p>
 
+        {sendResult === "sent" && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+            Verification email sent! Check your inbox.
+          </div>
+        )}
+        {sendResult === "already" && (
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-300">
+            Your email is already verified.
+          </div>
+        )}
+        {sendResult === "login_required" && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
+            Please <a href="/login" className="underline font-medium">sign in</a> first, then request a new verification email.
+          </div>
+        )}
+        {sendResult === "error" && (
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+            Failed to send email. Please try again.
+          </div>
+        )}
+
         <div className="flex flex-col gap-3 pt-2">
           {status === "success" ? (
             <Link
-              href="/login"
+              href="/dashboard"
               className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 transition"
             >
-              Sign In
+              Go to Dashboard
             </Link>
           ) : (
             <>
+              {(status !== "success") && (
+                <button
+                  onClick={handleSendVerification}
+                  disabled={sending || sendResult === "sent"}
+                  className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+                >
+                  {sending ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Sending...
+                    </span>
+                  ) : sendResult === "sent" ? (
+                    "Email sent!"
+                  ) : (
+                    "Send verification email"
+                  )}
+                </button>
+              )}
               <Link
-                href="/login"
+                href="/dashboard"
                 className="rounded-xl bg-white/10 border border-white/10 px-6 py-2.5 text-sm font-medium hover:bg-white/15 transition"
               >
-                Go to Sign In
+                Go to Dashboard
               </Link>
               <Link
-                href="/signup"
+                href="/login"
                 className="rounded-xl border border-white/10 px-6 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/5 transition"
               >
-                Create New Account
+                Sign In
               </Link>
             </>
           )}

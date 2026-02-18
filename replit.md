@@ -16,20 +16,21 @@ I want the agent to implement a veto layer in dynasty trade evaluations to preve
 I want the agent to consider consolidation penalties and context adjustments (contender/rebuild) in trade analyses.
 
 ## System Architecture
-The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. Auth.js (NextAuth v4) provides dual authentication: password-based (Credentials provider with bcryptjs) and email magic link (EmailProvider via Resend). Session strategy is JWT. Custom Prisma adapter maps to `app_users`, `auth_accounts`, `auth_sessions`, `auth_verification_tokens` tables.
+The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. Auth.js (NextAuth v4) provides password-based authentication via Credentials provider with bcryptjs. Session strategy is JWT. Custom Prisma adapter maps to `app_users`, `auth_accounts`, `auth_sessions`, `auth_verification_tokens` tables.
 
 **Authentication System:**
--   **Password signup**: `/signup` page collects username (unique, required), email, password, display name, phone (optional), Sleeper username (optional with live lookup), 18+ age confirmation. Registration via `/api/auth/register`.
--   **Email verification**: Separate from login. Register sends verification token email. User clicks link which hits `/api/auth/verify-email` → sets `AppUser.emailVerified` and `UserProfile.emailVerifiedAt`. Redirects to `/verify?status=success|expired|invalid`.
--   **Password login**: `/login` page with Password/Magic Link toggle tabs. Credentials provider accepts email or username + password.
--   **Magic link login**: Still supported via EmailProvider for existing users.
+-   **Password signup**: `/signup` page collects username (unique, required), email, password, display name, phone (optional), Sleeper username (optional with live lookup), 18+ age confirmation. Registration via `/api/auth/register`. Sends hashed email verification token on signup.
+-   **Email verification**: Separate from login. Token-based with SHA-256 hashed storage (`EmailVerifyToken`). Register sends token email; `/verify` page has "Send verification email" button for resend (requires session). `/api/auth/verify-email?token=` hashes token, validates, sets `AppUser.emailVerified`. Redirects to `/verify?status=success|expired|invalid`.
+-   **Password login**: `/login` page with password-only form. Credentials provider accepts email or username + password. No magic link login.
+-   **Password reset**: `/forgot-password` page sends reset email. Token stored hashed (`PasswordResetToken`, 1hr expiry). `/reset-password?token=` page accepts new password. Confirm endpoint at `/api/auth/password/reset/confirm`.
 -   **Sleeper connect**: Optional during signup. Server-side lookup via `https://api.sleeper.app/v1/user/{username}`. Stores `sleeperUsername`, `sleeperUserId`, `sleeperLinkedAt`. Display-only, not verified ownership. Badge shows "Connected" not "Verified".
+-   **signIn event**: Only ensures `UserProfile` exists via upsert. Does NOT write `emailVerifiedAt` on login — verification only happens through explicit verify-email flow.
 
 **Verification Gate System:**
 User access to protected features requires age confirmation + email/phone verification. Three-tier gating:
 -   **API-level**: `requireVerifiedUser()` from `lib/auth-guard.ts` returns 401 (UNAUTHENTICATED), 403 (AGE_REQUIRED), or 403 (VERIFICATION_REQUIRED). Applied to all bracket mutation endpoints.
 -   **Route-level**: `requireVerifiedSession()` from `lib/require-verified.ts` redirects unauthenticated users to /login and unverified users to /onboarding.
--   **Canonical email verification**: Trusts `AppUser.emailVerified` (set by verify-email endpoint or magic link sign-in), NOT `UserProfile.emailVerifiedAt`.
+-   **Canonical email verification**: Trusts `AppUser.emailVerified` (set only by verify-email endpoint), NOT `UserProfile.emailVerifiedAt`.
 -   **Gating rule**: `isUserVerified(emailVerified, phoneVerifiedAt) = !!emailVerified || !!phoneVerifiedAt`. Full onboarding requires verification AND ageConfirmedAt AND profileComplete=true.
 -   **Post-login routing**: Verified users → `/dashboard`, logged out → `/login`. Dashboard shows setup checklist for unverified users.
 -   **Client-side pages** (leagues/new, join) handle VERIFICATION_REQUIRED and AGE_REQUIRED by redirecting to /onboarding.
