@@ -2156,6 +2156,7 @@ model UserProfile {
   displayName     String?
   phone           String?
   phoneVerifiedAt DateTime?
+  emailVerifiedAt DateTime?
   profileComplete Boolean   @default(false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
