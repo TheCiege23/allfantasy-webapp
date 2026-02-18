@@ -3,8 +3,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
-import { Trophy, Users, Copy, Plus } from "lucide-react"
+import { Trophy, Users } from "lucide-react"
 import CopyJoinCode from "./CopyJoinCode"
+import CreateEntryButton from "./CreateEntryButton"
 
 type SessionUser = { id?: string; email?: string | null }
 
@@ -91,13 +92,7 @@ export default async function LeagueDetailPage({
               Entries ({league.entries.length})
             </div>
             {user?.id && isMember && (
-              <Link
-                href={`/bracket/${league.tournament.id}/entry/new?leagueId=${league.id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white text-black px-3 py-1.5 text-sm font-medium hover:bg-gray-200 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Create entry
-              </Link>
+              <CreateEntryButton leagueId={league.id} />
             )}
           </div>
 
