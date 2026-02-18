@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { syncLeague } from '@/lib/league-sync-core';
+import { syncSleeperLeague } from '@/lib/sleeper-sync';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,8 +28,9 @@ export async function POST(req: Request) {
   }
 
   const staleThreshold = new Date(Date.now() - STALE_HOURS * 60 * 60 * 1000);
+  const results: { id: string; name: string; type: string; status: string; error?: string }[] = [];
 
-  const leagues = await (prisma as any).league.findMany({
+  const genericLeagues = await (prisma as any).league.findMany({
     where: {
       OR: [
         { lastSyncedAt: { lt: staleThreshold } },
@@ -47,15 +49,12 @@ export async function POST(req: Request) {
     },
   });
 
-  const results: { id: string; name: string; status: string; error?: string }[] = [];
-
-  for (const league of leagues) {
+  for (const league of genericLeagues) {
     try {
       await syncLeague(league.userId, league.platform, league.platformLeagueId);
-      results.push({ id: league.id, name: league.name, status: 'success' });
+      results.push({ id: league.id, name: league.name, type: league.platform, status: 'success' });
     } catch (err: any) {
-      console.error(`[Auto-Sync] Failed: ${league.name} (${league.id})`, err.message);
-
+      console.error(`[Auto-Sync] Generic failed: ${league.name} (${league.id})`, err.message);
       try {
         await (prisma as any).league.update({
           where: { id: league.id },
@@ -65,19 +64,55 @@ export async function POST(req: Request) {
           },
         });
       } catch {}
+      results.push({ id: league.id, name: league.name, type: league.platform, status: 'error', error: err.message });
+    }
+  }
 
-      results.push({ id: league.id, name: league.name, status: 'error', error: err.message });
+  const sleeperLeagues = await (prisma as any).sleeperLeague.findMany({
+    where: {
+      OR: [
+        { lastSyncedAt: { lt: staleThreshold } },
+        { lastSyncedAt: null },
+      ],
+      syncStatus: { not: 'error' },
+    },
+    take: BATCH_SIZE,
+    orderBy: { lastSyncedAt: 'asc' },
+    select: {
+      id: true,
+      userId: true,
+      sleeperLeagueId: true,
+      name: true,
+    },
+  });
+
+  for (const league of sleeperLeagues) {
+    try {
+      await syncSleeperLeague(league.sleeperLeagueId, league.userId);
+      results.push({ id: league.id, name: league.name, type: 'sleeper', status: 'success' });
+    } catch (err: any) {
+      console.error(`[Auto-Sync] Sleeper failed: ${league.name} (${league.id})`, err.message);
+      try {
+        await (prisma as any).sleeperLeague.update({
+          where: { id: league.id },
+          data: {
+            syncStatus: 'error',
+            syncError: (err.message || 'Auto-sync failed').slice(0, 500),
+          },
+        });
+      } catch {}
+      results.push({ id: league.id, name: league.name, type: 'sleeper', status: 'error', error: err.message });
     }
   }
 
   const successCount = results.filter(r => r.status === 'success').length;
   const errorCount = results.filter(r => r.status === 'error').length;
 
-  console.log(`[Auto-Sync] Complete: ${successCount} synced, ${errorCount} failed, ${leagues.length} total`);
+  console.log(`[Auto-Sync] Complete: ${successCount} synced, ${errorCount} failed, ${results.length} total`);
 
   return NextResponse.json({
     success: true,
-    total: leagues.length,
+    total: results.length,
     synced: successCount,
     failed: errorCount,
     results,
