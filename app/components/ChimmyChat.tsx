@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Volume2, VolumeX } from 'lucide-react';
 
 type ToolOutput = {
   tool: string;
@@ -15,8 +15,13 @@ export default function ChimmyChat() {
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [toolHistory, setToolHistory] = useState<ToolOutput[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
 
   useEffect(() => {
     (window as any).addToolOutput = (tool: string, output: any) => {
@@ -24,9 +29,27 @@ export default function ChimmyChat() {
     };
   }, []);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  const speak = (text: string) => {
+    if (!voiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const clean = text.replace(/[\u{1F300}-\u{1FAFF}]/gu, '').trim();
+    if (!clean) return;
+
+    const utterance = new SpeechSynthesisUtterance(clean);
+    const voices = speechSynthesis.getVoices();
+    const preferred = voices.find(v =>
+      v.name.toLowerCase().includes('female') ||
+      v.name.toLowerCase().includes('samantha') ||
+      v.name.toLowerCase().includes('victoria')
+    );
+    utterance.voice = preferred || voices[0] || null;
+    utterance.rate = 1.05;
+    utterance.pitch = 1.1;
+    utterance.volume = 0.9;
+
+    speechSynthesis.cancel();
+    speechSynthesis.speak(utterance);
+  };
 
   const sendMessage = async () => {
     if (!input.trim()) return;
@@ -43,11 +66,11 @@ export default function ChimmyChat() {
       const lastTool = toolHistory[toolHistory.length - 1];
 
       if (currentInput.toLowerCase().includes('trade') && lastTool?.tool === 'Trade Analyzer') {
-        response = `Oh! About that trade you analyzed earlier... ${lastTool.output.verdict || ''}. The AI suggested it was ${lastTool.output.lean || 'even'}. Do you want me to explain why or suggest a better counter?`;
+        response = `Sure! About that trade you analyzed earlier... ${lastTool.output.verdict || ''}. The AI said it was ${lastTool.output.lean || 'even'}. Want me to explain the reasoning or suggest a counter? \u{1F4AC}`;
       } else if (currentInput.toLowerCase().includes('waiver') && lastTool?.tool === 'Waiver AI') {
-        response = `Looking at the waiver suggestions I gave you... The top pick was ${lastTool.output.suggestions?.[0]?.playerName || 'that player'}. Their projected points were solid. Want me to compare FAAB bids or check injury news?`;
+        response = `The waiver suggestions I gave you earlier... Top pick was ${lastTool.output.suggestions?.[0]?.playerName || 'that player'}. Projected points looked strong. Want help with FAAB strategy or injury updates? \u{1F4C8}`;
       } else if (currentInput.toLowerCase().includes('roster') || currentInput.toLowerCase().includes('legacy')) {
-        response = "Your legacy score is currently 66/100 \u2014 that's Captain tier! Your strongest lane is Dynasty at 55.4%. Would you like me to break down your age curve or future picks in more detail?";
+        response = "Your legacy score is 66/100 \u2014 that's Captain tier! Your Dynasty career is strongest at 55.4%. Want me to dive deeper into your age curve or future picks? \u{1F451}";
       } else if (currentInput.toLowerCase().includes('help') || currentInput.toLowerCase().includes('what can you do')) {
         response = "I can help you with trades, waivers, roster analysis, and more! Try asking me about your trade history, waiver targets, or roster strength. \u{1F4AA}";
       } else if (currentInput.toLowerCase().includes('hello') || currentInput.toLowerCase().includes('hi') || currentInput.toLowerCase().includes('hey')) {
@@ -55,23 +78,43 @@ export default function ChimmyChat() {
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+      speak(response);
       setIsTyping(false);
     }, 1200);
   };
 
   return (
     <div className="flex flex-col h-[calc(100vh-180px)] bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden">
-      <div className="p-5 border-b border-slate-800 flex items-center gap-4 bg-slate-900">
-        <div className="w-11 h-11 bg-gradient-to-br from-pink-500 to-purple-500 rounded-2xl flex items-center justify-center text-2xl">
-          {'\u{1F496}'}
-        </div>
-        <div>
-          <div className="font-semibold">Chimmy</div>
-          <div className="text-xs text-emerald-400 flex items-center gap-1">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-            Always here for you
+      <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900">
+        <div className="flex items-center gap-4">
+          <div className="w-11 h-11 bg-gradient-to-br from-pink-500 to-purple-500 rounded-2xl flex items-center justify-center text-2xl">
+            {'\u{1F496}'}
+          </div>
+          <div>
+            <div className="font-semibold">Chimmy</div>
+            <div className="text-xs text-emerald-400 flex items-center gap-1">
+              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+              Always here for you
+            </div>
           </div>
         </div>
+
+        <button
+          onClick={() => {
+            if (voiceEnabled && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+              speechSynthesis.cancel();
+            }
+            setVoiceEnabled(!voiceEnabled);
+          }}
+          className="p-2 rounded-full hover:bg-white/10 transition-colors"
+          title={voiceEnabled ? 'Mute voice' : 'Enable voice'}
+        >
+          {voiceEnabled ? (
+            <Volume2 className="w-5 h-5 text-cyan-400" />
+          ) : (
+            <VolumeX className="w-5 h-5 text-slate-400" />
+          )}
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -99,7 +142,7 @@ export default function ChimmyChat() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder="Ask Chimmy anything about your trades, waivers, roster..."
+            placeholder="Ask Chimmy anything..."
             className="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-6 py-4 text-white placeholder-slate-500 focus:border-cyan-400 outline-none"
           />
           <button
