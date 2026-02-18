@@ -18,10 +18,13 @@ For each suggestion:
 Rules:
 - Suggestions must be realistic for 2025–2026 dynasty/redraft values
 - Do NOT invent fake player values or rankings — reason based on general market knowledge
-- Prefer adding future picks, depth players, or swapping similar-position assets over massive overpays
+- Prioritize suggestions with high acceptance likelihood (>60–70% estimated) — the other manager must realistically say yes
+- Prefer adding mid/late future picks (2nd, 3rd rounders) or bench/depth players as sweeteners over demanding star upgrades
+- If the original trade is close to even, focus on small, targeted upgrades rather than demanding huge overpays
 - If the original trade is already very good for "you", suggest small sweeteners to increase acceptance chance
 - If the trade is bad for "you", focus on fixes that bring it closer to even or better
 - Never suggest trades that obviously make the deal worse for the user
+- Order suggestions from most likely to be accepted to least likely
 
 Return ONLY valid JSON in this exact structure:
 
