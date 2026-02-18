@@ -1,271 +1,449 @@
-import { prisma } from "./prisma"
-import { scoreBracket, type BracketScoringResult } from "./bracket-scoring"
-import { normalizeTeamName as sharedNormalize, isPlaceholderTeam } from "./brackets/normalize"
+import { prisma } from "@/lib/prisma"
 
-const NCAAM_LEAGUE_ID = "4607"
-const SPORT_KEY = "ncaam"
-const SOURCE = "thesportsdb"
-const CACHE_TTL_MS = 5 * 60 * 1000
-
-const MARCH_MADNESS_START_MONTH = 2
-const MARCH_MADNESS_END_MONTH = 3
-const TOURNAMENT_KEYWORDS = [
-  "ncaa", "march madness", "tournament", "first four",
-  "round of 64", "round of 32", "sweet 16", "elite 8",
-  "final four", "championship"
-]
-
-type TSDBEvent = {
+type TheSportsDbEvent = {
   idEvent: string
-  strEvent: string
-  strHomeTeam: string
-  strAwayTeam: string
-  intHomeScore: string | null
-  intAwayScore: string | null
-  strStatus: string | null
-  dateEvent: string
-  strTime: string | null
-  strVenue: string | null
-  strSeason: string | null
-  intRound: string | null
-  strLeague: string | null
-  strDescriptionEN: string | null
+  strEvent?: string | null
+  strHomeTeam?: string | null
+  strAwayTeam?: string | null
+  intHomeScore?: string | null
+  intAwayScore?: string | null
+  strStatus?: string | null
+  dateEvent?: string | null
+  strTime?: string | null
+  strVenue?: string | null
 }
 
-export type BracketSyncResult = {
-  eventsFetched: number
-  tournamentEvents: number
-  eventsUpserted: number
-  nodesMatched: number
-  nodesSkipped: number
-  scoring: BracketScoringResult | null
-  errors: string[]
+const SPORT = "ncaam"
+const SOURCE = "thesportsdb"
+const NCAAM_LEAGUE_ID = "4607"
+
+function normalizeTeamName(name?: string | null): string {
+  if (!name) return ""
+  return name
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim()
 }
 
-function getApiKey(): string {
-  return process.env.THESPORTSDB_API_KEY || "3"
+function isPlaceholderTeam(name?: string | null): boolean {
+  if (!name) return true
+  const n = name.toLowerCase().trim()
+  return n.startsWith("winner of") || n === "tbd" || n === "tba"
 }
 
-function formatSeason(year: number): string {
-  return `${year - 1}-${year}`
+function normalizeStatus(
+  raw?: string | null
+): "scheduled" | "in_progress" | "final" | "unknown" {
+  if (!raw) return "unknown"
+  const s = raw.toLowerCase()
+  if (s.includes("final") || s === "ft" || s === "aet") return "final"
+  if (
+    s.includes("in progress") ||
+    s.includes("live") ||
+    s.includes("playing") ||
+    /^\d/.test(s)
+  )
+    return "in_progress"
+  if (
+    s.includes("not started") ||
+    s.includes("scheduled") ||
+    s.includes("postponed") ||
+    s.includes("time") ||
+    s === "ns"
+  )
+    return "scheduled"
+  return "unknown"
 }
 
-function isTournamentEvent(ev: TSDBEvent, season: number): boolean {
-  const eventDate = new Date(ev.dateEvent)
-  const month = eventDate.getMonth()
-  const year = eventDate.getFullYear()
+function parseStartTime(
+  dateEvent?: string | null,
+  strTime?: string | null
+): Date | null {
+  if (!dateEvent) return null
+  const time =
+    strTime && strTime.trim() && strTime.trim() !== "00:00:00"
+      ? strTime.trim()
+      : "00:00:00"
+  const iso = `${dateEvent}T${time}Z`
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? null : d
+}
 
-  if (year !== season) return false
-  if (month < MARCH_MADNESS_START_MONTH || month > MARCH_MADNESS_END_MONTH) return false
-
-  const eventText = `${ev.strEvent || ""} ${ev.strDescriptionEN || ""}`.toLowerCase()
-  for (const kw of TOURNAMENT_KEYWORDS) {
-    if (eventText.includes(kw)) return true
+function pointsForRound(round: number): number {
+  switch (round) {
+    case 0:
+      return 0
+    case 1:
+      return 1
+    case 2:
+      return 2
+    case 3:
+      return 4
+    case 4:
+      return 8
+    case 5:
+      return 16
+    case 6:
+      return 32
+    default:
+      return 0
   }
-
-  if (month === 2 && eventDate.getDate() >= 14) return true
-  if (month === 3) return true
-
-  return false
 }
 
-export async function fetchTournamentEvents(season: number): Promise<TSDBEvent[]> {
-  const apiKey = getApiKey()
-  const seasonStr = formatSeason(season)
-  const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsseason.php?id=${NCAAM_LEAGUE_ID}&s=${seasonStr}`
-
-  const res = await fetch(url)
-  if (!res.ok) {
-    throw new Error(`TheSportsDB returned ${res.status}: ${await res.text().catch(() => "")}`)
-  }
-
-  const data = await res.json()
-  const allEvents: TSDBEvent[] = data?.events || []
-
-  return allEvents.filter((ev) => isTournamentEvent(ev, season))
+function winnerFromScores(
+  homeTeam: string,
+  awayTeam: string,
+  homeScore: number | null,
+  awayScore: number | null
+): string | null {
+  if (homeScore == null || awayScore == null) return null
+  if (homeScore === awayScore) return null
+  return homeScore > awayScore ? homeTeam : awayTeam
 }
 
-function parseEventDate(dateStr: string, timeStr: string | null): Date | null {
-  try {
-    if (timeStr && timeStr !== "00:00:00") {
-      return new Date(`${dateStr}T${timeStr}Z`)
-    }
-    return new Date(`${dateStr}T00:00:00Z`)
-  } catch {
-    return null
-  }
+function marchMadnessWindow(season: number) {
+  const start = new Date(Date.UTC(season, 2, 1))
+  const end = new Date(Date.UTC(season, 3, 15))
+  return { start, end }
 }
 
-function mapStatus(tsdbStatus: string | null): string {
-  if (!tsdbStatus) return "scheduled"
-  const s = tsdbStatus.toLowerCase().trim()
-  if (s === "match finished" || s === "ft" || s === "aet") return "final"
-  if (s === "not started" || s === "ns") return "scheduled"
-  if (s.includes("live") || s.includes("progress") || /^\d/.test(s)) return "in_progress"
-  if (s === "postponed" || s === "pst") return "postponed"
-  if (s === "cancelled" || s === "canc") return "cancelled"
-  return s
+
+export async function fetchTournamentEvents(
+  season: number
+): Promise<TheSportsDbEvent[]> {
+  const apiKey = process.env.THESPORTSDB_API_KEY || "3"
+  const leagueId = process.env.THESPORTSDB_NCAAM_LEAGUE_ID || NCAAM_LEAGUE_ID
+
+  const seasonStr = `${season - 1}-${season}`
+  const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsseason.php?id=${leagueId}&s=${seasonStr}`
+
+  const res = await fetch(url, { cache: "no-store" })
+  if (!res.ok)
+    throw new Error(`TheSportsDB fetch failed: ${res.status}`)
+
+  const json = await res.json()
+  const events: TheSportsDbEvent[] = Array.isArray(json?.events)
+    ? json.events
+    : []
+  if (!events.length) return []
+
+  const { start, end } = marchMadnessWindow(season)
+
+  return events.filter((ev) => {
+    const dt = parseStartTime(ev.dateEvent ?? null, ev.strTime ?? null)
+    if (!dt) return false
+    if (dt < start || dt > end) return false
+    return true
+  })
 }
 
-export async function upsertEventsToSportsGame(events: TSDBEvent[]): Promise<number> {
-  let count = 0
+export async function upsertEventsToSportsGame(
+  events: TheSportsDbEvent[]
+): Promise<{ upserted: number }> {
   const now = new Date()
-  const expiresAt = new Date(now.getTime() + CACHE_TTL_MS)
 
-  for (const ev of events) {
-    const startTime = parseEventDate(ev.dateEvent, ev.strTime)
-    const homeScore = ev.intHomeScore != null ? parseInt(ev.intHomeScore, 10) : null
-    const awayScore = ev.intAwayScore != null ? parseInt(ev.intAwayScore, 10) : null
-
-    await prisma.sportsGame.upsert({
-      where: {
-        sport_externalId_source: {
-          sport: SPORT_KEY,
-          externalId: ev.idEvent,
-          source: SOURCE,
-        },
-      },
-      update: {
-        homeTeam: ev.strHomeTeam,
-        awayTeam: ev.strAwayTeam,
-        homeScore: isNaN(homeScore as number) ? null : homeScore,
-        awayScore: isNaN(awayScore as number) ? null : awayScore,
-        status: mapStatus(ev.strStatus),
-        startTime,
-        venue: ev.strVenue,
-        fetchedAt: now,
-        expiresAt,
-      },
-      create: {
-        sport: SPORT_KEY,
-        externalId: ev.idEvent,
-        source: SOURCE,
-        homeTeam: ev.strHomeTeam,
-        awayTeam: ev.strAwayTeam,
-        homeScore: isNaN(homeScore as number) ? null : homeScore,
-        awayScore: isNaN(awayScore as number) ? null : awayScore,
-        status: mapStatus(ev.strStatus),
-        startTime,
-        venue: ev.strVenue,
-        fetchedAt: now,
-        expiresAt,
-      },
-    })
-    count++
+  const makeExpiresAt = (status: string) => {
+    const minutes = status === "in_progress" ? 2 : 60
+    return new Date(now.getTime() + minutes * 60 * 1000)
   }
 
-  return count
+  const chunkSize = 100
+  let upserted = 0
+
+  for (let i = 0; i < events.length; i += chunkSize) {
+    const batch = events.slice(i, i + chunkSize)
+
+    const tx = batch
+      .filter((ev) => ev.idEvent && ev.strHomeTeam && ev.strAwayTeam)
+      .map((ev) => {
+        const status = normalizeStatus(ev.strStatus ?? null)
+        const startTime = parseStartTime(
+          ev.dateEvent ?? null,
+          ev.strTime ?? null
+        )
+        const homeScore =
+          ev.intHomeScore != null ? Number(ev.intHomeScore) : null
+        const awayScore =
+          ev.intAwayScore != null ? Number(ev.intAwayScore) : null
+
+        const safeHome = Number.isFinite(homeScore as number)
+          ? homeScore
+          : null
+        const safeAway = Number.isFinite(awayScore as number)
+          ? awayScore
+          : null
+
+        return prisma.sportsGame.upsert({
+          where: {
+            sport_externalId_source: {
+              sport: SPORT,
+              externalId: String(ev.idEvent),
+              source: SOURCE,
+            },
+          },
+          update: {
+            homeTeam: ev.strHomeTeam ?? "",
+            awayTeam: ev.strAwayTeam ?? "",
+            homeScore: safeHome,
+            awayScore: safeAway,
+            status,
+            startTime: startTime ?? undefined,
+            venue: ev.strVenue ?? null,
+            fetchedAt: now,
+            expiresAt: makeExpiresAt(status),
+          },
+          create: {
+            sport: SPORT,
+            externalId: String(ev.idEvent),
+            source: SOURCE,
+            homeTeam: ev.strHomeTeam ?? "",
+            awayTeam: ev.strAwayTeam ?? "",
+            homeScore: safeHome,
+            awayScore: safeAway,
+            status,
+            startTime: startTime ?? undefined,
+            venue: ev.strVenue ?? null,
+            fetchedAt: now,
+            expiresAt: makeExpiresAt(status),
+          },
+        })
+      })
+
+    if (tx.length) {
+      const res = await prisma.$transaction(tx)
+      upserted += res.length
+    }
+  }
+
+  return { upserted }
 }
 
-export async function matchEventsToNodes(tournamentId: string): Promise<{ matched: number; skipped: number; errors: string[] }> {
+export async function matchEventsToNodes(
+  tournamentId: string
+): Promise<{ linked: number }> {
+  const tournament = await prisma.bracketTournament.findUnique({
+    where: { id: tournamentId },
+    select: { season: true },
+  })
+  if (!tournament) return { linked: 0 }
+
   const nodes = await prisma.bracketNode.findMany({
     where: {
       tournamentId,
+      sportsGameId: null,
       homeTeamName: { not: null },
       awayTeamName: { not: null },
     },
-  })
-
-  const tournament = await prisma.bracketTournament.findUnique({ where: { id: tournamentId } })
-  if (!tournament) {
-    return { matched: 0, skipped: 0, errors: ["Tournament not found"] }
-  }
-
-  const games = await prisma.sportsGame.findMany({
-    where: {
-      sport: SPORT_KEY,
-      source: SOURCE,
-      season: tournament.season,
+    select: {
+      id: true,
+      homeTeamName: true,
+      awayTeamName: true,
     },
   })
 
-  const mapTeamsToGame = new Map<string, typeof games[0]>()
+  const { start, end } = marchMadnessWindow(tournament.season)
+  const games = await prisma.sportsGame.findMany({
+    where: {
+      sport: SPORT,
+      source: SOURCE,
+      startTime: { gte: start, lte: end },
+    },
+    select: {
+      id: true,
+      homeTeam: true,
+      awayTeam: true,
+      startTime: true,
+    },
+    orderBy: { startTime: "asc" },
+    take: 2500,
+  })
+
+  const pairToGameId = new Map<string, string>()
   for (const g of games) {
-    const a = sharedNormalize(g.homeTeam)
-    const b = sharedNormalize(g.awayTeam)
-    if (!mapTeamsToGame.has(`${a}|${b}`)) mapTeamsToGame.set(`${a}|${b}`, g)
-    if (!mapTeamsToGame.has(`${b}|${a}`)) mapTeamsToGame.set(`${b}|${a}`, g)
+    const a = normalizeTeamName(g.homeTeam)
+    const b = normalizeTeamName(g.awayTeam)
+    if (!a || !b) continue
+    const key1 = `${a}|${b}`
+    const key2 = `${b}|${a}`
+    if (!pairToGameId.has(key1)) pairToGameId.set(key1, g.id)
+    if (!pairToGameId.has(key2)) pairToGameId.set(key2, g.id)
   }
 
-  let matched = 0
-  let skipped = 0
-  const errors: string[] = []
-  const linkTx: any[] = []
+  const updates: ReturnType<typeof prisma.bracketNode.update>[] = []
 
-  for (const node of nodes) {
-    if (node.sportsGameId) {
-      skipped++
+  for (const n of nodes) {
+    if (isPlaceholderTeam(n.homeTeamName) || isPlaceholderTeam(n.awayTeamName))
       continue
-    }
+    const key = `${normalizeTeamName(n.homeTeamName)}|${normalizeTeamName(n.awayTeamName)}`
+    const gameId = pairToGameId.get(key)
+    if (!gameId) continue
 
-    if (isPlaceholderTeam(node.homeTeamName) || isPlaceholderTeam(node.awayTeamName)) {
-      skipped++
-      continue
-    }
-
-    const key = `${sharedNormalize(node.homeTeamName)}|${sharedNormalize(node.awayTeamName)}`
-    const match = mapTeamsToGame.get(key)
-    if (!match) {
-      skipped++
-      continue
-    }
-
-    linkTx.push(
+    updates.push(
       prisma.bracketNode.update({
-        where: { id: node.id },
-        data: { sportsGameId: match.id },
+        where: { id: n.id },
+        data: { sportsGameId: gameId },
       })
     )
   }
 
-  if (linkTx.length > 0) {
-    try {
-      await prisma.$transaction(linkTx)
-      matched = linkTx.length
-    } catch (err: any) {
-      errors.push(`Batch link failed: ${err.message}`)
-    }
-  }
-
-  return { matched, skipped, errors }
+  if (!updates.length) return { linked: 0 }
+  await prisma.$transaction(updates)
+  return { linked: updates.length }
 }
 
-export async function runBracketSync(season: number): Promise<BracketSyncResult> {
-  const errors: string[] = []
-
-  const events = await fetchTournamentEvents(season)
-
-  const upserted = await upsertEventsToSportsGame(events)
-
-  const tournament = await prisma.bracketTournament.findUnique({
-    where: { sport_season: { sport: SPORT_KEY, season } },
+export async function scoreAndAdvanceFinals(
+  tournamentId: string
+): Promise<{ finalized: number; advanced: number; seeded: number }> {
+  const nodes = await prisma.bracketNode.findMany({
+    where: { tournamentId, sportsGameId: { not: null } },
+    select: {
+      id: true,
+      round: true,
+      homeTeamName: true,
+      awayTeamName: true,
+      sportsGameId: true,
+      nextNodeId: true,
+      nextNodeSide: true,
+    },
   })
 
-  if (!tournament) {
-    return {
-      eventsFetched: events.length,
-      tournamentEvents: events.length,
-      eventsUpserted: upserted,
-      nodesMatched: 0,
-      nodesSkipped: 0,
-      scoring: null,
-      errors: [`No bracket tournament found for ${SPORT_KEY} ${season}. Run bracket init first.`],
+  const gameIds = nodes
+    .map((n) => n.sportsGameId!)
+    .filter(Boolean)
+  const games = await prisma.sportsGame.findMany({
+    where: { id: { in: gameIds } },
+    select: {
+      id: true,
+      homeTeam: true,
+      awayTeam: true,
+      homeScore: true,
+      awayScore: true,
+      status: true,
+    },
+  })
+  const gameById = new Map(games.map((g) => [g.id, g]))
+
+  let finalized = 0
+  let advanced = 0
+  let seeded = 0
+
+  for (const node of nodes) {
+    const g = gameById.get(node.sportsGameId!)
+    if (!g) continue
+
+    if (!node.homeTeamName && g.homeTeam) {
+      await prisma.bracketNode.update({
+        where: { id: node.id },
+        data: { homeTeamName: g.homeTeam },
+      })
+      node.homeTeamName = g.homeTeam
+      seeded++
+    }
+    if (!node.awayTeamName && g.awayTeam) {
+      await prisma.bracketNode.update({
+        where: { id: node.id },
+        data: { awayTeamName: g.awayTeam },
+      })
+      node.awayTeamName = g.awayTeam
+      seeded++
+    }
+
+    if (normalizeStatus(g.status) !== "final") continue
+
+    const rawWinner = winnerFromScores(
+      g.homeTeam,
+      g.awayTeam,
+      g.homeScore,
+      g.awayScore
+    )
+    if (!rawWinner) continue
+    if (!node.homeTeamName || !node.awayTeamName) continue
+
+    const normalizedWinner = normalizeTeamName(rawWinner)
+    let winner: string
+    if (normalizeTeamName(node.homeTeamName) === normalizedWinner) {
+      winner = node.homeTeamName
+    } else if (normalizeTeamName(node.awayTeamName) === normalizedWinner) {
+      winner = node.awayTeamName
+    } else {
+      continue
+    }
+
+    const pts = pointsForRound(node.round)
+
+    await prisma.bracketPick.updateMany({
+      where: { nodeId: node.id, pickedTeamName: winner },
+      data: { isCorrect: true, points: pts },
+    })
+
+    await prisma.bracketPick.updateMany({
+      where: {
+        nodeId: node.id,
+        pickedTeamName: { not: null },
+        NOT: { pickedTeamName: winner },
+      },
+      data: { isCorrect: false, points: 0 },
+    })
+
+    finalized++
+
+    if (node.nextNodeId && node.nextNodeSide) {
+      const next = await prisma.bracketNode.findUnique({
+        where: { id: node.nextNodeId },
+        select: { id: true, homeTeamName: true, awayTeamName: true },
+      })
+      if (!next) continue
+
+      const current =
+        node.nextNodeSide === "HOME"
+          ? next.homeTeamName
+          : next.awayTeamName
+
+      if (isPlaceholderTeam(current) || !current) {
+        await prisma.bracketNode.update({
+          where: { id: next.id },
+          data:
+            node.nextNodeSide === "HOME"
+              ? { homeTeamName: winner }
+              : { awayTeamName: winner },
+        })
+        advanced++
+      }
     }
   }
 
-  const matchResult = await matchEventsToNodes(tournament.id)
-  errors.push(...matchResult.errors)
+  return { finalized, advanced, seeded }
+}
 
-  const scoringResult = await scoreBracket(tournament.id)
-  errors.push(...scoringResult.errors)
+export async function runBracketSync(season: number) {
+  const tournament = await prisma.bracketTournament.findUnique({
+    where: { sport_season: { sport: SPORT, season } },
+    select: { id: true },
+  })
+  if (!tournament) {
+    return {
+      ok: false as const,
+      error: `BracketTournament not found for sport=${SPORT} season=${season}. Seed it first.`,
+    }
+  }
+
+  const events = await fetchTournamentEvents(season)
+  const { upserted } = await upsertEventsToSportsGame(events)
+  const { linked } = await matchEventsToNodes(tournament.id)
+  const { finalized, advanced, seeded } = await scoreAndAdvanceFinals(
+    tournament.id
+  )
 
   return {
-    eventsFetched: events.length,
-    tournamentEvents: events.length,
-    eventsUpserted: upserted,
-    nodesMatched: matchResult.matched,
-    nodesSkipped: matchResult.skipped,
-    scoring: scoringResult,
-    errors,
+    ok: true as const,
+    season,
+    tournamentId: tournament.id,
+    fetched: events.length,
+    upserted,
+    linked,
+    finalized,
+    advanced,
+    seeded,
   }
 }
