@@ -2086,6 +2086,7 @@ model AppUser {
   passwordResetTokens  PasswordResetToken[]
   tradeFeedback        Feedback[]
   tradeProfile         TradeProfile?
+  waiverPickups        WaiverPickup[]
 
   @@map("app_users")
 }
@@ -2300,4 +2301,19 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model WaiverPickup {
+  id         String   @id @default(uuid())
+  userId     String
+  playerName String
+  week       Int?
+  year       Int?
+  outcome    String?
+  createdAt  DateTime @default(now())
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("waiver_pickups")
 }
