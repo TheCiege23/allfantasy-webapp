@@ -504,6 +504,7 @@ model TradeSuggestionVote {
   suggestionTitle  String
   suggestionText   String?  @db.Text
   vote             String
+  reason           String?
   leagueSize       Int?
   isDynasty        Boolean?
   scoring          String?

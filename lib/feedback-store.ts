@@ -4,6 +4,7 @@ export interface TradeFeedback {
   suggestionTitle: string
   suggestionText: string
   vote: 'up' | 'down'
+  reason: string | null
   leagueSize: number | null
   isDynasty: boolean | null
   scoring: string | null
@@ -34,7 +35,8 @@ export function buildFeedbackPromptBlock(): string {
   const lines = recent.map(f => {
     const icon = f.vote === 'up' ? 'GOOD' : 'BAD'
     const context = f.isDynasty ? 'dynasty' : 'redraft'
-    return `[${icon}] "${f.suggestionTitle}" (${context}, ${f.scoring || 'ppr'}): ${f.vote === 'up' ? 'User found this helpful/accurate' : 'User said this was overvalued or inaccurate'}`
+    const reasonText = f.vote === 'down' && f.reason ? ` — Reason: ${f.reason}` : ''
+    return `[${icon}] "${f.suggestionTitle}" (${context}, ${f.scoring || 'ppr'}): ${f.vote === 'up' ? 'User found this helpful/accurate' : 'User said this was not helpful'}${reasonText}`
   })
 
   return `\n=== USER FEEDBACK HISTORY (learn from this) ===

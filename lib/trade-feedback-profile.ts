@@ -15,6 +15,7 @@ interface VoteRecord {
   suggestionTitle: string
   suggestionText: string | null
   vote: string
+  reason: string | null
   leagueSize: number | null
   isDynasty: boolean | null
   scoring: string | null
@@ -29,6 +30,7 @@ export async function persistVote(params: {
   suggestionTitle: string
   suggestionText?: string
   vote: 'up' | 'down'
+  reason?: string
   leagueSize?: number
   isDynasty?: boolean
   scoring?: string
@@ -42,6 +44,7 @@ export async function persistVote(params: {
       suggestionTitle: params.suggestionTitle.slice(0, 200),
       suggestionText: params.suggestionText?.slice(0, 5000) || null,
       vote: params.vote,
+      reason: params.reason?.slice(0, 100) || null,
       leagueSize: params.leagueSize || null,
       isDynasty: params.isDynasty ?? null,
       scoring: params.scoring?.slice(0, 20) || null,
@@ -101,7 +104,8 @@ async function updateUserProfileAsync(userId: string) {
     const scoring = v.scoring || 'unknown'
     const size = v.leagueSize ? `${v.leagueSize}-team` : 'unknown size'
     const contention = v.userContention || 'unknown'
-    return `${icon} "${v.suggestionTitle}" (${format}, ${scoring}, ${size}, ${contention})`
+    const reasonText = v.vote === 'down' && v.reason ? ` — Reason: ${v.reason}` : ''
+    return `${icon} "${v.suggestionTitle}" (${format}, ${scoring}, ${size}, ${contention})${reasonText}`
   }).join('\n')
 
   const contextStats = [

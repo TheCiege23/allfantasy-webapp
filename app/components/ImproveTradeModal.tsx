@@ -58,6 +58,14 @@ export default function ImproveTradeModal({
   const [useRealTimeNews, setUseRealTimeNews] = useState(true)
   const [thinkingPhase, setThinkingPhase] = useState(0)
   const [feedbackGiven, setFeedbackGiven] = useState<Set<string>>(new Set())
+  const [selectedDownReason, setSelectedDownReason] = useState<string | null>(null)
+  const downReasons = [
+    'Overvalued player/pick',
+    'Too risky (injury/age)',
+    'Not my style / preference',
+    'Bad roster fit',
+    'Other',
+  ]
 
   useEffect(() => {
     if (!isOpen) return
@@ -91,6 +99,7 @@ export default function ImproveTradeModal({
     setStreamText('')
     setError('')
     setFeedbackGiven(new Set())
+    setSelectedDownReason(null)
 
     gtagEvent('improve_trade_modal_opened', {
       league_size: leagueSize,
@@ -343,7 +352,7 @@ export default function ImproveTradeModal({
     gtagEvent('improve_trade_suggestion_copied', { scoring, is_dynasty: isDynasty })
   }
 
-  const submitFeedback = async (sug: Suggestion, vote: 'up' | 'down') => {
+  const submitFeedback = async (sug: Suggestion, vote: 'up' | 'down', reason?: string) => {
     const key = sug.title + sug.counter
     if (feedbackGiven.has(key)) return
 
@@ -356,6 +365,7 @@ export default function ImproveTradeModal({
           suggestionTitle: sug.title,
           suggestionText: sug.counter,
           vote,
+          reason: vote === 'down' ? reason : null,
           leagueSize,
           isDynasty,
           scoring,
@@ -365,8 +375,8 @@ export default function ImproveTradeModal({
       })
 
       setFeedbackGiven((prev) => new Set([...prev, key]))
-      gtagEvent('trade_suggestion_feedback', { vote, suggestion_title: sug.title, scoring, is_dynasty: isDynasty, league_size: leagueSize })
-      toast.success(vote === 'up' ? 'Thanks! Great suggestion.' : 'Got it — we\'ll improve next time.')
+      gtagEvent('trade_suggestion_feedback', { vote, suggestion_title: sug.title, reason: vote === 'down' ? reason : undefined, scoring, is_dynasty: isDynasty, league_size: leagueSize })
+      toast.success(vote === 'up' ? 'Thanks! Great suggestion.' : 'Thanks — we\'ll learn from this.')
     } catch {
       toast.error('Failed to save feedback')
     }
@@ -695,26 +705,69 @@ export default function ImproveTradeModal({
                         </button>
                       </div>
 
-                      <div className="flex gap-4 mt-4 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
-                        <button
-                          onClick={() => submitFeedback(sug, 'up')}
-                          disabled={feedbackGiven.has(sug.title + sug.counter)}
-                          className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-emerald-400 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <ThumbsUp className="w-4 h-4" />
-                          Helpful / Accurate
-                        </button>
-                        <button
-                          onClick={() => submitFeedback(sug, 'down')}
-                          disabled={feedbackGiven.has(sug.title + sug.counter)}
-                          className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-red-400 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <ThumbsDown className="w-4 h-4" />
-                          Not helpful / Overvalued
-                        </button>
-                        {feedbackGiven.has(sug.title + sug.counter) && (
-                          <span className="text-xs ml-auto" style={{ color: 'var(--muted2)' }}>Thanks for the feedback!</span>
-                        )}
+                      <div className="flex flex-col gap-3 mt-4 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                        <div className="flex gap-4 items-center">
+                          <button
+                            onClick={() => submitFeedback(sug, 'up')}
+                            disabled={feedbackGiven.has(sug.title + sug.counter)}
+                            className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-emerald-400 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <ThumbsUp className="w-4 h-4" />
+                            Helpful / Accurate
+                          </button>
+                          <button
+                            onClick={() => setSelectedDownReason(sug.title + sug.counter)}
+                            disabled={feedbackGiven.has(sug.title + sug.counter)}
+                            className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-red-400 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <ThumbsDown className="w-4 h-4" />
+                            Not helpful
+                          </button>
+                          {feedbackGiven.has(sug.title + sug.counter) && (
+                            <span className="text-xs ml-auto" style={{ color: 'var(--muted2)' }}>Thanks for the feedback!</span>
+                          )}
+                        </div>
+
+                        <AnimatePresence>
+                          {selectedDownReason === (sug.title + sug.counter) && !feedbackGiven.has(sug.title + sug.counter) && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-4 rounded-xl" style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                <p className="text-sm font-medium mb-3" style={{ color: 'var(--muted)' }}>Why wasn&apos;t this helpful?</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {downReasons.map((reason) => (
+                                    <button
+                                      key={reason}
+                                      onClick={() => {
+                                        submitFeedback(sug, 'down', reason)
+                                        setSelectedDownReason(null)
+                                      }}
+                                      className="px-4 py-2.5 text-left text-xs font-medium rounded-lg transition-all active:scale-[0.97]"
+                                      style={{ background: 'rgba(239, 68, 68, 0.12)', color: 'var(--text)' }}
+                                      onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.22)')}
+                                      onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.12)')}
+                                    >
+                                      {reason}
+                                    </button>
+                                  ))}
+                                </div>
+                                <button
+                                  onClick={() => setSelectedDownReason(null)}
+                                  className="mt-3 text-xs transition-colors"
+                                  style={{ color: 'var(--muted2)' }}
+                                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+                                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--muted2)')}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
                     </motion.div>
                   ))}
