@@ -37,8 +37,10 @@ export default function ImproveTradeModal({
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [moreCount, setMoreCount] = useState(0)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+  const MAX_MORE_CLICKS = 3
 
   const generateSuggestions = useCallback(async (append = false) => {
     if (!originalTradeText || originalTradeText.trim().length < 5) {
@@ -183,14 +185,27 @@ export default function ImproveTradeModal({
     }
   }, [originalTradeText, leagueSize, scoring, isDynasty, currentResult])
 
-  const fetchSuggestions = useCallback(() => generateSuggestions(false), [generateSuggestions])
-  const generateMore = useCallback(() => generateSuggestions(true), [generateSuggestions])
+  const fetchSuggestions = useCallback(() => {
+    setMoreCount(0)
+    generateSuggestions(false)
+  }, [generateSuggestions])
+
+  const generateMore = useCallback(() => {
+    if (moreCount >= MAX_MORE_CLICKS) return
+    gtagEvent('improve_trade_generate_more_clicked', {
+      current_suggestion_count: suggestions.length,
+      more_count_this_session: moreCount + 1,
+    })
+    generateSuggestions(true)
+    setMoreCount(prev => prev + 1)
+  }, [generateSuggestions, moreCount, suggestions.length])
 
   useEffect(() => {
     if (isOpen) {
       setSuggestions([])
       setStreamText('')
       setError('')
+      setMoreCount(0)
       gtagEvent('improve_trade_modal_opened', {
         league_size: leagueSize,
         is_dynasty: isDynasty,
@@ -410,14 +425,6 @@ export default function ImproveTradeModal({
               {!loading && !additionalLoading && suggestions.length > 0 && (
                 <>
                   <button
-                    onClick={generateMore}
-                    className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
-                    style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: 'var(--text)' }}
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    More Ideas
-                  </button>
-                  <button
                     onClick={fetchSuggestions}
                     className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
                     style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--text)' }}
@@ -425,6 +432,24 @@ export default function ImproveTradeModal({
                     <RefreshCw className="w-3.5 h-3.5" />
                     Regenerate
                   </button>
+                  {moreCount < MAX_MORE_CLICKS ? (
+                    <button
+                      onClick={generateMore}
+                      className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
+                      style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: 'var(--text)' }}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      More Ideas ({MAX_MORE_CLICKS - moreCount} left)
+                    </button>
+                  ) : (
+                    <div
+                      className="px-5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 cursor-not-allowed select-none"
+                      style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted2)', opacity: 0.7 }}
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Limit reached
+                    </div>
+                  )}
                 </>
               )}
               {!loading && !additionalLoading && error && suggestions.length === 0 && (
