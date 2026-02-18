@@ -33,6 +33,7 @@ export default function LeagueSyncDashboard() {
   const [sleeperUsername, setSleeperUsername] = useState('');
   const [discovering, setDiscovering] = useState(false);
   const [discoveredLeagues, setDiscoveredLeagues] = useState<any[]>([]);
+  const [discoverPlatform, setDiscoverPlatform] = useState('sleeper');
 
   const fetchLeagues = async () => {
     try {
@@ -248,53 +249,90 @@ export default function LeagueSyncDashboard() {
         </div>
       )}
 
-      <div className="mt-10 rounded-2xl bg-slate-900/60 border border-slate-700/50 p-6">
-        <h3 className="text-lg font-bold mb-4">Discover Sleeper Leagues</h3>
-        <div className="flex flex-col sm:flex-row gap-3">
+      <div className="mt-12 rounded-2xl bg-slate-900/60 border border-slate-700/50 p-6">
+        <h3 className="text-xl font-bold mb-4">Discover Existing Leagues</h3>
+
+        <label className="block text-sm text-slate-400 mb-1.5">Platform</label>
+        <select
+          value={discoverPlatform}
+          onChange={(e) => { setDiscoverPlatform(e.target.value); setDiscoveredLeagues([]); }}
+          className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 mb-4 text-sm focus:outline-none focus:border-cyan-500"
+        >
+          <option value="sleeper">Sleeper</option>
+          <option value="mfl">MyFantasyLeague (MFL)</option>
+          <option value="yahoo">Yahoo</option>
+          <option value="espn">ESPN</option>
+          <option value="fantrax">Fantrax</option>
+        </select>
+
+        {discoverPlatform === 'sleeper' && (
           <input
             type="text"
+            placeholder="Your Sleeper username"
             value={sleeperUsername}
             onChange={(e) => setSleeperUsername(e.target.value)}
-            placeholder="Enter your Sleeper username"
-            className="flex-1 p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm focus:outline-none focus:border-cyan-500"
+            className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 mb-4 text-sm focus:outline-none focus:border-cyan-500"
             onKeyDown={(e) => e.key === 'Enter' && !discovering && sleeperUsername.trim() && document.getElementById('discover-btn')?.click()}
           />
-          <button
-            id="discover-btn"
-            onClick={async () => {
-              if (!sleeperUsername.trim()) return toast.error('Enter your Sleeper username');
-              setDiscovering(true);
-              setDiscoveredLeagues([]);
-              try {
-                const res = await fetch('/api/league/sleeper-discover', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ sleeperUsername: sleeperUsername.trim() }),
-                });
-                const data = await res.json();
-                if (data.success) {
-                  setDiscoveredLeagues(data.leagues);
-                  toast.success(`Found ${data.leagues.length} Sleeper leagues!`);
-                } else {
-                  toast.error(data.error || 'Discovery failed');
-                }
-              } catch {
-                toast.error('Failed to discover leagues');
-              } finally {
-                setDiscovering(false);
+        )}
+
+        {discoverPlatform === 'mfl' && (
+          <p className="text-xs text-slate-500 mb-4">MFL discovery requires your API key. Use "Add League" above with your league ID instead.</p>
+        )}
+        {discoverPlatform === 'yahoo' && (
+          <p className="text-xs text-slate-500 mb-4">
+            {yahooConnected
+              ? 'Yahoo connected — discovery coming soon. Use "Add League" with your league key for now.'
+              : 'Connect your Yahoo account first via "Add League" above.'}
+          </p>
+        )}
+        {discoverPlatform === 'espn' && (
+          <p className="text-xs text-slate-500 mb-4">ESPN discovery requires cookies. Use "Add League" above with your league ID.</p>
+        )}
+        {discoverPlatform === 'fantrax' && (
+          <p className="text-xs text-amber-400/80 mb-4">Fantrax discovery is coming soon.</p>
+        )}
+
+        <button
+          id="discover-btn"
+          onClick={async () => {
+            if (discoverPlatform === 'sleeper' && !sleeperUsername.trim()) {
+              return toast.error('Enter your Sleeper username');
+            }
+            setDiscovering(true);
+            setDiscoveredLeagues([]);
+            try {
+              const credentials: any = {};
+              if (discoverPlatform === 'sleeper') credentials.username = sleeperUsername.trim();
+
+              const res = await fetch('/api/league/discover', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ platform: discoverPlatform, credentials }),
+              });
+              const data = await res.json();
+              if (data.success && data.discovered) {
+                setDiscoveredLeagues(data.discovered);
+                toast.success(`Found ${data.discovered.length} league${data.discovered.length !== 1 ? 's' : ''}!`);
+              } else {
+                toast.error(data.error || 'Discovery failed');
               }
-            }}
-            disabled={discovering || !sleeperUsername.trim()}
-            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl flex items-center gap-2 font-medium disabled:opacity-50 transition-all text-sm"
-          >
-            {discovering ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <Search className="w-5 h-5" />
-            )}
-            {discovering ? 'Searching...' : 'Discover My Leagues'}
-          </button>
-        </div>
+            } catch {
+              toast.error('Failed to discover leagues');
+            } finally {
+              setDiscovering(false);
+            }
+          }}
+          disabled={discovering || (discoverPlatform === 'sleeper' && !sleeperUsername.trim()) || ['mfl', 'espn', 'fantrax'].includes(discoverPlatform) || (discoverPlatform === 'yahoo' && !yahooConnected)}
+          className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl flex items-center justify-center gap-2 font-medium disabled:opacity-50 transition-all text-sm"
+        >
+          {discovering ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Search className="w-5 h-5" />
+          )}
+          {discovering ? 'Searching...' : 'Discover Leagues'}
+        </button>
 
         {discoveredLeagues.length > 0 && (
           <div className="mt-6">
@@ -302,23 +340,32 @@ export default function LeagueSyncDashboard() {
               Found {discoveredLeagues.length} league{discoveredLeagues.length !== 1 ? 's' : ''}
             </h4>
             <div className="grid gap-4 md:grid-cols-2">
-              {discoveredLeagues.map((l: any) => (
-                <div key={l.sleeperLeagueId} className="p-5 rounded-2xl bg-slate-800/60 border border-slate-700">
-                  <h4 className="font-semibold">{l.name}</h4>
+              {discoveredLeagues.map((l: any, idx: number) => (
+                <div key={l.league_id || l.leagueId || idx} className="p-5 rounded-2xl bg-slate-800/60 border border-slate-700">
+                  <h4 className="font-semibold">{l.name || 'Unnamed League'}</h4>
                   <p className="text-sm text-slate-400 mt-1">
-                    {l.totalTeams}-team &bull; {l.isDynasty ? 'Dynasty' : 'Redraft'} &bull; {l.season}
+                    {l.total_rosters || l.totalTeams || '?'}-team &bull;{' '}
+                    {l.settings?.type === 2 || l.isDynasty ? 'Dynasty' : 'Redraft'}
+                    {l.season ? ` \u2022 ${l.season}` : ''}
                   </p>
                   <button
                     onClick={async () => {
+                      const lgId = l.league_id || l.leagueId || l.sleeperLeagueId;
                       try {
-                        const res = await fetch('/api/league/sleeper-sync', {
+                        const isSleeper = discoverPlatform === 'sleeper';
+                        const endpoint = isSleeper ? '/api/league/sleeper-sync' : '/api/league/sync';
+                        const body = isSleeper
+                          ? { sleeperLeagueId: lgId }
+                          : { platform: discoverPlatform, platformLeagueId: lgId };
+
+                        const res = await fetch(endpoint, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ sleeperLeagueId: l.sleeperLeagueId }),
+                          body: JSON.stringify(body),
                         });
                         const d = await res.json();
                         if (d.success) {
-                          toast.success(`Added ${l.name}`);
+                          toast.success(`Added ${l.name || 'League'}`);
                           await fetchLeagues();
                         } else {
                           toast.error(d.error || 'Sync failed');
