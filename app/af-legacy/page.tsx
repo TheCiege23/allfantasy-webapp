@@ -6357,6 +6357,16 @@ function AFLegacyContent() {
                               >
                                 <div className="text-[9px] uppercase tracking-[0.15em] text-white/30 px-3 py-2 mb-2 border-b border-white/10">More Tools</div>
                                 <div className="space-y-1">
+                                  <a
+                                    href="/brackets"
+                                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-150 min-h-[44px] text-white/50 hover:bg-white/8 hover:text-white/80"
+                                  >
+                                    <div className="flex items-center justify-center w-7 h-7 rounded-xl bg-white/5 text-white/50">
+                                      <span className="text-sm">🏀</span>
+                                    </div>
+                                    <span className="text-sm font-medium flex-1">Brackets</span>
+                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-medium uppercase border bg-amber-500/15 text-amber-300/70 border-amber-500/20">New</span>
+                                  </a>
                                   {moreTabs.map((tab) => {
                                     const isActive = activeTab === tab.id
                                     return (
