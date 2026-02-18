@@ -193,7 +193,13 @@ export async function upsertEventsToSportsGame(
   const now = new Date()
 
   const makeExpiresAt = (status: string) => {
-    const minutes = status === "in_progress" ? 2 : 60
+    const s = status as "in_progress" | "scheduled" | "final" | "unknown"
+    let minutes = 60
+
+    if (s === "in_progress") minutes = 2
+    else if (s === "scheduled") minutes = 6 * 60
+    else if (s === "final") minutes = 14 * 24 * 60
+
     return new Date(now.getTime() + minutes * 60 * 1000)
   }
 
@@ -223,6 +229,18 @@ export async function upsertEventsToSportsGame(
           ? awayScore
           : null
 
+        const base = {
+          homeTeam: ev.strHomeTeam ?? "",
+          awayTeam: ev.strAwayTeam ?? "",
+          homeScore: safeHome,
+          awayScore: safeAway,
+          status,
+          venue: ev.strVenue ?? null,
+          fetchedAt: now,
+          expiresAt: makeExpiresAt(status),
+          ...(season != null ? { season } : {}),
+        }
+
         return prisma.sportsGame.upsert({
           where: {
             sport_externalId_source: {
@@ -232,31 +250,15 @@ export async function upsertEventsToSportsGame(
             },
           },
           update: {
-            homeTeam: ev.strHomeTeam ?? "",
-            awayTeam: ev.strAwayTeam ?? "",
-            homeScore: safeHome,
-            awayScore: safeAway,
-            status,
-            startTime: startTime ?? undefined,
-            venue: ev.strVenue ?? null,
-            ...(season != null ? { season } : {}),
-            fetchedAt: now,
-            expiresAt: makeExpiresAt(status),
+            ...base,
+            ...(startTime ? { startTime } : {}),
           },
           create: {
             sport: SPORT,
             externalId: String(ev.idEvent),
             source: SOURCE,
-            homeTeam: ev.strHomeTeam ?? "",
-            awayTeam: ev.strAwayTeam ?? "",
-            homeScore: safeHome,
-            awayScore: safeAway,
-            status,
-            startTime: startTime ?? undefined,
-            venue: ev.strVenue ?? null,
-            ...(season != null ? { season } : {}),
-            fetchedAt: now,
-            expiresAt: makeExpiresAt(status),
+            ...base,
+            ...(startTime ? { startTime } : {}),
           },
         })
       })
