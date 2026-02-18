@@ -5,6 +5,7 @@ import RosterLegacyReport from '@/app/components/RosterLegacyReport';
 import SyncedRosters from '@/app/components/SyncedRosters';
 import WaiverAI from '@/app/components/WaiverAI';
 import ChimmyChat from '@/app/components/ChimmyChat';
+import PersonalizedInsights from '@/app/components/PersonalizedInsights';
 
 export default function LegacyOverview() {
   const [activeTab, setActiveTab] = useState<'overview' | 'trade' | 'waiver' | 'chat' | 'transfer'>('overview');
@@ -185,6 +186,8 @@ export default function LegacyOverview() {
                 </div>
               </div>
             </div>
+
+            <PersonalizedInsights />
 
             <RosterLegacyReport />
 
