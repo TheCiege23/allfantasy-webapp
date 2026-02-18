@@ -12519,8 +12519,8 @@ function AFLegacyContent() {
                   {/* Hero Metric */}
                   <HeroMetric 
                     value={rankingsData?.userRank ? `#${rankingsData.userRank}` : '—'}
-                    label="Your Rank"
-                    helper="Where you stand in this league"
+                    label="Your Overall Rank"
+                    helper="Based on roster value, points scored, win rate & future outlook"
                     accent="amber"
                   />
                   {/* Tab Headline */}
