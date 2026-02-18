@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
-import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client'
+import OpenAI from 'openai'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { withApiUsage } from '@/lib/telemetry/usage'
+
+const xai = new OpenAI({
+  apiKey: process.env.XAI_API_KEY,
+  baseURL: 'https://api.x.ai/v1',
+})
 
 const IMPROVE_TRADE_SYSTEM_PROMPT = `You are the world's best dynasty & redraft fantasy football trade negotiator. You are AGGRESSIVE — your goal is to flip bad trades into clearly positive ones, or at minimum make them neutral. You are not afraid to ask for significant upgrades: star-for-star-plus-pick swaps, young upside players bundled with picks, or position upgrades that meaningfully change the deal. Still keep it realistic — no absurd asks like "give me Mahomes for free."
 
@@ -21,15 +26,18 @@ Rules:
 - Order from most to least likely to be accepted
 - Keep bullet reasons under 12 words each
 
-Return ONLY a JSON array with exactly 4 items. Each item:
-[
-  {
-    "title": "short string (8-15 words)",
-    "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
-    "impact": "+15%",
-    "reasons": ["max 12 words each", "3-4 bullets", "concise and specific"]
-  }
-]`
+Return ONLY valid JSON — no extra text, no markdown, no explanations outside the JSON.
+
+{
+  "suggestions": [
+    {
+      "title": "short string (8-15 words)",
+      "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
+      "impact": "+15%",
+      "reasons": ["max 12 words each", "3-4 bullets", "concise and specific"]
+    }
+  ]
+}`
 
 export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool: 'ImproveTradeAI' })(async (req: Request) => {
   try {
@@ -91,31 +99,37 @@ ${tradeText}
 Current verdict: ${currentVerdict || 'unknown'}
 Current delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}%
 
-Return only JSON array of 3–5 suggestions matching the example format.`
+Return only JSON with "suggestions" array of 4 items matching the example format.`
 
-    const result = await openaiChatJson({
+    const completion = await xai.chat.completions.create({
+      model: 'grok-4-0709',
       messages: [
         { role: 'system', content: IMPROVE_TRADE_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.4,
-      maxTokens: 1200,
+      temperature: 0.6,
+      max_tokens: 1400,
+      response_format: { type: 'json_object' },
     })
 
-    if (!result.ok) {
-      console.error('[improve-trade] OpenAI call failed')
+    const rawContent = completion.choices[0]?.message?.content || '{}'
+
+    let parsed: any
+    try {
+      parsed = JSON.parse(rawContent)
+    } catch {
+      console.error('[improve-trade] Invalid JSON from Grok:', rawContent.slice(0, 200))
       return NextResponse.json(
-        { error: 'AI engine is temporarily unavailable. Please try again.' },
-        { status: 503 }
+        { error: 'Could not parse AI suggestions. Please try again.' },
+        { status: 500 }
       )
     }
 
-    const parsed = parseJsonContentFromChatCompletion(result.json)
     const rawList = Array.isArray(parsed) ? parsed : parsed?.suggestions
     if (!rawList || !Array.isArray(rawList) || rawList.length === 0) {
-      console.error('[improve-trade] Invalid AI response format')
+      console.error('[improve-trade] No suggestions in response')
       return NextResponse.json(
-        { error: 'Could not parse AI suggestions. Please try again.' },
+        { error: 'AI returned no suggestions. Please try again.' },
         { status: 500 }
       )
     }
@@ -128,8 +142,8 @@ Return only JSON array of 3–5 suggestions matching the example format.`
     }))
 
     return NextResponse.json({ suggestions })
-  } catch (err) {
-    console.error('[improve-trade] Unexpected error:', err)
+  } catch (err: any) {
+    console.error('[improve-trade] Unexpected error:', err?.message || err)
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },
       { status: 500 }
