@@ -22,7 +22,6 @@ type ImproveTradeModalProps = {
   scoring: 'ppr' | 'half' | 'standard' | 'superflex'
   isDynasty: boolean
   currentResult: any
-  userRoster?: string
 }
 
 export default function ImproveTradeModal({
@@ -33,38 +32,81 @@ export default function ImproveTradeModal({
   scoring,
   isDynasty,
   currentResult,
-  userRoster,
 }: ImproveTradeModalProps) {
   const [loading, setLoading] = useState(false)
   const [additionalLoading, setAdditionalLoading] = useState(false)
   const [streaming, setStreaming] = useState(false)
   const [streamText, setStreamText] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
-  const [moreCount, setMoreCount] = useState(0)
-  const [lastResetTime, setLastResetTime] = useState<number | null>(null)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
+
+  const [userRoster, setUserRoster] = useState('')
+  const [userContention, setUserContention] = useState<'win-now' | 'contender' | 'rebuild' | 'unknown'>('unknown')
+  const [userRecord, setUserRecord] = useState('')
+  const [leagueSettings, setLeagueSettings] = useState({
+    starters: { qb: 1, rb: 2, wr: 3, te: 1, flex: 1, superflex: 0 },
+    bench: 8,
+    tePremium: false,
+    superflex: false,
+  })
+
   const MAX_MORE_CLICKS = 3
   const RESET_AFTER_HOURS = 24
+  const [moreCount, setMoreCount] = useState(0)
+  const [lastResetTime, setLastResetTime] = useState<number | null>(null)
 
-  const checkAndResetLimit = useCallback(() => {
+  useEffect(() => {
+    if (!isOpen) return
+
+    const savedSettings = localStorage.getItem('allfantasy_league_settings')
+    if (savedSettings) try { setLeagueSettings(JSON.parse(savedSettings)) } catch {}
+
+    const savedRoster = localStorage.getItem('allfantasy_user_roster')
+    if (savedRoster) setUserRoster(savedRoster)
+
+    const savedContention = localStorage.getItem('allfantasy_user_contention')
+    if (savedContention) setUserContention(savedContention as any)
+
+    const savedRecord = localStorage.getItem('allfantasy_user_record')
+    if (savedRecord) setUserRecord(savedRecord)
+
     const now = Date.now()
     const storedCount = localStorage.getItem('improve_more_count')
     const storedTime = localStorage.getItem('improve_more_timestamp')
-
-    let currentCount = storedCount ? parseInt(storedCount, 10) : 0
-    let resetTime = storedTime ? parseInt(storedTime, 10) : null
-
-    if (!resetTime || (now - resetTime) >= RESET_AFTER_HOURS * 60 * 60 * 1000) {
-      currentCount = 0
-      resetTime = now
-      localStorage.setItem('improve_more_count', '0')
+    let count = storedCount ? parseInt(storedCount, 10) : 0
+    const time = storedTime ? parseInt(storedTime, 10) : 0
+    if (!time || (now - time) >= RESET_AFTER_HOURS * 60 * 60 * 1000) {
+      count = 0
       localStorage.setItem('improve_more_timestamp', now.toString())
+      localStorage.setItem('improve_more_count', '0')
     }
+    setMoreCount(count)
+    setLastResetTime(time || now)
 
-    setMoreCount(currentCount)
-    setLastResetTime(resetTime)
-  }, [])
+    setSuggestions([])
+    setStreamText('')
+    setError('')
+
+    gtagEvent('improve_trade_modal_opened', {
+      league_size: leagueSize,
+      is_dynasty: isDynasty,
+      scoring,
+    })
+
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [isOpen, leagueSize, isDynasty, scoring])
+
+  useEffect(() => {
+    if (isOpen) {
+      localStorage.setItem('allfantasy_league_settings', JSON.stringify(leagueSettings))
+      localStorage.setItem('allfantasy_user_roster', userRoster)
+      localStorage.setItem('allfantasy_user_contention', userContention)
+      localStorage.setItem('allfantasy_user_record', userRecord)
+    }
+  }, [isOpen, leagueSettings, userRoster, userContention, userRecord])
 
   const generateSuggestions = useCallback(async (append = false) => {
     if (!originalTradeText || originalTradeText.trim().length < 5) {
@@ -91,6 +133,7 @@ export default function ImproveTradeModal({
       league_size: leagueSize,
       is_dynasty: isDynasty,
       scoring,
+      contention: userContention,
     })
 
     try {
@@ -102,9 +145,13 @@ export default function ImproveTradeModal({
           leagueSize,
           scoring,
           isDynasty,
+          leagueSettings,
+          userRoster: userRoster.trim() || undefined,
+          userContentionWindow: userContention !== 'unknown' ? userContention : undefined,
+          userRecord: userRecord || undefined,
           currentVerdict: currentResult?.verdict || 'unknown',
           currentFairness: currentResult?.values?.percentDiff || 0,
-          ...(userRoster?.trim() ? { userRoster: userRoster.trim() } : {}),
+          stream: true,
         }),
         signal: controller.signal,
       })
@@ -208,7 +255,7 @@ export default function ImproveTradeModal({
       setLoading(false)
       setAdditionalLoading(false)
     }
-  }, [originalTradeText, leagueSize, scoring, isDynasty, currentResult])
+  }, [originalTradeText, leagueSize, scoring, isDynasty, currentResult, leagueSettings, userRoster, userContention, userRecord])
 
   const fetchSuggestions = useCallback(() => {
     generateSuggestions(false)
@@ -274,23 +321,6 @@ export default function ImproveTradeModal({
     }
   }, [generateSuggestions, moreCount, suggestions.length, leagueSize, isDynasty, scoring, lastResetTime])
 
-  useEffect(() => {
-    if (isOpen) {
-      setSuggestions([])
-      setStreamText('')
-      setError('')
-      checkAndResetLimit()
-      gtagEvent('improve_trade_modal_opened', {
-        league_size: leagueSize,
-        is_dynasty: isDynasty,
-        scoring,
-      })
-      fetchSuggestions()
-    } else {
-      abortRef.current?.abort()
-    }
-  }, [isOpen])
-
   const cancelRequest = () => {
     abortRef.current?.abort()
     abortRef.current = null
@@ -342,11 +372,11 @@ export default function ImproveTradeModal({
             animate={{ scale: 1, y: 0 }}
             exit={{ scale: 0.95, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl shadow-2xl"
+            className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl shadow-2xl"
             style={{ background: 'var(--panel)', border: '1px solid var(--border)', color: 'var(--text)' }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between p-5 sm:p-6 rounded-t-3xl" style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
+            <div className="sticky top-0 z-10 flex items-center justify-between p-5 sm:p-6 rounded-t-3xl backdrop-blur-sm" style={{ borderBottom: '1px solid var(--border)', background: 'var(--panel)' }}>
               <div className="flex items-center gap-3">
                 <Sparkles className="w-6 h-6 text-cyan-400" />
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Improve This Trade</h2>
@@ -374,6 +404,107 @@ export default function ImproveTradeModal({
                 )}
               </div>
 
+              {!loading && !streaming && suggestions.length === 0 && !error && (
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>Your Current Roster (highly recommended)</label>
+                    <textarea
+                      value={userRoster}
+                      onChange={(e) => setUserRoster(e.target.value)}
+                      placeholder={'QB: Josh Allen, Patrick Mahomes\nRB: Bijan Robinson, Breece Hall...\nWR: Justin Jefferson, CeeDee Lamb...\nFAAB remaining: 87%'}
+                      rows={4}
+                      className="w-full rounded-xl p-3 text-xs outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all resize-y font-mono"
+                      style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                    />
+                    <p className="text-[9px] mt-1" style={{ color: 'var(--muted2)' }}>Paste your full roster or key players + FAAB. AI uses this for replacement-level value and needs analysis.</p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>Contention Window</label>
+                      <select
+                        value={userContention}
+                        onChange={(e) => setUserContention(e.target.value as any)}
+                        className="w-full rounded-xl p-3 text-xs outline-none focus:border-cyan-400/60 transition-all"
+                        style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                      >
+                        <option value="unknown">Not sure</option>
+                        <option value="win-now">Win-Now / Contender</option>
+                        <option value="contender">Building Contender</option>
+                        <option value="rebuild">Rebuild / Tank</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--muted)' }}>Your Record This Season</label>
+                      <input
+                        type="text"
+                        value={userRecord}
+                        onChange={(e) => setUserRecord(e.target.value)}
+                        placeholder="e.g. 9-4 or 6-7"
+                        className="w-full rounded-xl p-3 text-xs outline-none focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/25 transition-all"
+                        style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                      />
+                    </div>
+                  </div>
+
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs font-medium flex items-center gap-2" style={{ color: 'var(--muted)' }}>
+                      Advanced League Settings
+                      <span className="text-[9px]" style={{ color: 'var(--muted2)' }}>(saved automatically)</span>
+                    </summary>
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                      <div>
+                        <label className="block mb-1" style={{ color: 'var(--muted2)' }}>Bench Spots</label>
+                        <input
+                          type="number"
+                          value={leagueSettings.bench}
+                          onChange={(e) => setLeagueSettings({ ...leagueSettings, bench: parseInt(e.target.value) || 8 })}
+                          className="w-full rounded-lg p-2 outline-none"
+                          style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1" style={{ color: 'var(--muted2)' }}>TE Premium</label>
+                        <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={leagueSettings.tePremium}
+                            onChange={(e) => setLeagueSettings({ ...leagueSettings, tePremium: e.target.checked })}
+                            className="w-4 h-4 accent-cyan-400"
+                          />
+                          <span style={{ color: 'var(--text)' }}>Yes</span>
+                        </label>
+                      </div>
+                      <div>
+                        <label className="block mb-1" style={{ color: 'var(--muted2)' }}>Superflex</label>
+                        <label className="flex items-center gap-2 mt-1 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={leagueSettings.superflex}
+                            onChange={(e) => setLeagueSettings({ ...leagueSettings, superflex: e.target.checked })}
+                            className="w-4 h-4 accent-cyan-400"
+                          />
+                          <span style={{ color: 'var(--text)' }}>Yes</span>
+                        </label>
+                      </div>
+                    </div>
+                  </details>
+
+                  <button
+                    onClick={fetchSuggestions}
+                    className="w-full rounded-xl py-3.5 font-bold text-sm text-black
+                               bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
+                               shadow-[0_6px_24px_rgba(34,211,238,0.35)]
+                               hover:shadow-[0_8px_32px_rgba(34,211,238,0.5)] hover:bg-right
+                               active:scale-[0.985] flex items-center justify-center gap-3 transition-all duration-200"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    Generate AI Counter-Offers
+                  </button>
+                </div>
+              )}
+
               {error && (
                 <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
                   <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" style={{ color: 'var(--accent-red)' }} />
@@ -387,7 +518,7 @@ export default function ImproveTradeModal({
                     <div className="flex items-center gap-3">
                       <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
                       <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
-                        Grok is crafting counter-offers...
+                        Grok is crafting roster-aware counter-offers...
                       </span>
                     </div>
                     <button
@@ -490,7 +621,7 @@ export default function ImproveTradeModal({
                 </div>
               ) : !error && !loading ? (
                 <div className="text-center py-12" style={{ color: 'var(--muted2)' }}>
-                  No suggestions available yet — try again later or refine your trade text.
+                  Fill in your context above and generate counter-offers.
                 </div>
               ) : null}
             </div>

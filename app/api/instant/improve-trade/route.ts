@@ -54,12 +54,13 @@ type ImproveTradeContext = {
   userRoster?: string
   userFAABRemaining?: number
   userContentionWindow?: string
+  userRecord?: string
 }
 
 function buildUserPrompt(ctx: ImproveTradeContext) {
   const {
     tradeText, leagueSize, scoring, isDynasty, currentVerdict, percentDiff,
-    leagueSettings, userRoster, userFAABRemaining, userContentionWindow,
+    leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
   } = ctx
 
   let leagueContext = `League: ${leagueSize}-team ${scoring.toUpperCase()} ${isDynasty ? 'dynasty' : 'redraft'}`
@@ -71,6 +72,9 @@ function buildUserPrompt(ctx: ImproveTradeContext) {
   }
   if (userContentionWindow) {
     leagueContext += `\nUser's contention window: ${userContentionWindow}`
+  }
+  if (userRecord) {
+    leagueContext += `\nUser's current season record: ${userRecord}`
   }
 
   const rosterBlock = userRoster
@@ -148,6 +152,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     const userRoster = typeof body.userRoster === 'string' && body.userRoster.trim() ? body.userRoster.trim().slice(0, 2000) : undefined
     const userFAABRemaining = typeof body.userFAABRemaining === 'number' ? Math.max(0, Math.min(100, body.userFAABRemaining)) : undefined
     const userContentionWindow = ['win-now', 'contender', 'rebuild', 'retooling'].includes(body.userContentionWindow) ? body.userContentionWindow : undefined
+    const userRecord = typeof body.userRecord === 'string' && body.userRecord.trim() ? body.userRecord.trim().slice(0, 20) : undefined
 
     if (!tradeText || typeof tradeText !== 'string' || tradeText.trim().length < 5) {
       return NextResponse.json({ error: 'Trade text is required.' }, { status: 400 })
@@ -165,7 +170,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     const userPrompt = buildUserPrompt({
       tradeText, leagueSize, scoring, isDynasty,
       currentVerdict: currentVerdict || 'unknown', percentDiff,
-      leagueSettings, userRoster, userFAABRemaining, userContentionWindow,
+      leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
     })
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
