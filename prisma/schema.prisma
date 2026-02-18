@@ -2089,6 +2089,7 @@ model AppUser {
   waiverPickups        WaiverPickup[]
   leagues              League[]
   leagueAuths          LeagueAuth[]
+  sleeperLeagues       SleeperLeague[]
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2383,4 +2384,50 @@ model WaiverPickup {
   @@index([userId])
   @@index([leagueId])
   @@map("waiver_pickups")
+}
+
+model SleeperLeague {
+  id                String   @id @default(uuid())
+  sleeperLeagueId   String   @unique
+  userId            String
+  name              String
+  totalTeams        Int
+  season            String
+  status            String
+  isDynasty         Boolean
+  scoringType       String
+  rosterSettings    Json
+  lastSyncedAt      DateTime?
+  syncStatus        String?
+  syncError         String?
+
+  rosters           SleeperRoster[]
+  user              AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([userId, sleeperLeagueId])
+  @@map("sleeper_leagues")
+}
+
+model SleeperRoster {
+  id                String   @id @default(uuid())
+  leagueId          String
+  league            SleeperLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  ownerId           String
+  rosterId          String
+  players           Json
+  starters          Json
+  bench             Json
+  faabRemaining     Int?
+  waiverPriority    Int?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([leagueId, rosterId])
+  @@index([leagueId])
+  @@index([ownerId])
+  @@map("sleeper_rosters")
 }
