@@ -16,7 +16,7 @@ export async function GET(
       select: {
         id: true,
         name: true,
-        user: { select: { name: true, email: true } },
+        user: { select: { displayName: true, email: true } },
       },
     })
 
@@ -34,7 +34,7 @@ export async function GET(
       .map((e) => ({
         entryId: e.id,
         entryName: e.name,
-        ownerName: e.user?.name ?? e.user?.email ?? "Unknown",
+        ownerName: e.user?.displayName ?? e.user?.email ?? "Unknown",
         points: scoreByEntry.get(e.id) ?? 0,
       }))
       .sort((a, b) => b.points - a.points)
