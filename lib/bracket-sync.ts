@@ -44,12 +44,17 @@ function normalizeStatus(
   if (s === "FT" || s === "AOT") return "final"
   if (s === "NS" || s === "POST" || s === "CANC") return "scheduled"
 
-  const lower = s.toLowerCase()
-  if (lower.includes("final") || lower.includes("finished")) return "final"
-  if (lower.includes("postpon") || lower.includes("cancel")) return "scheduled"
-  if (lower.includes("live") || lower.includes("progress")) return "in_progress"
+  const lower = raw.trim().toLowerCase()
+  if (lower === "final" || lower === "completed" || lower.includes("final"))
+    return "final"
+  if (lower.includes("in progress") || lower.includes("live"))
+    return "in_progress"
 
   return "unknown"
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms))
 }
 
 function parseStartTime(
@@ -124,39 +129,66 @@ function* eachDayIso(start: Date, end: Date) {
 export async function fetchTournamentEvents(
   season: number
 ): Promise<TheSportsDbEvent[]> {
-  const apiKey = process.env.THESPORTSDB_API_KEY || "3"
+  const apiKey = process.env.THESPORTSDB_API_KEY
   const leagueId = process.env.THESPORTSDB_NCAAM_LEAGUE_ID || NCAAM_LEAGUE_ID
 
-  const start = new Date(Date.UTC(season, 2, 10))
-  const end = new Date(Date.UTC(season, 3, 10))
+  const effectiveKey =
+    apiKey ?? (process.env.NODE_ENV === "development" ? "3" : null)
+  if (!effectiveKey) {
+    throw new Error("Missing THESPORTSDB_API_KEY (required in production)")
+  }
 
-  const results: TheSportsDbEvent[] = []
+  const start = new Date(Date.UTC(season, 2, 1))
+  const end = new Date(Date.UTC(season, 3, 20))
+
+  const byId = new Map<string, TheSportsDbEvent>()
+  let days = 0
+  let okDays = 0
+  let failedDays = 0
 
   for (const day of eachDayIso(start, end)) {
-    try {
-      const url = `https://www.thesportsdb.com/api/v1/json/${apiKey}/eventsday.php?d=${day}`
-      const res = await fetch(url, { cache: "no-store" })
-      if (!res.ok) continue
+    days++
+    const url = `https://www.thesportsdb.com/api/v1/json/${effectiveKey}/eventsday.php?d=${day}`
 
+    try {
+      const res = await fetch(url, { cache: "no-store" })
+      if (!res.ok) {
+        failedDays++
+        console.warn(`[TheSportsDB] ${day} HTTP ${res.status}`)
+        continue
+      }
+
+      okDays++
       const json = await res.json()
       const events: TheSportsDbEvent[] = Array.isArray(json?.events)
         ? json.events
         : []
 
       for (const ev of events) {
+        if (!ev?.idEvent) continue
         if (String(ev.idLeague ?? "") !== String(leagueId)) continue
-        results.push(ev)
+        if (!byId.has(ev.idEvent)) byId.set(ev.idEvent, ev)
       }
-    } catch {
+    } catch (e: any) {
+      failedDays++
+      console.warn(`[TheSportsDB] ${day} fetch error: ${e?.message ?? e}`)
       continue
     }
+
+    await sleep(120)
   }
+
+  const results = Array.from(byId.values())
+  console.log(
+    `[TheSportsDB] fetchTournamentEvents season=${season} days=${days} okDays=${okDays} failedDays=${failedDays} events=${results.length}`
+  )
 
   return results
 }
 
 export async function upsertEventsToSportsGame(
-  events: TheSportsDbEvent[]
+  events: TheSportsDbEvent[],
+  season?: number
 ): Promise<{ upserted: number }> {
   const now = new Date()
 
@@ -207,6 +239,7 @@ export async function upsertEventsToSportsGame(
             status,
             startTime: startTime ?? undefined,
             venue: ev.strVenue ?? null,
+            ...(season != null ? { season } : {}),
             fetchedAt: now,
             expiresAt: makeExpiresAt(status),
           },
@@ -221,6 +254,7 @@ export async function upsertEventsToSportsGame(
             status,
             startTime: startTime ?? undefined,
             venue: ev.strVenue ?? null,
+            ...(season != null ? { season } : {}),
             fetchedAt: now,
             expiresAt: makeExpiresAt(status),
           },
@@ -446,7 +480,7 @@ export async function runBracketSync(season: number) {
   }
 
   const events = await fetchTournamentEvents(season)
-  const { upserted } = await upsertEventsToSportsGame(events)
+  const { upserted } = await upsertEventsToSportsGame(events, season)
   const { linked } = await matchEventsToNodes(tournament.id)
   const { finalized, advanced, seeded } = await scoreAndAdvanceFinals(
     tournament.id
