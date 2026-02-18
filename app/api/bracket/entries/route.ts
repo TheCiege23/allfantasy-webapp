@@ -8,48 +8,55 @@ export async function POST(req: Request) {
   const auth = await requireVerifiedUser()
   if (!auth.ok) return auth.response
 
-  const body = await req.json()
-  const { leagueId, name } = body as { leagueId: string; name: string }
+  const body = await req.json().catch(() => ({}))
+  const leagueId = String(body?.leagueId || "")
+  const name = String(body?.name || "").trim()
 
-  if (!leagueId || !name?.trim())
-    return NextResponse.json(
-      { error: "leagueId and name are required" },
-      { status: 400 }
-    )
+  if (!leagueId) {
+    return NextResponse.json({ error: "MISSING_LEAGUE_ID" }, { status: 400 })
+  }
+
+  if (!name) {
+    return NextResponse.json({ error: "MISSING_NAME" }, { status: 400 })
+  }
 
   const member = await (prisma as any).bracketLeagueMember.findUnique({
     where: {
-      leagueId_userId: {
-        leagueId,
-        userId: auth.userId,
-      },
+      leagueId_userId: { leagueId, userId: auth.userId },
     },
-  })
-  if (!member)
-    return NextResponse.json(
-      { error: "You must be a member of this league to create an entry" },
-      { status: 403 }
-    )
+    select: { leagueId: true },
+  }).catch(() => null)
 
-  const league = await (prisma as any).bracketLeague.findUnique({
-    where: { id: leagueId },
-    select: { tournamentId: true },
-  })
-  if (!league)
-    return NextResponse.json({ error: "League not found" }, { status: 404 })
+  if (!member) {
+    return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 })
+  }
+
+  const existing = await (prisma as any).bracketEntry.findFirst({
+    where: { leagueId, userId: auth.userId },
+    select: { id: true, league: { select: { tournamentId: true } } },
+  }).catch(() => null)
+
+  if (existing) {
+    return NextResponse.json({
+      ok: true,
+      entryId: existing.id,
+      tournamentId: existing.league.tournamentId,
+      alreadyExists: true,
+    })
+  }
 
   const entry = await (prisma as any).bracketEntry.create({
     data: {
       leagueId,
       userId: auth.userId,
-      name: name.trim(),
+      name,
     },
-    select: { id: true },
+    select: { id: true, league: { select: { tournamentId: true } } },
   })
 
   return NextResponse.json({
     ok: true,
     entryId: entry.id,
-    tournamentId: league.tournamentId,
+    tournamentId: entry.league.tournamentId,
   })
 }
