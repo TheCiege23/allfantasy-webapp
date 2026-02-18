@@ -102,7 +102,8 @@ export async function POST(req: Request) {
       const { getResendClient } = await import("@/lib/resend-client")
       const { client, fromEmail } = await getResendClient()
 
-      const baseUrl = process.env.NEXTAUTH_URL || `https://${process.env.REPLIT_DEV_DOMAIN}`
+      const { getBaseUrl } = await import("@/lib/get-base-url")
+      const baseUrl = getBaseUrl() || `https://${process.env.REPLIT_DEV_DOMAIN}`
       const verifyUrl = `${baseUrl}/verify/email?token=${encodeURIComponent(rawToken)}`
 
       await client.emails.send({

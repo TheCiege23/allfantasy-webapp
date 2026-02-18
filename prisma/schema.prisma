@@ -1982,7 +1982,7 @@ model AppUser {
   id            String    @id @default(uuid())
   email         String    @unique
   emailVerified DateTime?
-  username      String?   @unique
+  username      String    @unique
   passwordHash  String?
   displayName   String?
   avatarUrl     String?
@@ -2002,8 +2002,6 @@ model AppUser {
   emailVerifyTokens    EmailVerifyToken[]
   passwordResetTokens  PasswordResetToken[]
 
-  @@index([email])
-  @@index([username])
   @@map("app_users")
 }
 
@@ -2187,7 +2185,7 @@ model PendingSignup {
 }
 
 model EmailVerifyToken {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   userId    String
   tokenHash String   @unique
   expiresAt DateTime
@@ -2200,7 +2198,7 @@ model EmailVerifyToken {
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   userId    String
   tokenHash String   @unique
   expiresAt DateTime

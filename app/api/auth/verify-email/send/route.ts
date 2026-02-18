@@ -50,16 +50,8 @@ export async function POST(req: Request) {
     },
   })
 
-  const baseUrl =
-    process.env.NEXTAUTH_URL ||
-    (process.env.VERCEL_URL?.startsWith("http")
-      ? process.env.VERCEL_URL
-      : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.REPLIT_DEV_DOMAIN
-      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-      : null)
-
+  const { getBaseUrl } = await import("@/lib/get-base-url")
+  const baseUrl = getBaseUrl()
   if (!baseUrl) {
     return NextResponse.json({ error: "MISSING_BASE_URL" }, { status: 500 })
   }
