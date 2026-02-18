@@ -2,10 +2,10 @@
   "name": "NCAA Men's Tournament",
   "sport": "ncaam",
   "regions": [
-    { "name": "East", "code": "EAST" },
-    { "name": "West", "code": "WEST" },
-    { "name": "South", "code": "SOUTH" },
-    { "name": "Midwest", "code": "MW" }
+    { "name": "East", "code": "E" },
+    { "name": "West", "code": "W" },
+    { "name": "South", "code": "S" },
+    { "name": "Midwest", "code": "M" }
   ],
   "rounds": [
     { "round": 0, "label": "First Four" },
@@ -17,10 +17,10 @@
     { "round": 6, "label": "Championship" }
   ],
   "firstFour": [
-    { "slot": "FF-PLAY-1", "seedHome": 16, "seedAway": 16, "targetSlot": "EAST-R64-1", "targetSide": "AWAY", "regionCode": "EAST" },
-    { "slot": "FF-PLAY-2", "seedHome": 16, "seedAway": 16, "targetSlot": "WEST-R64-1", "targetSide": "AWAY", "regionCode": "WEST" },
-    { "slot": "FF-PLAY-3", "seedHome": 11, "seedAway": 11, "targetSlot": "SOUTH-R64-5", "targetSide": "AWAY", "regionCode": "SOUTH" },
-    { "slot": "FF-PLAY-4", "seedHome": 11, "seedAway": 11, "targetSlot": "MW-R64-5", "targetSide": "AWAY", "regionCode": "MW" }
+    { "slot": "FF-16-A", "seedHome": 16, "seedAway": 16, "targetSlot": "E-R64-1", "targetSide": "AWAY", "regionCode": "E" },
+    { "slot": "FF-16-B", "seedHome": 16, "seedAway": 16, "targetSlot": "W-R64-1", "targetSide": "AWAY", "regionCode": "W" },
+    { "slot": "FF-11-A", "seedHome": 11, "seedAway": 11, "targetSlot": "S-R64-5", "targetSide": "AWAY", "regionCode": "S" },
+    { "slot": "FF-11-B", "seedHome": 11, "seedAway": 11, "targetSlot": "M-R64-5", "targetSide": "AWAY", "regionCode": "M" }
   ],
   "bracketTemplate": {
     "roundOf64": [
@@ -48,8 +48,8 @@
     ]
   },
   "finalFour": {
-    "semi1": { "slot": "FF-SEMI-1", "homeRegionCode": "EAST", "awayRegionCode": "WEST" },
-    "semi2": { "slot": "FF-SEMI-2", "homeRegionCode": "SOUTH", "awayRegionCode": "MW" }
+    "semi1": { "slot": "FF-1", "homeRegionCode": "E", "awayRegionCode": "W" },
+    "semi2": { "slot": "FF-2", "homeRegionCode": "S", "awayRegionCode": "M" }
   },
   "championship": { "slot": "CHAMP" }
 }
