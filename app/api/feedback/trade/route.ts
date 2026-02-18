@@ -4,6 +4,11 @@ import { authOptions } from '@/lib/auth'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { addFeedback, getRecentFeedback } from '@/lib/feedback-store'
 import { persistVote, getRecentVotesForUser } from '@/lib/trade-feedback-profile'
+import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
+
+const ENUM_TO_LABEL: Record<string, string> = Object.fromEntries(
+  FEEDBACK_REASONS.map(r => [r.enum, r.label])
+)
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,7 +94,8 @@ export async function GET(req: NextRequest) {
           tradeText: v.tradeText,
           suggestionTitle: v.suggestionTitle,
           suggestionText: v.suggestionText,
-          vote: v.vote,
+          vote: v.vote === 'UP' ? 'up' : 'down',
+          reason: v.reason ? (ENUM_TO_LABEL[v.reason] || v.reason) : null,
           leagueSize: v.leagueSize,
           isDynasty: v.isDynasty,
           scoring: v.scoring,

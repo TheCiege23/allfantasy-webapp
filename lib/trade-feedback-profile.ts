@@ -13,6 +13,10 @@ const REASON_TO_ENUM: Record<string, string> = Object.fromEntries(
   FEEDBACK_REASONS.map(r => [r.label, r.enum])
 )
 
+const ENUM_TO_LABEL: Record<string, string> = Object.fromEntries(
+  FEEDBACK_REASONS.map(r => [r.enum, r.label])
+)
+
 interface FeedbackRecord {
   id: string
   userId: string
@@ -129,14 +133,15 @@ async function updateTradeProfileAsync(userId: string) {
     const scoring = v.scoring || 'unknown'
     const size = v.leagueSize ? `${v.leagueSize}-team` : 'unknown size'
     const contention = v.userContention || 'unknown'
-    const reasonText = v.vote === 'DOWN' && v.reason ? ` — Reason: ${v.reason}` : ''
+    const reasonLabel = v.reason ? (ENUM_TO_LABEL[v.reason] || v.reason) : null
+    const reasonText = v.vote === 'DOWN' && reasonLabel ? ` — Reason: ${reasonLabel}` : ''
     return `${icon} "${v.suggestionTitle}" (${format}, ${scoring}, ${size}, ${contention})${reasonText}`
   }).join('\n')
 
   const reasonCounts: Record<string, number> = {}
   votes.filter((v: FeedbackRecord) => v.vote === 'DOWN' && v.reason).forEach((v: FeedbackRecord) => {
-    const r = v.reason!
-    reasonCounts[r] = (reasonCounts[r] || 0) + 1
+    const label = ENUM_TO_LABEL[v.reason!] || v.reason!
+    reasonCounts[label] = (reasonCounts[label] || 0) + 1
   })
   const reasonBreakdown = Object.keys(reasonCounts).length > 0
     ? `Rejection reasons: ${Object.entries(reasonCounts).map(([r, c]) => `${r}(${c})`).join(', ')}`
