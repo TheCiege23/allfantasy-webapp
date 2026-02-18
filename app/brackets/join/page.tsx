@@ -31,6 +31,10 @@ function JoinLeagueForm() {
       })
       const data = await res.json()
       if (!res.ok) {
+        if (data.error === "VERIFICATION_REQUIRED") {
+          router.push("/onboarding")
+          return
+        }
         setError(data.error ?? "Failed to join league")
         return
       }

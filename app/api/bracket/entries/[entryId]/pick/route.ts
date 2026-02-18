@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireVerifiedUser } from "@/lib/auth-guard"
 
 export const runtime = "nodejs"
 
@@ -10,10 +9,8 @@ export async function POST(
   { params }: { params: { entryId: string } }
 ) {
   try {
-    const session = (await getServerSession(authOptions as any)) as { user?: { id?: string } } | null
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const auth = await requireVerifiedUser()
+    if (!auth.ok) return auth.response
 
     const body = await req.json()
     const { nodeId, pickedTeamName } = body as {
@@ -41,7 +38,7 @@ export async function POST(
         },
       },
     })
-    if (!entry || entry.userId !== session.user.id) {
+    if (!entry || entry.userId !== auth.userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 

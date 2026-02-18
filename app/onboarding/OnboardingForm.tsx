@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation"
 export default function OnboardingForm({
   defaultName,
   defaultPhone,
+  isVerified = false,
 }: {
   defaultName: string
   defaultPhone: string
+  isVerified?: boolean
 }) {
   const [displayName, setDisplayName] = useState(defaultName)
   const [phone, setPhone] = useState(defaultPhone)
@@ -76,10 +78,10 @@ export default function OnboardingForm({
 
       <button
         onClick={submit}
-        disabled={!displayName.trim() || loading}
+        disabled={!displayName.trim() || loading || !isVerified}
         className="w-full rounded-xl bg-white text-black px-3 py-2.5 text-sm font-semibold hover:bg-gray-200 disabled:opacity-60 transition-colors"
       >
-        {loading ? "Saving..." : "Complete profile"}
+        {loading ? "Saving..." : !isVerified ? "Verify email first" : "Complete profile"}
       </button>
     </div>
   )

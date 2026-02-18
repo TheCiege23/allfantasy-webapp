@@ -1,16 +1,12 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireVerifiedUser } from "@/lib/auth-guard"
 
 export const runtime = "nodejs"
 
 export async function POST(req: Request) {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: { id?: string }
-  } | null
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const auth = await requireVerifiedUser()
+  if (!auth.ok) return auth.response
 
   const { joinCode } = await req.json()
   if (!joinCode)
@@ -27,13 +23,13 @@ export async function POST(req: Request) {
     where: {
       leagueId_userId: {
         leagueId: league.id,
-        userId: session.user.id,
+        userId: auth.userId,
       },
     },
     update: {},
     create: {
       leagueId: league.id,
-      userId: session.user.id,
+      userId: auth.userId,
       role: "MEMBER",
     },
   })

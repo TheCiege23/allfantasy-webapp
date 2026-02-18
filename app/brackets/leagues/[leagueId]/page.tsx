@@ -1,14 +1,11 @@
 import Link from "next/link"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 import { Trophy, Users, BarChart3, Shield } from "lucide-react"
 import CopyJoinCode from "./CopyJoinCode"
 import CreateEntryButton from "./CreateEntryButton"
 import DevTestPanel from "./DevTestPanel"
-
-type SessionUser = { id?: string; email?: string | null }
+import { requireVerifiedSession } from "@/lib/require-verified"
 
 const isDev = process.env.NODE_ENV !== "production"
 
@@ -17,10 +14,8 @@ export default async function LeagueDetailPage({
 }: {
   params: { leagueId: string }
 }) {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: SessionUser
-  } | null
-  const user = session?.user as SessionUser | undefined
+  const { userId, email } = await requireVerifiedSession()
+  const user = { id: userId, email }
 
   const league = await (prisma as any).bracketLeague.findUnique({
     where: { id: params.leagueId },
@@ -225,17 +220,6 @@ export default async function LeagueDetailPage({
             ))}
           </div>
         </div>
-
-        {!user?.id && (
-          <div className="text-center">
-            <Link
-              href={`/login?callbackUrl=/brackets/leagues/${league.id}`}
-              className="rounded-xl bg-white text-black px-5 py-2.5 text-sm font-medium hover:bg-gray-200 transition-colors"
-            >
-              Sign in to join
-            </Link>
-          </div>
-        )}
 
         {isDev && (
           <DevTestPanel season={league.tournament.season} />

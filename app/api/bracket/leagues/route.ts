@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
+import { requireVerifiedUser } from "@/lib/auth-guard"
 
 export const runtime = "nodejs"
 
@@ -14,11 +13,8 @@ function makeJoinCode(len = 8) {
 }
 
 export async function POST(req: Request) {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: { id?: string }
-  } | null
-  if (!session?.user?.id)
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  const auth = await requireVerifiedUser()
+  if (!auth.ok) return auth.response
 
   const body = await req.json()
   const { name, season, sport } = body as {
@@ -52,10 +48,10 @@ export async function POST(req: Request) {
     data: {
       name,
       tournamentId: tournament.id,
-      ownerId: session.user.id,
+      ownerId: auth.userId,
       joinCode,
       members: {
-        create: { userId: session.user.id, role: "ADMIN" },
+        create: { userId: auth.userId, role: "ADMIN" },
       },
     },
     select: { id: true, joinCode: true },

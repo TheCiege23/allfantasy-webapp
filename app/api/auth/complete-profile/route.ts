@@ -27,6 +27,15 @@ export async function POST(req: Request) {
   const userId = session.user.id
   const email = session.user.email
 
+  const existingProfile = await (prisma as any).userProfile.findUnique({
+    where: { userId },
+  }).catch(() => null)
+
+  const isVerified = !!existingProfile?.emailVerifiedAt || !!existingProfile?.phoneVerifiedAt
+  if (!isVerified) {
+    return NextResponse.json({ error: "VERIFICATION_REQUIRED" }, { status: 403 })
+  }
+
   await (prisma as any).userProfile.upsert({
     where: { userId },
     update: {

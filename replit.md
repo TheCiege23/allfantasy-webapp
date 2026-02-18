@@ -18,6 +18,14 @@ I want the agent to consider consolidation penalties and context adjustments (co
 ## System Architecture
 The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind CSS for styling. PostgreSQL with Prisma ORM handles database operations, and Zod schemas are used for validation. API security is managed via signed JWT-like tokens in HTTP-only cookies, with origin/referer validation for AI endpoints. Auth.js (NextAuth v4) provides email magic link authentication via Resend, using a separate `AppUser` model with optional `LegacyUser` link. Custom Prisma adapter maps to `app_users`, `auth_accounts`, `auth_sessions`, `auth_verification_tokens` tables.
 
+**Verification Gate System:**
+User access to protected features requires email or phone verification plus profile completion. The gate is enforced at two layers:
+-   **API-level**: `requireVerifiedUser()` from `lib/auth-guard.ts` returns 401 for unauthenticated and 403 (VERIFICATION_REQUIRED) for unverified users. Applied to all bracket mutation endpoints (pick, create league, join league, create entry).
+-   **Route-level**: `requireVerifiedSession()` from `lib/require-verified.ts` redirects unauthenticated users to /login and unverified users to /onboarding. Applied to protected server pages (league detail, bracket entry).
+-   **Verification happens on sign-in**: The `events.signIn` hook in `lib/auth.ts` sets `emailVerifiedAt` on UserProfile and promotes PendingSignup data (displayName, phone) into UserProfile.
+-   **Gating rule**: `isUserVerified(profile) = !!emailVerifiedAt || !!phoneVerifiedAt`. Full onboarding requires verification AND `profileComplete=true`.
+-   **Client-side pages** (leagues/new, join) handle VERIFICATION_REQUIRED by redirecting to /onboarding.
+
 **UI/UX Decisions:**
 The platform features a mobile-first design including a persistent Bottom Tab Bar, contextual AI Bottom Sheets, and Universal AI Badges. It emphasizes clear calls to action and tabbed navigation, with a universal theme system (Dark, Light, AF Legacy modes) managed by `ThemeProvider`.
 

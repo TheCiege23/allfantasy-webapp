@@ -191,4 +191,54 @@ export const authOptions: NextAuthOptions = {
       return session
     },
   },
+  events: {
+    async signIn({ user }) {
+      if (!user?.id || !user?.email) return
+      try {
+        const db = prisma as any
+        const existing = await db.userProfile.findUnique({
+          where: { userId: user.id },
+        }).catch(() => null)
+
+        if (existing) {
+          await db.userProfile.update({
+            where: { userId: user.id },
+            data: { emailVerifiedAt: existing.emailVerifiedAt ?? new Date() },
+          })
+        } else {
+          await db.userProfile.create({
+            data: {
+              userId: user.id,
+              emailVerifiedAt: new Date(),
+            },
+          })
+        }
+
+        const pending = await db.pendingSignup.findUnique({
+          where: { email: user.email },
+        }).catch(() => null)
+
+        if (pending) {
+          await db.userProfile.update({
+            where: { userId: user.id },
+            data: {
+              ...(pending.displayName && { displayName: pending.displayName }),
+              ...(pending.phone && { phone: pending.phone }),
+            },
+          })
+          if (pending.displayName) {
+            await prisma.appUser.update({
+              where: { id: user.id },
+              data: { displayName: pending.displayName },
+            }).catch(() => {})
+          }
+          await (prisma as any).pendingSignup.delete({
+            where: { email: user.email },
+          }).catch(() => {})
+        }
+      } catch (err) {
+        console.error("[auth] signIn event error:", err)
+      }
+    },
+  },
 }

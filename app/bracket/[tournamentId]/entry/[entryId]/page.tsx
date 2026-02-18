@@ -1,27 +1,22 @@
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { BracketProView } from "@/components/bracket/BracketProView"
 import { Leaderboard } from "@/components/bracket/Leaderboard"
 import Link from "next/link"
+import { requireVerifiedSession } from "@/lib/require-verified"
 
 export default async function EntryBracketPage({
   params,
 }: {
   params: { tournamentId: string; entryId: string }
 }) {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: { id?: string }
-  } | null
-  if (!session?.user?.id)
-    return <div className="p-6 text-white/60">Please log in to view your bracket.</div>
+  const { userId } = await requireVerifiedSession()
 
   const entry = await prisma.bracketEntry.findUnique({
     where: { id: params.entryId },
     select: { id: true, userId: true, leagueId: true, name: true, league: { select: { tournamentId: true } } },
   })
 
-  if (!entry || entry.userId !== session.user.id)
+  if (!entry || entry.userId !== userId)
     return <div className="p-6 text-white/60">Bracket entry not found.</div>
   if (entry.league.tournamentId !== params.tournamentId)
     return <div className="p-6 text-white/60">Wrong tournament.</div>
