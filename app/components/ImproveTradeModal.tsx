@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Sparkles, Copy, AlertCircle, Loader2, RefreshCw, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { gtagEvent } from '@/lib/gtag'
 
 type Suggestion = {
   title: string
@@ -58,6 +59,13 @@ export default function ImproveTradeModal({
       setSuggestions([])
     }
     setError('')
+
+    gtagEvent('improve_trade_generation_started', {
+      action: append ? 'generate_more' : 'initial_or_regenerate',
+      league_size: leagueSize,
+      is_dynasty: isDynasty,
+      scoring,
+    })
 
     try {
       const res = await fetch('/api/instant/improve-trade', {
@@ -128,6 +136,10 @@ export default function ImproveTradeModal({
                   setSuggestions(event.suggestions)
                   toast.success('AI suggestions ready!')
                 }
+                gtagEvent('improve_trade_generation_completed', {
+                  action: append ? 'generate_more' : 'initial_or_regenerate',
+                  suggestion_count: event.suggestions.length,
+                })
                 receivedSuggestions = true
                 streamDone = true
                 break
@@ -179,6 +191,11 @@ export default function ImproveTradeModal({
       setSuggestions([])
       setStreamText('')
       setError('')
+      gtagEvent('improve_trade_modal_opened', {
+        league_size: leagueSize,
+        is_dynasty: isDynasty,
+        scoring,
+      })
       fetchSuggestions()
     } else {
       abortRef.current?.abort()
@@ -193,11 +210,13 @@ export default function ImproveTradeModal({
     setStreaming(false)
     setError('Generation cancelled.')
     toast.info('Generation cancelled')
+    gtagEvent('improve_trade_generation_cancelled', { scoring, is_dynasty: isDynasty })
   }
 
   const copySuggestion = (text: string) => {
     navigator.clipboard.writeText(text)
     toast.success('Suggestion copied — paste into your league chat!')
+    gtagEvent('improve_trade_suggestion_copied', { scoring, is_dynasty: isDynasty })
   }
 
   useEffect(() => {
