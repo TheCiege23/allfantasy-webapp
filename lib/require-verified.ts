@@ -1,33 +1,18 @@
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
-import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
-import { headers } from "next/headers"
-import { isUserVerified, isAgeConfirmed } from "@/lib/auth-guard"
+import { getSessionAndProfile, isUserVerified, isAgeConfirmed } from "@/lib/auth-guard"
 
-export async function requireVerifiedSession(): Promise<{ userId: string; email: string }> {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: { id?: string; email?: string | null }
-  } | null
+export async function requireVerifiedSession() {
+  const { userId, emailVerified, profile } = await getSessionAndProfile()
 
-  if (!session?.user?.id || !session?.user?.email) {
-    const headersList = headers()
-    const pathname = headersList.get("x-invoke-path") || headersList.get("x-next-url") || "/dashboard"
-    redirect(`/login?callbackUrl=${encodeURIComponent(pathname)}`)
+  if (!userId) redirect("/login")
+
+  if (!isAgeConfirmed(profile)) {
+    redirect("/verify?error=AGE_REQUIRED")
   }
 
-  const appUser = await (prisma as any).appUser.findUnique({
-    where: { id: session.user.id },
-    select: { emailVerified: true },
-  }).catch(() => null)
-
-  const profile = await (prisma as any).userProfile.findUnique({
-    where: { userId: session.user.id },
-  }).catch(() => null)
-
-  if (!isAgeConfirmed(profile) || !isUserVerified(appUser?.emailVerified, profile?.phoneVerifiedAt)) {
-    redirect("/onboarding")
+  if (!isUserVerified(emailVerified, profile?.phoneVerifiedAt)) {
+    redirect("/verify?error=VERIFICATION_REQUIRED")
   }
 
-  return { userId: session.user.id, email: session.user.email }
+  return { userId, emailVerified, profile }
 }

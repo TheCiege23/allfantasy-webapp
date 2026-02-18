@@ -4,12 +4,19 @@ import { sha256Hex, makeToken } from "@/lib/tokens"
 
 export const runtime = "nodejs"
 
-export async function POST() {
+export async function POST(req: Request) {
   const { getSessionAndProfile } = await import("@/lib/auth-guard")
   const { userId, email } = await getSessionAndProfile()
 
   if (!userId) {
     return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 })
+  }
+
+  const { getClientIp, rateLimit } = await import("@/lib/rate-limit")
+  const ip = getClientIp(req)
+  const rl = rateLimit(`verify-email:${userId}:${ip}`, 3, 120_000)
+  if (!rl.success) {
+    return NextResponse.json({ error: "RATE_LIMITED", message: "Please wait before requesting another email." }, { status: 429 })
   }
 
   const user = await (prisma as any).appUser.findUnique({

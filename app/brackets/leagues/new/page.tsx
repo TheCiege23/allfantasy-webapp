@@ -27,8 +27,12 @@ export default function NewBracketLeaguePage() {
 
       const data = await res.json()
       if (!res.ok) {
-        if (data.error === "AGE_REQUIRED" || data.error === "VERIFICATION_REQUIRED") {
-          router.push("/onboarding")
+        if (data.error === "AGE_REQUIRED") {
+          router.push("/verify?error=AGE_REQUIRED")
+          return
+        }
+        if (data.error === "VERIFICATION_REQUIRED") {
+          router.push("/verify?error=VERIFICATION_REQUIRED")
           return
         }
         setError(data.error ?? "Failed to create league")

@@ -56,6 +56,11 @@ export default function CreateEntryChooser({
         return
       }
 
+      if (data.alreadyExists) {
+        router.push(`/bracket/${tournamentId}/entry/${data.entryId}`)
+        return
+      }
+
       router.push(`/bracket/${tournamentId}/entry/${data.entryId}`)
     } catch {
       setLoading(false)

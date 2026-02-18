@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  CheckCircle2,
 } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 
@@ -19,6 +20,7 @@ export default function LoginContent() {
   const router = useRouter()
   const callbackUrl = searchParams?.get("callbackUrl") || searchParams?.get("next") || "/dashboard"
   const isAdminLogin = callbackUrl.startsWith("/admin")
+  const passwordReset = searchParams?.get("reset") === "1"
 
   const [login, setLogin] = useState("")
   const [password, setPassword] = useState("")
@@ -169,6 +171,15 @@ export default function LoginContent() {
               </div>
               <h1 className="mt-2 text-xl font-semibold">Welcome back</h1>
             </div>
+
+            {passwordReset && !error && (
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 shrink-0" />
+                  Password reset successfully. Sign in with your new password.
+                </div>
+              </div>
+            )}
 
             {error && (
               <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">

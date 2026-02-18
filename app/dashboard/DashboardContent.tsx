@@ -245,10 +245,13 @@ export default function DashboardContent({ user, profile, leagues, entries }: Da
                       </div>
                       <div className="min-w-0">
                         <div className="text-sm font-medium truncate">{entry.name}</div>
-                        <div className="text-xs text-white/40">Score: {entry.score}</div>
+                        <div className="text-xs text-white/40">Score: {entry.score} pts</div>
                       </div>
                     </div>
-                    <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 transition shrink-0" />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs text-cyan-400 opacity-0 group-hover:opacity-100 transition">Continue picks</span>
+                      <ChevronRight className="h-4 w-4 text-white/20 group-hover:text-white/50 transition" />
+                    </div>
                   </Link>
                 ))}
               </div>

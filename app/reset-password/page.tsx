@@ -56,6 +56,9 @@ function ResetPasswordContent() {
         setError(errorMap[data.error] || data.error || "Something went wrong.")
       } else {
         setSuccess(true)
+        setTimeout(() => {
+          window.location.href = "/login?reset=1"
+        }, 2000)
       }
     } catch {
       setError("Something went wrong. Please try again.")
@@ -88,7 +91,7 @@ function ResetPasswordContent() {
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 shadow-xl text-center space-y-4">
           <CheckCircle2 className="h-8 w-8 text-emerald-400 mx-auto" />
           <h1 className="text-xl font-semibold">Password reset</h1>
-          <p className="text-sm text-white/60">Your password has been updated. You can now sign in with your new password.</p>
+          <p className="text-sm text-white/60">Your password has been updated. Redirecting to sign in...</p>
           <Link
             href="/login"
             className="inline-block rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white transition"

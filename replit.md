@@ -29,11 +29,13 @@ The project is built with Next.js 14 (App Router) and TypeScript, using Tailwind
 **Verification Gate System:**
 User access to protected features requires age confirmation + email/phone verification. Three-tier gating:
 -   **API-level**: `requireVerifiedUser()` from `lib/auth-guard.ts` returns 401 (UNAUTHENTICATED), 403 (AGE_REQUIRED), or 403 (VERIFICATION_REQUIRED). Applied to all bracket mutation endpoints.
--   **Route-level**: `requireVerifiedSession()` from `lib/require-verified.ts` redirects unauthenticated users to /login and unverified users to /onboarding.
+-   **Route-level**: `requireVerifiedSession()` from `lib/require-verified.ts` redirects unauthenticated users to /login and unverified users to /verify.
 -   **Canonical email verification**: Trusts `AppUser.emailVerified` (set only by verify-email endpoint), NOT `UserProfile.emailVerifiedAt`.
+-   **Phone verification**: Twilio Verify API via `/api/verify/phone/start` and `/api/verify/phone/check`. E.164 normalization, rate limited (3 sends/2min, 5 checks/5min). Sets `UserProfile.phoneVerifiedAt`.
 -   **Gating rule**: `isUserVerified(emailVerified, phoneVerifiedAt) = !!emailVerified || !!phoneVerifiedAt`. Full onboarding requires verification AND ageConfirmedAt AND profileComplete=true.
 -   **Post-login routing**: Verified users → `/dashboard`, logged out → `/login`. Dashboard shows setup checklist for unverified users.
--   **Client-side pages** (leagues/new, join) handle VERIFICATION_REQUIRED and AGE_REQUIRED by redirecting to /onboarding.
+-   **Client-side pages** (leagues/new, join) handle VERIFICATION_REQUIRED and AGE_REQUIRED by redirecting to /verify.
+-   **Rate limiting**: Signup (5/10min), email verify send (3/2min), password reset (5/10min), phone start (3/2min), phone check (5/5min). All per-IP+user bucketed.
 
 **Dashboard (`/dashboard`):**
 Post-login landing page (AI Overview). Server component fetches user data, leagues, entries. Shows:

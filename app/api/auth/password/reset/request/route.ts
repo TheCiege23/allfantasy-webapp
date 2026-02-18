@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { sha256Hex, makeToken } from "@/lib/tokens"
+import { getClientIp, rateLimit } from "@/lib/rate-limit"
 
 export const runtime = "nodejs"
 
 export async function POST(req: Request) {
+  const ip = getClientIp(req)
+  const rl = rateLimit(`pw-reset:${ip}`, 5, 600_000)
+  if (!rl.success) {
+    return NextResponse.json({ ok: true })
+  }
+
   const body = await req.json().catch(() => ({}))
   const email = String(body?.email || "").toLowerCase().trim()
 

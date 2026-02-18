@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import { sha256Hex, makeToken, isStrongPassword } from "@/lib/tokens"
+import { getClientIp, rateLimit } from "@/lib/rate-limit"
 
 export const runtime = "nodejs"
 
@@ -20,6 +21,12 @@ function normalizePhone(p?: string | null) {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req)
+    const rl = rateLimit(`signup:${ip}`, 5, 600_000)
+    if (!rl.success) {
+      return NextResponse.json({ error: "Too many signup attempts. Please wait a few minutes." }, { status: 429 })
+    }
+
     const body = await req.json()
     const { password, displayName, phone, sleeperUsername, ageConfirmed, verificationMethod } = body
 

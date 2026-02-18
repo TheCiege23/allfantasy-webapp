@@ -50,25 +50,36 @@ export default async function DashboardPage() {
           id: true,
           name: true,
           tournamentId: true,
-          inviteCode: true,
+          joinCode: true,
           _count: { select: { members: true } },
         },
       },
     },
   }).catch(() => [])
 
-  const entries = await (prisma as any).bracketEntry.findMany({
+  const entriesRaw = await (prisma as any).bracketEntry.findMany({
     where: { userId },
     select: {
       id: true,
       name: true,
-      tournamentId: true,
-      score: true,
       createdAt: true,
+      league: {
+        select: { tournamentId: true },
+      },
+      picks: {
+        select: { points: true },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 10,
   }).catch(() => [])
+
+  const entries = entriesRaw.map((e: any) => ({
+    id: e.id,
+    name: e.name,
+    tournamentId: e.league?.tournamentId || "",
+    score: (e.picks || []).reduce((sum: number, p: any) => sum + (p.points || 0), 0),
+  }))
 
   const isVerified = !!appUser?.emailVerified || !!profile?.phoneVerifiedAt
   const isAgeConfirmed = !!profile?.ageConfirmedAt

@@ -3,7 +3,7 @@
 import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { Suspense, useState, useEffect } from "react"
-import { CheckCircle2, XCircle, Clock, AlertTriangle, Mail, Loader2 } from "lucide-react"
+import { CheckCircle2, XCircle, Clock, AlertTriangle, Mail, Loader2, Phone, ArrowLeft } from "lucide-react"
 
 function VerifyContent() {
   const searchParams = useSearchParams()
@@ -11,9 +11,18 @@ function VerifyContent() {
   const status = searchParams?.get("status")
   const error = searchParams?.get("error")
   const verified = searchParams?.get("verified")
+
+  const [tab, setTab] = useState<"email" | "phone">("email")
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | "rate_limited" | null>(null)
   const [countdown, setCountdown] = useState(3)
+
+  const [phoneNumber, setPhoneNumber] = useState("")
+  const [phoneSending, setPhoneSending] = useState(false)
+  const [phoneCodeSent, setPhoneCodeSent] = useState(false)
+  const [phoneCode, setPhoneCode] = useState("")
+  const [phoneVerifying, setPhoneVerifying] = useState(false)
+  const [phoneResult, setPhoneResult] = useState<"verified" | "invalid" | "error" | "rate_limited" | null>(null)
 
   async function handleSendVerification() {
     setSending(true)
@@ -39,10 +48,64 @@ function VerifyContent() {
     }
   }
 
+  async function handleSendPhoneCode() {
+    if (!phoneNumber.trim()) return
+    setPhoneSending(true)
+    setPhoneResult(null)
+    try {
+      const res = await fetch("/api/verify/phone/start", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone: phoneNumber.trim() }),
+      })
+      if (res.status === 429) {
+        setPhoneResult("rate_limited")
+      } else if (res.ok) {
+        setPhoneCodeSent(true)
+      } else {
+        setPhoneResult("error")
+      }
+    } catch {
+      setPhoneResult("error")
+    } finally {
+      setPhoneSending(false)
+    }
+  }
+
+  async function handleVerifyPhoneCode() {
+    if (!phoneCode.trim()) return
+    setPhoneVerifying(true)
+    setPhoneResult(null)
+    try {
+      const res = await fetch("/api/verify/phone/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone: phoneNumber.trim(), code: phoneCode.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPhoneResult("verified")
+        setTimeout(() => router.push("/dashboard"), 2000)
+      } else if (data.error === "INVALID_CODE") {
+        setPhoneResult("invalid")
+      } else if (res.status === 429) {
+        setPhoneResult("rate_limited")
+      } else {
+        setPhoneResult("error")
+      }
+    } catch {
+      setPhoneResult("error")
+    } finally {
+      setPhoneVerifying(false)
+    }
+  }
+
   function resolveState(): string {
-    if (verified === "email" || status === "success") return "success"
+    if (verified === "email" || verified === "phone" || status === "success") return "success"
     if (error === "EXPIRED_LINK" || error === "EXPIRED_TOKEN" || status === "expired") return "expired"
     if (error === "INVALID_LINK" || error === "INVALID_OR_USED_TOKEN" || error === "MISSING_TOKEN" || status === "invalid") return "invalid"
+    if (error === "AGE_REQUIRED") return "age_required"
+    if (error === "VERIFICATION_REQUIRED") return "verification_required"
     if (error || status === "error") return "error"
     return "pending"
   }
@@ -62,8 +125,8 @@ function VerifyContent() {
   const configs: Record<string, { icon: React.ReactNode; title: string; message: string; color: string }> = {
     success: {
       icon: <CheckCircle2 className="h-8 w-8 text-emerald-400" />,
-      title: "Email verified!",
-      message: `Your email has been verified successfully. Redirecting to dashboard in ${countdown}s...`,
+      title: "Verified!",
+      message: `Your account has been verified successfully. Redirecting to dashboard in ${countdown}s...`,
       color: "border-emerald-500/20 bg-emerald-500/10",
     },
     expired: {
@@ -78,95 +141,245 @@ function VerifyContent() {
       message: "This verification link is invalid or has already been used.",
       color: "border-red-500/20 bg-red-500/10",
     },
+    age_required: {
+      icon: <AlertTriangle className="h-8 w-8 text-amber-400" />,
+      title: "Age confirmation required",
+      message: "You must confirm you are 18 or older to access this feature. This is done during signup.",
+      color: "border-amber-500/20 bg-amber-500/10",
+    },
+    verification_required: {
+      icon: <Mail className="h-8 w-8 text-cyan-400" />,
+      title: "Verification required",
+      message: "Please verify your email or phone number to access leagues and brackets.",
+      color: "border-cyan-500/20 bg-cyan-500/10",
+    },
     error: {
       icon: <AlertTriangle className="h-8 w-8 text-red-400" />,
       title: "Something went wrong",
-      message: "There was an error verifying your email. Please try again.",
+      message: "There was an error verifying your account. Please try again.",
       color: "border-red-500/20 bg-red-500/10",
     },
     pending: {
       icon: <Mail className="h-8 w-8 text-cyan-400" />,
-      title: "Verify your email",
-      message: "You need to verify your email or phone to create and join leagues. Check your inbox for a verification link, or request a new one below.",
+      title: "Verify your account",
+      message: "Verify your email or phone to unlock leagues and brackets.",
       color: "border-cyan-500/20 bg-cyan-500/10",
     },
   }
 
   const config = configs[state] || configs.pending
+  const showVerifyOptions = state !== "success" && state !== "age_required"
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 shadow-xl text-center space-y-4">
-        <div className="mx-auto w-fit">{config.icon}</div>
-        <h1 className="text-xl font-semibold">{config.title}</h1>
-        <p className="text-sm text-white/60">{config.message}</p>
+      <div className="w-full max-w-md space-y-4">
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-8 shadow-xl text-center space-y-4">
+          <div className="mx-auto w-fit">{config.icon}</div>
+          <h1 className="text-xl font-semibold">{config.title}</h1>
+          <p className="text-sm text-white/60">{config.message}</p>
 
-        {sendResult === "sent" && (
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-            Verification email sent! Check your inbox.
-          </div>
-        )}
-        {sendResult === "already" && (
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-300">
-            Your email is already verified.
-          </div>
-        )}
-        {sendResult === "login_required" && (
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
-            Please <a href="/login" className="underline font-medium">sign in</a> first, then request a new verification email.
-          </div>
-        )}
-        {sendResult === "rate_limited" && (
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
-            Please wait 60 seconds before requesting another verification email.
-          </div>
-        )}
-        {sendResult === "error" && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-            Failed to send email. Please try again.
-          </div>
-        )}
-
-        <div className="flex flex-col gap-3 pt-2">
-          {state === "success" ? (
+          {state === "success" && (
             <Link
               href="/dashboard"
-              className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 transition"
+              className="inline-block rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 transition"
             >
               Go to Dashboard
             </Link>
-          ) : (
-            <>
-              <button
-                onClick={handleSendVerification}
-                disabled={sending || sendResult === "sent"}
-                className="rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
-              >
-                {sending ? (
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Sending...
-                  </span>
-                ) : sendResult === "sent" ? (
-                  "Email sent!"
-                ) : (
-                  "Send verification email"
-                )}
-              </button>
-              <Link
-                href="/dashboard"
-                className="rounded-xl bg-white/10 border border-white/10 px-6 py-2.5 text-sm font-medium hover:bg-white/15 transition"
-              >
-                Go to Dashboard
-              </Link>
-              <Link
-                href="/login"
-                className="rounded-xl border border-white/10 px-6 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/5 transition"
-              >
-                Sign In
-              </Link>
-            </>
           )}
+        </div>
+
+        {showVerifyOptions && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 shadow-xl space-y-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setTab("email")}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition ${
+                  tab === "email"
+                    ? "bg-white/10 text-white border border-white/20"
+                    : "text-white/50 hover:text-white/70"
+                }`}
+              >
+                <Mail className="h-4 w-4" />
+                Email
+              </button>
+              <button
+                onClick={() => setTab("phone")}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition ${
+                  tab === "phone"
+                    ? "bg-white/10 text-white border border-white/20"
+                    : "text-white/50 hover:text-white/70"
+                }`}
+              >
+                <Phone className="h-4 w-4" />
+                Phone
+              </button>
+            </div>
+
+            {tab === "email" && (
+              <div className="space-y-3">
+                {sendResult === "sent" && (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                    Verification email sent! Check your inbox.
+                  </div>
+                )}
+                {sendResult === "already" && (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3 text-sm text-cyan-300">
+                    Your email is already verified.
+                  </div>
+                )}
+                {sendResult === "login_required" && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
+                    Please <Link href="/login" className="underline font-medium">sign in</Link> first, then request verification.
+                  </div>
+                )}
+                {sendResult === "rate_limited" && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
+                    Please wait 60 seconds before requesting another email.
+                  </div>
+                )}
+                {sendResult === "error" && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                    Failed to send email. Please try again.
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSendVerification}
+                  disabled={sending || sendResult === "sent"}
+                  className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+                >
+                  {sending ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Sending...
+                    </span>
+                  ) : sendResult === "sent" ? (
+                    "Email sent!"
+                  ) : (
+                    "Send verification email"
+                  )}
+                </button>
+              </div>
+            )}
+
+            {tab === "phone" && (
+              <div className="space-y-3">
+                {phoneResult === "verified" && (
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Phone verified! Redirecting...
+                    </div>
+                  </div>
+                )}
+                {phoneResult === "invalid" && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                    Invalid code. Please check and try again.
+                  </div>
+                )}
+                {phoneResult === "rate_limited" && (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
+                    Too many attempts. Please wait before trying again.
+                  </div>
+                )}
+                {phoneResult === "error" && (
+                  <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                    Something went wrong. Please try again.
+                  </div>
+                )}
+
+                {!phoneCodeSent ? (
+                  <>
+                    <div>
+                      <label className="text-xs text-white/60">Phone number</label>
+                      <input
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value)}
+                        type="tel"
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm outline-none focus:border-white/20"
+                        placeholder="+1 (555) 123-4567"
+                        disabled={phoneSending}
+                      />
+                      <p className="mt-1 text-xs text-white/30">Include country code (e.g. +1 for US)</p>
+                    </div>
+                    <button
+                      onClick={handleSendPhoneCode}
+                      disabled={phoneSending || !phoneNumber.trim()}
+                      className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+                    >
+                      {phoneSending ? (
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Sending code...
+                        </span>
+                      ) : (
+                        "Send verification code"
+                      )}
+                    </button>
+                  </>
+                ) : phoneResult !== "verified" ? (
+                  <>
+                    <p className="text-sm text-white/60">
+                      We sent a code to <span className="text-white/80 font-medium">{phoneNumber}</span>
+                    </p>
+                    <div>
+                      <label className="text-xs text-white/60">Verification code</label>
+                      <input
+                        value={phoneCode}
+                        onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, ""))}
+                        type="text"
+                        inputMode="numeric"
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-sm text-center font-mono text-lg tracking-widest outline-none focus:border-white/20"
+                        placeholder="000000"
+                        maxLength={6}
+                        disabled={phoneVerifying}
+                        autoFocus
+                      />
+                    </div>
+                    <button
+                      onClick={handleVerifyPhoneCode}
+                      disabled={phoneVerifying || phoneCode.length < 4}
+                      className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+                    >
+                      {phoneVerifying ? (
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Verifying...
+                        </span>
+                      ) : (
+                        "Verify code"
+                      )}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPhoneCodeSent(false)
+                        setPhoneCode("")
+                        setPhoneResult(null)
+                      }}
+                      className="w-full text-sm text-white/40 hover:text-white/60 transition"
+                    >
+                      Change phone number
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-3 justify-center">
+          <Link
+            href="/dashboard"
+            className="rounded-xl bg-white/10 border border-white/10 px-5 py-2 text-sm font-medium hover:bg-white/15 transition"
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-xl border border-white/10 px-5 py-2 text-sm text-white/60 hover:text-white hover:bg-white/5 transition"
+          >
+            Sign In
+          </Link>
         </div>
       </div>
     </div>
