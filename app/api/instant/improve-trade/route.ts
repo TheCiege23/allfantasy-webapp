@@ -8,109 +8,97 @@ const xai = new OpenAI({
   baseURL: 'https://api.x.ai/v1',
 })
 
-const IMPROVE_TRADE_SYSTEM_PROMPT = `You are the world's best fantasy football trade negotiator, specialized in league-specific and roster-aware analysis for 2025-2026 seasons.
-
-Your tone is professional yet approachable — like talking to a league mate. Keep language conversational in counter-offer text.
-
-You are AGGRESSIVE — your goal is to flip bad trades into clearly positive ones, or at minimum make them neutral. You are not afraid to ask for significant upgrades: star-for-star-plus-pick swaps, young upside players bundled with picks, or position upgrades that meaningfully change the deal. Still keep it realistic — no absurd asks.
-
-Rules:
-- Be extremely specific to the provided roster and league settings when available
-- Consider exact positional scarcity based on starters + bench depth
-- Account for user's roster needs, surplus, and contention window
-- Dynasty pick value curves differ significantly by league size and format
-- Factor in FAAB implications if provided
-- Weight age, injury risk, and long-term upside appropriately in dynasty
-- Prioritize high acceptance likelihood (>60–70%)
-- If close to even, focus on small targeted upgrades, not huge overpays
-- If already good for "you", suggest modest sweeteners to increase acceptance odds
-- If bad for "you", focus on realistic fixes that flip it to neutral or positive
-- Never propose counters that obviously worsen the deal for the user
-- Order from most to least likely to be accepted
-- Keep bullet reasons under 12 words each
-
-Return ONLY valid JSON — no extra text, no markdown, no explanations outside the JSON.
-
-{
-  "suggestions": [
-    {
-      "title": "short string (8-15 words)",
-      "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
-      "impact": "+15% for you",
-      "reasons": ["max 12 words each", "3-5 bullets", "concise and specific"],
-      "sensitivityNote": "optional context note or null"
-    }
-  ]
-}`
-
-type ImproveTradeContext = {
+function buildFullPrompt(ctx: {
   tradeText: string
   leagueSize: number
   scoring: string
   isDynasty: boolean
   currentVerdict: string
-  percentDiff: number
+  currentFairness: number
   leagueSettings?: any
   userRoster?: string
   userFAABRemaining?: number
   userContentionWindow?: string
   userRecord?: string
-}
-
-function buildUserPrompt(ctx: ImproveTradeContext) {
+}) {
   const {
-    tradeText, leagueSize, scoring, isDynasty, currentVerdict, percentDiff,
+    tradeText, leagueSize, scoring, isDynasty, currentVerdict, currentFairness,
     leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
   } = ctx
 
-  let leagueContext = `League: ${leagueSize}-team ${scoring.toUpperCase()} ${isDynasty ? 'dynasty' : 'redraft'}`
-  if (leagueSettings) {
-    leagueContext += `\nFull league settings: ${JSON.stringify(leagueSettings)}`
-  }
-  if (userFAABRemaining != null) {
-    leagueContext += `\nUser's FAAB remaining: ${userFAABRemaining}%`
-  }
-  if (userContentionWindow) {
-    leagueContext += `\nUser's contention window: ${userContentionWindow}`
-  }
-  if (userRecord) {
-    leagueContext += `\nUser's current season record: ${userRecord}`
-  }
+  const format = isDynasty ? 'Dynasty' : 'Redraft'
+  const scoringLabel = scoring.toUpperCase()
+  const settingsJson = leagueSettings ? JSON.stringify(leagueSettings) : 'Not provided'
+  const contention = userContentionWindow || 'unknown'
+  const record = userRecord || 'Unknown'
+  const faab = userFAABRemaining != null ? `${userFAABRemaining}%` : 'Not provided'
+  const roster = userRoster || 'No roster provided'
+  const fairnessStr = `${currentFairness >= 0 ? '+' : ''}${currentFairness}%`
 
-  const rosterBlock = userRoster
-    ? `\nUser's Roster (critical for replacement level and needs):\n${userRoster}\n`
-    : ''
+  return `You are the world's most accurate, league-specific, roster-aware fantasy football trade negotiator for 2025-2026 seasons.
+Your analysis must be hyper-personalized to the user's exact situation — no generic advice.
 
-  return `You are an elite dynasty fantasy football GM.
+=== LEAGUE & USER CONTEXT ===
+League size: ${leagueSize}-team
+Format: ${format}
+Scoring: ${scoringLabel}
+Full league settings: ${settingsJson}
+User's contention window: ${contention}
+User's current record: ${record}
+User's FAAB remaining: ${faab}
 
-Examples of great counter suggestions:
+User's roster (critical for replacement level, positional needs, surplus, age curve, contention fit):
+"""
+${roster}
+"""
 
-Example 1:
-Original: I give: Justin Jefferson   I get: Garrett Wilson + 2026 1st
-Verdict: Slightly bad for you
-
-Good suggestion:
-{"title":"Add your late 2nd to balance","counter":"I give: Justin Jefferson + my 2026 2.10\\nI get: Garrett Wilson + 2026 early 1st","impact":"Now even to slight edge for you","reasons":["Late 2nd has low cost in dynasty","Early 1st has significantly more value","Makes the pick premium feel fair to opponent"],"sensitivityNote":null}
-
-Example 2:
-Original: I give: Breece Hall   I get: Jahmyr Gibbs + Christian Watson
-Verdict: Bad for you
-
-Good suggestion:
-{"title":"Swap Watson for better WR or pick","counter":"I give: Breece Hall\\nI get: Jahmyr Gibbs + Drake London / Zay Flowers","impact":"+20–30% for you","reasons":["London/Flowers >> Watson in dynasty value","Maintains RB youth/upside","Much stronger WR return"],"sensitivityNote":"Only if you need WR depth more than RB depth"}
-
-Now do the same quality for this trade:
-
-${leagueContext}
-${rosterBlock}
-Trade being evaluated:
+Trade being evaluated (user is the "I give" / "you" side):
 """
 ${tradeText}
 """
-Current verdict: ${currentVerdict || 'unknown'}
-Current value delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}% (positive = better for user)
 
-Generate 3-5 suggestions. Return only JSON with "suggestions" array matching the example format.`
+Current AI verdict: ${currentVerdict}
+Current value delta: ${fairnessStr} (positive = better for user)
+
+=== TASK ===
+Generate 3–5 highly realistic, personalized counter-offer suggestions that meaningfully improve the deal for the user.
+
+Take EVERYTHING into account:
+- Exact positional scarcity based on league starters, bench size, flex rules, TE-premium, Superflex
+- User's roster needs / surplus / age / injury risk / contention window
+- Dynasty-specific value: future picks (early/mid/late adjusted for league size/format), rookie draft outlook (college prospects, landing spots, team needs)
+- Volatility: boom/bust players, injury history, contract situations
+- FAAB implications if relevant
+- Trade history tendencies in this league (if implied by context)
+- Acceptance likelihood — suggest counters a rational opponent would consider
+
+For each suggestion return:
+- Short title (8–15 words)
+- Exact natural-language counter-offer text (copy-paste ready, "I give: X\\nI get: Y" format)
+- Estimated new fairness impact (e.g. "+18% for you", "now strong win", "higher acceptance chance")
+- 3–5 concise, specific bullets explaining WHY it's better (reference roster, league settings, contention, etc.)
+- Optional sensitivity note (one sentence) — e.g. "Only if you're truly win-now", "Avoid if rebuilding", null if not needed
+
+Rules:
+- Be brutally honest — never suggest trades that hurt the user
+- Prioritize high-acceptance counters: depth swaps, future picks, small upgrades
+- In dynasty: weight youth, picks, long-term upside heavily
+- If no roster provided, fall back to general positional scarcity but note limitation
+- Keep language clear, confident, conversational — like advising a league mate
+- Order from most to least likely to be accepted
+
+Return ONLY valid JSON — nothing else:
+{
+  "suggestions": [
+    {
+      "title": "string (8-15 words)",
+      "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
+      "impact": "string like +15% for you",
+      "reasons": ["max 12 words each", "3-5 bullets"],
+      "sensitivityNote": "string or null"
+    }
+  ]
+}`
 }
 
 function parseSuggestions(parsed: any) {
@@ -167,15 +155,15 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     }
 
     const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
-    const userPrompt = buildUserPrompt({
+    const systemPrompt = buildFullPrompt({
       tradeText, leagueSize, scoring, isDynasty,
-      currentVerdict: currentVerdict || 'unknown', percentDiff,
+      currentVerdict: currentVerdict || 'unknown', currentFairness: percentDiff,
       leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
     })
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: 'system', content: IMPROVE_TRADE_SYSTEM_PROMPT },
-      { role: 'user', content: userPrompt },
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Generate the counter-offer suggestions now. Return only JSON.' },
     ]
 
     if (shouldStream) {
@@ -183,7 +171,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
         model: 'grok-4-0709',
         messages,
         temperature: 0.6,
-        max_tokens: 2000,
+        max_tokens: 1600,
         response_format: { type: 'json_object' },
         stream: true,
       })
@@ -243,7 +231,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       model: 'grok-4-0709',
       messages,
       temperature: 0.6,
-      max_tokens: 2000,
+      max_tokens: 1600,
       response_format: { type: 'json_object' },
     })
 
