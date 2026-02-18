@@ -98,6 +98,12 @@ export async function getUserTradeProfileFull(userId: string): Promise<TradeProf
   }
 }
 
+export async function triggerProfileSummarization(userId: string) {
+  updateTradeProfileAsync(userId).catch((err: Error) =>
+    console.error('[trade-feedback-profile] async profile update failed:', err)
+  )
+}
+
 async function updateTradeProfileAsync(userId: string) {
   const recentVotes = await prisma.feedback.findMany({
     where: { userId },

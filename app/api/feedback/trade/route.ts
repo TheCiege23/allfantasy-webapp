@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { VoteType } from '@prisma/client'
+import { FeedbackReason, VoteType } from '@prisma/client'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
-import { addFeedback, getRecentFeedback } from '@/lib/feedback-store'
-import { persistVote, getRecentVotesForUser } from '@/lib/trade-feedback-profile'
 import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
+import { triggerProfileSummarization } from '@/lib/trade-feedback-profile'
 
 const ENUM_TO_LABEL: Record<string, string> = Object.fromEntries(
   FEEDBACK_REASONS.map(r => [r.enum, r.label])
@@ -19,6 +19,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429 })
     }
 
+    const session = await getServerSession(authOptions)
+    const userId = (session?.user as any)?.id
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await req.json()
 
     const {
@@ -30,84 +36,74 @@ export async function POST(req: NextRequest) {
       leagueSize,
       isDynasty,
       scoring,
-      userRoster,
       userContention,
+      userRoster,
     } = body
 
-    if (!tradeText || !suggestionTitle || !vote || !['up', 'down'].includes(vote)) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    if (!vote || !['UP', 'DOWN'].includes(vote)) {
+      return NextResponse.json({ error: 'Invalid vote' }, { status: 400 })
     }
 
-    addFeedback({
-      timestamp: new Date().toISOString(),
-      tradeText: String(tradeText).slice(0, 1000),
-      suggestionTitle: String(suggestionTitle).slice(0, 200),
-      suggestionText: String(suggestionText || '').slice(0, 1000),
-      vote,
-      reason: typeof reason === 'string' ? reason.slice(0, 100) : null,
-      leagueSize: typeof leagueSize === 'number' ? leagueSize : null,
-      isDynasty: typeof isDynasty === 'boolean' ? isDynasty : null,
-      scoring: typeof scoring === 'string' ? scoring.slice(0, 20) : null,
-      userRoster: typeof userRoster === 'string' ? userRoster.slice(0, 2000) : null,
-      userContention: typeof userContention === 'string' ? userContention.slice(0, 20) : 'unknown',
+    await prisma.feedback.create({
+      data: {
+        userId,
+        tradeText: tradeText || null,
+        suggestionTitle: suggestionTitle || null,
+        suggestionText: suggestionText || null,
+        vote: vote as VoteType,
+        reason: vote === 'DOWN' && reason ? (reason as FeedbackReason) : null,
+        leagueSize: leagueSize ?? null,
+        isDynasty: isDynasty ?? null,
+        scoring: scoring ?? null,
+        userContention: userContention ?? null,
+        userRoster: userRoster ?? null,
+      },
     })
 
-    let profileUpdated = false
-    try {
-      const session = await getServerSession(authOptions)
-      const userId = (session?.user as any)?.id
-      if (userId) {
-        await persistVote({
-          userId,
-          tradeText: String(tradeText),
-          suggestionTitle: String(suggestionTitle),
-          suggestionText: suggestionText ? String(suggestionText) : undefined,
-          vote: vote as 'up' | 'down',
-          reason: typeof reason === 'string' ? reason : undefined,
-          leagueSize: typeof leagueSize === 'number' ? leagueSize : undefined,
-          isDynasty: typeof isDynasty === 'boolean' ? isDynasty : undefined,
-          scoring: typeof scoring === 'string' ? scoring : undefined,
-          userRoster: typeof userRoster === 'string' ? userRoster : undefined,
-          userContention: typeof userContention === 'string' ? userContention : undefined,
-        })
-        profileUpdated = true
-      }
-    } catch (err) {
-      console.error('[feedback/trade] DB persist failed (continuing with in-memory):', err)
-    }
+    triggerProfileSummarization(userId)
 
-    return NextResponse.json({ success: true, persisted: profileUpdated })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('[feedback/trade]', error)
-    return NextResponse.json({ error: 'Failed to save feedback' }, { status: 500 })
+    console.error('[POST /api/feedback/trade]', error)
+    return NextResponse.json(
+      { error: 'Failed to save feedback' },
+      { status: 500 }
+    )
   }
 }
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     const userId = (session?.user as any)?.id
-
-    if (userId) {
-      const votes = await getRecentVotesForUser(userId, 50)
-      return NextResponse.json({
-        feedback: votes.map(v => ({
-          tradeText: v.tradeText,
-          suggestionTitle: v.suggestionTitle,
-          suggestionText: v.suggestionText,
-          vote: v.vote === VoteType.UP ? 'up' : 'down',
-          reason: v.reason ? (ENUM_TO_LABEL[v.reason] || v.reason) : null,
-          leagueSize: v.leagueSize,
-          isDynasty: v.isDynasty,
-          scoring: v.scoring,
-          timestamp: v.createdAt.toISOString(),
-        })),
-        source: 'database',
-      })
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    return NextResponse.json({ feedback: getRecentFeedback(50), source: 'memory' })
-  } catch {
-    return NextResponse.json({ feedback: getRecentFeedback(50), source: 'memory' })
+    const votes = await prisma.feedback.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+
+    return NextResponse.json({
+      feedback: votes.map(v => ({
+        tradeText: v.tradeText,
+        suggestionTitle: v.suggestionTitle,
+        suggestionText: v.suggestionText,
+        vote: v.vote,
+        reason: v.reason ? (ENUM_TO_LABEL[v.reason] || v.reason) : null,
+        leagueSize: v.leagueSize,
+        isDynasty: v.isDynasty,
+        scoring: v.scoring,
+        timestamp: v.createdAt.toISOString(),
+      })),
+    })
+  } catch (error) {
+    console.error('[GET /api/feedback/trade]', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch feedback' },
+      { status: 500 }
+    )
   }
 }

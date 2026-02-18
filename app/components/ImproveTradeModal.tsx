@@ -347,7 +347,7 @@ export default function ImproveTradeModal({
     gtagEvent('improve_trade_suggestion_copied', { scoring, is_dynasty: isDynasty })
   }
 
-  const submitFeedback = async (sug: Suggestion, vote: 'up' | 'down', reason?: string) => {
+  const submitFeedback = async (sug: Suggestion, vote: 'UP' | 'DOWN', reason?: string) => {
     const key = sug.title + sug.counter
     if (feedbackGiven.has(key)) return
 
@@ -360,7 +360,7 @@ export default function ImproveTradeModal({
           suggestionTitle: sug.title,
           suggestionText: sug.counter,
           vote,
-          reason: vote === 'down' ? reason : null,
+          reason: vote === 'DOWN' ? reason : null,
           leagueSize,
           isDynasty,
           scoring,
@@ -370,8 +370,8 @@ export default function ImproveTradeModal({
       })
 
       setFeedbackGiven((prev) => new Set([...prev, key]))
-      gtagEvent('trade_suggestion_feedback', { vote, suggestion_title: sug.title, reason: vote === 'down' ? reason : undefined, scoring, is_dynasty: isDynasty, league_size: leagueSize })
-      toast.success(vote === 'up' ? 'Thanks! Great suggestion.' : 'Thanks — we\'ll learn from this.')
+      gtagEvent('trade_suggestion_feedback', { vote, suggestion_title: sug.title, reason: vote === 'DOWN' ? reason : undefined, scoring, is_dynasty: isDynasty, league_size: leagueSize })
+      toast.success(vote === 'UP' ? 'Thanks! Great suggestion.' : 'Thanks — we\'ll learn from this.')
     } catch {
       toast.error('Failed to save feedback')
     }
@@ -703,7 +703,7 @@ export default function ImproveTradeModal({
                       <div className="flex flex-col gap-3 mt-4 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
                         <div className="flex gap-4 items-center">
                           <button
-                            onClick={() => submitFeedback(sug, 'up')}
+                            onClick={() => submitFeedback(sug, 'UP')}
                             disabled={feedbackGiven.has(sug.title + sug.counter)}
                             className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-emerald-400 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
                           >
@@ -738,7 +738,7 @@ export default function ImproveTradeModal({
                                     <button
                                       key={reason}
                                       onClick={() => {
-                                        submitFeedback(sug, 'down', reason)
+                                        submitFeedback(sug, 'DOWN', reason)
                                         setSelectedDownReason(null)
                                       }}
                                       className="px-4 py-2.5 text-left text-xs font-medium rounded-lg transition-all active:scale-[0.97]"
