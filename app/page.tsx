@@ -126,7 +126,7 @@ function HomeContent() {
 
             {/* Inline Early Access Form */}
             <div className="mt-6 lg:mt-8 max-w-md mx-auto lg:mx-0">
-              <EarlyAccessForm variant="footer" />
+              <EarlyAccessForm />
             </div>
 
             {/* Secondary CTAs */}
@@ -435,7 +435,7 @@ function HomeContent() {
           </h2>
           <p className="text-sm sm:text-base" style={{ color: 'var(--muted2)' }}>Early access members get priority features, Pro trials, and early league tools.</p>
 
-          <EarlyAccessForm variant="footer" />
+          <EarlyAccessForm />
         </motion.div>
       </section>
 

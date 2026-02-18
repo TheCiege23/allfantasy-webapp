@@ -1,239 +1,150 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
+import * as z from 'zod'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { gtagEvent } from '@/lib/gtag'
 
-const track = gtagEvent
-
-const earlyAccessSchema = z.object({
-  name: z.string().min(2, { message: 'Name is too short' }),
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email'),
+const schema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  email: z.string().email('Please enter a valid email'),
 })
-type EarlyAccessFormData = z.infer<typeof earlyAccessSchema>
 
-interface UTMParams {
-  utm_source: string | null
-  utm_medium: string | null
-  utm_campaign: string | null
-  utm_content: string | null
-  utm_term: string | null
-  referrer: string | null
-}
+type FormData = z.infer<typeof schema>
 
-interface EarlyAccessFormProps {
-  variant?: 'hero' | 'footer'
-}
-
-export default function EarlyAccessForm({ variant = 'hero' }: EarlyAccessFormProps) {
+export default function EarlyAccessForm() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const [utmParams, setUtmParams] = useState<UTMParams>({
-    utm_source: null,
-    utm_medium: null,
-    utm_campaign: null,
-    utm_content: null,
-    utm_term: null,
-    referrer: null,
-  })
+  const [loading, setLoading] = useState(false)
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
     reset,
-  } = useForm<EarlyAccessFormData>({
-    resolver: zodResolver(earlyAccessSchema),
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
     defaultValues: { name: '', email: '' },
   })
 
+  const [utmParams, setUtmParams] = useState({
+    utm_source: null as string | null,
+    utm_medium: null as string | null,
+    utm_campaign: null as string | null,
+    utm_content: null as string | null,
+    utm_term: null as string | null,
+  })
+
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
     setUtmParams({
-      utm_source: searchParams.get('utm_source'),
-      utm_medium: searchParams.get('utm_medium'),
-      utm_campaign: searchParams.get('utm_campaign'),
-      utm_content: searchParams.get('utm_content'),
-      utm_term: searchParams.get('utm_term'),
-      referrer: typeof document !== 'undefined' ? document.referrer || null : null,
+      utm_source: params.get('utm_source'),
+      utm_medium: params.get('utm_medium'),
+      utm_campaign: params.get('utm_campaign'),
+      utm_content: params.get('utm_content'),
+      utm_term: params.get('utm_term'),
     })
-  }, [searchParams])
+  }, [])
 
-  const onSubmit = async (formData: EarlyAccessFormData) => {
+  const onSubmit = async (data: FormData) => {
+    setLoading(true)
+    const eventId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+
     try {
-      const eventId = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`).toString()
-
       const res = await fetch('/api/early-access', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
+          name: data.name || undefined,
+          email: data.email,
           eventId,
           ...utmParams,
         }),
       })
 
-      const data = await res.json()
+      const result = await res.json()
 
-      if (!res.ok) {
-        toast.error(data?.error || 'Something went wrong. Please try again.')
-        return
-      }
+      if (!res.ok) throw new Error(result.error || 'Failed to join')
 
-      ;(window as any).fbq?.('track', 'CompleteRegistration', {}, { eventID: eventId })
+      gtagEvent('early_access_signup_submitted', { is_new: !result?.alreadyExists })
 
-      const getCookie = (name: string) => {
-        const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-        return match ? match[2] : undefined
-      }
-
+      const getCookie = (name: string) =>
+        document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))?.[2]
       fetch('/api/meta/complete-registration', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_id: eventId,
-          email: formData.email,
+          email: data.email,
           fbp: getCookie('_fbp'),
           fbc: getCookie('_fbc'),
           source_url: window.location.href,
         }),
-      }).catch((err) => console.warn('Meta CAPI call failed:', err))
+      }).catch(() => {})
 
-      track('early_access_signup_submitted', {
-        is_new: !data?.alreadyExists,
-      })
+      toast.success("You're in! Check your email for next steps.", { duration: 5000 })
+      reset()
 
-      toast.success("You're in! Redirecting...")
-
-      const encodedEmail = encodeURIComponent(formData.email.trim())
-      router.push(`/success?email=${encodedEmail}${data?.alreadyExists ? '&existing=true' : ''}`)
-    } catch {
-      toast.error('Network error. Please try again.')
+      const encoded = encodeURIComponent(data.email)
+      router.push(`/success?email=${encoded}${result?.alreadyExists ? '&existing=true' : ''}`)
+    } catch (err: any) {
+      toast.error(err.message || 'Something went wrong. Try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
-  if (variant === 'footer') {
-    return (
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div className="flex flex-col gap-3">
-          <div>
-            <Label htmlFor="footer-name" className="sr-only">Name</Label>
-            <Input
-              id="footer-name"
-              placeholder="Full name"
-              autoComplete="name"
-              disabled={isSubmitting}
-              {...register('name')}
-            />
-            {errors.name && (
-              <p className="text-xs text-red-400 mt-1 px-1">{errors.name.message}</p>
-            )}
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1">
-              <Label htmlFor="footer-email" className="sr-only">Email</Label>
-              <Input
-                id="footer-email"
-                type="email"
-                placeholder="Email address"
-                autoComplete="email"
-                inputMode="email"
-                disabled={isSubmitting}
-                {...register('email')}
-              />
-              {errors.email && (
-                <p className="text-xs text-red-400 mt-1 px-1">{errors.email.message}</p>
-              )}
-            </div>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              size="lg"
-              className="w-full sm:w-auto"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Joining...
-                </>
-              ) : (
-                'Get Early Access →'
-              )}
-            </Button>
-          </div>
-        </div>
-        <p className="text-xs text-center pt-1" style={{ color: 'var(--muted2)' }}>
-          No spam · Cancel anytime
-        </p>
-      </form>
-    )
-  }
-
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-      <div>
-        <Label htmlFor="hero-name" className="sr-only">Name</Label>
-        <Input
-          id="hero-name"
-          placeholder="Full name"
-          autoComplete="name"
-          disabled={isSubmitting}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <div className="flex flex-col sm:flex-row gap-3">
+        <input
           {...register('name')}
+          placeholder="Full name (optional)"
+          className="flex-1 rounded-xl px-5 py-4 outline-none transition-all"
+          style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          disabled={loading}
         />
-        {errors.name && (
-          <p className="mt-1.5 text-sm text-red-400">{errors.name.message}</p>
-        )}
-      </div>
-
-      <div>
-        <Label htmlFor="hero-email" className="sr-only">Email</Label>
-        <Input
-          id="hero-email"
-          type="email"
-          placeholder="Email address"
-          autoComplete="email"
-          inputMode="email"
-          disabled={isSubmitting}
+        <input
           {...register('email')}
+          type="email"
+          required
+          placeholder="your@email.com"
+          className="flex-1 rounded-xl px-5 py-4 outline-none transition-all"
+          style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          disabled={loading}
         />
-        {errors.email && (
-          <p className="mt-1.5 text-sm text-red-400">{errors.email.message}</p>
-        )}
       </div>
+      {errors.name && (
+        <p className="text-xs text-red-400 px-1">{errors.name.message}</p>
+      )}
+      {errors.email && (
+        <p className="text-xs text-red-400 px-1">{errors.email.message}</p>
+      )}
 
-      <Button
+      <button
         type="submit"
-        disabled={isSubmitting}
-        size="lg"
-        className="w-full py-6 text-lg rounded-xl shadow-lg"
+        disabled={loading}
+        className="w-full rounded-xl py-4 font-bold text-lg text-black shadow-xl
+                   bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400
+                   hover:shadow-2xl hover:brightness-110 active:scale-[0.985]
+                   transition-all disabled:opacity-60 flex items-center justify-center gap-3"
       >
-        {isSubmitting ? (
+        {loading ? (
           <>
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-            Joining...
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Joining the revolution...
           </>
         ) : (
-          'Get Early Access →'
+          'Get AI Early Access →'
         )}
-      </Button>
+      </button>
 
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-2 sm:gap-3">
-        <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-amber-500/15 border border-amber-400/30 shadow-[0_0_15px_rgba(245,158,11,0.15)]">
-          <span className="text-amber-400">🎁</span>
-          <span className="text-[11px] sm:text-xs font-medium" style={{ color: 'var(--badge-text-amber)' }}>Founding users get 10 days of AF Pro free</span>
-        </div>
-        <p className="text-xs" style={{ color: 'var(--muted2)' }}>
-          No spam · Cancel anytime
-        </p>
-      </div>
+      <p className="text-center text-xs" style={{ color: 'var(--muted2)' }}>
+        No spam ever. Founding members get 10 days Pro free.
+      </p>
     </form>
   )
 }
