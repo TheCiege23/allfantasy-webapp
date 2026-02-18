@@ -12,7 +12,7 @@ const openaiClient = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-const MAX_TOOL_TURNS = 5
+const MAX_TOOL_TURNS = 6
 
 const GROK_TOOLS: OpenAI.ChatCompletionTool[] = [
   {
@@ -98,7 +98,20 @@ async function runGrokWithTools(systemPrompt: string): Promise<string> {
       if (fnName === 'web_search') {
         result = await executeWebSearch(args.query || 'NFL fantasy football news injuries 2026')
       } else if (fnName === 'x_keyword_search') {
-        result = { note: 'X search results incorporated via Grok native awareness', query: args.query }
+        try {
+          const xRes = await fetch('https://api.x.ai/v1/tools/x_keyword_search', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${process.env.XAI_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ query: args.query, limit: args.limit || 12 }),
+            signal: AbortSignal.timeout(5000),
+          })
+          result = xRes.ok ? await xRes.json().catch(() => ({ note: 'X search parse failed' })) : { note: `X search returned ${xRes.status}` }
+        } catch (err: any) {
+          result = { note: 'X search timeout or unavailable', query: args.query }
+        }
       } else {
         result = { error: `Unknown tool: ${fnName}` }
       }
