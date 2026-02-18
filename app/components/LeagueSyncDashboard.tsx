@@ -79,23 +79,32 @@ export default function LeagueSyncDashboard() {
     }
   }, []);
 
+  const syncLeague = async (plat: string, lgId: string) => {
+    if (plat === 'sleeper') {
+      const res = await fetch('/api/league/sleeper-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sleeperLeagueId: lgId }),
+      });
+      return res.json();
+    }
+
+    const res = await fetch('/api/league/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: plat, platformLeagueId: lgId }),
+    });
+    return res.json();
+  };
+
   const addLeague = async () => {
     if (!leagueId.trim()) return;
     setIsAdding(true);
     try {
-      const res = await fetch('/api/league/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform,
-          platformLeagueId: leagueId.trim(),
-        }),
-      });
-
-      const data = await res.json();
+      const data = await syncLeague(platform, leagueId.trim());
 
       if (data.success) {
-        toast.success(`League "${data.leagueName}" synced!`);
+        toast.success(`League "${data.name || data.leagueName}" synced!`);
         setShowAddModal(false);
         setLeagueId('');
         await fetchLeagues();
@@ -112,19 +121,10 @@ export default function LeagueSyncDashboard() {
   const reSync = async (league: League) => {
     setSyncingId(league.id);
     try {
-      const res = await fetch('/api/league/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform: league.platform,
-          platformLeagueId: league.platformLeagueId,
-        }),
-      });
-
-      const data = await res.json();
+      const data = await syncLeague(league.platform, league.platformLeagueId);
 
       if (data.success) {
-        toast.success(`"${data.leagueName}" re-synced!`);
+        toast.success(`"${data.name || data.leagueName}" re-synced!`);
         await fetchLeagues();
       } else {
         toast.error(data.error || 'Re-sync failed');
