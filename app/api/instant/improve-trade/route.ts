@@ -113,6 +113,10 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       return NextResponse.json({ error: 'Trade text is too long.' }, { status: 400 })
     }
 
+    if (req.signal?.aborted) {
+      return new Response('Request aborted', { status: 499 })
+    }
+
     const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
     const userPrompt = buildUserPrompt(tradeText, leagueSize, scoring, isDynasty, currentVerdict || 'unknown', percentDiff)
 
