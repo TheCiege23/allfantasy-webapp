@@ -5,7 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
-import { triggerProfileSummarization } from '@/lib/trade-feedback-profile'
+import { summarizeUserTradeProfile } from '@/lib/summarizeTradeProfile'
 
 const ENUM_TO_LABEL: Record<string, string> = Object.fromEntries(
   FEEDBACK_REASONS.map(r => [r.enum, r.label])
@@ -60,7 +60,9 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    triggerProfileSummarization(userId)
+    summarizeUserTradeProfile(userId).catch(err =>
+      console.error('Summarization error:', err)
+    )
 
     return NextResponse.json({ success: true })
   } catch (error) {
