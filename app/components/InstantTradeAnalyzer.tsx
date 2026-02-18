@@ -3,9 +3,10 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Loader2, Copy } from 'lucide-react'
+import { Loader2, Copy, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { gtagEvent } from '@/lib/gtag'
+import ImproveTradeModal from './ImproveTradeModal'
 
 const track = gtagEvent
 
@@ -43,6 +44,7 @@ export default function InstantTradeAnalyzer() {
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<TradeResult | null>(null)
   const [error, setError] = useState('')
+  const [showImproveModal, setShowImproveModal] = useState(false)
 
   const runAnalysis = async (overrideText?: string) => {
     const text = overrideText || tradeText
@@ -387,6 +389,21 @@ export default function InstantTradeAnalyzer() {
               </button>
             </div>
 
+            <button
+              onClick={() => {
+                setShowImproveModal(true)
+                track('improve_trade_opened')
+              }}
+              className="w-full py-3 rounded-xl text-sm font-semibold flex items-center justify-center gap-2
+                         bg-gradient-to-r from-cyan-500/15 to-purple-500/15
+                         border border-cyan-400/30 hover:border-cyan-400/50
+                         hover:from-cyan-500/25 hover:to-purple-500/25 transition-all active:scale-[0.985]"
+              style={{ color: 'var(--text)' }}
+            >
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              Improve This Trade
+            </button>
+
             <div className="pt-3 text-center space-y-2" style={{ borderTop: '1px solid var(--border)' }}>
               <p className="text-xs" style={{ color: 'var(--muted2)' }}>Want roster context, league-specific grades, and AI negotiation tools?</p>
               <Link
@@ -422,6 +439,16 @@ export default function InstantTradeAnalyzer() {
           </p>
         </div>
       )}
+
+      <ImproveTradeModal
+        isOpen={showImproveModal}
+        onClose={() => setShowImproveModal(false)}
+        originalTradeText={tradeText}
+        leagueSize={leagueSize}
+        scoring={scoring}
+        isDynasty={isDynasty}
+        currentResult={result}
+      />
     </div>
   )
 }
