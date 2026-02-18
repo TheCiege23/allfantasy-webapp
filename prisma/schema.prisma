@@ -1993,6 +1993,10 @@ model AppUser {
   accounts AuthAccount[]
   sessions AuthSession[]
 
+  bracketLeaguesOwned  BracketLeague[]       @relation("BracketLeagueOwner")
+  bracketMemberships   BracketLeagueMember[]
+  bracketEntries       BracketEntry[]
+
   @@index([email])
   @@map("app_users")
 }
@@ -2035,4 +2039,110 @@ model AuthVerificationToken {
 
   @@unique([identifier, token])
   @@map("auth_verification_tokens")
+}
+
+model BracketTournament {
+  id        String   @id @default(uuid())
+  name      String
+  season    Int
+  sport     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  nodes     BracketNode[]
+  leagues   BracketLeague[]
+}
+
+model BracketNode {
+  id            String   @id @default(uuid())
+  tournamentId  String
+  round         Int
+  region        String?
+  slot          String
+
+  seedHome      Int?
+  seedAway      Int?
+
+  homeTeamName  String?
+  awayTeamName  String?
+
+  sportsGameId  String?  @unique
+
+  nextNodeId    String?
+  nextNodeSide  String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tournament    BracketTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  picks         BracketPick[]
+
+  @@unique([tournamentId, slot])
+  @@index([tournamentId, round, region])
+}
+
+model BracketLeague {
+  id           String   @id @default(uuid())
+  tournamentId String
+  ownerId      String
+  name         String
+  joinCode     String   @unique
+  isPrivate    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tournament   BracketTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  owner        AppUser @relation("BracketLeagueOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members      BracketLeagueMember[]
+  entries      BracketEntry[]
+
+  @@index([tournamentId])
+  @@index([ownerId])
+}
+
+model BracketLeagueMember {
+  id        String   @id @default(uuid())
+  leagueId  String
+  userId    String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+
+  league    BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user      AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@index([userId])
+}
+
+model BracketEntry {
+  id           String   @id @default(uuid())
+  leagueId     String
+  userId       String
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  league       BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user         AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  picks        BracketPick[]
+
+  @@index([leagueId])
+  @@index([userId])
+}
+
+model BracketPick {
+  id             String    @id @default(uuid())
+  entryId        String
+  nodeId         String
+  pickedTeamName String?
+  lockedAt       DateTime?
+  points         Int       @default(0)
+  isCorrect      Boolean?
+
+  entry     BracketEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  node      BracketNode  @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, nodeId])
+  @@index([nodeId])
 }
