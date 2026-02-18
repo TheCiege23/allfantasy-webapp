@@ -164,6 +164,15 @@ export default function ImproveTradeModal({
     }
   }, [isOpen])
 
+  const cancelRequest = () => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setLoading(false)
+    setStreaming(false)
+    setError('Generation cancelled.')
+    toast.info('Generation cancelled')
+  }
+
   const copySuggestion = (text: string) => {
     navigator.clipboard.writeText(text)
     toast.success('Suggestion copied — paste into your league chat!')
@@ -244,11 +253,20 @@ export default function ImproveTradeModal({
 
               {loading && streaming ? (
                 <div className="space-y-6 py-4">
-                  <div className="flex items-center justify-center gap-3 py-4">
-                    <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
-                    <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
-                      Grok is crafting counter-offers...
-                    </span>
+                  <div className="flex items-center justify-between py-4">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
+                        Grok is crafting counter-offers...
+                      </span>
+                    </div>
+                    <button
+                      onClick={cancelRequest}
+                      className="px-4 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.95]"
+                      style={{ background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--accent-red, #ef4444)' }}
+                    >
+                      Cancel
+                    </button>
                   </div>
                   {streamText && (
                     <motion.div
