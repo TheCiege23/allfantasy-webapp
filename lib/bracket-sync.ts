@@ -1,4 +1,5 @@
 import { prisma } from "./prisma"
+import { scoreBracket, type BracketScoringResult } from "./bracket-scoring"
 
 const NCAAM_LEAGUE_ID = "4607"
 const SPORT_KEY = "ncaam"
@@ -36,6 +37,7 @@ export type BracketSyncResult = {
   eventsUpserted: number
   nodesMatched: number
   nodesSkipped: number
+  scoring: BracketScoringResult | null
   errors: string[]
 }
 
@@ -301,6 +303,7 @@ export async function runBracketSync(season: number): Promise<BracketSyncResult>
       eventsUpserted: upserted,
       nodesMatched: 0,
       nodesSkipped: 0,
+      scoring: null,
       errors: [`No bracket tournament found for ${SPORT_KEY} ${season}. Run bracket init first.`],
     }
   }
@@ -308,12 +311,16 @@ export async function runBracketSync(season: number): Promise<BracketSyncResult>
   const matchResult = await matchEventsToNodes(tournament.id)
   errors.push(...matchResult.errors)
 
+  const scoringResult = await scoreBracket(tournament.id)
+  errors.push(...scoringResult.errors)
+
   return {
     eventsFetched: events.length,
     tournamentEvents: events.length,
     eventsUpserted: upserted,
     nodesMatched: matchResult.matched,
     nodesSkipped: matchResult.skipped,
+    scoring: scoringResult,
     errors,
   }
 }
