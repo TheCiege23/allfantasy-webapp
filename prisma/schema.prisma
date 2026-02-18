@@ -1996,6 +1996,7 @@ model AppUser {
   bracketLeaguesOwned  BracketLeague[]       @relation("BracketLeagueOwner")
   bracketMemberships   BracketLeagueMember[]
   bracketEntries       BracketEntry[]
+  profile              UserProfile?
 
   @@index([email])
   @@map("app_users")
@@ -2042,12 +2043,13 @@ model AuthVerificationToken {
 }
 
 model BracketTournament {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   name      String
   season    Int
   sport     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  lockAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   nodes     BracketNode[]
   leagues   BracketLeague[]
@@ -2147,4 +2149,27 @@ model BracketPick {
 
   @@unique([entryId, nodeId])
   @@index([nodeId])
+}
+
+model UserProfile {
+  userId          String    @id
+  displayName     String?
+  phone           String?
+  phoneVerifiedAt DateTime?
+  profileComplete Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model PendingSignup {
+  email       String   @id
+  displayName String?
+  phone       String?
+  createdAt   DateTime @default(now())
+
+  @@map("pending_signups")
 }

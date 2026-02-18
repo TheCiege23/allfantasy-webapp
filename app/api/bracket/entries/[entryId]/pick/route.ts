@@ -30,10 +30,27 @@ export async function POST(
 
     const entry = await prisma.bracketEntry.findUnique({
       where: { id: params.entryId },
-      select: { id: true, userId: true, leagueId: true },
+      select: {
+        id: true,
+        userId: true,
+        leagueId: true,
+        league: {
+          select: {
+            tournament: { select: { lockAt: true } },
+          },
+        },
+      },
     })
     if (!entry || entry.userId !== session.user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    }
+
+    const tournamentLockAt = (entry as any).league?.tournament?.lockAt
+    if (tournamentLockAt && new Date(tournamentLockAt) <= new Date()) {
+      return NextResponse.json(
+        { error: "Picks are locked for the tournament" },
+        { status: 409 }
+      )
     }
 
     const node = await prisma.bracketNode.findUnique({
@@ -74,7 +91,7 @@ export async function POST(
       where: {
         entryId_nodeId: { entryId: entry.id, nodeId },
       },
-      update: { pickedTeamName, lockedAt: null },
+      update: { pickedTeamName },
       create: { entryId: entry.id, nodeId, pickedTeamName },
     })
 

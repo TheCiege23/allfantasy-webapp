@@ -30,12 +30,20 @@ export default async function BracketsHomePage() {
           </div>
 
           {!user?.id ? (
-            <Link
-              className="rounded-xl bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-200 transition-colors"
-              href="/login?callbackUrl=/brackets"
-            >
-              Sign in
-            </Link>
+            <div className="flex gap-2">
+              <Link
+                className="rounded-xl bg-white text-black px-4 py-2 text-sm font-medium hover:bg-gray-200 transition-colors"
+                href="/signup"
+              >
+                Sign up
+              </Link>
+              <Link
+                className="rounded-xl border border-gray-600 px-4 py-2 text-sm font-medium hover:bg-gray-800 transition-colors"
+                href="/login?callbackUrl=/brackets"
+              >
+                Sign in
+              </Link>
+            </div>
           ) : (
             <div className="flex gap-2">
               <Link
@@ -89,8 +97,13 @@ export default async function BracketsHomePage() {
             ))}
 
             {tournaments.length === 0 && (
-              <div className="text-sm text-gray-500">
-                No tournaments available yet.
+              <div className="col-span-full rounded-xl border border-dashed border-gray-700 p-6 text-center space-y-2">
+                <div className="text-sm text-gray-400">
+                  No tournaments available yet.
+                </div>
+                <p className="text-xs text-gray-500">
+                  Tournaments are set up by admins before each season. Check back when March Madness brackets are live!
+                </p>
               </div>
             )}
           </div>
