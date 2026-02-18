@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Volume2, VolumeX, Image as ImageIcon } from 'lucide-react';
+import { Send, Volume2, VolumeX, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
+
+const HEART_EMOJI = '\u{1F496}';
+const LOVE_EMOJI = '\u{1F495}';
 
 export default function ChimmyChat() {
   const [messages, setMessages] = useState<any[]>([
-    { role: 'assistant', content: "Hi! I'm Chimmy \u{1F496} Your personal fantasy AI assistant. Upload a trade screenshot or ask me anything!" }
+    { role: 'assistant', content: `Hi! I'm Chimmy ${HEART_EMOJI} Your personal fantasy AI assistant. Upload a trade screenshot or ask me anything!` }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -21,10 +24,9 @@ export default function ChimmyChat() {
   }, [messages]);
 
   const speak = (text: string) => {
-    if (!voiceEnabled || !('speechSynthesis' in window)) return;
+    if (!voiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
-
     utterance.rate = 1.05;
     utterance.pitch = 1.12;
     utterance.volume = 0.92;
@@ -54,7 +56,7 @@ export default function ChimmyChat() {
     if (!input.trim() && !imageFile) return;
 
     const userMessage = {
-      role: 'user',
+      role: 'user' as const,
       content: input || 'Analyze this trade screenshot',
       image: imagePreview || null,
     };
@@ -74,9 +76,9 @@ export default function ChimmyChat() {
       });
 
       const data = await res.json();
-      const reply = data.response || "Sorry, I couldn't read that clearly. Can you try again? \u{1F495}";
+      const reply = data.response || `Sorry, I couldn't read that clearly. Can you try again? ${LOVE_EMOJI}`;
 
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      setMessages(prev => [...prev, { role: 'assistant' as const, content: reply }]);
 
       if (voiceEnabled) {
         speak(reply);
@@ -95,11 +97,11 @@ export default function ChimmyChat() {
       <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900">
         <div className="flex items-center gap-4">
           <div className="w-11 h-11 bg-gradient-to-br from-pink-500 to-purple-500 rounded-2xl flex items-center justify-center text-2xl">
-            {'\u{1F496}'}
+            {HEART_EMOJI}
           </div>
           <div>
             <div className="font-semibold">Chimmy</div>
-            <div className="text-xs text-emerald-400">Always here for you \u{1F495}</div>
+            <div className="text-xs text-emerald-400">{`Always here for you ${LOVE_EMOJI}`}</div>
           </div>
         </div>
 
@@ -125,8 +127,8 @@ export default function ChimmyChat() {
         {isTyping && (
           <div className="flex items-center gap-2 text-slate-400 pl-4">
             <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" />
-            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-150" />
-            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-300" />
+            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
           </div>
         )}
         <div ref={messagesEndRef} />

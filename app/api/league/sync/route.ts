@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       try {
         if (userEmail) {
           const { client, fromEmail } = await getResendClient();
-          const leagueName = result.name || result.leagueName || normalizedPlatform.toUpperCase();
+          const leagueName = (result as any).name || (result as any).leagueName || normalizedPlatform.toUpperCase();
           await client.emails.send({
             from: fromEmail || 'AllFantasy.ai <noreply@allfantasy.ai>',
             to: userEmail,
@@ -72,13 +72,13 @@ export async function POST(req: NextRequest) {
                 <h3 style="color: #4ade80;">League Sync Successful</h3>
                 <p>Your ${normalizedPlatform.toUpperCase()} league <strong>"${leagueName}"</strong> was synced at ${new Date().toLocaleString()}.</p>
                 <ul style="color: #94a3b8;">
-                  <li>League size: ${result.leagueSize || result.totalTeams || '?'} teams</li>
-                  <li>Format: ${result.isDynasty ? 'Dynasty' : 'Redraft'}</li>
-                  <li>Scoring: ${(result.scoring || result.scoringType || 'STD').toUpperCase()}</li>
+                  <li>League size: ${(result as any).leagueSize || (result as any).totalTeams || '?'} teams</li>
+                  <li>Format: ${(result as any).isDynasty ? 'Dynasty' : 'Redraft'}</li>
+                  <li>Scoring: ${((result as any).scoring || (result as any).scoringType || 'STD').toUpperCase()}</li>
                 </ul>
                 <p>Your AI tools (Waiver AI, Trade Analyzer, Roster Report) will now use the latest data.</p>
                 <p style="color: #64748b; font-size: 0.85em; margin-top: 24px;">
-                  Sync ID: ${result.leagueId || result.id || 'N/A'}<br>
+                  Sync ID: ${(result as any).leagueId || (result as any).id || 'N/A'}<br>
                   If this wasn't you, contact support.
                 </p>
               </div>

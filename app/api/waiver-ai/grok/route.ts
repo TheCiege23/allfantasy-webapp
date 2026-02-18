@@ -82,9 +82,11 @@ async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Pro
     }
 
     for (const toolCall of msg.tool_calls) {
-      const fnName = toolCall.function.name;
+      const fn = (toolCall as any).function;
+      if (!fn) continue;
+      const fnName = fn.name;
       let args: any = {};
-      try { args = JSON.parse(toolCall.function.arguments || '{}'); } catch {}
+      try { args = JSON.parse(fn.arguments || '{}'); } catch {}
 
       let result: any;
 
