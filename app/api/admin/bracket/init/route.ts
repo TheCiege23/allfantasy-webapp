@@ -97,8 +97,8 @@ export const POST = withApiUsage({
       return NextResponse.json({ error: "season (number) is required — pass in body or ?season=YYYY" }, { status: 400 })
     }
 
-    const existing = await prisma.bracketTournament.findFirst({
-      where: { sport: "ncaam", season },
+    const existing = await prisma.bracketTournament.findUnique({
+      where: { sport_season: { sport: "ncaam", season } },
     })
     if (existing) {
       return NextResponse.json(

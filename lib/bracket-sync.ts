@@ -292,8 +292,8 @@ export async function runBracketSync(season: number): Promise<BracketSyncResult>
 
   const upserted = await upsertEventsToSportsGame(events)
 
-  const tournament = await prisma.bracketTournament.findFirst({
-    where: { sport: SPORT_KEY, season },
+  const tournament = await prisma.bracketTournament.findUnique({
+    where: { sport_season: { sport: SPORT_KEY, season } },
   })
 
   if (!tournament) {

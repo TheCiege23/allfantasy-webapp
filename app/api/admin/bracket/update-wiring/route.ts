@@ -26,10 +26,10 @@ export const POST = withApiUsage({
     }
 
     const body = await request.json()
-    const { tournamentId, updates } = body as { tournamentId?: string; updates?: WiringUpdate[] }
+    const { tournamentId, season, updates } = body as { tournamentId?: string; season?: number; updates?: WiringUpdate[] }
 
-    if (!tournamentId) {
-      return NextResponse.json({ error: "tournamentId is required" }, { status: 400 })
+    if (!tournamentId && !season) {
+      return NextResponse.json({ error: "tournamentId or season is required" }, { status: 400 })
     }
 
     if (!updates || !Array.isArray(updates) || updates.length === 0) {
@@ -46,13 +46,15 @@ export const POST = withApiUsage({
       }
     }
 
-    const tournament = await prisma.bracketTournament.findUnique({ where: { id: tournamentId } })
+    const tournament = tournamentId
+      ? await prisma.bracketTournament.findUnique({ where: { id: tournamentId } })
+      : await prisma.bracketTournament.findUnique({ where: { sport_season: { sport: "ncaam", season: season! } } })
     if (!tournament) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 })
     }
 
     const allNodes = await prisma.bracketNode.findMany({
-      where: { tournamentId },
+      where: { tournamentId: tournament.id },
       select: { id: true, slot: true },
     })
     const slotToId = new Map(allNodes.map((n: { id: string; slot: string }) => [n.slot, n.id]))

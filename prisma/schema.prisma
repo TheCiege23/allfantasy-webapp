@@ -2051,6 +2051,8 @@ model BracketTournament {
 
   nodes     BracketNode[]
   leagues   BracketLeague[]
+
+  @@unique([sport, season])
 }
 
 model BracketNode {
