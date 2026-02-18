@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { ModeToggle } from '@/components/theme/ModeToggle'
+import { BracketsNavLinks } from '@/components/bracket/BracketsNavLinks'
 import { gtagEvent } from '@/lib/gtag'
 
 const NewsCrawl = dynamic(() => import('@/components/NewsCrawl'), {
@@ -248,8 +249,9 @@ function HomeContent() {
 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-8 lg:px-12 py-6 sm:py-16 md:py-20">
 
-        {/* Top bar with theme toggle */}
-        <div className="flex justify-end mb-4 sm:mb-6">
+        {/* Top bar with nav + theme toggle */}
+        <div className="flex items-center justify-between mb-4 sm:mb-6">
+          <BracketsNavLinks />
           <ModeToggle className="rounded-xl px-3 py-2 text-sm font-semibold active:scale-[0.98] transition" />
         </div>
 

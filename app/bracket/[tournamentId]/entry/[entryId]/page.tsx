@@ -1,58 +1,43 @@
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { BracketView } from "@/components/bracket/BracketView"
+import { BracketProView } from "@/components/bracket/BracketProView"
+import { Leaderboard } from "@/components/bracket/Leaderboard"
+import Link from "next/link"
 
 export default async function EntryBracketPage({
   params,
 }: {
   params: { tournamentId: string; entryId: string }
 }) {
-  const session = await getServerSession(authOptions as any)
+  const session = (await getServerSession(authOptions as any)) as {
+    user?: { id?: string }
+  } | null
   if (!session?.user?.id)
-    return (
-      <div className="p-6 text-gray-600 dark:text-gray-400">
-        Please log in to view your bracket.
-      </div>
-    )
+    return <div className="p-6 text-white/60">Please log in to view your bracket.</div>
 
   const entry = await prisma.bracketEntry.findUnique({
     where: { id: params.entryId },
-    select: { id: true, userId: true, leagueId: true, name: true },
+    select: { id: true, userId: true, leagueId: true, name: true, league: { select: { tournamentId: true } } },
   })
 
   if (!entry || entry.userId !== session.user.id)
-    return (
-      <div className="p-6 text-gray-600 dark:text-gray-400">
-        Bracket entry not found.
-      </div>
-    )
+    return <div className="p-6 text-white/60">Bracket entry not found.</div>
+  if (entry.league.tournamentId !== params.tournamentId)
+    return <div className="p-6 text-white/60">Wrong tournament.</div>
 
   const nodes = await prisma.bracketNode.findMany({
     where: { tournamentId: params.tournamentId },
     orderBy: [{ round: "asc" }, { region: "asc" }, { slot: "asc" }],
   })
 
-  const gameIds = nodes
-    .map((n) => n.sportsGameId)
-    .filter(Boolean) as string[]
-
-  const games =
-    gameIds.length > 0
-      ? await prisma.sportsGame.findMany({
-          where: { id: { in: gameIds } },
-          select: {
-            id: true,
-            homeTeam: true,
-            awayTeam: true,
-            homeScore: true,
-            awayScore: true,
-            status: true,
-            startTime: true,
-          },
-        })
-      : []
-
+  const gameIds = nodes.map((n) => n.sportsGameId).filter(Boolean) as string[]
+  const games = gameIds.length > 0
+    ? await prisma.sportsGame.findMany({
+        where: { id: { in: gameIds } },
+        select: { id: true, homeTeam: true, awayTeam: true, homeScore: true, awayScore: true, status: true, startTime: true },
+      })
+    : []
   const gameById = Object.fromEntries(games.map((g) => [g.id, g]))
 
   const picks = await prisma.bracketPick.findMany({
@@ -69,23 +54,38 @@ export default async function EntryBracketPage({
   }))
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold dark:text-gray-100">
-          {entry.name || "My Bracket"}
-        </h1>
-        <a
-          href={`/api/bracket/leagues/${entry.leagueId}/standings`}
-          className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+      <div className="p-6 max-w-7xl mx-auto space-y-6">
+        <Link
+          href={`/brackets/leagues/${entry.leagueId}`}
+          className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition"
         >
-          View Standings
-        </a>
+          &larr; Back to League
+        </Link>
+
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">{entry.name || "My Bracket"}</h1>
+            <div className="text-sm text-gray-300 mt-1">Live scoring + auto-advance</div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+          <div>
+            <BracketProView
+              tournamentId={params.tournamentId}
+              leagueId={entry.leagueId}
+              entryId={entry.id}
+              nodes={nodesWithGame as any}
+              initialPicks={pickMap}
+            />
+          </div>
+
+          <div className="space-y-6">
+            <Leaderboard tournamentId={params.tournamentId} leagueId={entry.leagueId} />
+          </div>
+        </div>
       </div>
-      <BracketView
-        nodes={nodesWithGame as any}
-        entryId={entry.id}
-        picks={pickMap}
-      />
     </div>
   )
 }
