@@ -1,0 +1,55 @@
+{
+  "name": "NCAA Men's Tournament",
+  "sport": "ncaam",
+  "regions": [
+    { "name": "East", "code": "EAST" },
+    { "name": "West", "code": "WEST" },
+    { "name": "South", "code": "SOUTH" },
+    { "name": "Midwest", "code": "MW" }
+  ],
+  "rounds": [
+    { "round": 0, "label": "First Four" },
+    { "round": 1, "label": "Round of 64" },
+    { "round": 2, "label": "Round of 32" },
+    { "round": 3, "label": "Sweet 16" },
+    { "round": 4, "label": "Elite 8" },
+    { "round": 5, "label": "Final Four" },
+    { "round": 6, "label": "Championship" }
+  ],
+  "firstFour": [
+    { "slot": "FF-PLAY-1", "seedHome": 16, "seedAway": 16, "targetSlot": "EAST-R64-1", "targetSide": "AWAY", "regionCode": "EAST" },
+    { "slot": "FF-PLAY-2", "seedHome": 16, "seedAway": 16, "targetSlot": "WEST-R64-1", "targetSide": "AWAY", "regionCode": "WEST" },
+    { "slot": "FF-PLAY-3", "seedHome": 11, "seedAway": 11, "targetSlot": "SOUTH-R64-5", "targetSide": "AWAY", "regionCode": "SOUTH" },
+    { "slot": "FF-PLAY-4", "seedHome": 11, "seedAway": 11, "targetSlot": "MW-R64-5", "targetSide": "AWAY", "regionCode": "MW" }
+  ],
+  "bracketTemplate": {
+    "roundOf64": [
+      { "matchup": 1, "seedHome": 1,  "seedAway": 16 },
+      { "matchup": 2, "seedHome": 8,  "seedAway": 9  },
+      { "matchup": 3, "seedHome": 5,  "seedAway": 12 },
+      { "matchup": 4, "seedHome": 4,  "seedAway": 13 },
+      { "matchup": 5, "seedHome": 6,  "seedAway": 11 },
+      { "matchup": 6, "seedHome": 3,  "seedAway": 14 },
+      { "matchup": 7, "seedHome": 7,  "seedAway": 10 },
+      { "matchup": 8, "seedHome": 2,  "seedAway": 15 }
+    ],
+    "roundOf32": [
+      { "matchup": 1, "feedsFrom": [1, 2] },
+      { "matchup": 2, "feedsFrom": [3, 4] },
+      { "matchup": 3, "feedsFrom": [5, 6] },
+      { "matchup": 4, "feedsFrom": [7, 8] }
+    ],
+    "sweet16": [
+      { "matchup": 1, "feedsFrom": [1, 2] },
+      { "matchup": 2, "feedsFrom": [3, 4] }
+    ],
+    "elite8": [
+      { "matchup": 1, "feedsFrom": [1, 2] }
+    ]
+  },
+  "finalFour": {
+    "semi1": { "slot": "FF-SEMI-1", "homeRegionCode": "EAST", "awayRegionCode": "WEST" },
+    "semi2": { "slot": "FF-SEMI-2", "homeRegionCode": "SOUTH", "awayRegionCode": "MW" }
+  },
+  "championship": { "slot": "CHAMP" }
+}
