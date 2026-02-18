@@ -12,7 +12,7 @@ function makeToken(bytes = 32) {
   return crypto.randomBytes(bytes).toString("base64url")
 }
 
-export async function POST(req: Request) {
+export async function POST() {
   const { getSessionAndProfile } = await import("@/lib/auth-guard")
   const { userId, email } = await getSessionAndProfile()
 
@@ -32,6 +32,16 @@ export async function POST(req: Request) {
 
   if (user?.emailVerified) {
     return NextResponse.json({ ok: true, alreadyVerified: true })
+  }
+
+  const recentToken = await (prisma as any).emailVerifyToken.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  }).catch(() => null)
+
+  if (recentToken?.createdAt && Date.now() - new Date(recentToken.createdAt).getTime() < 60_000) {
+    return NextResponse.json({ error: "RATE_LIMITED", message: "Please wait 60 seconds before requesting another email." }, { status: 429 })
   }
 
   const rawToken = makeToken(32)

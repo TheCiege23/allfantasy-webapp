@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { getBaseUrl } from "@/lib/get-base-url"
 import crypto from "crypto"
 
 export const runtime = "nodejs"
@@ -9,19 +8,16 @@ function sha256Hex(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex")
 }
 
-function redirectTo(path: string) {
-  const base = getBaseUrl()
-  if (base) return NextResponse.redirect(`${base}${path}`)
-  return NextResponse.redirect(path)
+function redirectTo(req: Request, path: string) {
+  const origin = new URL(req.url).origin
+  return NextResponse.redirect(new URL(path, origin))
 }
 
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const token = url.searchParams.get("token")
 
-  if (!token) {
-    return redirectTo("/verify?error=INVALID_LINK")
-  }
+  if (!token) return redirectTo(req, "/verify?error=INVALID_LINK")
 
   const tokenHash = sha256Hex(token)
 
@@ -29,28 +25,28 @@ export async function GET(req: Request) {
     where: { tokenHash },
   }).catch(() => null)
 
-  if (!row) {
-    return redirectTo("/verify?error=INVALID_LINK")
-  }
+  if (!row) return redirectTo(req, "/verify?error=INVALID_LINK")
 
   if (row.expiresAt && new Date(row.expiresAt).getTime() < Date.now()) {
     await (prisma as any).emailVerifyToken.delete({ where: { tokenHash } }).catch(() => {})
-    return redirectTo("/verify?error=EXPIRED_LINK")
+    return redirectTo(req, "/verify?error=EXPIRED_LINK")
   }
+
+  const now = new Date()
 
   await (prisma as any).appUser.update({
     where: { id: row.userId },
-    data: { emailVerified: new Date() },
+    data: { emailVerified: now },
   }).catch(() => null)
 
   await (prisma as any).userProfile.updateMany({
     where: { userId: row.userId },
-    data: { emailVerifiedAt: new Date() },
+    data: { emailVerifiedAt: now },
   }).catch(() => {})
 
   await (prisma as any).emailVerifyToken.delete({
     where: { tokenHash },
   }).catch(() => {})
 
-  return redirectTo("/verify?verified=email")
+  return redirectTo(req, "/verify?verified=email")
 }

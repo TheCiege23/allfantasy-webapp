@@ -12,7 +12,7 @@ function VerifyContent() {
   const error = searchParams?.get("error")
   const verified = searchParams?.get("verified")
   const [sending, setSending] = useState(false)
-  const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | null>(null)
+  const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | "rate_limited" | null>(null)
   const [countdown, setCountdown] = useState(3)
 
   async function handleSendVerification() {
@@ -23,6 +23,8 @@ function VerifyContent() {
       const data = await res.json()
       if (res.status === 401) {
         setSendResult("login_required")
+      } else if (res.status === 429) {
+        setSendResult("rate_limited")
       } else if (res.ok && data.alreadyVerified) {
         setSendResult("already")
       } else if (res.ok) {
@@ -112,6 +114,11 @@ function VerifyContent() {
         {sendResult === "login_required" && (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
             Please <a href="/login" className="underline font-medium">sign in</a> first, then request a new verification email.
+          </div>
+        )}
+        {sendResult === "rate_limited" && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-300">
+            Please wait 60 seconds before requesting another verification email.
           </div>
         )}
         {sendResult === "error" && (
