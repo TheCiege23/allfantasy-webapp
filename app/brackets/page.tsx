@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
-type SessionUser = { id?: string; email?: string | null }
+type SessionUser = { id?: string; email?: string | null; name?: string | null }
 
 export default async function BracketsHomePage() {
   const session = (await getServerSession(authOptions as any)) as {
@@ -111,7 +111,7 @@ export default async function BracketsHomePage() {
 
         {user && (
           <div className="text-xs text-gray-500">
-            Signed in as {user.email}
+            Signed in as {user.name || "User"}
           </div>
         )}
       </div>
