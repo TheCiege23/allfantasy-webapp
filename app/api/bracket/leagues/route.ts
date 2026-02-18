@@ -1,8 +1,59 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { requireVerifiedUser } from "@/lib/auth-guard"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
 
 export const runtime = "nodejs"
+
+export async function GET(req: NextRequest) {
+  const session = (await getServerSession(authOptions as any)) as {
+    user?: { id?: string }
+  } | null
+
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 })
+  }
+
+  const tournamentId = req.nextUrl.searchParams.get("tournamentId")
+  if (!tournamentId) {
+    return NextResponse.json({ error: "tournamentId is required" }, { status: 400 })
+  }
+
+  const memberships = await (prisma as any).bracketLeagueMember.findMany({
+    where: { userId: session.user.id },
+    select: { leagueId: true },
+  })
+
+  const leagueIds = memberships.map((m: any) => m.leagueId)
+
+  if (leagueIds.length === 0) {
+    return NextResponse.json({ leagues: [] })
+  }
+
+  const leagues = await (prisma as any).bracketLeague.findMany({
+    where: {
+      id: { in: leagueIds },
+      tournamentId,
+    },
+    select: {
+      id: true,
+      name: true,
+      joinCode: true,
+      _count: { select: { members: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  })
+
+  return NextResponse.json({
+    leagues: leagues.map((lg: any) => ({
+      id: lg.id,
+      name: lg.name,
+      joinCode: lg.joinCode,
+      memberCount: lg._count.members,
+    })),
+  })
+}
 
 function makeJoinCode(len = 8) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
