@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Sparkles, Copy, AlertCircle, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -32,16 +32,25 @@ export default function ImproveTradeModal({
   currentResult,
 }: ImproveTradeModalProps) {
   const [loading, setLoading] = useState(false)
+  const [streaming, setStreaming] = useState(false)
+  const [streamText, setStreamText] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [error, setError] = useState('')
+  const abortRef = useRef<AbortController | null>(null)
 
-  const fetchSuggestions = async () => {
+  const fetchSuggestions = useCallback(async () => {
     if (!originalTradeText || originalTradeText.trim().length < 5) {
       setError('Trade text is too short to improve.')
       return
     }
 
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setLoading(true)
+    setStreaming(true)
+    setStreamText('')
     setError('')
     setSuggestions([])
 
@@ -57,32 +66,101 @@ export default function ImproveTradeModal({
           currentVerdict: currentResult?.verdict || 'unknown',
           currentFairness: currentResult?.values?.percentDiff || 0,
         }),
+        signal: controller.signal,
       })
 
-      let data: any
-      try {
-        data = await res.json()
-      } catch {
-        throw new Error('Unexpected server response. Please try again.')
+      if (!res.ok) {
+        let data: any
+        try { data = await res.json() } catch {}
+        throw new Error(data?.error || 'Failed to generate suggestions')
       }
 
-      if (!res.ok) throw new Error(data.error || 'Failed to generate suggestions')
+      const contentType = res.headers.get('content-type') || ''
 
-      setSuggestions(data.suggestions || [])
-      if (data.suggestions?.length) toast.success('AI suggestions ready!')
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let receivedSuggestions = false
+        let hadError = false
+        let streamDone = false
+
+        while (!streamDone) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const payload = line.slice(6).trim()
+            if (payload === '[DONE]') {
+              streamDone = true
+              break
+            }
+
+            try {
+              const event = JSON.parse(payload)
+
+              if (event.error) {
+                setError(event.error)
+                hadError = true
+                streamDone = true
+                break
+              }
+
+              if (event.accumulated) {
+                setStreamText(event.accumulated)
+              }
+
+              if (event.done && event.suggestions) {
+                setSuggestions(event.suggestions)
+                receivedSuggestions = true
+                toast.success('AI suggestions ready!')
+                streamDone = true
+                break
+              }
+            } catch {
+              setError('Failed to read AI response. Please try again.')
+              hadError = true
+              streamDone = true
+              break
+            }
+          }
+        }
+
+        setStreaming(false)
+        setLoading(false)
+        if (!receivedSuggestions && !hadError) {
+          setError('No suggestions received. Please try again.')
+        }
+      } else {
+        const data = await res.json()
+        if (data.error) throw new Error(data.error)
+        setSuggestions(data.suggestions || [])
+        if (data.suggestions?.length) toast.success('AI suggestions ready!')
+        setStreaming(false)
+        setLoading(false)
+      }
     } catch (err: any) {
+      if (err.name === 'AbortError') return
       setError(err.message || 'Could not generate improvements right now.')
       toast.error('Suggestion generation failed')
-    } finally {
+      setStreaming(false)
       setLoading(false)
     }
-  }
+  }, [originalTradeText, leagueSize, scoring, isDynasty, currentResult])
 
   useEffect(() => {
     if (isOpen) {
       setSuggestions([])
+      setStreamText('')
       setError('')
       fetchSuggestions()
+    } else {
+      abortRef.current?.abort()
     }
   }, [isOpen])
 
@@ -164,15 +242,28 @@ export default function ImproveTradeModal({
                 </div>
               )}
 
-              {loading ? (
+              {loading && streaming ? (
                 <div className="space-y-6 py-4">
-                  <div className="flex items-center justify-center gap-3 py-8">
+                  <div className="flex items-center justify-center gap-3 py-4">
                     <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
                     <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
-                      AI is crafting better counter-offers...
+                      Grok is crafting counter-offers...
                     </span>
                   </div>
-                  {[1, 2, 3].map((i) => (
+                  {streamText && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="p-4 rounded-2xl font-mono text-xs overflow-hidden"
+                      style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}
+                    >
+                      <div className="max-h-32 overflow-y-auto whitespace-pre-wrap break-all">
+                        {streamText}
+                        <span className="animate-pulse">▊</span>
+                      </div>
+                    </motion.div>
+                  )}
+                  {!streamText && [1, 2, 3].map((i) => (
                     <div key={i} className="space-y-3">
                       <div className="h-5 w-1/2 rounded animate-pulse" style={{ background: 'var(--subtle-bg)' }} />
                       <div className="h-4 w-full rounded animate-pulse" style={{ background: 'var(--subtle-bg)' }} />
@@ -226,7 +317,7 @@ export default function ImproveTradeModal({
                     </motion.div>
                   ))}
                 </div>
-              ) : !error ? (
+              ) : !error && !loading ? (
                 <div className="text-center py-12" style={{ color: 'var(--muted2)' }}>
                   No suggestions available yet — try again later or refine your trade text.
                 </div>

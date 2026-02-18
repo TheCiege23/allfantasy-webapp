@@ -39,40 +39,8 @@ Return ONLY valid JSON — no extra text, no markdown, no explanations outside t
   ]
 }`
 
-export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool: 'ImproveTradeAI' })(async (req: Request) => {
-  try {
-    const ip = getClientIp(req as any) || 'unknown'
-    const rl = rateLimit(`improve-trade:${ip}`, 5, 60_000)
-    if (!rl.success) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please wait a minute and try again.' },
-        { status: 429 }
-      )
-    }
-
-    let body: any
-    try {
-      body = await req.json()
-    } catch {
-      return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
-    }
-
-    const { tradeText, currentVerdict, currentFairness } = body
-    const leagueSize = typeof body.leagueSize === 'number' && [8, 10, 12, 14, 16, 32].includes(body.leagueSize) ? body.leagueSize : 12
-    const scoring = ['ppr', 'half', 'standard', 'superflex'].includes(body.scoring) ? body.scoring : 'ppr'
-    const isDynasty = typeof body.isDynasty === 'boolean' ? body.isDynasty : true
-
-    if (!tradeText || typeof tradeText !== 'string' || tradeText.trim().length < 5) {
-      return NextResponse.json({ error: 'Trade text is required.' }, { status: 400 })
-    }
-
-    if (tradeText.length > 1000) {
-      return NextResponse.json({ error: 'Trade text is too long.' }, { status: 400 })
-    }
-
-    const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
-
-    const userPrompt = `You are an elite dynasty fantasy football GM.
+function buildUserPrompt(tradeText: string, leagueSize: number, scoring: string, isDynasty: boolean, currentVerdict: string, percentDiff: number) {
+  return `You are an elite dynasty fantasy football GM.
 
 Examples of great counter suggestions:
 
@@ -100,13 +68,123 @@ Current verdict: ${currentVerdict || 'unknown'}
 Current delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}%
 
 Return only JSON with "suggestions" array of 4 items matching the example format.`
+}
+
+function parseSuggestions(parsed: any) {
+  const rawList = Array.isArray(parsed) ? parsed : parsed?.suggestions
+  if (!rawList || !Array.isArray(rawList) || rawList.length === 0) return null
+  return rawList.slice(0, 4).map((s: any) => ({
+    title: String(s.title || 'Alternative trade'),
+    counter: String(s.counter || s.counterOfferText || ''),
+    impact: String(s.impact || s.estimatedImpact || ''),
+    reasons: Array.isArray(s.reasons || s.whyBetter) ? (s.reasons || s.whyBetter).map(String).slice(0, 4) : [],
+  }))
+}
+
+export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool: 'ImproveTradeAI' })(async (req: Request) => {
+  try {
+    const ip = getClientIp(req as any) || 'unknown'
+    const rl = rateLimit(`improve-trade:${ip}`, 5, 60_000)
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a minute and try again.' },
+        { status: 429 }
+      )
+    }
+
+    let body: any
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
+    }
+
+    const { tradeText, currentVerdict, currentFairness } = body
+    const shouldStream = body.stream !== false
+    const leagueSize = typeof body.leagueSize === 'number' && [8, 10, 12, 14, 16, 32].includes(body.leagueSize) ? body.leagueSize : 12
+    const scoring = ['ppr', 'half', 'standard', 'superflex'].includes(body.scoring) ? body.scoring : 'ppr'
+    const isDynasty = typeof body.isDynasty === 'boolean' ? body.isDynasty : true
+
+    if (!tradeText || typeof tradeText !== 'string' || tradeText.trim().length < 5) {
+      return NextResponse.json({ error: 'Trade text is required.' }, { status: 400 })
+    }
+
+    if (tradeText.length > 1000) {
+      return NextResponse.json({ error: 'Trade text is too long.' }, { status: 400 })
+    }
+
+    const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
+    const userPrompt = buildUserPrompt(tradeText, leagueSize, scoring, isDynasty, currentVerdict || 'unknown', percentDiff)
+
+    const messages: OpenAI.ChatCompletionMessageParam[] = [
+      { role: 'system', content: IMPROVE_TRADE_SYSTEM_PROMPT },
+      { role: 'user', content: userPrompt },
+    ]
+
+    if (shouldStream) {
+      const stream = await xai.chat.completions.create({
+        model: 'grok-4-0709',
+        messages,
+        temperature: 0.6,
+        max_tokens: 1400,
+        response_format: { type: 'json_object' },
+        stream: true,
+      })
+
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            let accumulated = ''
+            for await (const chunk of stream) {
+              const delta = chunk.choices[0]?.delta?.content || ''
+              if (delta) {
+                accumulated += delta
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ delta, accumulated })}\n\n`))
+              }
+            }
+
+            let parsed: any
+            try {
+              parsed = JSON.parse(accumulated)
+            } catch {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Could not parse AI suggestions.' })}\n\n`))
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+              controller.close()
+              return
+            }
+
+            const suggestions = parseSuggestions(parsed)
+            if (!suggestions || suggestions.length === 0) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI returned no suggestions.' })}\n\n`))
+            } else {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ suggestions, done: true })}\n\n`))
+            }
+
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+          } catch (err: any) {
+            console.error('[improve-trade] Stream error:', err?.message || err)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Stream failed. Please try again.' })}\n\n`))
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+            controller.close()
+          }
+        },
+      })
+
+      return new Response(readable, {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      })
+    }
 
     const completion = await xai.chat.completions.create({
       model: 'grok-4-0709',
-      messages: [
-        { role: 'system', content: IMPROVE_TRADE_SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt },
-      ],
+      messages,
       temperature: 0.6,
       max_tokens: 1400,
       response_format: { type: 'json_object' },
@@ -125,21 +203,14 @@ Return only JSON with "suggestions" array of 4 items matching the example format
       )
     }
 
-    const rawList = Array.isArray(parsed) ? parsed : parsed?.suggestions
-    if (!rawList || !Array.isArray(rawList) || rawList.length === 0) {
+    const suggestions = parseSuggestions(parsed)
+    if (!suggestions || suggestions.length === 0) {
       console.error('[improve-trade] No suggestions in response')
       return NextResponse.json(
         { error: 'AI returned no suggestions. Please try again.' },
         { status: 500 }
       )
     }
-
-    const suggestions = rawList.slice(0, 4).map((s: any) => ({
-      title: String(s.title || 'Alternative trade'),
-      counter: String(s.counter || s.counterOfferText || ''),
-      impact: String(s.impact || s.estimatedImpact || ''),
-      reasons: Array.isArray(s.reasons || s.whyBetter) ? (s.reasons || s.whyBetter).map(String).slice(0, 4) : [],
-    }))
 
     return NextResponse.json({ suggestions })
   } catch (err: any) {
