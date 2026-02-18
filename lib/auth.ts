@@ -29,16 +29,6 @@ function customPrismaAdapter() {
       return { id: user.id, email: user.email, emailVerified: user.emailVerified, name: user.displayName, image: user.avatarUrl }
     },
 
-    async getUserByAccount({ provider, providerAccountId }: { provider: string; providerAccountId: string }) {
-      const account = await prisma.authAccount.findUnique({
-        where: { provider_providerAccountId: { provider, providerAccountId } },
-        include: { user: true },
-      })
-      if (!account?.user) return null
-      const u = account.user
-      return { id: u.id, email: u.email, emailVerified: u.emailVerified, name: u.displayName, image: u.avatarUrl }
-    },
-
     async updateUser(data: { id: string; email?: string; emailVerified?: Date | null; name?: string | null; image?: string | null }) {
       const user = await prisma.appUser.update({
         where: { id: data.id },
@@ -54,75 +44,6 @@ function customPrismaAdapter() {
 
     async deleteUser(id: string) {
       await prisma.appUser.delete({ where: { id } })
-    },
-
-    async linkAccount(data: {
-      userId: string
-      type: string
-      provider: string
-      providerAccountId: string
-      refresh_token?: string | null
-      access_token?: string | null
-      expires_at?: number | null
-      token_type?: string | null
-      scope?: string | null
-      id_token?: string | null
-      session_state?: string | null
-    }) {
-      await prisma.authAccount.create({ data })
-      return data as any
-    },
-
-    async unlinkAccount({ provider, providerAccountId }: { provider: string; providerAccountId: string }) {
-      await prisma.authAccount.delete({
-        where: { provider_providerAccountId: { provider, providerAccountId } },
-      })
-    },
-
-    async getSessionAndUser(sessionToken: string) {
-      const session = await prisma.authSession.findUnique({
-        where: { sessionToken },
-        include: { user: true },
-      })
-      if (!session) return null
-      const u = session.user
-      return {
-        session: { sessionToken: session.sessionToken, userId: session.userId, expires: session.expires },
-        user: { id: u.id, email: u.email, emailVerified: u.emailVerified, name: u.displayName, image: u.avatarUrl },
-      }
-    },
-
-    async createSession(data: { sessionToken: string; userId: string; expires: Date }) {
-      const session = await prisma.authSession.create({ data })
-      return session
-    },
-
-    async updateSession(data: { sessionToken: string; expires?: Date }) {
-      const session = await prisma.authSession.update({
-        where: { sessionToken: data.sessionToken },
-        data: { ...(data.expires && { expires: data.expires }) },
-      })
-      return session
-    },
-
-    async deleteSession(sessionToken: string) {
-      await prisma.authSession.delete({ where: { sessionToken } })
-    },
-
-    async createVerificationToken(data: { identifier: string; token: string; expires: Date }) {
-      const vt = await prisma.authVerificationToken.create({ data })
-      return vt
-    },
-
-    async useVerificationToken({ identifier, token }: { identifier: string; token: string }) {
-      try {
-        const vt = await prisma.authVerificationToken.delete({
-          where: { identifier_token: { identifier, token } },
-        })
-        return vt
-      } catch {
-        return null
-      }
     },
   }
 }
@@ -151,6 +72,7 @@ export const authOptions: NextAuthOptions = {
         })
 
         if (!user || !user.passwordHash) return null
+        if (!user.username) return null
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash)
         if (!valid) return null
@@ -158,7 +80,7 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          name: user.displayName,
+          name: user.username,
           image: user.avatarUrl,
         }
       },
@@ -177,6 +99,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.email = user.email
+        token.name = user.name
       }
       return token
     },
@@ -184,6 +107,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user && token) {
         (session.user as any).id = token.id as string
         session.user.email = token.email as string
+        session.user.name = (token.name as string) ?? session.user.name
       }
       return session
     },
