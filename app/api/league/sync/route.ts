@@ -8,9 +8,12 @@ import { getResendClient } from '@/lib/resend-client';
 
 export async function POST(req: NextRequest) {
   let userId: string | undefined;
+  let userEmail: string | undefined;
+  let normalizedPlatform = '';
   try {
     const session = await getServerSession(authOptions);
     userId = (session?.user as any)?.id as string | undefined;
+    userEmail = (session?.user as any)?.email;
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -27,7 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields: platform and platformLeagueId' }, { status: 400 });
     }
 
-    const normalizedPlatform = platform.toLowerCase();
+    normalizedPlatform = platform.toLowerCase();
 
     if (!['sleeper', 'mfl', 'espn', 'yahoo', 'fantrax'].includes(normalizedPlatform)) {
       return NextResponse.json({ error: `Unsupported platform: ${platform}` }, { status: 400 });
@@ -56,7 +59,6 @@ export async function POST(req: NextRequest) {
 
     if (result.success && process.env.NODE_ENV === 'production') {
       try {
-        const userEmail = (session?.user as any)?.email;
         if (userEmail) {
           const { client, fromEmail } = await getResendClient();
           const leagueName = result.name || result.leagueName || normalizedPlatform.toUpperCase();
@@ -103,6 +105,29 @@ export async function POST(req: NextRequest) {
         });
       }
     } catch {}
+
+    if (process.env.NODE_ENV === 'production' && userEmail && normalizedPlatform) {
+      try {
+        const { client, fromEmail } = await getResendClient();
+        await client.emails.send({
+          from: fromEmail || 'AllFantasy.ai <noreply@allfantasy.ai>',
+          to: userEmail,
+          subject: `League Sync Failed: ${normalizedPlatform.toUpperCase()}`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 32px; border-radius: 16px;">
+              <h2 style="background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;">AllFantasy.ai</h2>
+              <h3 style="color: #ef4444;">League Sync Failed</h3>
+              <p>We tried to sync your ${normalizedPlatform.toUpperCase()} league but ran into an issue:</p>
+              <p style="color: #ef4444; background: rgba(239,68,68,0.1); padding: 12px; border-radius: 8px;">${error.message || 'Unknown error'}</p>
+              <p>Please check your league ID and credentials, then try again from the dashboard.</p>
+              <p style="color: #64748b; font-size: 0.85em; margin-top: 24px;">If this keeps happening, contact support.</p>
+            </div>
+          `,
+        });
+      } catch (emailErr) {
+        console.error('[League Sync] Failure email notification failed:', emailErr);
+      }
+    }
 
     return NextResponse.json({ error: error.message || 'Sync failed' }, { status: 500 });
   }
