@@ -11,6 +11,7 @@ type Suggestion = {
   counter: string
   impact: string
   reasons: string[]
+  sensitivityNote?: string | null
 }
 
 type ImproveTradeModalProps = {
@@ -449,6 +450,13 @@ export default function ImproveTradeModal({
                           </li>
                         ))}
                       </ul>
+
+                      {sug.sensitivityNote && (
+                        <div className="mb-3 px-3 py-2 rounded-lg text-xs italic flex items-start gap-2" style={{ background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.2)', color: 'var(--muted)' }}>
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: 'rgba(234,179,8,0.7)' }} />
+                          {sug.sensitivityNote}
+                        </div>
+                      )}
 
                       <button
                         onClick={() => copySuggestion(sug.counter)}

@@ -8,17 +8,20 @@ const xai = new OpenAI({
   baseURL: 'https://api.x.ai/v1',
 })
 
-const IMPROVE_TRADE_SYSTEM_PROMPT = `You are the world's best dynasty & redraft fantasy football trade negotiator. You are AGGRESSIVE — your goal is to flip bad trades into clearly positive ones, or at minimum make them neutral. You are not afraid to ask for significant upgrades: star-for-star-plus-pick swaps, young upside players bundled with picks, or position upgrades that meaningfully change the deal. Still keep it realistic — no absurd asks like "give me Mahomes for free."
+const IMPROVE_TRADE_SYSTEM_PROMPT = `You are the world's best fantasy football trade negotiator, specialized in league-specific and roster-aware analysis for 2025-2026 seasons.
 
 Your tone is professional yet approachable — like talking to a league mate. Keep language conversational in counter-offer text.
 
-Generate exactly 4 plausible, creative counter-offer suggestions that improve the deal for the "you" side.
+You are AGGRESSIVE — your goal is to flip bad trades into clearly positive ones, or at minimum make them neutral. You are not afraid to ask for significant upgrades: star-for-star-plus-pick swaps, young upside players bundled with picks, or position upgrades that meaningfully change the deal. Still keep it realistic — no absurd asks.
 
 Rules:
-- Base suggestions on general 2025–2026 dynasty/redraft market knowledge and positional scarcity
-- Do NOT invent specific player rankings, ADPs, or exact trade values — reason qualitatively
-- Prioritize high acceptance likelihood (>60–70%) — the other manager must realistically say yes
-- Prefer balanced asks: mid/late future picks (2nd, 3rd rounders), depth/similar-position swaps, or small upgrades over demanding massive overpays
+- Be extremely specific to the provided roster and league settings when available
+- Consider exact positional scarcity based on starters + bench depth
+- Account for user's roster needs, surplus, and contention window
+- Dynasty pick value curves differ significantly by league size and format
+- Factor in FAAB implications if provided
+- Weight age, injury risk, and long-term upside appropriately in dynasty
+- Prioritize high acceptance likelihood (>60–70%)
 - If close to even, focus on small targeted upgrades, not huge overpays
 - If already good for "you", suggest modest sweeteners to increase acceptance odds
 - If bad for "you", focus on realistic fixes that flip it to neutral or positive
@@ -33,13 +36,47 @@ Return ONLY valid JSON — no extra text, no markdown, no explanations outside t
     {
       "title": "short string (8-15 words)",
       "counter": "exact copy-paste offer string (I give: X\\nI get: Y)",
-      "impact": "+15%",
-      "reasons": ["max 12 words each", "3-4 bullets", "concise and specific"]
+      "impact": "+15% for you",
+      "reasons": ["max 12 words each", "3-5 bullets", "concise and specific"],
+      "sensitivityNote": "optional context note or null"
     }
   ]
 }`
 
-function buildUserPrompt(tradeText: string, leagueSize: number, scoring: string, isDynasty: boolean, currentVerdict: string, percentDiff: number) {
+type ImproveTradeContext = {
+  tradeText: string
+  leagueSize: number
+  scoring: string
+  isDynasty: boolean
+  currentVerdict: string
+  percentDiff: number
+  leagueSettings?: any
+  userRoster?: string
+  userFAABRemaining?: number
+  userContentionWindow?: string
+}
+
+function buildUserPrompt(ctx: ImproveTradeContext) {
+  const {
+    tradeText, leagueSize, scoring, isDynasty, currentVerdict, percentDiff,
+    leagueSettings, userRoster, userFAABRemaining, userContentionWindow,
+  } = ctx
+
+  let leagueContext = `League: ${leagueSize}-team ${scoring.toUpperCase()} ${isDynasty ? 'dynasty' : 'redraft'}`
+  if (leagueSettings) {
+    leagueContext += `\nFull league settings: ${JSON.stringify(leagueSettings)}`
+  }
+  if (userFAABRemaining != null) {
+    leagueContext += `\nUser's FAAB remaining: ${userFAABRemaining}%`
+  }
+  if (userContentionWindow) {
+    leagueContext += `\nUser's contention window: ${userContentionWindow}`
+  }
+
+  const rosterBlock = userRoster
+    ? `\nUser's Roster (critical for replacement level and needs):\n${userRoster}\n`
+    : ''
+
   return `You are an elite dynasty fantasy football GM.
 
 Examples of great counter suggestions:
@@ -49,35 +86,38 @@ Original: I give: Justin Jefferson   I get: Garrett Wilson + 2026 1st
 Verdict: Slightly bad for you
 
 Good suggestion:
-{"title":"Add your late 2nd to balance","counter":"I give: Justin Jefferson + my 2026 2.10\\nI get: Garrett Wilson + 2026 early 1st","impact":"Now even to slight edge for you","reasons":["Late 2nd has low cost in dynasty","Early 1st has significantly more value","Makes the pick premium feel fair to opponent"]}
+{"title":"Add your late 2nd to balance","counter":"I give: Justin Jefferson + my 2026 2.10\\nI get: Garrett Wilson + 2026 early 1st","impact":"Now even to slight edge for you","reasons":["Late 2nd has low cost in dynasty","Early 1st has significantly more value","Makes the pick premium feel fair to opponent"],"sensitivityNote":null}
 
 Example 2:
 Original: I give: Breece Hall   I get: Jahmyr Gibbs + Christian Watson
 Verdict: Bad for you
 
 Good suggestion:
-{"title":"Swap Watson for better WR or pick","counter":"I give: Breece Hall\\nI get: Jahmyr Gibbs + Drake London / Zay Flowers","impact":"+20–30% for you","reasons":["London/Flowers >> Watson in dynasty value","Maintains RB youth/upside","Much stronger WR return"]}
+{"title":"Swap Watson for better WR or pick","counter":"I give: Breece Hall\\nI get: Jahmyr Gibbs + Drake London / Zay Flowers","impact":"+20–30% for you","reasons":["London/Flowers >> Watson in dynasty value","Maintains RB youth/upside","Much stronger WR return"],"sensitivityNote":"Only if you need WR depth more than RB depth"}
 
 Now do the same quality for this trade:
 
-League: ${leagueSize}-team ${scoring.toUpperCase()} ${isDynasty ? 'dynasty' : 'redraft'}
-Trade: """
+${leagueContext}
+${rosterBlock}
+Trade being evaluated:
+"""
 ${tradeText}
 """
 Current verdict: ${currentVerdict || 'unknown'}
-Current delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}%
+Current value delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}% (positive = better for user)
 
-Return only JSON with "suggestions" array of 4 items matching the example format.`
+Generate 3-5 suggestions. Return only JSON with "suggestions" array matching the example format.`
 }
 
 function parseSuggestions(parsed: any) {
   const rawList = Array.isArray(parsed) ? parsed : parsed?.suggestions
   if (!rawList || !Array.isArray(rawList) || rawList.length === 0) return null
-  return rawList.slice(0, 4).map((s: any) => ({
+  return rawList.slice(0, 5).map((s: any) => ({
     title: String(s.title || 'Alternative trade'),
     counter: String(s.counter || s.counterOfferText || ''),
     impact: String(s.impact || s.estimatedImpact || ''),
-    reasons: Array.isArray(s.reasons || s.whyBetter) ? (s.reasons || s.whyBetter).map(String).slice(0, 4) : [],
+    reasons: Array.isArray(s.reasons || s.whyBetter) ? (s.reasons || s.whyBetter).map(String).slice(0, 5) : [],
+    sensitivityNote: s.sensitivityNote ? String(s.sensitivityNote) : null,
   }))
 }
 
@@ -104,6 +144,10 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     const leagueSize = typeof body.leagueSize === 'number' && [8, 10, 12, 14, 16, 32].includes(body.leagueSize) ? body.leagueSize : 12
     const scoring = ['ppr', 'half', 'standard', 'superflex'].includes(body.scoring) ? body.scoring : 'ppr'
     const isDynasty = typeof body.isDynasty === 'boolean' ? body.isDynasty : true
+    const leagueSettings = body.leagueSettings && typeof body.leagueSettings === 'object' ? body.leagueSettings : undefined
+    const userRoster = typeof body.userRoster === 'string' && body.userRoster.trim() ? body.userRoster.trim().slice(0, 2000) : undefined
+    const userFAABRemaining = typeof body.userFAABRemaining === 'number' ? Math.max(0, Math.min(100, body.userFAABRemaining)) : undefined
+    const userContentionWindow = ['win-now', 'contender', 'rebuild', 'retooling'].includes(body.userContentionWindow) ? body.userContentionWindow : undefined
 
     if (!tradeText || typeof tradeText !== 'string' || tradeText.trim().length < 5) {
       return NextResponse.json({ error: 'Trade text is required.' }, { status: 400 })
@@ -118,7 +162,11 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     }
 
     const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
-    const userPrompt = buildUserPrompt(tradeText, leagueSize, scoring, isDynasty, currentVerdict || 'unknown', percentDiff)
+    const userPrompt = buildUserPrompt({
+      tradeText, leagueSize, scoring, isDynasty,
+      currentVerdict: currentVerdict || 'unknown', percentDiff,
+      leagueSettings, userRoster, userFAABRemaining, userContentionWindow,
+    })
 
     const messages: OpenAI.ChatCompletionMessageParam[] = [
       { role: 'system', content: IMPROVE_TRADE_SYSTEM_PROMPT },
@@ -130,7 +178,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
         model: 'grok-4-0709',
         messages,
         temperature: 0.6,
-        max_tokens: 1400,
+        max_tokens: 2000,
         response_format: { type: 'json_object' },
         stream: true,
       })
@@ -190,7 +238,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       model: 'grok-4-0709',
       messages,
       temperature: 0.6,
-      max_tokens: 1400,
+      max_tokens: 2000,
       response_format: { type: 'json_object' },
     })
 
