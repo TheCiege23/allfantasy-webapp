@@ -3,30 +3,39 @@ import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { withApiUsage } from '@/lib/telemetry/usage'
 
-const IMPROVE_TRADE_SYSTEM_PROMPT = `You are an expert fantasy football trade advisor. Given a trade the user is considering, suggest 2-3 alternative trades that would be BETTER for the user while remaining REALISTIC and FAIR.
+const IMPROVE_TRADE_SYSTEM_PROMPT = `You are the world's best dynasty & redraft fantasy football trade negotiator. Your goal is to help the user improve an unfair or even trade so it becomes clearly advantageous for them (the "you" side).
 
-RULES:
-- Each suggestion should modify the original trade (add/remove/swap assets)
-- Suggestions must be realistic — the other manager would plausibly accept
-- Focus on improving value for the user WITHOUT creating lopsided trades
-- Consider dynasty vs redraft context
-- Consider league size and scoring format
-- Include draft picks as sweeteners when appropriate
+Your task:
+Generate 3–5 realistic, creative but plausible counter-offer suggestions that would improve the deal for the "you" side.
 
-RESPOND IN THIS EXACT JSON FORMAT:
+For each suggestion:
+1. Short title/description (8–15 words)
+2. The exact counter-offer text in natural language (ready to copy-paste into league chat)
+3. Estimated new fairness impact (e.g. "+12–18% for you", "now even", "slightly in your favor")
+4. 3–5 short bullet points explaining WHY this is better / more fair / more likely to be accepted
+5. One optional "sensitivity note" (when relevant): e.g. "Only do this if you need WR depth", "Avoid if you're already thin at QB"
+
+Rules:
+- Suggestions must be realistic for 2025–2026 dynasty/redraft values
+- Do NOT invent fake player values or rankings — reason based on general market knowledge
+- Prefer adding future picks, depth players, or swapping similar-position assets over massive overpays
+- If the original trade is already very good for "you", suggest small sweeteners to increase acceptance chance
+- If the trade is bad for "you", focus on fixes that bring it closer to even or better
+- Never suggest trades that obviously make the deal worse for the user
+
+Return ONLY valid JSON in this exact structure:
+
 {
   "suggestions": [
     {
-      "description": "Short title of the counter-offer (e.g. 'Add a 2nd to sweeten the deal')",
-      "whyBetter": ["Reason 1 why this is better", "Reason 2"],
-      "newVerdict": "Projected new verdict (e.g. 'Slight Win for You')",
-      "deltaEstimate": "Estimated improvement (e.g. '+15% fairness')",
-      "copyText": "Full trade text formatted as: I give: X + Y\\nI get: A + B"
+      "title": "Short title of the counter-offer",
+      "counterOfferText": "I give: X + Y\\nI get: A + B",
+      "estimatedImpact": "+12–18% for you",
+      "whyBetter": ["Reason 1", "Reason 2", "Reason 3"],
+      "sensitivityNote": "Optional context note or null"
     }
   ]
-}
-
-Return exactly 2-3 suggestions. Keep reasons concise (1 sentence each). Never suggest trades that exploit the other manager.`
+}`
 
 export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool: 'ImproveTradeAI' })(async (req: Request) => {
   try {
@@ -59,19 +68,19 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       return NextResponse.json({ error: 'Trade text is too long.' }, { status: 400 })
     }
 
-    const userPrompt = `ORIGINAL TRADE:
+    const percentDiff = typeof currentFairness === 'number' ? currentFairness : 0
+
+    const userPrompt = `Current trade context:
+League format: ${leagueSize}-team ${isDynasty ? 'dynasty' : 'redraft'} league
+Scoring: ${scoring.toUpperCase()} (assume standard starting requirements unless told otherwise)
+Trade text: """
 ${tradeText}
+"""
 
-SETTINGS:
-- League size: ${leagueSize || 12}-team
-- Scoring: ${scoring || 'ppr'}
-- Format: ${isDynasty ? 'Dynasty' : 'Redraft'}
+Current AI analysis verdict: ${currentVerdict || 'unknown'}
+Current value delta: ${percentDiff >= 0 ? '+' : ''}${percentDiff}% (positive = better for "you")
 
-CURRENT ANALYSIS:
-- Verdict: ${currentVerdict || 'unknown'}
-- Fairness gap: ${currentFairness || 0}%
-
-Generate 2-3 improved counter-offer suggestions that would make this trade better for the user while remaining realistic and fair. Remember: both sides should feel like they gave up value but got better — never exploit the other manager.`
+Generate 3–5 realistic counter-offer suggestions that improve the deal for the "you" side while remaining plausible for the other manager to accept.`
 
     const result = await openaiChatJson({
       messages: [
@@ -79,7 +88,7 @@ Generate 2-3 improved counter-offer suggestions that would make this trade bette
         { role: 'user', content: userPrompt },
       ],
       temperature: 0.4,
-      maxTokens: 800,
+      maxTokens: 1200,
     })
 
     if (!result.ok) {
@@ -99,12 +108,12 @@ Generate 2-3 improved counter-offer suggestions that would make this trade bette
       )
     }
 
-    const suggestions = parsed.suggestions.slice(0, 3).map((s: any) => ({
-      description: String(s.description || 'Alternative trade'),
-      whyBetter: Array.isArray(s.whyBetter) ? s.whyBetter.map(String) : [],
-      newVerdict: s.newVerdict ? String(s.newVerdict) : undefined,
-      deltaEstimate: s.deltaEstimate ? String(s.deltaEstimate) : undefined,
-      copyText: String(s.copyText || s.description || ''),
+    const suggestions = parsed.suggestions.slice(0, 5).map((s: any) => ({
+      title: String(s.title || s.description || 'Alternative trade'),
+      counterOfferText: String(s.counterOfferText || s.copyText || ''),
+      estimatedImpact: String(s.estimatedImpact || s.deltaEstimate || ''),
+      whyBetter: Array.isArray(s.whyBetter) ? s.whyBetter.map(String).slice(0, 5) : [],
+      sensitivityNote: s.sensitivityNote && s.sensitivityNote !== 'null' ? String(s.sensitivityNote) : null,
     }))
 
     return NextResponse.json({ suggestions })

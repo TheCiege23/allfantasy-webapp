@@ -2,15 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Sparkles, Copy, AlertCircle, Loader2 } from 'lucide-react'
+import { X, Sparkles, Copy, AlertCircle, Loader2, Info } from 'lucide-react'
 import { toast } from 'sonner'
 
 type Suggestion = {
-  description: string
+  title: string
+  counterOfferText: string
+  estimatedImpact: string
   whyBetter: string[]
-  newVerdict?: string
-  deltaEstimate?: string
-  copyText: string
+  sensitivityNote: string | null
 }
 
 type ImproveTradeModalProps = {
@@ -146,9 +146,17 @@ export default function ImproveTradeModal({
             </div>
 
             <div className="p-5 sm:p-6 space-y-6">
-              <p className="text-sm" style={{ color: 'var(--muted)' }}>
-                Your current trade: <strong style={{ color: 'var(--text)' }}>{originalTradeText.length > 80 ? originalTradeText.slice(0, 80) + '...' : originalTradeText}</strong>
-              </p>
+              <div className="p-3 rounded-xl text-sm" style={{ background: 'var(--subtle-bg)', color: 'var(--muted)' }}>
+                <span style={{ color: 'var(--muted2)' }}>Current trade:</span>{' '}
+                <strong style={{ color: 'var(--text)' }}>
+                  {originalTradeText.length > 100 ? originalTradeText.slice(0, 100) + '...' : originalTradeText}
+                </strong>
+                {currentResult?.verdict && (
+                  <span className="ml-2 text-xs" style={{ color: 'var(--muted2)' }}>
+                    — {currentResult.verdict}
+                  </span>
+                )}
+              </div>
 
               {error && (
                 <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-start gap-3">
@@ -162,7 +170,7 @@ export default function ImproveTradeModal({
                   <div className="flex items-center justify-center gap-3 py-8">
                     <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
                     <span className="text-sm font-medium" style={{ color: 'var(--muted)' }}>
-                      AI is crafting better trades...
+                      AI is crafting better counter-offers...
                     </span>
                   </div>
                   {[1, 2, 3].map((i) => (
@@ -185,17 +193,17 @@ export default function ImproveTradeModal({
                       style={{ border: '1px solid var(--border)' }}
                     >
                       <div className="flex justify-between items-start mb-3 gap-3">
-                        <h3 className="font-bold text-base sm:text-lg" style={{ color: 'var(--text)' }}>{sug.description}</h3>
-                        {sug.deltaEstimate && (
-                          <span className="px-3 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/20 shrink-0" style={{ color: 'var(--accent-emerald)' }}>
-                            {sug.deltaEstimate}
+                        <h3 className="font-bold text-base sm:text-lg" style={{ color: 'var(--text)' }}>{sug.title}</h3>
+                        {sug.estimatedImpact && (
+                          <span className="px-3 py-1 rounded-full text-[10px] font-semibold bg-emerald-500/20 shrink-0 whitespace-nowrap" style={{ color: 'var(--accent-emerald)' }}>
+                            {sug.estimatedImpact}
                           </span>
                         )}
                       </div>
 
-                      {sug.newVerdict && (
-                        <div className="mb-3 text-sm font-medium" style={{ color: 'var(--accent-emerald)' }}>
-                          New projected verdict: <strong>{sug.newVerdict}</strong>
+                      {sug.counterOfferText && (
+                        <div className="mb-4 p-3 rounded-xl text-sm font-mono whitespace-pre-line" style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+                          {sug.counterOfferText}
                         </div>
                       )}
 
@@ -208,13 +216,20 @@ export default function ImproveTradeModal({
                         ))}
                       </ul>
 
+                      {sug.sensitivityNote && (
+                        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 mb-4">
+                          <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-400" />
+                          <span className="text-xs" style={{ color: 'var(--muted)' }}>{sug.sensitivityNote}</span>
+                        </div>
+                      )}
+
                       <button
-                        onClick={() => copySuggestion(sug.copyText)}
+                        onClick={() => copySuggestion(sug.counterOfferText)}
                         className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium transition-all active:scale-[0.97]"
                         style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted)' }}
                       >
                         <Copy className="w-3.5 h-3.5" />
-                        Copy this counter-offer
+                        Copy counter-offer
                       </button>
                     </motion.div>
                   ))}
