@@ -206,16 +206,50 @@ export default function ImproveTradeModal({
         league_size: leagueSize,
         is_dynasty: isDynasty,
         scoring,
+        suggestions_generated: suggestions.length,
       })
+      toast.custom(
+        (t) => (
+          <div className="bg-gradient-to-r from-purple-900/95 to-indigo-900/95 border border-purple-500/60 text-white p-5 rounded-2xl shadow-2xl max-w-md mx-auto">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="font-bold text-lg mb-2">Unlock Unlimited Generations</h3>
+                <p className="text-sm opacity-90 mb-4">
+                  You've reached the free limit. Upgrade to Pro for unlimited AI trade improvements, roster-aware suggestions, priority speed, and more.
+                </p>
+                <button
+                  onClick={() => {
+                    window.open('/pricing', '_blank')
+                    toast.dismiss(t)
+                  }}
+                  className="px-6 py-3 bg-purple-600 hover:bg-purple-500 rounded-xl font-semibold text-base transition-all shadow-lg"
+                >
+                  See Pro Plan →
+                </button>
+              </div>
+              <button
+                onClick={() => toast.dismiss(t)}
+                className="text-gray-300 hover:text-white p-1 rounded-full hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        ),
+        { duration: 12000, position: 'top-center' }
+      )
       return
     }
     gtagEvent('improve_trade_generate_more_clicked', {
       current_suggestion_count: suggestions.length,
       more_count_this_session: moreCount + 1,
+      league_size: leagueSize,
+      is_dynasty: isDynasty,
+      scoring,
     })
     generateSuggestions(true)
     setMoreCount(prev => prev + 1)
-  }, [generateSuggestions, moreCount, suggestions.length])
+  }, [generateSuggestions, moreCount, suggestions.length, leagueSize, isDynasty, scoring])
 
   useEffect(() => {
     if (isOpen) {
@@ -430,10 +464,10 @@ export default function ImproveTradeModal({
               ) : null}
             </div>
 
-            <div className="sticky bottom-0 p-5 sm:p-6 flex flex-wrap justify-end gap-3 rounded-b-3xl" style={{ borderTop: '1px solid var(--border)', background: 'var(--panel)' }}>
+            <div className="sticky bottom-0 p-5 sm:p-6 flex flex-wrap justify-end gap-3 sm:gap-4 rounded-b-3xl backdrop-blur-sm" style={{ borderTop: '1px solid var(--border)', background: 'var(--panel)' }}>
               <button
                 onClick={onClose}
-                className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all"
+                className="px-5 sm:px-6 py-3 rounded-xl text-sm sm:text-base font-medium transition-all"
                 style={{ border: '1px solid var(--border)', color: 'var(--muted)' }}
               >
                 Close
@@ -442,36 +476,44 @@ export default function ImproveTradeModal({
                 <>
                   <button
                     onClick={fetchSuggestions}
-                    className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
+                    className="px-5 sm:px-6 py-3 rounded-xl text-sm sm:text-base font-medium transition-all active:scale-95 flex items-center gap-2"
                     style={{ background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--text)' }}
                   >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    Regenerate
+                    <RefreshCw className="w-4 h-4" />
+                    Regenerate All
                   </button>
                   {moreCount < MAX_MORE_CLICKS ? (
                     <button
                       onClick={generateMore}
-                      className="px-5 py-2.5 rounded-xl text-sm font-medium transition-all active:scale-[0.97] flex items-center gap-2"
+                      disabled={additionalLoading}
+                      className="px-5 sm:px-6 py-3 rounded-xl text-sm sm:text-base font-medium transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
                       style={{ background: 'rgba(168,85,247,0.15)', border: '1px solid rgba(168,85,247,0.3)', color: 'var(--text)' }}
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      More Ideas ({MAX_MORE_CLICKS - moreCount} left)
+                      <Plus className="w-4 h-4" />
+                      {additionalLoading ? 'Adding...' : `More Ideas (${MAX_MORE_CLICKS - moreCount} left)`}
                     </button>
                   ) : (
                     <div
-                      className="px-5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 cursor-not-allowed select-none"
-                      style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted2)', opacity: 0.7 }}
+                      className="px-5 sm:px-6 py-3 rounded-xl text-sm sm:text-base flex items-center gap-2 cursor-not-allowed opacity-80"
+                      style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--muted2)' }}
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      Limit reached
+                      <Plus className="w-4 h-4 opacity-50" />
+                      Limit reached —{' '}
+                      <button
+                        onClick={() => window.open('/pricing', '_blank')}
+                        className="underline hover:opacity-80 transition ml-1"
+                        style={{ color: 'var(--muted)' }}
+                      >
+                        Upgrade for unlimited
+                      </button>
                     </div>
                   )}
                 </>
               )}
-              {!loading && !additionalLoading && error && suggestions.length === 0 && (
+              {!loading && !additionalLoading && error && (
                 <button
                   onClick={fetchSuggestions}
-                  className="px-5 py-2.5 rounded-xl text-sm font-semibold text-black bg-gradient-to-r from-cyan-400 to-cyan-300 transition-all active:scale-[0.97]"
+                  className="px-5 sm:px-6 py-3 rounded-xl text-sm sm:text-base font-semibold text-black bg-gradient-to-r from-cyan-400 to-cyan-300 transition-all active:scale-95"
                 >
                   Try Again
                 </button>
