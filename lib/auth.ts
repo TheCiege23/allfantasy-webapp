@@ -1,6 +1,8 @@
 import type { NextAuthOptions } from "next-auth"
 import EmailProvider from "next-auth/providers/email"
+import CredentialsProvider from "next-auth/providers/credentials"
 import { PrismaClient } from "@prisma/client"
+import bcrypt from "bcryptjs"
 
 const prisma = new PrismaClient()
 
@@ -173,20 +175,61 @@ export const authOptions: NextAuthOptions = {
     EmailProvider({
       sendVerificationRequest: sendMagicLinkEmail,
     }),
+    CredentialsProvider({
+      id: "credentials",
+      name: "Password",
+      credentials: {
+        login: { label: "Email or Username", type: "text" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.login || !credentials?.password) return null
+
+        const login = credentials.login.toLowerCase().trim()
+        const user = await prisma.appUser.findFirst({
+          where: {
+            OR: [
+              { email: login },
+              { username: login },
+            ],
+          },
+        })
+
+        if (!user || !user.passwordHash) return null
+
+        const valid = await bcrypt.compare(credentials.password, user.passwordHash)
+        if (!valid) return null
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.displayName,
+          image: user.avatarUrl,
+        }
+      },
+    }),
   ],
   session: {
-    strategy: "database",
+    strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60,
   },
   pages: {
-    signIn: "/auth/signin",
+    signIn: "/login",
     verifyRequest: "/auth/verify-request",
     error: "/auth/error",
   },
   callbacks: {
-    async session({ session, user }) {
-      if (session.user) {
-        (session.user as any).id = user.id
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id
+        token.email = user.email
+      }
+      return token
+    },
+    async session({ session, token }) {
+      if (session.user && token) {
+        (session.user as any).id = token.id as string
+        session.user.email = token.email as string
       }
       return session
     },

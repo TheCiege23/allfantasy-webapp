@@ -22,8 +22,13 @@ export default async function OnboardingPage() {
     where: { userId },
   })
 
-  if (isUserVerified(existing) && existing?.profileComplete) {
-    redirect("/brackets")
+  const appUserCheck = await (prisma as any).appUser.findUnique({
+    where: { id: userId },
+    select: { emailVerified: true },
+  }).catch(() => null)
+
+  if (isUserVerified(appUserCheck?.emailVerified, existing?.phoneVerifiedAt) && existing?.ageConfirmedAt && existing?.profileComplete) {
+    redirect("/dashboard")
   }
 
   const pending = await (prisma as any).pendingSignup.findUnique({
@@ -32,12 +37,12 @@ export default async function OnboardingPage() {
 
   const appUser = await (prisma as any).appUser.findUnique({
     where: { id: userId },
-    select: { displayName: true },
+    select: { displayName: true, emailVerified: true },
   })
 
   const defaultName = pending?.displayName || existing?.displayName || appUser?.displayName || ""
   const defaultPhone = pending?.phone || existing?.phone || ""
-  const emailVerified = !!existing?.emailVerifiedAt
+  const emailVerified = !!appUser?.emailVerified
   const phoneVerified = !!existing?.phoneVerifiedAt
 
   return (

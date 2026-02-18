@@ -3,29 +3,41 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
 
-export interface UserProfile {
+export interface VerifiedUserProfile {
   userId: string
   displayName: string | null
   phone: string | null
   phoneVerifiedAt: Date | null
   emailVerifiedAt: Date | null
+  ageConfirmedAt: Date | null
   profileComplete: boolean
 }
 
-export function isUserVerified(profile: UserProfile | null): boolean {
-  if (!profile) return false
-  return !!profile.emailVerifiedAt || !!profile.phoneVerifiedAt
+export function isUserVerified(
+  emailVerified: Date | null | undefined,
+  phoneVerifiedAt: Date | null | undefined
+): boolean {
+  return !!emailVerified || !!phoneVerifiedAt
 }
 
-export function isFullyOnboarded(profile: UserProfile | null): boolean {
+export function isAgeConfirmed(profile: VerifiedUserProfile | null): boolean {
   if (!profile) return false
-  return isUserVerified(profile) && profile.profileComplete
+  return !!profile.ageConfirmedAt
+}
+
+export function isFullyOnboarded(
+  emailVerified: Date | null | undefined,
+  profile: VerifiedUserProfile | null
+): boolean {
+  if (!profile) return false
+  return isUserVerified(emailVerified, profile.phoneVerifiedAt) && isAgeConfirmed(profile) && profile.profileComplete
 }
 
 export async function getSessionAndProfile(): Promise<{
   userId: string | null
   email: string | null
-  profile: UserProfile | null
+  emailVerified: Date | null
+  profile: VerifiedUserProfile | null
 }> {
   const session = (await getServerSession(authOptions as any)) as {
     user?: { id?: string; email?: string | null }
@@ -34,17 +46,22 @@ export async function getSessionAndProfile(): Promise<{
   const userId = session?.user?.id ?? null
   const email = session?.user?.email ?? null
 
-  if (!userId) return { userId: null, email: null, profile: null }
+  if (!userId) return { userId: null, email: null, emailVerified: null, profile: null }
+
+  const appUser = await (prisma as any).appUser.findUnique({
+    where: { id: userId },
+    select: { emailVerified: true },
+  }).catch(() => null)
 
   const profile = await (prisma as any).userProfile.findUnique({
     where: { userId },
   }).catch(() => null)
 
-  return { userId, email, profile }
+  return { userId, email, emailVerified: appUser?.emailVerified ?? null, profile }
 }
 
 export async function requireVerifiedUser(): Promise<
-  | { ok: true; userId: string; profile: UserProfile }
+  | { ok: true; userId: string; profile: VerifiedUserProfile }
   | { ok: false; response: NextResponse }
 > {
   const session = (await getServerSession(authOptions as any)) as {
@@ -54,15 +71,30 @@ export async function requireVerifiedUser(): Promise<
   if (!session?.user?.id) {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      response: NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 }),
     }
   }
+
+  const appUser = await (prisma as any).appUser.findUnique({
+    where: { id: session.user.id },
+    select: { emailVerified: true },
+  }).catch(() => null)
 
   const profile = await (prisma as any).userProfile.findUnique({
     where: { userId: session.user.id },
   }).catch(() => null)
 
-  if (!isUserVerified(profile)) {
+  if (!isAgeConfirmed(profile)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "AGE_REQUIRED" },
+        { status: 403 }
+      ),
+    }
+  }
+
+  if (!isUserVerified(appUser?.emailVerified, profile?.phoneVerifiedAt)) {
     return {
       ok: false,
       response: NextResponse.json(
