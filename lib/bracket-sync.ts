@@ -1,5 +1,6 @@
 import { prisma } from "./prisma"
 import { scoreBracket, type BracketScoringResult } from "./bracket-scoring"
+import { normalizeTeamName as sharedNormalize, isPlaceholderTeam } from "./brackets/normalize"
 
 const NCAAM_LEAGUE_ID = "4607"
 const SPORT_KEY = "ncaam"
@@ -156,56 +157,6 @@ export async function upsertEventsToSportsGame(events: TSDBEvent[]): Promise<num
   return count
 }
 
-function normalizeTeamName(name: string): string {
-  return name
-    .trim()
-    .toUpperCase()
-    .replace(/^THE\s+/i, "")
-    .replace(/\bUNIVERSITY\b|\bUNIV\.?\b|\bCOLLEGE\b|\bOF\b/gi, "")
-    .replace(/[^A-Z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
-function tokenSetSimilarity(a: string, b: string): number {
-  const tokensA = new Set(normalizeTeamName(a).split(" ").filter(Boolean))
-  const tokensB = new Set(normalizeTeamName(b).split(" ").filter(Boolean))
-
-  if (tokensA.size === 0 || tokensB.size === 0) return 0
-
-  let intersection = 0
-  for (const t of tokensA) {
-    if (tokensB.has(t)) intersection++
-  }
-
-  const union = new Set([...tokensA, ...tokensB]).size
-  return intersection / union
-}
-
-const MATCH_THRESHOLD = 0.6
-
-function teamsMatchScore(
-  eventHome: string,
-  eventAway: string,
-  nodeHome: string,
-  nodeAway: string
-): number {
-  const fwdHome = tokenSetSimilarity(eventHome, nodeHome)
-  const fwdAway = tokenSetSimilarity(eventAway, nodeAway)
-  const fwdScore = Math.min(fwdHome, fwdAway)
-
-  const revHome = tokenSetSimilarity(eventHome, nodeAway)
-  const revAway = tokenSetSimilarity(eventAway, nodeHome)
-  const revScore = Math.min(revHome, revAway)
-
-  return Math.max(fwdScore, revScore)
-}
-
-function daysDiff(a: Date | null, b: Date | null): number {
-  if (!a || !b) return Infinity
-  return Math.abs(a.getTime() - b.getTime()) / (24 * 60 * 60 * 1000)
-}
-
 export async function matchEventsToNodes(tournamentId: string): Promise<{ matched: number; skipped: number; errors: string[] }> {
   const nodes = await prisma.bracketNode.findMany({
     where: {
@@ -220,65 +171,59 @@ export async function matchEventsToNodes(tournamentId: string): Promise<{ matche
     return { matched: 0, skipped: 0, errors: ["Tournament not found"] }
   }
 
-  const marchStart = new Date(tournament.season, 2, 1)
-  const aprilEnd = new Date(tournament.season, 3, 15)
-
   const games = await prisma.sportsGame.findMany({
     where: {
       sport: SPORT_KEY,
       source: SOURCE,
-      startTime: { gte: marchStart, lte: aprilEnd },
+      season: tournament.season,
     },
   })
 
-  const linkedGameIds = new Set<string>()
+  const mapTeamsToGame = new Map<string, typeof games[0]>()
+  for (const g of games) {
+    const a = sharedNormalize(g.homeTeam)
+    const b = sharedNormalize(g.awayTeam)
+    if (!mapTeamsToGame.has(`${a}|${b}`)) mapTeamsToGame.set(`${a}|${b}`, g)
+    if (!mapTeamsToGame.has(`${b}|${a}`)) mapTeamsToGame.set(`${b}|${a}`, g)
+  }
+
   let matched = 0
   let skipped = 0
   const errors: string[] = []
+  const linkTx: any[] = []
 
   for (const node of nodes) {
     if (node.sportsGameId) {
-      linkedGameIds.add(node.sportsGameId)
       skipped++
       continue
     }
 
-    let bestMatch: typeof games[0] | null = null
-    let bestScore = 0
-
-    for (const game of games) {
-      if (linkedGameIds.has(game.id)) continue
-
-      const score = teamsMatchScore(
-        game.homeTeam,
-        game.awayTeam,
-        node.homeTeamName!,
-        node.awayTeamName!
-      )
-
-      if (score < MATCH_THRESHOLD) continue
-
-      const dateDist = daysDiff(game.startTime, null)
-
-      if (score > bestScore || (score === bestScore && bestMatch && dateDist < daysDiff(bestMatch.startTime, null))) {
-        bestMatch = game
-        bestScore = score
-      }
+    if (isPlaceholderTeam(node.homeTeamName) || isPlaceholderTeam(node.awayTeamName)) {
+      skipped++
+      continue
     }
 
-    if (bestMatch) {
-      try {
-        await prisma.bracketNode.update({
-          where: { id: node.id },
-          data: { sportsGameId: bestMatch.id },
-        })
-        linkedGameIds.add(bestMatch.id)
-        matched++
-      } catch (err: any) {
-        errors.push(`Failed to link node ${node.slot}: ${err.message}`)
-      }
-    } else {
+    const key = `${sharedNormalize(node.homeTeamName)}|${sharedNormalize(node.awayTeamName)}`
+    const match = mapTeamsToGame.get(key)
+    if (!match) {
       skipped++
+      continue
+    }
+
+    linkTx.push(
+      prisma.bracketNode.update({
+        where: { id: node.id },
+        data: { sportsGameId: match.id },
+      })
+    )
+  }
+
+  if (linkTx.length > 0) {
+    try {
+      await prisma.$transaction(linkTx)
+      matched = linkTx.length
+    } catch (err: any) {
+      errors.push(`Batch link failed: ${err.message}`)
     }
   }
 
