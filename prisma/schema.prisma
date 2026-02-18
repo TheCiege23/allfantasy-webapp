@@ -2087,6 +2087,7 @@ model AppUser {
   tradeFeedback        Feedback[]
   tradeProfile         TradeProfile?
   waiverPickups        WaiverPickup[]
+  rosters              Roster[]
 
   @@map("app_users")
 }
@@ -2303,9 +2304,45 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
+model League {
+  id               String   @id @default(uuid())
+  platform         String
+  platformLeagueId String
+  userId           String
+  name             String
+  leagueSize       Int
+  scoring          String
+  isDynasty        Boolean
+  settings         Json
+  rosters          Roster[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([platform, platformLeagueId])
+  @@index([userId])
+  @@map("leagues")
+}
+
+model Roster {
+  id            String   @id @default(uuid())
+  leagueId      String
+  league        League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  userId        String
+  user          AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  playerData    Json
+  faabRemaining Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([leagueId])
+  @@index([userId])
+  @@map("rosters")
+}
+
 model WaiverPickup {
   id         String   @id @default(uuid())
   userId     String
+  leagueId   String
   playerName String
   week       Int?
   year       Int?
@@ -2315,5 +2352,6 @@ model WaiverPickup {
   user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([leagueId])
   @@map("waiver_pickups")
 }
