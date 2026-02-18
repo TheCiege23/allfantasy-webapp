@@ -1,51 +1,53 @@
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-import Script from 'next/script'
-import { Toaster } from 'sonner'
-import { ThemeProvider } from '@/components/theme/ThemeProvider'
-import './globals.css'
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import Script from 'next/script';
+import { Toaster } from 'sonner';
+import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  weight: ['400', '500', '600', '700']
+});
 
 export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   viewportFit: 'cover' as const,
-}
+};
 
 export const metadata: Metadata = {
-  title: 'AllFantasy — AI Fantasy Sports, Early Access',
-  description: 'AI-powered fantasy sports for drafts, waivers, and start/sit—across NFL, NBA, and MLB. Join early access and help shape the future of AllFantasy.',
+  title: 'AllFantasy \u2014 AI Fantasy Sports Co-GM',
+  description: 'Real-time AI drafts, waivers, start/sit & rankings for NFL, NBA, MLB. Built for serious leagues.',
   metadataBase: new URL('https://allfantasy.ai'),
   alternates: {
     canonical: 'https://allfantasy.ai/',
   },
   openGraph: {
-    title: 'AllFantasy — AI Fantasy Sports, Upgraded',
-    description: 'AI draft help, waivers, trades, and start/sit—built for modern fantasy players across NFL, NBA, and MLB. Join early access.',
+    title: 'AllFantasy \u2014 Your League\'s Secret Weapon',
+    description: 'AI that actually understands modern fantasy. Join the waitlist.',
     url: 'https://allfantasy.ai/',
     siteName: 'AllFantasy',
     type: 'website',
+    images: [{ url: '/og-image.jpg' }],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AllFantasy — AI Fantasy Sports, Upgraded',
-    description: 'AI draft help, waivers, trades, and start/sit—built for modern fantasy players across NFL, NBA, and MLB. Join early access.',
+    title: 'AllFantasy \u2014 Your League\'s Secret Weapon',
+    description: 'AI that actually understands modern fantasy. Join the waitlist.',
   },
+  icons: { icon: '/af-crest.png' },
   robots: {
     index: true,
     follow: true,
   },
-}
+};
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
       <head>
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17768764414"
@@ -75,23 +77,12 @@ export default function RootLayout({
           `}
         </Script>
       </head>
-      <body className={`${inter.className} min-h-screen`}>
+      <body className={`${inter.variable} bg-[#0a0a0f] text-white antialiased min-h-screen`}>
         <ThemeProvider>
           {children}
-          <Toaster
-            position="top-center"
-            richColors
-            closeButton
-            toastOptions={{
-              style: {
-                background: 'var(--panel)',
-                color: 'var(--text)',
-                border: '1px solid var(--border)',
-              },
-            }}
-          />
+          <Toaster position="top-center" richColors closeButton />
         </ThemeProvider>
       </body>
     </html>
-  )
+  );
 }
