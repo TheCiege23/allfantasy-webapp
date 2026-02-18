@@ -154,7 +154,9 @@ export async function POST(req: NextRequest) {
     let resolvedFAAB = userFAAB;
     let leagueSettings = '';
 
-    if (leagueId && userId) {
+    const sleeperUserId = body.sleeperUserId || body.platformUserId;
+
+    if (leagueId && (userId || sleeperUserId)) {
       const league = await (prisma as any).league.findUnique({
         where: { id: leagueId },
         include: { rosters: true },
@@ -164,7 +166,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'League not synced yet. Please sync your league first.' }, { status: 400 });
       }
 
-      const userRoster = league.rosters.find((r: any) => r.userId === userId);
+      const lookupId = sleeperUserId || userId;
+      const userRoster = league.rosters.find((r: any) => r.platformUserId === lookupId);
       if (!userRoster) {
         return NextResponse.json({ error: 'Roster not found for this user in this league' }, { status: 400 });
       }

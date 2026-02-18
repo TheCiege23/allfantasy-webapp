@@ -2087,7 +2087,6 @@ model AppUser {
   tradeFeedback        Feedback[]
   tradeProfile         TradeProfile?
   waiverPickups        WaiverPickup[]
-  rosters              Roster[]
 
   @@map("app_users")
 }
@@ -2306,15 +2305,18 @@ model PasswordResetToken {
 
 model League {
   id               String   @id @default(uuid())
+  userId           String
   platform         String
   platformLeagueId String
-  userId           String
   name             String
   leagueSize       Int
   scoring          String
   isDynasty        Boolean
   settings         Json
+
   rosters          Roster[]
+  waiverPickups    WaiverPickup[]
+
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -2324,19 +2326,18 @@ model League {
 }
 
 model Roster {
-  id            String   @id @default(uuid())
-  leagueId      String
-  league        League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  userId        String
-  user          AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  playerData    Json
-  faabRemaining Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(uuid())
+  leagueId       String
+  league         League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  platformUserId String
+  playerData     Json
+  faabRemaining  Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  @@unique([leagueId, userId])
+  @@unique([leagueId, platformUserId])
   @@index([leagueId])
-  @@index([userId])
+  @@index([platformUserId])
   @@map("rosters")
 }
 
@@ -2344,10 +2345,11 @@ model WaiverPickup {
   id         String   @id @default(uuid())
   userId     String
   leagueId   String
+  league     League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   playerName String
+  outcome    String?
   week       Int?
   year       Int?
-  outcome    String?
   createdAt  DateTime @default(now())
 
   user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)

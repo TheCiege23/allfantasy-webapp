@@ -73,9 +73,9 @@ export async function POST(req: NextRequest) {
     let rosterCount = 0;
     for (const roster of rostersData) {
       if (!roster.owner_id) continue;
-      await prisma.roster.upsert({
+      await (prisma as any).roster.upsert({
         where: {
-          leagueId_userId: { leagueId: league.id, userId: roster.owner_id },
+          leagueId_platformUserId: { leagueId: league.id, platformUserId: roster.owner_id },
         },
         update: {
           playerData: roster.players || [],
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
         },
         create: {
           leagueId: league.id,
-          userId: roster.owner_id,
+          platformUserId: roster.owner_id,
           playerData: roster.players || [],
           faabRemaining: roster.settings?.waiver_budget_used != null
             ? Math.max(0, 100 - roster.settings.waiver_budget_used)
