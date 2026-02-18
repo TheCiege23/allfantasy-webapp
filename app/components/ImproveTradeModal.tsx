@@ -38,20 +38,30 @@ export default function ImproveTradeModal({
   const [streamText, setStreamText] = useState('')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [moreCount, setMoreCount] = useState(0)
+  const [lastResetTime, setLastResetTime] = useState<number | null>(null)
   const [error, setError] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const MAX_MORE_CLICKS = 3
+  const RESET_AFTER_HOURS = 24
 
-  useEffect(() => {
-    const saved = localStorage.getItem('improve_more_count')
-    if (saved) setMoreCount(parseInt(saved, 10))
-  }, [])
+  const checkAndResetLimit = useCallback(() => {
+    const now = Date.now()
+    const storedCount = localStorage.getItem('improve_more_count')
+    const storedTime = localStorage.getItem('improve_more_timestamp')
 
-  useEffect(() => {
-    if (moreCount > 0) {
-      localStorage.setItem('improve_more_count', moreCount.toString())
+    let currentCount = storedCount ? parseInt(storedCount, 10) : 0
+    let resetTime = storedTime ? parseInt(storedTime, 10) : null
+
+    if (!resetTime || (now - resetTime) >= RESET_AFTER_HOURS * 60 * 60 * 1000) {
+      currentCount = 0
+      resetTime = now
+      localStorage.setItem('improve_more_count', '0')
+      localStorage.setItem('improve_more_timestamp', now.toString())
     }
-  }, [moreCount])
+
+    setMoreCount(currentCount)
+    setLastResetTime(resetTime)
+  }, [])
 
   const generateSuggestions = useCallback(async (append = false) => {
     if (!originalTradeText || originalTradeText.trim().length < 5) {
@@ -207,6 +217,7 @@ export default function ImproveTradeModal({
         is_dynasty: isDynasty,
         scoring,
         suggestions_generated: suggestions.length,
+        hours_until_reset: RESET_AFTER_HOURS,
       })
       toast.custom(
         (t) => (
@@ -214,8 +225,9 @@ export default function ImproveTradeModal({
             <div className="flex items-start justify-between">
               <div>
                 <h3 className="font-bold text-lg mb-2">Unlock Unlimited Generations</h3>
-                <p className="text-sm opacity-90 mb-4">
-                  You've reached the free limit. Upgrade to Pro for unlimited AI trade improvements, roster-aware suggestions, priority speed, and more.
+                <p className="text-sm opacity-90 mb-3">
+                  You've reached the free limit ({MAX_MORE_CLICKS} more per {RESET_AFTER_HOURS === 24 ? 'day' : `${RESET_AFTER_HOURS} hours`}).
+                  Upgrade to Pro for unlimited AI improvements, roster context, and faster responses.
                 </p>
                 <button
                   onClick={() => {
@@ -248,14 +260,22 @@ export default function ImproveTradeModal({
       scoring,
     })
     generateSuggestions(true)
-    setMoreCount(prev => prev + 1)
-  }, [generateSuggestions, moreCount, suggestions.length, leagueSize, isDynasty, scoring])
+    const newCount = moreCount + 1
+    setMoreCount(newCount)
+    localStorage.setItem('improve_more_count', newCount.toString())
+    if (moreCount === 0 && !lastResetTime) {
+      const now = Date.now()
+      localStorage.setItem('improve_more_timestamp', now.toString())
+      setLastResetTime(now)
+    }
+  }, [generateSuggestions, moreCount, suggestions.length, leagueSize, isDynasty, scoring, lastResetTime])
 
   useEffect(() => {
     if (isOpen) {
       setSuggestions([])
       setStreamText('')
       setError('')
+      checkAndResetLimit()
       gtagEvent('improve_trade_modal_opened', {
         league_size: leagueSize,
         is_dynasty: isDynasty,
