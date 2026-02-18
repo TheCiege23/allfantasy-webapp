@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
-
-let feedbackStore: any[] = []
+import { addFeedback, getRecentFeedback } from '@/lib/feedback-store'
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,7 +28,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const feedback = {
+    addFeedback({
       timestamp: new Date().toISOString(),
       tradeText: String(tradeText).slice(0, 1000),
       suggestionTitle: String(suggestionTitle).slice(0, 200),
@@ -40,13 +39,7 @@ export async function POST(req: NextRequest) {
       scoring: typeof scoring === 'string' ? scoring.slice(0, 20) : null,
       userRoster: typeof userRoster === 'string' ? userRoster.slice(0, 2000) : null,
       userContention: typeof userContention === 'string' ? userContention.slice(0, 20) : 'unknown',
-    }
-
-    feedbackStore.push(feedback)
-
-    if (feedbackStore.length > 500) {
-      feedbackStore = feedbackStore.slice(-250)
-    }
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -56,5 +49,5 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-  return NextResponse.json({ feedback: feedbackStore.slice(-50) })
+  return NextResponse.json({ feedback: getRecentFeedback(50) })
 }

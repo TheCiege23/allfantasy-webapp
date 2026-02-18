@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import { withApiUsage } from '@/lib/telemetry/usage'
+import { buildFeedbackPromptBlock } from '@/lib/feedback-store'
 
 const grokClient = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -144,11 +145,12 @@ function buildSystemPrompt(ctx: {
   userContentionWindow?: string
   userRecord?: string
   fantasyCalcSnippet?: string
+  feedbackBlock?: string
 }) {
   const {
     tradeText, leagueSize, scoring, isDynasty, currentVerdict, currentFairness,
     leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
-    fantasyCalcSnippet,
+    fantasyCalcSnippet, feedbackBlock,
   } = ctx
 
   const format = isDynasty ? 'Dynasty' : 'Redraft'
@@ -220,6 +222,7 @@ Rules:
 - Keep language clear, confident, conversational — like advising a league mate
 - Order from most to least likely to be accepted
 
+${feedbackBlock || ''}
 Return ONLY valid JSON:
 {
   "suggestions": [
@@ -317,6 +320,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       currentVerdict: currentVerdict || 'unknown', currentFairness: percentDiff,
       leagueSettings, userRoster, userFAABRemaining, userContentionWindow, userRecord,
       fantasyCalcSnippet,
+      feedbackBlock: buildFeedbackPromptBlock(),
     })
 
     if (req.signal?.aborted) {
