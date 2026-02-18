@@ -98,116 +98,69 @@ function HomeContent() {
           </div>
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-
-          {/* Left – Text + CTA */}
-          <div className="space-y-8 md:space-y-10 text-center lg:text-left">
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={0}
-              variants={fadeUp}
-            >
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md text-sm font-medium mb-6" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-                <Sparkles className="h-4 w-4 text-amber-400" />
-                <span style={{ color: 'var(--text)' }}>Early Access – Limited Spots</span>
-              </div>
-
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight leading-tight">
-                <span className="bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--hero-from), var(--hero-via), var(--hero-to))' }}>
-                  All Fantasy.
-                </span>{' '}
-                <span style={{ color: 'var(--text)' }}>One Platform.</span>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.7 }}
+          className="relative z-10 max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-8 lg:gap-16 items-center"
+        >
+          {/* Left: Headline + Form */}
+          <div className="text-center lg:text-left space-y-6 lg:space-y-8">
+            <div className="space-y-3 lg:space-y-4">
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1]">
+                <span className="block bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--hero-from), var(--hero-via), var(--hero-to))' }}>
+                  Stop guessing in fantasy football.
+                </span>
+                <span className="block mt-1 bg-[length:200%_auto] animate-gradient-x bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--heading-from), var(--heading-to), var(--heading-from))' }}>
+                  Let AI decide.
+                </span>
               </h1>
-
-              <p className="mt-6 text-lg sm:text-xl md:text-2xl max-w-2xl mx-auto lg:mx-0" style={{ color: 'var(--muted)' }}>
-                AI-powered drafts, trades, waivers, and dynasty insights — built by real fantasy players who were tired of bad tools.
+              <p className="text-xl sm:text-2xl lg:text-3xl font-semibold leading-tight max-w-lg mx-auto lg:mx-0" style={{ color: 'var(--text)' }}>
+                Smarter drafts, unbeatable trades, hidden waiver gems.
               </p>
-            </motion.div>
-
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={2}
-              variants={fadeUp}
-              className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start"
-            >
-              <Link
-                href="#waitlist"
-                className="group inline-flex items-center justify-center gap-3 px-8 py-4 sm:py-5 rounded-xl font-semibold text-base sm:text-lg text-black min-h-[52px]
-                           bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400 bg-[length:200%_auto]
-                           shadow-[0_8px_32px_rgba(34,211,238,0.35)]
-                           hover:shadow-[0_12px_40px_rgba(34,211,238,0.5)] hover:bg-right hover:scale-[1.03]
-                           active:scale-[0.97] transition-all duration-300"
-              >
-                Join Early Access
-                <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
-              </Link>
-
-              <Link
-                href="/af-legacy"
-                className="inline-flex items-center justify-center gap-3 px-8 py-4 sm:py-5 rounded-xl font-semibold text-base sm:text-lg backdrop-blur-sm min-h-[52px] transition-all hover:scale-[1.02] active:scale-[0.97]"
-                style={{ border: '1px solid var(--border)', color: 'var(--text)' }}
-              >
-                <Zap className="h-5 w-5" style={{ color: 'var(--accent-cyan-strong)' }} />
-                Try AF Legacy Free
-              </Link>
-            </motion.div>
-
-            {/* Trust signals */}
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              custom={3}
-              variants={fadeUp}
-              className="flex flex-wrap gap-4 sm:gap-6 justify-center lg:justify-start text-sm mt-4"
-              style={{ color: 'var(--muted2)' }}
-            >
-              <div className="flex items-center gap-1.5"><Shield className="h-3.5 w-3.5" style={{ color: 'var(--accent-emerald)' }} /> No login required</div>
-              <div className="flex items-center gap-1.5"><Zap className="h-3.5 w-3.5" style={{ color: 'var(--accent-amber)' }} /> Results in seconds</div>
-              <div className="flex items-center gap-1.5"><Brain className="h-3.5 w-3.5" style={{ color: 'var(--accent-purple)' }} /> AI-driven analysis</div>
-              <div className="flex items-center gap-1.5"><Trophy className="h-3.5 w-3.5" style={{ color: 'var(--accent-cyan)' }} /> Dynasty + redraft</div>
-            </motion.div>
-          </div>
-
-          {/* Right – Early Access Card */}
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={scaleIn}
-            className="relative"
-          >
-            <div className="rounded-2xl sm:rounded-3xl backdrop-blur-xl p-8 md:p-10 shadow-2xl shadow-black/30" style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}>
-              <h3 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: 'var(--text)' }}>Be First In Line</h3>
-              <p className="mb-8 text-sm sm:text-base" style={{ color: 'var(--muted)' }}>
-                Get instant access when we launch + exclusive beta invites and founding member perks.
-              </p>
-
-              <EarlyAccessForm />
-
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/af-legacy"
-                  className="inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-                  style={{ background: 'var(--subtle-bg)', color: 'var(--muted)', border: '1px solid var(--border)' }}
-                >
-                  <Zap className="h-3 w-3" style={{ color: 'var(--accent-cyan-strong)' }} />
-                  AF Legacy Tools
-                </Link>
-                <Link
-                  href="/brackets"
-                  className="inline-flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-                  style={{ background: 'var(--subtle-bg)', color: 'var(--muted)', border: '1px solid var(--border)' }}
-                >
-                  <Trophy className="h-3 w-3" style={{ color: 'var(--accent-purple)' }} />
-                  Bracket Challenge
-                </Link>
-              </div>
             </div>
 
-            <div className="absolute -inset-4 rounded-3xl blur-2xl -z-10" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
+            <p className="text-base lg:text-lg leading-relaxed max-w-md mx-auto lg:mx-0 opacity-90" style={{ color: 'var(--muted)' }}>
+              AI built for <strong style={{ color: 'var(--accent-cyan-strong)' }}>real players</strong> — dynasty, redraft, best ball. NFL now, more sports 2026.
+            </p>
+
+            {/* Inline Early Access Form */}
+            <div className="mt-6 lg:mt-8 max-w-md mx-auto lg:mx-0">
+              <EarlyAccessForm variant="footer" />
+            </div>
+
+            {/* Secondary CTAs */}
+            <div className="flex flex-wrap justify-center lg:justify-start gap-4 mt-6">
+              <Link
+                href="/af-legacy"
+                className="group flex items-center gap-2 px-6 py-3 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.97]"
+                style={{ background: 'linear-gradient(to right, rgba(168,85,247,0.15), rgba(34,211,238,0.15))', border: '1px solid rgba(34,211,238,0.3)', color: 'var(--text)' }}
+              >
+                <Zap className="h-4 w-4" style={{ color: 'var(--accent-cyan-strong)' }} />
+                AF Legacy Tools
+              </Link>
+              <Link
+                href="/brackets"
+                className="group flex items-center gap-2 px-6 py-3 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.97]"
+                style={{ background: 'linear-gradient(to right, rgba(99,102,241,0.15), rgba(168,85,247,0.15))', border: '1px solid rgba(168,85,247,0.3)', color: 'var(--text)' }}
+              >
+                <Trophy className="h-4 w-4" style={{ color: 'var(--accent-purple)' }} />
+                Bracket Challenge
+              </Link>
+            </div>
+          </div>
+
+          {/* Right: Trade Analyzer */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="relative group"
+          >
+            <InstantTradeAnalyzer />
+            <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
           </motion.div>
-        </div>
+        </motion.div>
       </section>
 
       {/* ── QUICK STATS ── */}
@@ -230,36 +183,6 @@ function HomeContent() {
               <p className="mt-2 sm:mt-3 text-xs sm:text-sm" style={{ color: 'var(--muted2)' }}>{stat.label}</p>
             </motion.div>
           ))}
-        </div>
-      </section>
-
-      {/* ── INSTANT TRADE ANALYZER ── */}
-      <section className="py-16 sm:py-24 px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24">
-        <div className="max-w-7xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-10 sm:mb-14"
-          >
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-clip-text text-transparent mb-3" style={{ backgroundImage: 'linear-gradient(to right, var(--heading-from), var(--heading-via), var(--heading-to))' }}>
-              Try It Now — No Signup Required
-            </h2>
-            <p className="text-sm sm:text-base max-w-xl mx-auto" style={{ color: 'var(--muted2)' }}>
-              Paste any trade and get an instant AI-powered verdict with market values, fairness scores, and actionable insight.
-            </p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true, margin: '-80px' }}
-            transition={{ duration: 0.7 }}
-            className="max-w-2xl mx-auto"
-          >
-            <InstantTradeAnalyzer />
-          </motion.div>
         </div>
       </section>
 
@@ -527,28 +450,6 @@ function HomeContent() {
           <p className="text-xs" style={{ color: 'var(--muted2)' }}>© {new Date().getFullYear()} AllFantasy — All rights reserved</p>
         </div>
       </footer>
-
-      <style jsx global>{`
-        @keyframes gradient-x {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        .animate-gradient-x {
-          animation: gradient-x 4s ease infinite;
-        }
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.4; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.05); }
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 8s ease-in-out infinite;
-        }
-        .noise-overlay {
-          opacity: 0.02;
-          mix-blend-mode: overlay;
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
-        }
-      `}</style>
 
       <a href="/admin" className="fixed bottom-14 right-4 opacity-20 hover:opacity-60 transition-opacity z-50" title="Admin">
         <svg viewBox="0 0 100 120" className="w-8 h-10">
