@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, RefreshCw, AlertCircle, CheckCircle, Loader2, X, Shield, ExternalLink } from 'lucide-react';
+import { Plus, RefreshCw, AlertCircle, CheckCircle, Loader2, X, Shield, ExternalLink, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface League {
@@ -29,6 +29,10 @@ export default function LeagueSyncDashboard() {
   const [isAdding, setIsAdding] = useState(false);
   const [yahooConnected, setYahooConnected] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(false);
+
+  const [sleeperUsername, setSleeperUsername] = useState('');
+  const [discovering, setDiscovering] = useState(false);
+  const [discoveredLeagues, setDiscoveredLeagues] = useState<any[]>([]);
 
   const fetchLeagues = async () => {
     try {
@@ -243,6 +247,96 @@ export default function LeagueSyncDashboard() {
           ))}
         </div>
       )}
+
+      <div className="mt-10 rounded-2xl bg-slate-900/60 border border-slate-700/50 p-6">
+        <h3 className="text-lg font-bold mb-4">Discover Sleeper Leagues</h3>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            value={sleeperUsername}
+            onChange={(e) => setSleeperUsername(e.target.value)}
+            placeholder="Enter your Sleeper username"
+            className="flex-1 p-3 rounded-xl bg-slate-800 border border-slate-700 text-sm focus:outline-none focus:border-cyan-500"
+            onKeyDown={(e) => e.key === 'Enter' && !discovering && sleeperUsername.trim() && document.getElementById('discover-btn')?.click()}
+          />
+          <button
+            id="discover-btn"
+            onClick={async () => {
+              if (!sleeperUsername.trim()) return toast.error('Enter your Sleeper username');
+              setDiscovering(true);
+              setDiscoveredLeagues([]);
+              try {
+                const res = await fetch('/api/league/sleeper-discover', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ sleeperUsername: sleeperUsername.trim() }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  setDiscoveredLeagues(data.leagues);
+                  toast.success(`Found ${data.leagues.length} Sleeper leagues!`);
+                } else {
+                  toast.error(data.error || 'Discovery failed');
+                }
+              } catch {
+                toast.error('Failed to discover leagues');
+              } finally {
+                setDiscovering(false);
+              }
+            }}
+            disabled={discovering || !sleeperUsername.trim()}
+            className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 rounded-xl flex items-center gap-2 font-medium disabled:opacity-50 transition-all text-sm"
+          >
+            {discovering ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <Search className="w-5 h-5" />
+            )}
+            {discovering ? 'Searching...' : 'Discover My Leagues'}
+          </button>
+        </div>
+
+        {discoveredLeagues.length > 0 && (
+          <div className="mt-6">
+            <h4 className="text-sm font-medium text-slate-400 mb-3">
+              Found {discoveredLeagues.length} league{discoveredLeagues.length !== 1 ? 's' : ''}
+            </h4>
+            <div className="grid gap-4 md:grid-cols-2">
+              {discoveredLeagues.map((l: any) => (
+                <div key={l.sleeperLeagueId} className="p-5 rounded-2xl bg-slate-800/60 border border-slate-700">
+                  <h4 className="font-semibold">{l.name}</h4>
+                  <p className="text-sm text-slate-400 mt-1">
+                    {l.totalTeams}-team &bull; {l.isDynasty ? 'Dynasty' : 'Redraft'} &bull; {l.season}
+                  </p>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/league/sleeper-sync', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ sleeperLeagueId: l.sleeperLeagueId }),
+                        });
+                        const d = await res.json();
+                        if (d.success) {
+                          toast.success(`Added ${l.name}`);
+                          await fetchLeagues();
+                        } else {
+                          toast.error(d.error || 'Sync failed');
+                        }
+                      } catch {
+                        toast.error('Failed to sync league');
+                      }
+                    }}
+                    className="mt-3 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-sm transition-colors"
+                  >
+                    Add & Sync
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <AnimatePresence>
         {showAddModal && (
