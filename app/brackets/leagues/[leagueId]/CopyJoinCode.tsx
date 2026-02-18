@@ -1,11 +1,21 @@
 "use client"
 
 import { useState } from "react"
-import { Copy, Check, Link2 } from "lucide-react"
+import { Copy, Check, Link2, Share2 } from "lucide-react"
+
+type Status = "idle" | "copied_code" | "copied_link" | "shared"
 
 export default function CopyJoinCode({ joinCode }: { joinCode: string }) {
-  const [copied, setCopied] = useState(false)
-  const [linkCopied, setLinkCopied] = useState(false)
+  const [status, setStatus] = useState<Status>("idle")
+
+  function getInviteUrl() {
+    return `${window.location.origin}/brackets/join?code=${joinCode}`
+  }
+
+  function flash(s: Status) {
+    setStatus(s)
+    setTimeout(() => setStatus("idle"), 2000)
+  }
 
   async function copyText(text: string) {
     try {
@@ -22,15 +32,24 @@ export default function CopyJoinCode({ joinCode }: { joinCode: string }) {
 
   async function copyCode() {
     await copyText(joinCode)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    flash("copied_code")
   }
 
-  async function copyInviteLink() {
-    const url = `${window.location.origin}/brackets/join?code=${joinCode}`
+  async function shareOrCopyLink() {
+    const url = getInviteUrl()
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Join my AllFantasy Bracket League",
+          text: `Join my league with code ${joinCode}`,
+          url,
+        })
+        flash("shared")
+        return
+      }
+    } catch {}
     await copyText(url)
-    setLinkCopied(true)
-    setTimeout(() => setLinkCopied(false), 2000)
+    flash("copied_link")
   }
 
   return (
@@ -44,26 +63,38 @@ export default function CopyJoinCode({ joinCode }: { joinCode: string }) {
           className="rounded-xl border border-white/10 bg-white/10 p-3 hover:bg-white/15 transition"
           title="Copy code"
         >
-          {copied ? (
+          {status === "copied_code" ? (
             <Check className="h-5 w-5 text-emerald-400" />
           ) : (
             <Copy className="h-5 w-5 text-white/70" />
           )}
         </button>
       </div>
+
+      <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/40 font-mono truncate select-all">
+        {typeof window !== "undefined"
+          ? `${window.location.origin}/brackets/join?code=${joinCode}`
+          : `…/brackets/join?code=${joinCode}`}
+      </div>
+
       <button
-        onClick={copyInviteLink}
-        className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white/70 hover:bg-white/10 hover:text-white transition"
+        onClick={shareOrCopyLink}
+        className="w-full flex items-center justify-center gap-2 rounded-xl bg-white text-black px-3 py-2.5 text-sm font-semibold hover:bg-gray-200 transition-colors"
       >
-        {linkCopied ? (
+        {status === "copied_link" ? (
           <>
-            <Check className="h-4 w-4 text-emerald-400" />
-            <span className="text-emerald-400">Link copied!</span>
+            <Check className="h-4 w-4 text-emerald-600" />
+            <span>Link copied!</span>
+          </>
+        ) : status === "shared" ? (
+          <>
+            <Check className="h-4 w-4 text-emerald-600" />
+            <span>Shared!</span>
           </>
         ) : (
           <>
-            <Link2 className="h-4 w-4" />
-            <span>Copy invite link</span>
+            <Share2 className="h-4 w-4" />
+            <span>Share league</span>
           </>
         )}
       </button>
