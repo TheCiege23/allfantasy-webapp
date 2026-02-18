@@ -16,9 +16,16 @@ type WaiverSuggestion = {
   sensitivityNote: string | null;
 };
 
+type RosterAlert = {
+  playerName: string;
+  alertType: 'bust_risk' | 'sell_high' | 'injury_concern' | 'aging_out';
+  reason: string;
+};
+
 export default function WaiverAI() {
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<WaiverSuggestion[]>([]);
+  const [rosterAlerts, setRosterAlerts] = useState<RosterAlert[]>([]);
   const [error, setError] = useState('');
 
   const [userRoster, setUserRoster] = useState('');
@@ -30,6 +37,7 @@ export default function WaiverAI() {
     setLoading(true);
     setError('');
     setSuggestions([]);
+    setRosterAlerts([]);
 
     try {
       const res = await fetch('/api/waiver-ai/grok', {
@@ -50,6 +58,7 @@ export default function WaiverAI() {
 
       const parsed = await res.json();
       setSuggestions(parsed.suggestions || []);
+      setRosterAlerts(parsed.rosterAlerts || []);
       toast.success('Waiver gems found!');
       gtagEvent('waiver_ai_suggestions_generated', { count: parsed.suggestions?.length || 0 });
     } catch (err: any) {
@@ -143,6 +152,39 @@ export default function WaiverAI() {
             )}
             <div>Ranking waiver targets for your build...</div>
           </div>
+        </div>
+      )}
+
+      {rosterAlerts.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <h3 className="text-lg font-bold text-amber-400">Roster Alerts</h3>
+          {rosterAlerts.map((alert, i) => {
+            const alertConfig: Record<string, { label: string; color: string; bg: string }> = {
+              bust_risk: { label: 'Bust Risk', color: 'text-red-400', bg: 'bg-red-500/10 border-red-500/30' },
+              sell_high: { label: 'Sell High', color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/30' },
+              injury_concern: { label: 'Injury', color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/30' },
+              aging_out: { label: 'Aging Out', color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/30' },
+            };
+            const cfg = alertConfig[alert.alertType] || alertConfig.bust_risk;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.08 }}
+                className={`p-4 rounded-xl border ${cfg.bg} flex items-start gap-3`}
+              >
+                <AlertCircle className={`w-5 h-5 mt-0.5 ${cfg.color} shrink-0`} />
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-semibold">{alert.playerName}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.color}`}>{cfg.label}</span>
+                  </div>
+                  <p className="text-sm text-slate-300">{alert.reason}</p>
+                </div>
+              </motion.div>
+            );
+          })}
         </div>
       )}
 

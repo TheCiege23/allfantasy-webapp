@@ -58,6 +58,8 @@ ${realTimeClause}
 
 For each target, explain WHY they fit THIS specific roster and contention window. Be concrete — reference specific roster players they complement or replace.
 
+If relevant, mention any players on the current roster that look like potential busts or sell-high candidates based on age, injury history, situation, or market trends. Include these as a separate "rosterAlerts" array.
+
 Return 5–8 waiver targets ranked by priority.
 
 Output ONLY valid JSON (no markdown, no code fences):
@@ -71,6 +73,13 @@ Output ONLY valid JSON (no markdown, no code fences):
       "projectedPoints": number (weekly PPR projection),
       "faabBidRecommendation": number | null (% of total budget),
       "sensitivityNote": string | null (injury risk, usage concern, or upside caveat)
+    }
+  ],
+  "rosterAlerts": [
+    {
+      "playerName": string,
+      "alertType": "bust_risk" | "sell_high" | "injury_concern" | "aging_out",
+      "reason": string
     }
   ]
 }`;
