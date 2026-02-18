@@ -34,10 +34,10 @@ export async function GET(req: Request) {
 
   const now = new Date()
 
-  await (prisma as any).appUser.update({
+  await (prisma as any).appUser.updateMany({
     where: { id: row.userId },
     data: { emailVerified: now },
-  }).catch(() => null)
+  })
 
   await (prisma as any).userProfile.updateMany({
     where: { userId: row.userId },
