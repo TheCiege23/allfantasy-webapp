@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import { syncLeague, getDecryptedAuth } from '@/lib/league-sync-core';
+import { getResendClient } from '@/lib/resend-client';
 
 export async function POST(req: NextRequest) {
   let userId: string | undefined;
@@ -52,6 +53,40 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await syncLeague(userId, normalizedPlatform, platformLeagueId);
+
+    if (result.success && process.env.NODE_ENV === 'production') {
+      try {
+        const userEmail = (session?.user as any)?.email;
+        if (userEmail) {
+          const { client, fromEmail } = await getResendClient();
+          const leagueName = result.name || result.leagueName || normalizedPlatform.toUpperCase();
+          await client.emails.send({
+            from: fromEmail || 'AllFantasy.ai <noreply@allfantasy.ai>',
+            to: userEmail,
+            subject: `League Sync Complete: ${leagueName}`,
+            html: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #e2e8f0; padding: 32px; border-radius: 16px;">
+                <h2 style="background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;">AllFantasy.ai</h2>
+                <h3 style="color: #4ade80;">League Sync Successful</h3>
+                <p>Your ${normalizedPlatform.toUpperCase()} league <strong>"${leagueName}"</strong> was synced at ${new Date().toLocaleString()}.</p>
+                <ul style="color: #94a3b8;">
+                  <li>League size: ${result.leagueSize || result.totalTeams || '?'} teams</li>
+                  <li>Format: ${result.isDynasty ? 'Dynasty' : 'Redraft'}</li>
+                  <li>Scoring: ${(result.scoring || result.scoringType || 'STD').toUpperCase()}</li>
+                </ul>
+                <p>Your AI tools (Waiver AI, Trade Analyzer, Roster Report) will now use the latest data.</p>
+                <p style="color: #64748b; font-size: 0.85em; margin-top: 24px;">
+                  Sync ID: ${result.leagueId || result.id || 'N/A'}<br>
+                  If this wasn't you, contact support.
+                </p>
+              </div>
+            `,
+          });
+        }
+      } catch (emailErr) {
+        console.error('[League Sync] Email notification failed:', emailErr);
+      }
+    }
 
     return NextResponse.json(result);
   } catch (error: any) {
