@@ -409,9 +409,9 @@ function HomeContent() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { status: 'Full Transfer', color: 'emerald', platforms: [{ icon: '😴', name: 'Sleeper' }, { icon: '🏈', name: 'MyFantasyLeague (MFL)' }], desc: 'League, rosters, settings, and history imported automatically.' },
-              { status: 'Guided Transfer', color: 'amber', platforms: [{ icon: '🟣', name: 'Yahoo' }, { icon: '🔷', name: 'Fantrax' }, { icon: '🐝', name: 'Fleaflicker' }], desc: 'We import what\'s available and guide you through the rest.' },
-              { status: 'Manual Import', color: 'red', platforms: [{ icon: '📺', name: 'ESPN' }, { icon: '🎯', name: 'FFPC' }], desc: 'Upload or paste league data — we handle the conversion.' },
+              { status: 'Full Transfer', borderColor: 'rgba(16,185,129,0.2)', bgFrom: 'rgba(16,185,129,0.1)', dotColor: '#34d399', labelColor: 'var(--accent-emerald)', platforms: [{ icon: '😴', name: 'Sleeper' }, { icon: '🏈', name: 'MyFantasyLeague (MFL)' }], desc: 'League, rosters, settings, and history imported automatically.' },
+              { status: 'Guided Transfer', borderColor: 'rgba(245,158,11,0.2)', bgFrom: 'rgba(245,158,11,0.1)', dotColor: '#fbbf24', labelColor: 'var(--accent-amber)', platforms: [{ icon: '🟣', name: 'Yahoo' }, { icon: '🔷', name: 'Fantrax' }, { icon: '🐝', name: 'Fleaflicker' }], desc: 'We import what\'s available and guide you through the rest.' },
+              { status: 'Manual Import', borderColor: 'rgba(239,68,68,0.2)', bgFrom: 'rgba(239,68,68,0.1)', dotColor: '#f87171', labelColor: 'var(--accent-red)', platforms: [{ icon: '📺', name: 'ESPN' }, { icon: '🎯', name: 'FFPC' }], desc: 'Upload or paste league data — we handle the conversion.' },
             ].map((tier, i) => (
               <motion.div
                 key={i}
@@ -419,11 +419,12 @@ function HomeContent() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: '-50px' }}
                 transition={{ duration: 0.5, delay: i * 0.12 }}
-                className={`rounded-2xl border border-${tier.color}-500/20 bg-gradient-to-br from-${tier.color}-500/10 to-transparent p-5`}
+                className="rounded-2xl p-5"
+                style={{ border: `1px solid ${tier.borderColor}`, background: `linear-gradient(to bottom right, ${tier.bgFrom}, transparent)` }}
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <span className={`w-3 h-3 rounded-full bg-${tier.color}-400`} />
-                  <span className="text-sm font-bold" style={{ color: `var(--accent-${tier.color})` }}>{tier.status}</span>
+                  <span className="w-3 h-3 rounded-full" style={{ background: tier.dotColor }} />
+                  <span className="text-sm font-bold" style={{ color: tier.labelColor }}>{tier.status}</span>
                 </div>
                 <div className="space-y-2 mb-4">
                   {tier.platforms.map((p, j) => (
