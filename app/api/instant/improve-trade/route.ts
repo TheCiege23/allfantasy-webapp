@@ -286,6 +286,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
 
     const { tradeText, currentVerdict, currentFairness } = body
     const shouldStream = body.stream !== false
+    const useRealTimeNews = body.useRealTimeNews !== false
     const leagueSize = typeof body.leagueSize === 'number' && [8, 10, 12, 14, 16, 32].includes(body.leagueSize) ? body.leagueSize : 12
     const scoring = ['ppr', 'half', 'standard', 'superflex'].includes(body.scoring) ? body.scoring : 'ppr'
     const isDynasty = typeof body.isDynasty === 'boolean' ? body.isDynasty : true
@@ -322,8 +323,21 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       return new Response('Request aborted', { status: 499 })
     }
 
+    const grokCall = useRealTimeNews
+      ? runGrokWithTools(systemPrompt)
+      : grokClient.chat.completions.create({
+          model: 'grok-4-0709',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: 'Generate the counter-offer suggestions now. Return only JSON.' },
+          ],
+          temperature: 0.6,
+          max_tokens: 1800,
+          response_format: { type: 'json_object' },
+        }).then(r => r.choices[0]?.message?.content || '{}')
+
     const [grokResult, openaiResult] = await Promise.allSettled([
-      runGrokWithTools(systemPrompt),
+      grokCall,
       openaiClient.chat.completions.create({
         model: 'gpt-4o',
         messages: [

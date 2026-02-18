@@ -55,8 +55,9 @@ export default function ImproveTradeModal({
   const RESET_AFTER_HOURS = 24
   const [moreCount, setMoreCount] = useState(0)
   const [lastResetTime, setLastResetTime] = useState<number | null>(null)
+  const [useRealTimeNews, setUseRealTimeNews] = useState(true)
   const [thinkingPhase, setThinkingPhase] = useState(0)
-  const [feedback, setFeedback] = useState<Record<number, 'up' | 'down'>>({})
+  const [feedbackGiven, setFeedbackGiven] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!isOpen) return
@@ -89,7 +90,7 @@ export default function ImproveTradeModal({
     setSuggestions([])
     setStreamText('')
     setError('')
-    setFeedback({})
+    setFeedbackGiven(new Set())
 
     gtagEvent('improve_trade_modal_opened', {
       league_size: leagueSize,
@@ -154,6 +155,7 @@ export default function ImproveTradeModal({
           userRecord: userRecord || undefined,
           currentVerdict: currentResult?.verdict || 'unknown',
           currentFairness: currentResult?.values?.percentDiff || 0,
+          useRealTimeNews,
           stream: true,
         }),
         signal: controller.signal,
@@ -341,25 +343,32 @@ export default function ImproveTradeModal({
     gtagEvent('improve_trade_suggestion_copied', { scoring, is_dynasty: isDynasty })
   }
 
-  const submitFeedback = (index: number, direction: 'up' | 'down') => {
-    const prev = feedback[index]
-    if (prev === direction) {
-      setFeedback((f) => { const n = { ...f }; delete n[index]; return n })
-      return
-    }
-    setFeedback((f) => ({ ...f, [index]: direction }))
-    gtagEvent('improve_trade_suggestion_feedback', {
-      direction,
-      suggestion_index: index,
-      suggestion_title: suggestions[index]?.title || '',
-      scoring,
-      is_dynasty: isDynasty,
-      league_size: leagueSize,
-    })
-    if (direction === 'up') {
-      toast.success('Thanks! We\'ll learn from this.')
-    } else {
-      toast('Noted — we\'ll improve future suggestions.', { icon: '📝' })
+  const submitFeedback = async (sug: Suggestion, vote: 'up' | 'down') => {
+    const key = sug.title + sug.counter
+    if (feedbackGiven.has(key)) return
+
+    try {
+      await fetch('/api/feedback/trade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tradeText: originalTradeText,
+          suggestionTitle: sug.title,
+          suggestionText: sug.counter,
+          vote,
+          leagueSize,
+          isDynasty,
+          scoring,
+          userRoster: userRoster || undefined,
+          userContention,
+        }),
+      })
+
+      setFeedbackGiven((prev) => new Set([...prev, key]))
+      gtagEvent('trade_suggestion_feedback', { vote, suggestion_title: sug.title, scoring, is_dynasty: isDynasty, league_size: leagueSize })
+      toast.success(vote === 'up' ? 'Thanks! Great suggestion.' : 'Got it — we\'ll improve next time.')
+    } catch {
+      toast.error('Failed to save feedback')
     }
   }
 
@@ -529,6 +538,19 @@ export default function ImproveTradeModal({
                     </div>
                   </details>
 
+                  <label className="flex items-center gap-3 cursor-pointer py-1">
+                    <input
+                      type="checkbox"
+                      checked={useRealTimeNews}
+                      onChange={(e) => setUseRealTimeNews(e.target.checked)}
+                      className="w-4 h-4 accent-cyan-400"
+                    />
+                    <span className="text-xs font-medium" style={{ color: 'var(--muted)' }}>
+                      Use real-time news, injuries & X sentiment
+                    </span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-cyan-400/10 text-cyan-400 font-semibold">LIVE</span>
+                  </label>
+
                   <button
                     onClick={fetchSuggestions}
                     className="w-full rounded-xl py-3.5 font-bold text-sm text-black
@@ -671,22 +693,28 @@ export default function ImproveTradeModal({
                           <Copy className="w-3.5 h-3.5" />
                           Copy counter-offer
                         </button>
-                        <div className="flex items-center gap-1 ml-auto">
-                          <button
-                            onClick={() => submitFeedback(i, 'up')}
-                            className={`p-2 rounded-lg transition-all active:scale-90 ${feedback[i] === 'up' ? 'bg-emerald-500/20 text-emerald-400' : 'hover:bg-emerald-500/10 text-[var(--muted2)] hover:text-emerald-400'}`}
-                            title="Good suggestion"
-                          >
-                            <ThumbsUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => submitFeedback(i, 'down')}
-                            className={`p-2 rounded-lg transition-all active:scale-90 ${feedback[i] === 'down' ? 'bg-red-500/20 text-red-400' : 'hover:bg-red-500/10 text-[var(--muted2)] hover:text-red-400'}`}
-                            title="Not helpful"
-                          >
-                            <ThumbsDown className="w-4 h-4" />
-                          </button>
-                        </div>
+                      </div>
+
+                      <div className="flex gap-4 mt-4 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
+                        <button
+                          onClick={() => submitFeedback(sug, 'up')}
+                          disabled={feedbackGiven.has(sug.title + sug.counter)}
+                          className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-emerald-400 hover:text-emerald-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <ThumbsUp className="w-4 h-4" />
+                          Helpful / Accurate
+                        </button>
+                        <button
+                          onClick={() => submitFeedback(sug, 'down')}
+                          disabled={feedbackGiven.has(sug.title + sug.counter)}
+                          className="flex items-center gap-2 text-xs font-medium transition-all active:scale-95 text-red-400 hover:text-red-300 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <ThumbsDown className="w-4 h-4" />
+                          Not helpful / Overvalued
+                        </button>
+                        {feedbackGiven.has(sug.title + sug.counter) && (
+                          <span className="text-xs ml-auto" style={{ color: 'var(--muted2)' }}>Thanks for the feedback!</span>
+                        )}
                       </div>
                     </motion.div>
                   ))}
