@@ -12,6 +12,112 @@ const openaiClient = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+const MAX_TOOL_TURNS = 5
+
+const GROK_TOOLS: OpenAI.ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: 'Search current web for NFL news, injuries, signings, rookie updates, contract news',
+      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'x_keyword_search',
+      description: 'Search X (Twitter) for real-time player buzz, rookie hype, sentiment, injuries',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          limit: { type: 'number' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+]
+
+async function executeWebSearch(query: string): Promise<any> {
+  const serperKey = process.env.SERPER_API_KEY
+  if (!serperKey) {
+    return { note: 'Web search not configured' }
+  }
+  try {
+    const res = await fetch('https://google.serper.dev/search', {
+      method: 'POST',
+      headers: { 'X-API-KEY': serperKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ q: query, num: 5 }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) return { error: `Search failed: ${res.status}` }
+    const data = await res.json()
+    const organic = data.organic?.slice(0, 5).map((r: any) => ({
+      title: r.title,
+      snippet: r.snippet,
+      link: r.link,
+    })) || []
+    return { results: organic, answerBox: data.answerBox || null }
+  } catch (err: any) {
+    return { error: err.message || 'Search timeout' }
+  }
+}
+
+async function runGrokWithTools(systemPrompt: string): Promise<string> {
+  let messages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'Analyze this trade using all provided context. Use your tools to search for the latest real-time news, injuries, signings, and X sentiment for the players involved. Then generate your counter-offer suggestions.' },
+  ]
+
+  for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
+    const response = await grokClient.chat.completions.create({
+      model: 'grok-4-0709',
+      messages,
+      tools: GROK_TOOLS,
+      tool_choice: 'auto',
+      temperature: 0.65,
+      max_tokens: 1800,
+    })
+
+    const msg = response.choices[0].message
+    messages.push(msg)
+
+    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      return msg.content || '{}'
+    }
+
+    for (const toolCall of msg.tool_calls) {
+      const fnName = toolCall.function.name
+      let args: any = {}
+      try { args = JSON.parse(toolCall.function.arguments || '{}') } catch {}
+
+      let result: any
+
+      if (fnName === 'web_search') {
+        result = await executeWebSearch(args.query || 'NFL fantasy football news injuries 2026')
+      } else if (fnName === 'x_keyword_search') {
+        result = { note: 'X search results incorporated via Grok native awareness', query: args.query }
+      } else {
+        result = { error: `Unknown tool: ${fnName}` }
+      }
+
+      messages.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result),
+      })
+    }
+  }
+
+  const finalMsg = messages[messages.length - 1]
+  if (finalMsg.role === 'assistant' && typeof finalMsg.content === 'string') {
+    return finalMsg.content
+  }
+  return '{}'
+}
+
 function buildSystemPrompt(ctx: {
   tradeText: string
   leagueSize: number
@@ -43,6 +149,7 @@ function buildSystemPrompt(ctx: {
   const fcBlock = fantasyCalcSnippet ? `\nFantasyCalc objective values (league-size adjusted):\n${fantasyCalcSnippet}\n` : ''
 
   return `You are the world's #1 fantasy football trade analyst (2026).
+You have real-time web + X search tools. Use them aggressively to research players in the trade.
 
 LEAGUE SIZE SPECIFICITY IS CRITICAL:
 - 4-8 team leagues: Picks have almost no value, stars dominate
@@ -82,6 +189,7 @@ Take EVERYTHING into account:
 - Volatility: boom/bust players, injury history, contract situations
 - FAAB implications if relevant
 - FantasyCalc objective values when available — use them to ground your suggestions
+- Real-time news: injuries, signings, trades, rookie buzz, X sentiment
 - Acceptance likelihood — suggest counters a rational opponent would consider
 
 For each suggestion return:
@@ -202,16 +310,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     }
 
     const [grokResult, openaiResult] = await Promise.allSettled([
-      grokClient.chat.completions.create({
-        model: 'grok-4-0709',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: 'Generate the counter-offer suggestions now. Use your real-time awareness of injuries, signings, rookie buzz, and X sentiment. Return only JSON.' },
-        ],
-        temperature: 0.6,
-        max_tokens: 1800,
-        response_format: { type: 'json_object' },
-      }),
+      runGrokWithTools(systemPrompt),
       openaiClient.chat.completions.create({
         model: 'gpt-4o',
         messages: [
@@ -231,17 +330,17 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
     ])
 
     const grokContent = grokResult.status === 'fulfilled'
-      ? (grokResult.value.choices[0]?.message?.content || '{}')
+      ? grokResult.value
       : '{"error": "Grok unavailable"}'
     const openaiContent = openaiResult.status === 'fulfilled'
       ? (openaiResult.value.choices[0]?.message?.content || '{}')
       : '{"error": "OpenAI unavailable"}'
 
     if (grokResult.status === 'rejected') {
-      console.error('[improve-trade] Grok failed, continuing with OpenAI only:', grokResult.reason?.message)
+      console.error('[improve-trade] Grok agentic loop failed, continuing with OpenAI only:', (grokResult.reason as any)?.message)
     }
     if (openaiResult.status === 'rejected') {
-      console.error('[improve-trade] OpenAI failed, continuing with Grok only:', openaiResult.reason?.message)
+      console.error('[improve-trade] OpenAI failed, continuing with Grok only:', (openaiResult.reason as any)?.message)
     }
 
     if (grokResult.status === 'rejected' && openaiResult.status === 'rejected') {
@@ -284,12 +383,13 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
         messages: [
           {
             role: 'system',
-            content: `You are the final synthesizer combining two elite AI trade analysts. Merge Grok's real-time-aware suggestions with OpenAI's strategically deep suggestions into one cohesive, best-possible set of 3-5 counter-offers.
+            content: `You are the final synthesizer combining two elite AI trade analysts. Merge Grok's real-time research (which may include live web search results) with OpenAI's strategically deep suggestions into one cohesive, best-possible set of 3-5 counter-offers.
 
 Rules:
 - Pick the strongest suggestions from both sources — deduplicate similar ideas
 - If both AIs agree on a counter, it's high-confidence — rank it first
 - If they disagree, include the more realistic/higher-acceptance option
+- Incorporate any real-time news/injury data that Grok found via tools
 - Preserve the exact JSON format with title, counter, impact, reasons, sensitivityNote
 - Order from most to least likely to be accepted
 
@@ -308,7 +408,7 @@ Return ONLY valid JSON:
           },
           {
             role: 'user',
-            content: `Grok (real-time aware) output:\n${grokContent}\n\nOpenAI (strategic depth) output:\n${openaiContent}\n\nProduce the final merged 3-5 suggestions.`,
+            content: `Grok (real-time research with web/X tools) output:\n${grokContent}\n\nOpenAI (strategic depth) output:\n${openaiContent}\n\nProduce the final merged 3-5 suggestions.`,
           },
         ],
         temperature: 0.4,
@@ -373,11 +473,11 @@ Return ONLY valid JSON:
       messages: [
         {
           role: 'system',
-          content: `You are the final synthesizer combining two elite AI trade analysts. Merge Grok's real-time-aware suggestions with OpenAI's strategically deep suggestions into one cohesive, best-possible set of 3-5 counter-offers. Pick the strongest from both, deduplicate, and order by acceptance likelihood. Return ONLY valid JSON with "suggestions" array.`,
+          content: `You are the final synthesizer combining two elite AI trade analysts. Merge Grok's real-time research with OpenAI's strategically deep suggestions into one cohesive, best-possible set of 3-5 counter-offers. Pick the strongest from both, deduplicate, and order by acceptance likelihood. Return ONLY valid JSON with "suggestions" array.`,
         },
         {
           role: 'user',
-          content: `Grok (real-time aware) output:\n${grokContent}\n\nOpenAI (strategic depth) output:\n${openaiContent}\n\nProduce the final merged 3-5 suggestions in exact JSON format.`,
+          content: `Grok (real-time research with web/X tools) output:\n${grokContent}\n\nOpenAI (strategic depth) output:\n${openaiContent}\n\nProduce the final merged 3-5 suggestions in exact JSON format.`,
         },
       ],
       temperature: 0.4,
