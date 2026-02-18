@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import DashboardContent from "./DashboardContent"
+import SyncedRosters from "@/app/components/SyncedRosters"
 
 export const dynamic = "force-dynamic"
 
@@ -85,33 +86,38 @@ export default async function DashboardPage() {
   const isAgeConfirmed = !!profile?.ageConfirmedAt
 
   return (
-    <DashboardContent
-      user={{
-        id: appUser?.id || userId,
-        username: appUser?.username || null,
-        displayName: appUser?.displayName || null,
-        email: email,
-        emailVerified: !!appUser?.emailVerified,
-        avatarUrl: appUser?.avatarUrl || null,
-      }}
-      profile={{
-        sleeperUsername: profile?.sleeperUsername || null,
-        isVerified,
-        isAgeConfirmed,
-        profileComplete: profile?.profileComplete || false,
-      }}
-      leagues={leagues.map((m: any) => ({
-        id: m.league.id,
-        name: m.league.name,
-        tournamentId: m.league.tournamentId,
-        memberCount: m.league._count?.members || 0,
-      }))}
-      entries={entries.map((e: any) => ({
-        id: e.id,
-        name: e.name,
-        tournamentId: e.tournamentId,
-        score: e.score || 0,
-      }))}
-    />
+    <>
+      <DashboardContent
+        user={{
+          id: appUser?.id || userId,
+          username: appUser?.username || null,
+          displayName: appUser?.displayName || null,
+          email: email,
+          emailVerified: !!appUser?.emailVerified,
+          avatarUrl: appUser?.avatarUrl || null,
+        }}
+        profile={{
+          sleeperUsername: profile?.sleeperUsername || null,
+          isVerified,
+          isAgeConfirmed,
+          profileComplete: profile?.profileComplete || false,
+        }}
+        leagues={leagues.map((m: any) => ({
+          id: m.league.id,
+          name: m.league.name,
+          tournamentId: m.league.tournamentId,
+          memberCount: m.league._count?.members || 0,
+        }))}
+        entries={entries.map((e: any) => ({
+          id: e.id,
+          name: e.name,
+          tournamentId: e.tournamentId,
+          score: e.score || 0,
+        }))}
+      />
+      <div className="max-w-6xl mx-auto px-4 pb-12">
+        <SyncedRosters />
+      </div>
+    </>
   )
 }
