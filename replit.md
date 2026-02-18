@@ -43,6 +43,7 @@ Key features include:
 -   **Game Theory Counter Builder**: Mathematically optimized counter offers that maximize acceptance probability and championship delta while minimizing value loss.
 -   **Response Hardening System**: Shared defensive utilities for robust API responses, including structured error handling and fallback mechanisms.
 -   **Model Drift Dashboard**: Monitors model health using various event data, tracking calibration, drift, ranking quality, and narrative integrity.
+-   **NCAA Bracket Challenge**: Full March Madness bracket system with league creation, invite codes, ESPN-style bracket UI (`BracketProView`), live polling via `useBracketLive` hook (15s intervals), animated `Leaderboard` with rank change tracking, optimistic picks with rollback, mobile horizontal round scroller, seasonal nav CTA (`BracketsNavLinks`), and shareable invite links with auto-fill. Routes: `/brackets`, `/bracket/[tournamentId]/entry/[entryId]`, `/brackets/join?code=...`, `/march-madness` (redirect alias).
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.
