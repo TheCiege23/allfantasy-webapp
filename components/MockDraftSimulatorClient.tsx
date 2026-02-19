@@ -195,12 +195,20 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     return { letter, color, title, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 3), valueAdded }
   }, [adpMap, normalizeName])
 
-  const filteredBestAvailable = useMemo(() => {
-    const draftedNames = new Set(draftResults.map(p => normalizeName(p.playerName)))
-    const available = adpData.filter(p => !draftedNames.has(normalizeName(p.name)))
-    if (selectedFilter === 'All') return available.slice(0, 25)
-    return available.filter(p => p.position === selectedFilter).slice(0, 25)
-  }, [draftResults, adpData, selectedFilter, normalizeName])
+  const [bestAvailable, setBestAvailable] = useState<ADPPlayer[]>([])
+
+  useEffect(() => {
+    if (!adpData.length || draftResults.length === 0) return
+
+    const drafted = new Set(draftResults.map(p => p.playerName))
+    let remaining = adpData.filter(p => !drafted.has(p.name))
+
+    if (selectedFilter !== 'All') {
+      remaining = remaining.filter(p => p.position === selectedFilter)
+    }
+
+    setBestAvailable(remaining.slice(0, 15))
+  }, [draftResults, adpData, selectedFilter])
 
   const openComparison = useCallback((pick: any) => {
     const bap = adpData.find(p => !draftResults.some(d => d.playerName === p.name))
@@ -947,7 +955,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
           <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
             <AnimatePresence>
-              {filteredBestAvailable.map((player, i) => (
+              {bestAvailable.map((player, i) => (
                 <motion.div
                   key={player.name}
                   initial={{ opacity: 0, x: 20 }}
@@ -966,7 +974,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 </motion.div>
               ))}
             </AnimatePresence>
-            {filteredBestAvailable.length === 0 && (
+            {bestAvailable.length === 0 && (
               <p className="text-sm text-gray-500 text-center py-4">No players available</p>
             )}
           </div>
