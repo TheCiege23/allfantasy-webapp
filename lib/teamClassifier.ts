@@ -6,14 +6,7 @@ export interface ArchetypeResult {
   archetype: TeamArchetype
   score: number
   explanation: string
-  factors: {
-    projectedWins: number
-    avgStarterAge: number
-    depthByPosition: Record<string, number>
-    overallDepth: number
-    recentWinsAvg: number
-    futureCapitalScore: number
-  }
+  positionalNeeds: string
 }
 
 export interface RosterPlayer {
@@ -27,7 +20,7 @@ export interface RosterPlayer {
 export async function classifyTeam(
   leagueId: string,
   userRoster: RosterPlayer[],
-  userFuturePicks: number = 0
+  futurePicksCount: number = 0
 ): Promise<ArchetypeResult> {
   const league = await prisma.league.findUnique({
     where: { id: leagueId },
@@ -60,32 +53,25 @@ export async function classifyTeam(
 
   const projectedWins = calculateProjectedWins(enrichedRoster)
   const avgStarterAge = calculateAvgStarterAge(enrichedRoster)
-  const { depthByPosition, overallDepth } = calculateDepth(enrichedRoster)
-  const recentWinsAvg = calculateRecentWins(historicalSeasons)
-  const futureCapitalScore = Math.max(100 - userFuturePicks * 12, 20)
+  const recentWins = calculateRecentWins(historicalSeasons)
+  const { needs, positionalNeeds } = calculatePositionalNeeds(enrichedRoster)
+  const criticalCount = Object.values(needs).filter(n => n === 'critical').length
 
   const score = calculateFinalScore(
     projectedWins,
     avgStarterAge,
-    overallDepth,
-    recentWinsAvg,
-    futureCapitalScore
+    recentWins,
+    futurePicksCount,
+    criticalCount
   )
 
-  const { archetype, explanation } = classifyFromScore(score, avgStarterAge)
+  const { archetype, explanation } = classifyFromScore(score)
 
   return {
     archetype,
     score,
     explanation,
-    factors: {
-      projectedWins,
-      avgStarterAge,
-      depthByPosition,
-      overallDepth,
-      recentWinsAvg,
-      futureCapitalScore,
-    },
+    positionalNeeds,
   }
 }
 
@@ -94,10 +80,8 @@ function calculateProjectedWins(roster: RosterPlayer[]): number {
     (sum, p) => sum + (p.projectedPoints || 0),
     0
   )
-  const avgProjectedPoints =
-    roster.length > 0 ? totalProjectedPoints / roster.length : 0
-
-  return Math.min(Math.max((avgProjectedPoints - 120) / 80, 0), 1)
+  const avg = roster.length > 0 ? totalProjectedPoints / roster.length : 0
+  return Math.min(Math.max((avg - 118) / 85, 0), 1)
 }
 
 function calculateAvgStarterAge(roster: RosterPlayer[]): number {
@@ -114,28 +98,10 @@ function calculateAvgStarterAge(roster: RosterPlayer[]): number {
   return Math.round((total / withAge.length) * 10) / 10
 }
 
-function calculateDepth(roster: RosterPlayer[]): {
-  depthByPosition: Record<string, number>
-  overallDepth: number
-} {
-  const depthByPosition: Record<string, number> = {}
-
-  for (const pos of ['QB', 'RB', 'WR', 'TE']) {
-    const count = roster.filter(p => p.position === pos).length
-    depthByPosition[pos] = Math.min(count * 12, 100)
-  }
-
-  const values = Object.values(depthByPosition)
-  const overallDepth =
-    values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 50
-
-  return { depthByPosition, overallDepth }
-}
-
 function calculateRecentWins(
   historicalSeasons: { standings: any }[]
 ): number {
-  if (!historicalSeasons || historicalSeasons.length === 0) return 0
+  if (!historicalSeasons || historicalSeasons.length === 0) return 7
 
   let totalWins = 0
   let seasonsCounted = 0
@@ -149,55 +115,84 @@ function calculateRecentWins(
     }
   }
 
-  if (seasonsCounted === 0) return 0
+  if (seasonsCounted === 0) return 7
   return totalWins / seasonsCounted
+}
+
+function calculatePositionalNeeds(roster: RosterPlayer[]): {
+  needs: Record<string, string>
+  positionalNeeds: string
+} {
+  const posCounts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0 }
+
+  for (const p of roster) {
+    if (posCounts[p.position] !== undefined) {
+      posCounts[p.position]++
+    }
+  }
+
+  const needs: Record<string, string> = {}
+
+  for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+    const count = posCounts[pos]
+    if (count <= 1) needs[pos] = 'critical'
+    else if (count <= 2) needs[pos] = 'weak'
+    else if (count >= 4) needs[pos] = 'strong'
+    else needs[pos] = 'solid'
+  }
+
+  const positionalNeeds =
+    `RB ${needs.RB} (${posCounts.RB} rostered), ` +
+    `WR ${needs.WR} (${posCounts.WR}), ` +
+    `QB ${needs.QB} (${posCounts.QB}), ` +
+    `TE ${needs.TE} (${posCounts.TE})`
+
+  return { needs, positionalNeeds }
 }
 
 function calculateFinalScore(
   projectedWins: number,
   avgStarterAge: number,
-  overallDepth: number,
-  recentWinsAvg: number,
-  futureCapitalScore: number
+  recentWins: number,
+  futurePicksCount: number,
+  criticalNeedsCount: number
 ): number {
-  const youthBonus = Math.max(30 - (avgStarterAge - 24) * 2, 0) * 0.8
+  const youthBonus = (30 - (avgStarterAge - 24) * 2.2) * 0.85
+  const capitalScore = futurePicksCount > 4 ? 15 : 40 - futurePicksCount * 6
+  const criticalPenalty = criticalNeedsCount * -12
 
   const score =
     projectedWins * 35 +
     youthBonus +
-    overallDepth * 0.25 +
-    (recentWinsAvg / 14) * 15 +
-    futureCapitalScore * 0.15
+    (recentWins / 14) * 18 +
+    capitalScore +
+    criticalPenalty
 
-  return Math.round(Math.max(Math.min(score, 100), 0))
+  return Math.round(Math.max(Math.min(score, 100), 10))
 }
 
 function classifyFromScore(
-  score: number,
-  avgAge: number
+  score: number
 ): { archetype: TeamArchetype; explanation: string } {
   if (score >= 78) {
     return {
       archetype: 'Contender',
       explanation:
-        `Strong projected wins, young core (avg ${avgAge}), and excellent depth. ` +
-        `You're built to compete now and for the next 2-3 seasons.`,
+        'Young core, strong projections, and excellent depth. Built to win now and sustain through 2028.',
     }
   }
 
-  if (score >= 55) {
+  if (score >= 54) {
     return {
       archetype: 'Mid',
       explanation:
-        `Playoff bubble team (avg age ${avgAge}). Solid foundation but one or two ` +
-        `moves away from serious contention. Consider targeted upgrades at your weakest position.`,
+        'Playoff contender with room to improve. One or two key pieces could push you over the top.',
     }
   }
 
   return {
     archetype: 'Rebuilder',
     explanation:
-      `Low projected wins and/or heavy future capital (avg age ${avgAge}). ` +
-      `Perfect time to accumulate young assets and draft picks — reset for 2027+.`,
+      'Accumulating future capital and resetting the roster for a strong 2027+ window.',
   }
 }
