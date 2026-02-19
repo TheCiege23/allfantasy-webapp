@@ -81,6 +81,17 @@ function HomeContent() {
       {/* ── HERO SECTION ── full viewport height */}
       <section className="relative min-h-screen flex flex-col justify-center px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24 py-16 md:py-0">
 
+        {/* AF Shield background watermark */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+          <img
+            src="/af-logo-bg.png"
+            alt=""
+            aria-hidden="true"
+            className="w-[600px] h-[600px] md:w-[800px] md:h-[800px] object-contain opacity-[0.06] select-none"
+            draggable={false}
+          />
+        </div>
+
         {/* Animated background blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -left-20 top-20 w-96 h-96 rounded-full blur-[120px] animate-pulse-slow" style={{ background: 'var(--hero-blob-1, rgba(34,211,238,0.08))' }} />
