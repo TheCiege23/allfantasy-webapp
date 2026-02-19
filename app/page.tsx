@@ -108,7 +108,7 @@ function HomeContent() {
             <img
               src="/af-logo-text.png"
               alt="AllFantasy"
-              className="h-5 sm:h-6 object-contain select-none"
+              className="h-12 sm:h-16 md:h-20 object-contain select-none"
               draggable={false}
             />
             <ModeToggle className="rounded-xl px-3 py-2 text-sm font-semibold active:scale-[0.98] transition" />
