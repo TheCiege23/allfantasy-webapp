@@ -124,55 +124,74 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   }, [])
 
   const calculateTeamGrade = useCallback((manager: string, picks: DraftPick[]) => {
-    const teamPicks = picks.filter(p => p.manager === manager)
-    if (teamPicks.length === 0) return { letter: 'N/A', color: '#6b7280', title: 'No picks', strengths: [] as string[], weaknesses: [] as string[], valueAdded: '0' }
+    const drafted = picks.filter(p => p.manager === manager)
+    if (drafted.length === 0) return { letter: 'N/A', color: '#6b7280', title: 'No picks', strengths: [] as string[], weaknesses: [] as string[], valueAdded: '+$0' }
 
-    let totalValue = 0
-    let reachCount = 0
-    let stealCount = 0
-    const posCounts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
+    const qbCount = drafted.filter(p => p.position === 'QB').length
+    const rbCount = drafted.filter(p => p.position === 'RB').length
+    const wrCount = drafted.filter(p => p.position === 'WR').length
+    const teCount = drafted.filter(p => p.position === 'TE').length
+
+    let score = 75
+    let totalAdpDelta = 0
+    let adpHits = 0
+
+    if (qbCount >= 2) score += 15
+    if (rbCount >= 4) score += 10
+    if (wrCount >= 5) score += 8
+    if (teCount >= 2) score += 5
+
+    if (qbCount === 0) score -= 10
+    if (rbCount < 3) score -= 8
+    if (wrCount < 3) score -= 6
+    if (teCount === 0) score -= 4
+
+    for (const pick of drafted) {
+      const adp = adpMap.get(normalizeName(pick.playerName))
+      if (adp) {
+        const delta = adp.adp - pick.overall
+        totalAdpDelta += delta
+        adpHits++
+        if (delta > 10) score += 3
+        if (delta < -10) score -= 3
+      }
+      score += Math.min((pick.value || 0) / 20, 5)
+    }
+
+    score = Math.max(40, Math.min(100, score))
+
     const strengths: string[] = []
     const weaknesses: string[] = []
 
-    for (const pick of teamPicks) {
-      totalValue += pick.value || 0
-      if (posCounts[pick.position] !== undefined) posCounts[pick.position]++
-      const adp = adpMap.get(normalizeName(pick.playerName))
-      if (adp) {
-        const diff = adp.adp - pick.overall
-        if (diff > 10) stealCount++
-        if (diff < -10) reachCount++
-      }
-    }
+    if (qbCount >= 2) strengths.push('Solid QB depth')
+    if (rbCount >= 4) strengths.push('Deep RB room')
+    if (wrCount >= 5) strengths.push('Loaded at WR')
+    if (adpHits > 0 && totalAdpDelta / adpHits > 5) strengths.push('Strong value picks')
+    if (teCount >= 2) strengths.push('TE advantage')
 
-    const avgValue = totalValue / teamPicks.length
-
-    if (stealCount >= 3) strengths.push(`${stealCount} steals relative to ADP`)
-    if (posCounts.RB >= 4) strengths.push('Deep RB room')
-    if (posCounts.WR >= 5) strengths.push('Loaded at WR')
-    if (posCounts.QB >= 2) strengths.push('QB depth secured')
-    if (strengths.length === 0 && avgValue > 50) strengths.push('Solid overall value')
-
-    if (reachCount >= 3) weaknesses.push(`${reachCount} reaches vs ADP`)
-    if (posCounts.QB === 0) weaknesses.push('No QB drafted')
-    if (posCounts.RB <= 1) weaknesses.push('Thin at RB')
-    if (posCounts.WR <= 2) weaknesses.push('WR depth concern')
-    if (posCounts.TE === 0) weaknesses.push('No TE rostered')
+    if (rbCount < 3) weaknesses.push('Thin RB room')
+    if (wrCount < 3) weaknesses.push('WR depth concern')
+    if (qbCount === 0) weaknesses.push('No QB drafted')
+    if (teCount === 0) weaknesses.push('No TE rostered')
+    if (adpHits > 0 && totalAdpDelta / adpHits < -5) weaknesses.push('Too many reaches')
 
     let letter: string
     let color: string
     let title: string
-    if (avgValue >= 75) { letter = 'A+'; color = '#00ff88'; title = 'Elite Draft' }
-    else if (avgValue >= 65) { letter = 'A'; color = '#22c55e'; title = 'Excellent Draft' }
-    else if (avgValue >= 55) { letter = 'B+'; color = '#84cc16'; title = 'Strong Draft' }
-    else if (avgValue >= 45) { letter = 'B'; color = '#eab308'; title = 'Above Average' }
-    else if (avgValue >= 35) { letter = 'C+'; color = '#f97316'; title = 'Average Draft' }
-    else if (avgValue >= 25) { letter = 'C'; color = '#ef4444'; title = 'Below Average' }
+    if (score >= 95) { letter = 'A+'; color = '#00ff88'; title = 'Elite Draft' }
+    else if (score >= 90) { letter = 'A'; color = '#22c55e'; title = 'Excellent Draft' }
+    else if (score >= 85) { letter = 'A-'; color = '#4ade80'; title = 'Great Draft' }
+    else if (score >= 80) { letter = 'B+'; color = '#84cc16'; title = 'Strong Class' }
+    else if (score >= 75) { letter = 'B'; color = '#eab308'; title = 'Above Average' }
+    else if (score >= 70) { letter = 'B-'; color = '#f59e0b'; title = 'Solid Foundation' }
+    else if (score >= 65) { letter = 'C+'; color = '#f97316'; title = 'Average Draft' }
+    else if (score >= 55) { letter = 'C'; color = '#ef4444'; title = 'Below Average' }
     else { letter = 'D'; color = '#dc2626'; title = 'Needs Work' }
 
-    if (reachCount >= 4 && letter.startsWith('A')) { letter = 'B+'; color = '#84cc16'; title = 'Reached too often' }
+    const totalValue = drafted.reduce((sum, p) => sum + (p.value || 0), 0)
+    const valueAdded = `+$${totalValue.toLocaleString()}`
 
-    return { letter, color, title, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 3), valueAdded: totalValue.toFixed(0) }
+    return { letter, color, title, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 3), valueAdded }
   }, [adpMap, normalizeName])
 
   const openComparison = useCallback((pick: any) => {
