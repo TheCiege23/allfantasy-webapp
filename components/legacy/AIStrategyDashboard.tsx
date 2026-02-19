@@ -164,7 +164,21 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
     includePicks: true,
     preset: 'none',
   });
+  const [trades, setTrades] = useState<any[]>([]);
   const recognitionRef = useRef<any>(null);
+
+  const filteredTrades = trades.filter(trade => {
+    if (filters.position !== 'all' && filters.position !== 'picks') {
+      const hasPos = [...trade.give, ...trade.get].some((p: any) => p.position?.toLowerCase() === filters.position);
+      if (!hasPos) return false;
+    }
+    if (filters.position === 'picks' && !trade.includePicks) return false;
+    if (filters.valueDelta !== 'all' && trade.analysis?.fairness !== filters.valueDelta) return false;
+    if (filters.archetypeFit !== 'all' && trade.analysis?.archetypeFit !== filters.archetypeFit) return false;
+    if (filters.riskLevel !== 'all' && trade.analysis?.riskLevel !== filters.riskLevel) return false;
+    if (!filters.includePicks && trade.hasPicks) return false;
+    return true;
+  });
 
   useEffect(() => {
     if (selectedLeagueId) {
