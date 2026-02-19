@@ -14,6 +14,7 @@ type WaiverSuggestion = {
   projectedPoints: number;
   faabBidRecommendation: number | null;
   sensitivityNote: string | null;
+  factualEvidence?: Array<{ source: 'league' | 'roster' | 'news' | 'model'; metric: string; value: string }>;
 };
 
 type RosterAlert = {
@@ -36,6 +37,7 @@ export default function WaiverAI() {
   const [suggestions, setSuggestions] = useState<WaiverSuggestion[]>([]);
   const [rosterAlerts, setRosterAlerts] = useState<RosterAlert[]>([]);
   const [error, setError] = useState('');
+  const [waiverExplanation, setWaiverExplanation] = useState<{ leagueFit: string; rosterNeedsSummary: string; decisionBasis: string } | null>(null);
 
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [platform, setPlatform] = useState('sleeper');
@@ -145,6 +147,7 @@ export default function WaiverAI() {
     setError('');
     setSuggestions([]);
     setRosterAlerts([]);
+    setWaiverExplanation(null);
 
     try {
       const payload: any = {
@@ -184,6 +187,7 @@ export default function WaiverAI() {
       const parsed = await res.json();
       setSuggestions(parsed.suggestions || []);
       setRosterAlerts(parsed.rosterAlerts || []);
+      setWaiverExplanation(parsed.explanation || null);
       toast.success('Waiver gems found!');
       gtagEvent('waiver_ai_suggestions_generated', { count: parsed.suggestions?.length || 0, synced: hasSyncedLeague });
     } catch (err: any) {
@@ -388,6 +392,13 @@ export default function WaiverAI() {
       {suggestions.length > 0 && (
         <div className="mt-8 space-y-6">
           <h3 className="text-lg font-bold">Top Waiver Targets</h3>
+          {waiverExplanation && (
+            <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
+              <p className="text-sm text-cyan-200 font-semibold">AI Decision Basis: Facts + League Context</p>
+              <p className="text-xs text-slate-300 mt-1">{waiverExplanation.leagueFit}</p>
+              <p className="text-xs text-slate-300 mt-1">{waiverExplanation.rosterNeedsSummary}</p>
+            </div>
+          )}
           {suggestions.map((sug, i) => (
             <motion.div
               key={i}
@@ -416,6 +427,21 @@ export default function WaiverAI() {
                   </li>
                 ))}
               </ul>
+
+              {sug.factualEvidence && sug.factualEvidence.length > 0 && (
+                <div className="mt-4 p-3 rounded-lg bg-slate-900/60 border border-slate-700">
+                  <p className="text-xs uppercase tracking-wide text-slate-400 mb-2">Fact Evidence</p>
+                  <div className="space-y-1.5">
+                    {sug.factualEvidence.slice(0, 4).map((ev, k) => (
+                      <div key={k} className="text-xs text-slate-300 flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200">{ev.source}</span>
+                        <span className="text-cyan-300">{ev.metric}:</span>
+                        <span>{ev.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {sug.sensitivityNote && (
                 <p className="mt-4 text-sm italic text-purple-300">
