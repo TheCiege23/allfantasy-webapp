@@ -114,6 +114,33 @@ interface TradeSections {
   };
 }
 
+interface DeterministicDriver {
+  label: string;
+  value: string;
+  impact: 'positive' | 'negative' | 'neutral';
+  category: 'value' | 'roster' | 'timing' | 'risk' | 'viability';
+}
+
+interface DeterministicVerdictData {
+  winner: 'A' | 'B' | 'Even';
+  winnerLabel: string;
+  fairnessGrade: string;
+  fairnessScore: number;
+  netValueDelta: number;
+  netValueDeltaPct: number;
+  acceptanceProbability: number;
+  acceptanceLikelihood: string;
+  vetoRisk: string;
+  confidence: number;
+  keyDrivers: DeterministicDriver[];
+  sideATotalValue: number;
+  sideBTotalValue: number;
+  sideANetStarterDelta: number;
+  sideBNetStarterDelta: number;
+  injuryRiskDelta: number;
+  source: string;
+}
+
 interface PlayerValue {
   value: number;
   tier: string;
@@ -123,7 +150,7 @@ interface PlayerValue {
 }
 
 export default function DynastyTradeForm() {
-  const { callAI, loading } = useAI<{ analysis: TradeResult; sections: TradeSections; canonicalContext?: CanonicalContextMeta }>();
+  const { callAI, loading } = useAI<{ analysis: TradeResult; sections: TradeSections; canonicalContext?: CanonicalContextMeta; deterministicVerdict?: DeterministicVerdictData }>();
 
   const [teamAName, setTeamAName] = useState('Team A');
   const [teamBName, setTeamBName] = useState('Team B');
@@ -135,6 +162,7 @@ export default function DynastyTradeForm() {
   const [result, setResult] = useState<TradeResult | null>(null);
   const [sections, setSections] = useState<TradeSections | null>(null);
   const [canonicalCtx, setCanonicalCtx] = useState<CanonicalContextMeta | null>(null);
+  const [detVerdict, setDetVerdict] = useState<DeterministicVerdictData | null>(null);
   const [playerValues, setPlayerValues] = useState<Record<string, PlayerValue>>({});
   const [valueLookupLoading, setValueLookupLoading] = useState<string | null>(null);
 
@@ -256,6 +284,9 @@ export default function DynastyTradeForm() {
       if (data.canonicalContext) {
         setCanonicalCtx(data.canonicalContext);
       }
+      if (data.deterministicVerdict) {
+        setDetVerdict(data.deterministicVerdict);
+      }
     }
   }
 
@@ -340,6 +371,7 @@ export default function DynastyTradeForm() {
     setResult(null);
     setSections(null);
     setCanonicalCtx(null);
+    setDetVerdict(null);
     setPlayerValues({});
     setValueLookupLoading(null);
     localStorage.removeItem('dynastyTrade');
@@ -541,11 +573,126 @@ export default function DynastyTradeForm() {
         </Card>
       ) : result && sections ? (
         <div id="trade-result" className="space-y-6">
+
+          {detVerdict && (
+            <Card className="glass-card border-emerald-900/50 relative overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-emerald-500 via-cyan-500 to-emerald-500" />
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-3 text-xl">
+                  <Shield className="h-5 w-5 text-emerald-400" />
+                  Trade Verdict
+                  <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
+                    Data-Driven
+                  </span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="rounded-xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/30 to-cyan-950/30 p-6">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div className="text-center flex-1 min-w-[120px]">
+                      <div className={`text-5xl font-bold font-mono ${
+                        detVerdict.fairnessGrade.startsWith('A') ? 'text-green-400' :
+                        detVerdict.fairnessGrade.startsWith('B') ? 'text-cyan-400' :
+                        detVerdict.fairnessGrade === 'C' ? 'text-amber-400' :
+                        'text-red-400'
+                      }`}>
+                        {detVerdict.fairnessGrade}
+                      </div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Fairness</div>
+                    </div>
+                    <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                    <div className="text-center flex-1 min-w-[120px]">
+                      <div className="text-lg font-bold text-white">{detVerdict.winnerLabel}</div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Winner</div>
+                    </div>
+                    <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                    <div className="text-center flex-1 min-w-[100px]">
+                      <div className={`text-3xl font-bold font-mono ${
+                        detVerdict.confidence >= 80 ? 'text-green-400' :
+                        detVerdict.confidence >= 60 ? 'text-cyan-400' :
+                        'text-amber-400'
+                      }`}>
+                        {detVerdict.confidence}%
+                      </div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Confidence</div>
+                    </div>
+                    <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                    <div className="text-center flex-1 min-w-[80px]">
+                      <div className={`text-3xl font-bold ${
+                        detVerdict.vetoRisk === 'None' || detVerdict.vetoRisk === 'Low' ? 'text-green-400' :
+                        detVerdict.vetoRisk === 'High' ? 'text-red-400' :
+                        'text-amber-400'
+                      }`}>
+                        {detVerdict.vetoRisk === 'None' ? 'SAFE' :
+                         detVerdict.vetoRisk === 'Low' ? 'LOW' :
+                         detVerdict.vetoRisk === 'High' ? 'HIGH' : 'MED'}
+                      </div>
+                      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Veto Risk</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Net Delta</div>
+                    <div className="text-lg font-bold font-mono text-white">{detVerdict.netValueDelta.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-500">{detVerdict.netValueDeltaPct}% gap</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Accept %</div>
+                    <div className={`text-lg font-bold font-mono ${
+                      detVerdict.acceptanceProbability >= 70 ? 'text-green-400' :
+                      detVerdict.acceptanceProbability >= 50 ? 'text-cyan-400' :
+                      'text-amber-400'
+                    }`}>{detVerdict.acceptanceProbability}%</div>
+                    <div className="text-[10px] text-gray-500">{detVerdict.acceptanceLikelihood}</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">{teamAName}</div>
+                    <div className="text-lg font-bold font-mono text-white">{detVerdict.sideATotalValue.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-500">Total Value</div>
+                  </div>
+                  <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-3 text-center">
+                    <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">{teamBName}</div>
+                    <div className="text-lg font-bold font-mono text-white">{detVerdict.sideBTotalValue.toLocaleString()}</div>
+                    <div className="text-[10px] text-gray-500">Total Value</div>
+                  </div>
+                </div>
+
+                {detVerdict.keyDrivers.length > 0 && (
+                  <div className="rounded-lg border border-emerald-900/30 bg-gray-900/60 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <TrendingUp className="h-4 w-4 text-emerald-400" />
+                      <span className="text-sm font-semibold text-emerald-400">Key Drivers</span>
+                      <span className="text-[9px] text-gray-500 uppercase tracking-wider ml-auto">Deterministic</span>
+                    </div>
+                    <div className="space-y-2">
+                      {detVerdict.keyDrivers.map((d, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${
+                            d.impact === 'positive' ? 'bg-green-400' :
+                            d.impact === 'negative' ? 'bg-red-400' :
+                            'bg-gray-500'
+                          }`} />
+                          <span className="text-xs text-gray-500 w-24 shrink-0 uppercase tracking-wider">{d.label}</span>
+                          <span className="text-sm text-gray-300 flex-1">{d.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="glass-card border-purple-900/50">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-3 text-xl">
                 <Shield className="h-5 w-5 text-purple-400" />
-                Value Verdict
+                Value Details
+                <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium uppercase tracking-wider bg-purple-950/40 text-purple-400 border border-purple-500/20">
+                  AI-Enhanced
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -610,7 +757,8 @@ export default function DynastyTradeForm() {
                 <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <TrendingUp className="h-4 w-4 text-cyan-400" />
-                    <span className="text-sm font-semibold text-cyan-400">Key Factors</span>
+                    <span className="text-sm font-semibold text-cyan-400">AI Analysis</span>
+                    <span className="text-[9px] text-gray-500 uppercase tracking-wider ml-auto">AI-Generated</span>
                   </div>
                   <ul className="space-y-2">
                     {sections.valueVerdict.reasons.map((r, i) => (

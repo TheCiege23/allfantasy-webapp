@@ -4,6 +4,33 @@ import type { QualityGateResult, ConditionalRecommendation } from './quality-gat
 
 export type FairnessGrade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'D' | 'F'
 
+export type DeterministicDriver = {
+  label: string
+  value: string
+  impact: 'positive' | 'negative' | 'neutral'
+  category: 'value' | 'roster' | 'timing' | 'risk' | 'viability'
+}
+
+export type DeterministicVerdict = {
+  winner: 'A' | 'B' | 'Even'
+  winnerLabel: string
+  fairnessGrade: FairnessGrade
+  fairnessScore: number
+  netValueDelta: number
+  netValueDeltaPct: number
+  acceptanceProbability: number
+  acceptanceLikelihood: 'Very Likely' | 'Likely' | 'Uncertain' | 'Unlikely' | 'Very Unlikely'
+  vetoRisk: 'None' | 'Low' | 'Moderate' | 'High'
+  confidence: number
+  keyDrivers: DeterministicDriver[]
+  sideATotalValue: number
+  sideBTotalValue: number
+  sideANetStarterDelta: number
+  sideBNetStarterDelta: number
+  injuryRiskDelta: number
+  source: 'deterministic-engine'
+}
+
 export type ValueVerdict = {
   fairnessGrade: FairnessGrade
   edge: string
@@ -111,6 +138,7 @@ export type ActionPlan = {
 }
 
 export type FormattedTradeResponse = {
+  deterministicVerdict: DeterministicVerdict
   valueVerdict: ValueVerdict
   viabilityVerdict: ViabilityVerdict
   actionPlan: ActionPlan
@@ -760,20 +788,168 @@ function computeStarterBenchDelta(ctx: TradeDecisionContextV1): StarterBenchDelt
   }
 }
 
+function computeDeterministicConfidence(ctx: TradeDecisionContextV1): number {
+  let confidence = 80
+
+  const coverage = ctx.dataQuality.coveragePercent
+  if (coverage >= 90) confidence += 10
+  else if (coverage >= 70) confidence += 5
+  else if (coverage < 50) confidence -= 15
+
+  if (ctx.missingData.valuationsMissing.length > 0) {
+    confidence -= Math.min(20, ctx.missingData.valuationsMissing.length * 5)
+  }
+  if (ctx.missingData.injuryDataStale) confidence -= 5
+  if (ctx.missingData.adpDataStale) confidence -= 3
+  if (ctx.missingData.competitorDataUnavailable) confidence -= 5
+
+  const pctDiff = ctx.valueDelta.percentageDiff
+  if (pctDiff <= 5) confidence += 5
+  else if (pctDiff >= 25) confidence -= 5
+
+  return Math.max(15, Math.min(95, confidence))
+}
+
+function buildDeterministicDrivers(
+  ctx: TradeDecisionContextV1,
+  rankingsImpact: RankingsImpact,
+  injuryAdjusted: InjuryAdjustedValue,
+  starterBench: StarterBenchDelta,
+  partnerFit: ReturnType<typeof computeNeedsAlignment>,
+  timing: ReturnType<typeof computeTimingFit>,
+): DeterministicDriver[] {
+  const drivers: DeterministicDriver[] = []
+  const pctDiff = ctx.valueDelta.percentageDiff
+  const favored = ctx.valueDelta.favoredSide
+
+  if (pctDiff <= 3) {
+    drivers.push({ label: 'Value Gap', value: `${pctDiff}% — Dead even`, impact: 'positive', category: 'value' })
+  } else if (pctDiff <= 10) {
+    drivers.push({ label: 'Value Gap', value: `${pctDiff}% edge to Side ${favored}`, impact: 'neutral', category: 'value' })
+  } else {
+    drivers.push({ label: 'Value Gap', value: `${pctDiff}% edge to Side ${favored}`, impact: 'negative', category: 'value' })
+  }
+
+  if (starterBench.netStarterDelta !== 0) {
+    const absDelta = Math.abs(starterBench.netStarterDelta)
+    const gainSide = starterBench.netStarterDelta > 0 ? 'A' : 'B'
+    drivers.push({
+      label: 'Starter Impact',
+      value: absDelta < 200 ? 'Even starter exchange' : `Side ${gainSide} gains +${absDelta} starter value`,
+      impact: absDelta < 200 ? 'neutral' : (absDelta > 1000 ? 'negative' : 'neutral'),
+      category: 'roster',
+    })
+  }
+
+  if (partnerFit.fitScore >= 70) {
+    drivers.push({ label: 'Roster Fit', value: `${partnerFit.fitScore}/100 — ${partnerFit.needsAlignment}`, impact: 'positive', category: 'roster' })
+  } else if (partnerFit.fitScore <= 40) {
+    drivers.push({ label: 'Roster Fit', value: `${partnerFit.fitScore}/100 — ${partnerFit.needsAlignment}`, impact: 'negative', category: 'roster' })
+  } else {
+    drivers.push({ label: 'Roster Fit', value: `${partnerFit.fitScore}/100`, impact: 'neutral', category: 'roster' })
+  }
+
+  drivers.push({
+    label: 'Timing Alignment',
+    value: timing.timingFit,
+    impact: timing.timingFit.startsWith('Excellent') ? 'positive' : timing.timingFit.startsWith('Both competing') || timing.timingFit === 'Neutral timing' ? 'neutral' : 'negative',
+    category: 'timing',
+  })
+
+  const injuryDiff = Math.abs(injuryAdjusted.sideAInjuryDiscount - injuryAdjusted.sideBInjuryDiscount)
+  if (injuryDiff > 5) {
+    drivers.push({
+      label: 'Injury Risk Gap',
+      value: `${Math.round(injuryDiff)}% asymmetry`,
+      impact: injuryDiff > 15 ? 'negative' : 'neutral',
+      category: 'risk',
+    })
+  }
+
+  if (rankingsImpact.sideARankDelta > 0.1 && rankingsImpact.sideBRankDelta > 0.1) {
+    drivers.push({ label: 'League Impact', value: 'Both teams improve standings', impact: 'positive', category: 'viability' })
+  } else if (rankingsImpact.sideARankDelta < -0.1 || rankingsImpact.sideBRankDelta < -0.1) {
+    const weakened = rankingsImpact.sideARankDelta < -0.1 ? 'A' : 'B'
+    drivers.push({ label: 'League Impact', value: `Side ${weakened} weakens in standings`, impact: 'negative', category: 'viability' })
+  }
+
+  return drivers
+}
+
+export function computeDeterministicVerdict(ctx: TradeDecisionContextV1): {
+  verdict: DeterministicVerdict
+  intermediates: {
+    partnerFit: ReturnType<typeof computeNeedsAlignment>
+    timing: ReturnType<typeof computeTimingFit>
+    rankingsImpact: RankingsImpact
+    injuryAdjusted: InjuryAdjustedValue
+    starterBench: StarterBenchDelta
+    acceptanceResult: { score: number; likelihood: DeterministicVerdict['acceptanceLikelihood']; signals: string[] }
+  }
+} {
+  const partnerFit = computeNeedsAlignment(ctx)
+  const timing = computeTimingFit(ctx)
+  const rankingsImpact = computeRankingsImpact(ctx)
+  const injuryAdjusted = computeInjuryAdjustedReplacementValue(ctx)
+  const starterBench = computeStarterBenchDelta(ctx)
+  const viabilityBonus = computeViabilityBonus(rankingsImpact, injuryAdjusted, starterBench)
+  const acceptanceResult = computeAcceptanceScore(ctx, partnerFit.fitScore, viabilityBonus)
+
+  const pctDiff = ctx.valueDelta.percentageDiff
+  const favored = ctx.valueDelta.favoredSide
+  const winner = pctDiff <= 3 ? 'Even' as const : favored
+  const grade = computeFairnessGrade(pctDiff)
+  const vetoRisk = computeVetoRisk(pctDiff)
+
+  const fairnessScore = Math.max(0, Math.min(100, 100 - pctDiff * 2.5))
+  const confidence = computeDeterministicConfidence(ctx)
+
+  const injuryRiskDelta = Math.round((injuryAdjusted.sideAInjuryDiscount - injuryAdjusted.sideBInjuryDiscount) * 10) / 10
+
+  const keyDrivers = buildDeterministicDrivers(ctx, rankingsImpact, injuryAdjusted, starterBench, partnerFit, timing)
+
+  let winnerLabel: string
+  if (winner === 'Even') {
+    winnerLabel = 'Dead even — both sides get fair value'
+  } else {
+    winnerLabel = `Side ${winner} gets the better end by ${pctDiff}%`
+  }
+
+  const verdict: DeterministicVerdict = {
+    winner,
+    winnerLabel,
+    fairnessGrade: grade,
+    fairnessScore: Math.round(fairnessScore),
+    netValueDelta: ctx.valueDelta.absoluteDiff,
+    netValueDeltaPct: pctDiff,
+    acceptanceProbability: acceptanceResult.score,
+    acceptanceLikelihood: acceptanceResult.likelihood,
+    vetoRisk,
+    confidence,
+    keyDrivers,
+    sideATotalValue: ctx.sideA.totalValue,
+    sideBTotalValue: ctx.sideB.totalValue,
+    sideANetStarterDelta: starterBench.sideAStarterImpact,
+    sideBNetStarterDelta: starterBench.sideBStarterImpact,
+    injuryRiskDelta,
+    source: 'deterministic-engine',
+  }
+
+  return {
+    verdict,
+    intermediates: { partnerFit, timing, rankingsImpact, injuryAdjusted, starterBench, acceptanceResult },
+  }
+}
+
 export function formatTradeResponse(
   consensus: PeerReviewConsensus,
   ctx: TradeDecisionContextV1,
   gate: QualityGateResult,
   options?: { isotonicApplied?: boolean; rawAcceptProbability?: number }
 ): FormattedTradeResponse {
-  const partnerFit = computeNeedsAlignment(ctx)
-  const timing = computeTimingFit(ctx)
-  const rankingsImpact = computeRankingsImpact(ctx)
-  const injuryAdjustedValue = computeInjuryAdjustedReplacementValue(ctx)
-  const starterBenchDelta = computeStarterBenchDelta(ctx)
-
-  const viabilityBonus = computeViabilityBonus(rankingsImpact, injuryAdjustedValue, starterBenchDelta)
-  const { score: acceptanceScore, likelihood, signals } = computeAcceptanceScore(ctx, partnerFit.fitScore, viabilityBonus)
+  const { verdict: detVerdict, intermediates } = computeDeterministicVerdict(ctx)
+  const { partnerFit, timing, rankingsImpact, injuryAdjusted: injuryAdjustedValue, starterBench: starterBenchDelta, acceptanceResult } = intermediates
+  const { score: acceptanceScore, likelihood, signals } = acceptanceResult
 
   const leagueFreq = ctx.tradeHistoryStats.leagueTradeFrequency
   const leagueActivity = leagueFreq === 'high'
@@ -795,6 +971,7 @@ export function formatTradeResponse(
   }
 
   return {
+    deterministicVerdict: detVerdict,
     valueVerdict: {
       fairnessGrade: computeFairnessGrade(ctx.valueDelta.percentageDiff),
       edge: computeEdgeLabel(ctx),

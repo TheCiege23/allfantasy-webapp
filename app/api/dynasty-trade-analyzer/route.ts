@@ -99,24 +99,42 @@ export async function POST(req: Request) {
       console.log(`  [${v.severity}] ${v.rule}: ${v.detail}`)
     }
 
-    const verdictToWinner = consensus.verdict === 'Disagreement' ? 'Even' as const : consensus.verdict
     const sections = formatTradeResponse(consensus, tradeContext, gate)
+
+    const detVerdict = sections.deterministicVerdict
 
     return NextResponse.json({
       sections,
+      deterministicVerdict: detVerdict,
       analysis: {
-        winner: verdictToWinner,
-        verdict: consensus.verdict,
-        confidence: gate.adjustedConfidence,
+        winner: detVerdict.winner === 'Even' ? 'Even' : `Side ${detVerdict.winner}`,
+        verdict: detVerdict.winnerLabel,
+        confidence: detVerdict.confidence,
         factors: gate.filteredReasons,
         reasons: gate.filteredReasons,
         counters: gate.filteredCounters,
         warnings: gate.filteredWarnings,
         valueDelta: `Side A total=${tradeContext.sideA.totalValue}, Side B total=${tradeContext.sideB.totalValue}, delta=${tradeContext.valueDelta.absoluteDiff} (${tradeContext.valueDelta.percentageDiff}%)`,
-        dynastyVerdict: gate.filteredReasons.length > 0 ? gate.filteredReasons[0] : `${tradeContext.valueDelta.favoredSide} favored by ${tradeContext.valueDelta.percentageDiff}%`,
-        vetoRisk: tradeContext.valueDelta.percentageDiff > 25 ? 'High' : tradeContext.valueDelta.percentageDiff > 15 ? 'Moderate' : tradeContext.valueDelta.percentageDiff > 8 ? 'Low' : 'None',
+        dynastyVerdict: detVerdict.winnerLabel,
+        vetoRisk: detVerdict.vetoRisk,
+        fairnessGrade: detVerdict.fairnessGrade,
+        fairnessScore: detVerdict.fairnessScore,
+        netValueDelta: detVerdict.netValueDelta,
+        netValueDeltaPct: detVerdict.netValueDeltaPct,
+        acceptanceProbability: detVerdict.acceptanceProbability,
+        acceptanceLikelihood: detVerdict.acceptanceLikelihood,
+        keyDrivers: detVerdict.keyDrivers,
         agingConcerns: gate.filteredWarnings.filter(w => w.toLowerCase().includes('age') || w.toLowerCase().includes('cliff') || w.toLowerCase().includes('declining')),
         recommendations: gate.filteredCounters.slice(0, 3),
+      },
+      aiCommentary: {
+        aiVerdict: consensus.verdict,
+        aiConfidence: gate.adjustedConfidence,
+        reasons: gate.filteredReasons,
+        counters: gate.filteredCounters,
+        warnings: gate.filteredWarnings,
+        consensusMethod: consensus.meta.consensusMethod,
+        source: 'ai-peer-review',
       },
       peerReview: {
         verdict: consensus.verdict,
