@@ -117,33 +117,32 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   }
 
   const simulateTrade = async (direction: 'up' | 'down', pickNumber: number) => {
-    if (draftResults.length === 0) return
+    if (draftResults.length === 0 || !selectedLeagueId) return
     setIsTrading(true)
     setTradeResult(null)
+    toast.info(`Simulating ${direction === 'up' ? 'trade up' : 'trade down'}...`)
+
     try {
-      const userTeam = draftResults.find(p => p.isUser)?.manager || 'User'
-      const payload: any = {
+      const { data } = await callAI('/api/mock-draft/trade-simulate', {
+        leagueId: selectedLeagueId,
+        currentPick: pickNumber,
         direction,
-        pickNumber,
-        leagueFormat: `${selectedLeague?.scoring || 'PPR'} ${selectedLeague?.isDynasty ? 'Dynasty' : 'Redraft'}`,
-      }
-      if (currentDraftId) {
-        payload.draftId = currentDraftId
-      } else {
-        payload.draftResults = draftResults
-        payload.userTeam = userTeam
-      }
-      const res = await fetch('/api/mock-draft/trade-sim', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        rounds: customRounds,
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Trade simulation failed')
-      setTradeResult({ ...data, direction, pickNumber })
-      toast.success(`Trade ${direction} scenario generated!`)
+
+      if (data?.updatedDraft) {
+        setDraftResults(data.updatedDraft)
+        setOnClockPick(null)
+        setTradeResult({
+          direction,
+          pickNumber,
+          tradeDescription: (data as any).tradeDescription,
+          tradedPicks: (data as any).tradedPicks,
+        })
+        toast.success(`${direction === 'up' ? 'Traded up' : 'Traded down'}! New picks reflected on the board.`)
+      }
     } catch (err: any) {
-      console.error('[trade-sim]', err)
+      console.error('[trade-simulate]', err)
       toast.error(err.message || 'Failed to simulate trade')
     }
     setIsTrading(false)
@@ -356,80 +355,34 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           >
             <X className="h-4 w-4" />
           </Button>
-          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
             {tradeResult.direction === 'up' ? (
-              <><ArrowUp className="h-5 w-5 text-green-400" /> Trade Up Scenario</>
+              <><ArrowUp className="h-5 w-5 text-green-400" /> Traded Up</>
             ) : (
-              <><ArrowDown className="h-5 w-5 text-red-400" /> Trade Down Scenario</>
+              <><ArrowDown className="h-5 w-5 text-red-400" /> Traded Down</>
             )}
-            <span className="text-xs text-gray-500 font-normal ml-2">Pick #{tradeResult.pickNumber}</span>
+            <span className="text-xs text-gray-500 font-normal ml-2">from Pick #{tradeResult.pickNumber}</span>
           </h3>
 
-          {tradeResult.tradePackage && (
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-              <div className="bg-red-950/20 border border-red-500/20 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-red-400 mb-3">You Give</h4>
-                <div className="space-y-2">
-                  {tradeResult.tradePackage.userGives?.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-gray-300">{item.description}</span>
-                      <span className="text-red-400 font-mono">-{item.value}</span>
-                    </div>
-                  ))}
-                </div>
+          {tradeResult.tradeDescription && (
+            <p className="text-sm text-gray-300 bg-gray-950 rounded-xl p-4 mb-4">{tradeResult.tradeDescription}</p>
+          )}
+
+          {tradeResult.tradedPicks && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-green-950/20 border border-green-500/20 rounded-xl p-4 text-center">
+                <div className="text-xs text-gray-500 mb-1">Your New Pick</div>
+                <div className="text-2xl font-bold text-green-400">#{tradeResult.tradedPicks.userNewPick}</div>
               </div>
-              <div className="bg-green-950/20 border border-green-500/20 rounded-xl p-4">
-                <h4 className="text-sm font-semibold text-green-400 mb-3">You Get</h4>
-                <div className="space-y-2">
-                  {tradeResult.tradePackage.userGets?.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between text-sm">
-                      <span className="text-gray-300">{item.description}</span>
-                      <span className="text-green-400 font-mono">+{item.value}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="bg-gray-950 border border-gray-700 rounded-xl p-4 text-center">
+                <div className="text-xs text-gray-500 mb-1">Traded With</div>
+                <div className="text-sm font-bold text-purple-400">{tradeResult.tradedPicks.partnerManager}</div>
+                <div className="text-xs text-gray-600">gets Pick #{tradeResult.tradedPicks.partnerNewPick}</div>
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="text-center bg-gray-950 rounded-xl p-3">
-              <div className="text-xs text-gray-500 mb-1">Fairness</div>
-              <div className={`text-lg font-bold ${
-                (tradeResult.fairnessScore || 0) >= 70 ? 'text-green-400' :
-                (tradeResult.fairnessScore || 0) >= 50 ? 'text-yellow-400' : 'text-red-400'
-              }`}>{tradeResult.fairnessScore || 0}%</div>
-            </div>
-            <div className="text-center bg-gray-950 rounded-xl p-3">
-              <div className="text-xs text-gray-500 mb-1">Likelihood</div>
-              <div className={`text-lg font-bold ${
-                (tradeResult.likelihood || 0) >= 60 ? 'text-green-400' :
-                (tradeResult.likelihood || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'
-              }`}>{tradeResult.likelihood || 0}%</div>
-            </div>
-            <div className="text-center bg-gray-950 rounded-xl p-3">
-              <div className="text-xs text-gray-500 mb-1">Target Player</div>
-              <div className="text-sm font-bold text-purple-400 truncate">{tradeResult.playerTarget || 'N/A'}</div>
-            </div>
-          </div>
-
-          {tradeResult.analysis && (
-            <p className="text-sm text-gray-400 bg-gray-950 rounded-xl p-4 mb-4">{tradeResult.analysis}</p>
-          )}
-
-          {tradeResult.alternateScenarios?.length > 0 && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-300 mb-2">Alternative Scenarios</h4>
-              <div className="space-y-2">
-                {tradeResult.alternateScenarios.map((alt: any, idx: number) => (
-                  <div key={idx} className="flex justify-between text-xs bg-gray-950/50 rounded-lg p-3">
-                    <span className="text-gray-400">{alt.description}</span>
-                    <span className="text-cyan-400 font-mono shrink-0 ml-2">{alt.cost}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          <p className="text-xs text-gray-600 mt-3 text-center">The draft board above has been updated to reflect this trade.</p>
         </motion.div>
       )}
 
