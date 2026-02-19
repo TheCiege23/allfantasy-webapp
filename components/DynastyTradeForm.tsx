@@ -165,16 +165,39 @@ export default function DynastyTradeForm() {
     );
   }
 
+  const clearTrade = () => {
+    setTeamAAssets([]);
+    setTeamBAssets([]);
+    setTeamAPickInput('');
+    setTeamBPickInput('');
+    setTeamAName('Team A');
+    setTeamBName('Team B');
+    setLeagueContext('12-team SF PPR dynasty');
+    setResult(null);
+    localStorage.removeItem('dynastyTrade');
+    toast.info('Trade cleared');
+  };
+
   return (
     <div className="space-y-8">
-      <div>
-        <label className="block text-sm font-medium mb-2 text-gray-300">League Context</label>
-        <Textarea
-          value={leagueContext}
-          onChange={(e) => setLeagueContext(e.target.value)}
-          placeholder="e.g. 12-team Superflex PPR dynasty, TE-premium, 1QB"
-          className="bg-gray-950 border-gray-700 min-h-[60px]"
-        />
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <label className="block text-sm font-medium mb-2 text-gray-300">League Context</label>
+          <Textarea
+            value={leagueContext}
+            onChange={(e) => setLeagueContext(e.target.value)}
+            placeholder="e.g. 12-team Superflex PPR dynasty, TE-premium, 1QB"
+            className="bg-gray-950 border-gray-700 min-h-[60px]"
+          />
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={clearTrade}
+          className="text-gray-400 hover:text-gray-200 mt-6 shrink-0"
+        >
+          <X className="h-4 w-4 mr-1" /> Clear Trade
+        </Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
