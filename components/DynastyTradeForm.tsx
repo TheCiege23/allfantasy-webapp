@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search } from 'lucide-react';
 import { Skeleton } from '@/components/ui/legacy-ui';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
 import { useAI } from '@/hooks/useAI';
@@ -37,6 +37,14 @@ interface TradeResult {
   recommendations?: string[];
 }
 
+interface PlayerValue {
+  value: number;
+  tier: string;
+  trend: string;
+  summary: string;
+  comparables: string[];
+}
+
 export default function DynastyTradeForm() {
   const { callAI, loading } = useAI<{ analysis: TradeResult }>();
 
@@ -48,6 +56,8 @@ export default function DynastyTradeForm() {
   const [teamBPickInput, setTeamBPickInput] = useState('');
   const [leagueContext, setLeagueContext] = useState('12-team SF PPR dynasty');
   const [result, setResult] = useState<TradeResult | null>(null);
+  const [playerValues, setPlayerValues] = useState<Record<string, PlayerValue>>({});
+  const [valueLookupLoading, setValueLookupLoading] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -78,6 +88,32 @@ export default function DynastyTradeForm() {
       setTeamAAssets(prev => [...prev, asset]);
     } else {
       setTeamBAssets(prev => [...prev, asset]);
+    }
+  }
+
+  async function lookupPlayerValue(assetId: string, playerName: string) {
+    if (playerValues[assetId]) {
+      setPlayerValues(prev => {
+        const next = { ...prev };
+        delete next[assetId];
+        return next;
+      });
+      return;
+    }
+    setValueLookupLoading(assetId);
+    try {
+      const res = await fetch('/api/player-value', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerName, leagueContext }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setPlayerValues(prev => ({ ...prev, [assetId]: data }));
+    } catch {
+      toast.error('Could not look up value');
+    } finally {
+      setValueLookupLoading(null);
     }
   }
 
@@ -140,26 +176,69 @@ export default function DynastyTradeForm() {
 
   function AssetList({ side, assets }: { side: 'a' | 'b'; assets: TradeAsset[] }) {
     return (
-      <div className="flex flex-wrap gap-2 min-h-[40px]">
+      <div className="space-y-2 min-h-[40px]">
         {assets.length === 0 && (
           <span className="text-sm text-gray-500 italic">No assets added yet</span>
         )}
         {assets.map(asset => (
-          <Badge
-            key={asset.id}
-            variant="outline"
-            className={`gap-1.5 py-1.5 px-3 ${
-              asset.type === 'player'
-                ? 'border-cyan-500/40 text-cyan-300 bg-cyan-950/20'
-                : 'border-amber-500/40 text-amber-300 bg-amber-950/20'
-            }`}
-          >
-            {asset.type === 'pick' && <span>📋 </span>}
-            {asset.name}
-            <button onClick={() => removeAsset(side, asset.id)} className="ml-1 hover:text-red-400">
-              <X className="h-3 w-3" />
-            </button>
-          </Badge>
+          <div key={asset.id} className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Badge
+                variant="outline"
+                className={`gap-1.5 py-1.5 px-3 ${
+                  asset.type === 'player'
+                    ? 'border-cyan-500/40 text-cyan-300 bg-cyan-950/20'
+                    : 'border-amber-500/40 text-amber-300 bg-amber-950/20'
+                }`}
+              >
+                {asset.type === 'pick' && <span>📋 </span>}
+                {asset.name}
+                <button onClick={() => removeAsset(side, asset.id)} className="ml-1 hover:text-red-400">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+              {asset.type === 'player' && (
+                <button
+                  onClick={() => lookupPlayerValue(asset.id, asset.name)}
+                  disabled={valueLookupLoading === asset.id}
+                  className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 disabled:opacity-50"
+                >
+                  {valueLookupLoading === asset.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Search className="h-3 w-3" />
+                  )}
+                  {playerValues[asset.id] ? 'Hide' : 'Value'}
+                </button>
+              )}
+            </div>
+            {playerValues[asset.id] && (
+              <div className="ml-2 p-2 rounded bg-gray-900/80 border border-gray-700/50 text-xs space-y-1">
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold text-white">{playerValues[asset.id].value}/100</span>
+                  <Badge variant="outline" className={`text-[10px] py-0 ${
+                    playerValues[asset.id].tier === 'Elite' ? 'border-yellow-500/40 text-yellow-300' :
+                    playerValues[asset.id].tier === 'Star' ? 'border-cyan-500/40 text-cyan-300' :
+                    playerValues[asset.id].tier === 'Starter' ? 'border-green-500/40 text-green-300' :
+                    'border-gray-500/40 text-gray-400'
+                  }`}>
+                    {playerValues[asset.id].tier}
+                  </Badge>
+                  <span className={`${
+                    playerValues[asset.id].trend === 'Rising' ? 'text-green-400' :
+                    playerValues[asset.id].trend === 'Declining' ? 'text-red-400' :
+                    'text-gray-400'
+                  }`}>
+                    {playerValues[asset.id].trend === 'Rising' ? '↑' : playerValues[asset.id].trend === 'Declining' ? '↓' : '→'} {playerValues[asset.id].trend}
+                  </span>
+                </div>
+                <p className="text-gray-300">{playerValues[asset.id].summary}</p>
+                {playerValues[asset.id].comparables?.length > 0 && (
+                  <p className="text-gray-500">Similar value: {playerValues[asset.id].comparables.join(', ')}</p>
+                )}
+              </div>
+            )}
+          </div>
         ))}
       </div>
     );
@@ -174,6 +253,8 @@ export default function DynastyTradeForm() {
     setTeamBName('Team B');
     setLeagueContext('12-team SF PPR dynasty');
     setResult(null);
+    setPlayerValues({});
+    setValueLookupLoading(null);
     localStorage.removeItem('dynastyTrade');
     toast.info('Trade cleared');
   };
