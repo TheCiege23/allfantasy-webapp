@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search, Download, Share2, Link } from 'lucide-react';
 import { Skeleton } from '@/components/ui/legacy-ui';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
 import { useAI } from '@/hooks/useAI';
@@ -259,6 +259,56 @@ export default function DynastyTradeForm() {
     toast.info('Trade cleared');
   };
 
+  const [sharing, setSharing] = useState(false);
+
+  const exportAsImage = async () => {
+    const element = document.getElementById('trade-result');
+    if (!element) return;
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(element, { backgroundColor: '#0a0a0f', scale: 2 });
+      const link = document.createElement('a');
+      link.download = 'allfantasy-trade-analysis.png';
+      link.href = canvas.toDataURL();
+      link.click();
+      toast.success('Image downloaded!');
+    } catch {
+      toast.error('Failed to export image');
+    }
+  };
+
+  const shareAnalysis = async () => {
+    if (!result) return;
+    setSharing(true);
+    try {
+      const res = await fetch('/api/trade/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamAName,
+          teamBName,
+          teamAAssets,
+          teamBAssets,
+          leagueContext,
+          analysis: result,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const { shareId } = await res.json();
+      const url = `${window.location.origin}/trade/${shareId}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success('Shareable link copied to clipboard!');
+      } catch {
+        toast.success(url, { duration: 10000, description: 'Copy this link to share:' });
+      }
+    } catch {
+      toast.error('Failed to create share link');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-start justify-between gap-4">
@@ -406,7 +456,7 @@ export default function DynastyTradeForm() {
           </CardContent>
         </Card>
       ) : result ? (
-        <Card className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
+        <Card id="trade-result" className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-3 text-2xl">
               <Crown className="h-6 w-6 text-yellow-400" />
@@ -475,7 +525,30 @@ export default function DynastyTradeForm() {
         </Card>
       ) : (
         <div className="h-64 flex items-center justify-center border border-dashed border-gray-700 rounded-2xl text-gray-500">
-          Analysis will appear here after clicking "Analyze Trade"
+          Analysis will appear here after clicking &quot;Analyze Trade&quot;
+        </div>
+      )}
+
+      {result && (
+        <div className="flex justify-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportAsImage}
+            className="border-gray-600 text-gray-300 hover:text-white"
+          >
+            <Download className="h-4 w-4 mr-1.5" /> Save as Image
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={shareAnalysis}
+            disabled={sharing}
+            className="border-cyan-600/40 text-cyan-300 hover:text-cyan-200"
+          >
+            {sharing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Link className="h-4 w-4 mr-1.5" />}
+            Share Link
+          </Button>
         </div>
       )}
     </div>

@@ -1972,6 +1972,21 @@ model TradeOutcomeTraining {
   @@index([wasAccepted])
 }
 
+model TradeShare {
+  id          String   @id @default(cuid())
+  userId      String
+  teamAName   String   @default("Team A")
+  teamBName   String   @default("Team B")
+  teamAAssets Json
+  teamBAssets Json
+  leagueContext String @default("12-team SF PPR dynasty")
+  analysis    Json
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
 model EngineSnapshot {
   id         String   @id @default(cuid())
   leagueId   String
