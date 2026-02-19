@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useAI } from '@/hooks/useAI';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/legacy-ui';
 
 type Suggestion = { playerName: string; position: string; team: string; reason: string; priority: number };
 type League = { id: string; name: string; platform?: string; scoring?: string };
@@ -101,7 +102,25 @@ export default function WaiverAISuggestions() {
         </div>
       </div>
 
-      {suggestions.length > 0 ? (
+      {loading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="border-purple-900/20 bg-black/30 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <Skeleton className="h-6 w-3/4 rounded" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-4 w-full rounded" />
+                <Skeleton className="h-4 w-full rounded" />
+                <div className="flex justify-between">
+                  <Skeleton className="h-4 w-20 rounded" />
+                  <Skeleton className="h-4 w-12 rounded" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : suggestions.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {suggestions.map((s, i) => (
             <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm hover:border-purple-500/60 transition-colors">
