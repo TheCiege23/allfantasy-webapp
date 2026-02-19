@@ -10,6 +10,7 @@ import {
 import {
   runPeerReviewAnalysis,
 } from '@/lib/trade-engine/dual-brain-trade-analyzer';
+import { runQualityGate } from '@/lib/trade-engine/quality-gate';
 import type { TradeDecisionContextV1 } from '@/lib/trade-engine/trade-decision-context';
 
 function parseLeagueContext(raw: string | undefined): LeagueContextInput {
@@ -90,31 +91,53 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Analysis failed — all AI providers returned empty results' }, { status: 500 });
     }
 
+    const gate = runQualityGate(consensus, tradeContext)
+
+    if (gate.violations.length > 0) {
+      console.log(`[dynasty-trade-analyzer] Quality gate: ${gate.passed ? 'PASSED' : 'SOFT-FAIL'} | ${gate.violations.length} violations | conf ${gate.originalConfidence}→${gate.adjustedConfidence}`)
+      for (const v of gate.violations) {
+        console.log(`  [${v.severity}] ${v.rule}: ${v.detail}`)
+      }
+    }
+
     const verdictToWinner = consensus.verdict === 'Disagreement' ? 'Even' as const : consensus.verdict
 
     return NextResponse.json({
       analysis: {
         winner: verdictToWinner,
         verdict: consensus.verdict,
-        confidence: consensus.confidence,
-        factors: consensus.reasons,
-        reasons: consensus.reasons,
-        counters: consensus.counters,
-        warnings: consensus.warnings,
+        confidence: gate.adjustedConfidence,
+        factors: gate.filteredReasons,
+        reasons: gate.filteredReasons,
+        counters: gate.filteredCounters,
+        warnings: gate.filteredWarnings,
         valueDelta: `Side A total=${tradeContext.sideA.totalValue}, Side B total=${tradeContext.sideB.totalValue}, delta=${tradeContext.valueDelta.absoluteDiff} (${tradeContext.valueDelta.percentageDiff}%)`,
-        dynastyVerdict: consensus.reasons.length > 0 ? consensus.reasons[0] : `${tradeContext.valueDelta.favoredSide} favored by ${tradeContext.valueDelta.percentageDiff}%`,
+        dynastyVerdict: gate.filteredReasons.length > 0 ? gate.filteredReasons[0] : `${tradeContext.valueDelta.favoredSide} favored by ${tradeContext.valueDelta.percentageDiff}%`,
         vetoRisk: tradeContext.valueDelta.percentageDiff > 25 ? 'High' : tradeContext.valueDelta.percentageDiff > 15 ? 'Moderate' : tradeContext.valueDelta.percentageDiff > 8 ? 'Low' : 'None',
-        agingConcerns: consensus.warnings.filter(w => w.toLowerCase().includes('age') || w.toLowerCase().includes('cliff') || w.toLowerCase().includes('declining')),
-        recommendations: consensus.counters.slice(0, 3),
+        agingConcerns: gate.filteredWarnings.filter(w => w.toLowerCase().includes('age') || w.toLowerCase().includes('cliff') || w.toLowerCase().includes('declining')),
+        recommendations: gate.filteredCounters.slice(0, 3),
       },
       peerReview: {
         verdict: consensus.verdict,
-        confidence: consensus.confidence,
-        reasons: consensus.reasons,
-        counters: consensus.counters,
-        warnings: consensus.warnings,
+        confidence: gate.adjustedConfidence,
+        originalConfidence: gate.originalConfidence,
+        reasons: gate.filteredReasons,
+        counters: gate.filteredCounters,
+        warnings: gate.filteredWarnings,
         consensusMethod: consensus.meta.consensusMethod,
         confidenceAdjustment: consensus.meta.confidenceAdjustment,
+      },
+      qualityGate: {
+        passed: gate.passed,
+        violationCount: gate.violations.length,
+        violations: gate.violations.map(v => ({
+          rule: v.rule,
+          severity: v.severity,
+          detail: v.detail,
+          adjustment: v.adjustment,
+        })),
+        confidenceOriginal: gate.originalConfidence,
+        confidenceAdjusted: gate.adjustedConfidence,
       },
       stageA: {
         contextId: tradeContext.contextId,
@@ -129,7 +152,7 @@ export async function POST(req: Request) {
         dataSources: tradeContext.dataSources,
       },
       meta: {
-        pipeline: '2-stage-v1-peer-review',
+        pipeline: '2-stage-v1-peer-review-gated',
         stageALatencyMs: stageALatency,
         stageBLatencyMs: stageBLatency,
         totalLatencyMs: stageALatency + stageBLatency,
@@ -141,6 +164,7 @@ export async function POST(req: Request) {
         })),
         consensusMethod: consensus.meta.consensusMethod,
         confidenceAdjustment: consensus.meta.confidenceAdjustment,
+        qualityGatePassed: gate.passed,
       },
     });
   } catch (err) {
