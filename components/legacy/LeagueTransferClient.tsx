@@ -399,7 +399,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold truncate">{league.name}</span>
+                              <span className="font-semibold text-white leading-snug break-words" title={league.name}>{league.name}</span>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${getLeagueType(league) === 'Dynasty' ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-500/20 text-gray-300'}`}>
                                 {getLeagueType(league)}
                               </span>
