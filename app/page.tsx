@@ -170,7 +170,7 @@ function HomeContent() {
             <img
               src="/allfantasy-hero.png"
               alt="AllFantasy"
-              className="w-full max-w-lg rounded-2xl mb-4"
+              className="w-full max-w-lg rounded-2xl mb-1"
             />
             <InstantTradeAnalyzer />
             <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
