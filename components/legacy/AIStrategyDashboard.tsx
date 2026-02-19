@@ -264,8 +264,9 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
 
   const handleChatSubmit = useCallback(async (e?: React.FormEvent) => {
     e?.preventDefault();
-    const trimmed = chatInput.trim();
+    const trimmed = (chatInput || transcript).trim();
     if (!trimmed || chatLoading) return;
+    setTranscript('');
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -334,7 +335,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
     } finally {
       setChatLoading(false);
     }
-  }, [chatInput, chatLoading, chatMessages, selectedLeagueId, strategy]);
+  }, [chatInput, chatLoading, chatMessages, selectedLeagueId, strategy, transcript]);
 
   const loadHistoricalReport = (report: any) => {
     if (report.content && typeof report.content === 'object' && !report.content.type) {
@@ -857,25 +858,26 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             <div ref={chatEndRef} />
           </div>
 
-          <form onSubmit={handleChatSubmit} className="flex gap-3">
+          <form onSubmit={handleChatSubmit} className="flex gap-3 items-center">
             <input
-              value={chatInput}
+              value={chatInput || transcript}
               onChange={(e) => setChatInput(e.target.value)}
-              placeholder={selectedLeagueId ? 'Ask anything about your dynasty strategy...' : 'Enter a League ID above first...'}
-              disabled={!selectedLeagueId}
+              placeholder="Ask anything... or hold mic to speak"
+              disabled={isListening || !selectedLeagueId}
               className="flex-1 bg-[#1a1238] border border-cyan-800/50 rounded-xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 disabled:opacity-50"
             />
             <Button
               type="button"
               onClick={toggleListening}
               disabled={!selectedLeagueId}
-              className={`px-4 transition-all duration-300 ${isListening ? 'bg-red-600 hover:bg-red-700 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-[#1a1238] hover:bg-purple-900/50 border border-cyan-800/50'}`}
+              variant="outline"
+              className={`border ${isListening ? 'border-red-500 text-red-400 animate-pulse' : 'border-cyan-600 text-cyan-400'} hover:bg-cyan-950/50`}
             >
-              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5 text-cyan-400" />}
+              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </Button>
             <Button
               type="submit"
-              disabled={chatLoading || !chatInput.trim() || !selectedLeagueId}
+              disabled={chatLoading || (!chatInput.trim() && !transcript.trim()) || !selectedLeagueId}
               className="bg-purple-600 hover:bg-purple-700 px-6"
             >
               {chatLoading ? (
@@ -885,6 +887,11 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               )}
             </Button>
           </form>
+          {isListening && transcript && (
+            <div className="text-sm text-cyan-300 mt-2 italic">
+              Listening: &quot;{transcript}&quot;
+            </div>
+          )}
         </CardContent>
       </Card>
 
