@@ -18,7 +18,8 @@ import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights, type CompositeWeightConfig } from './composite-weights'
 import { getActiveCompositeParams, type LearnedCompositeParams } from './composite-param-learning'
 import { applyAntiGamingConstraints, type AntiGamingInput } from './anti-gaming'
-import { getPreviousWeekSnapshots, type SnapshotMetrics } from './snapshots'
+import { getPreviousWeekSnapshots, getLeagueSparklines, type SnapshotMetrics } from './snapshots'
+import { type TeamProjection } from '../monte-carlo'
 
 export interface Driver {
   id: string
@@ -106,6 +107,33 @@ export interface TeamScore {
   badges: Badge[]
   dataQuality: TeamDataQuality
   antiGaming: AntiGamingConstraintInfo | null
+  rankChangeDrivers: RankChangeDriver[]
+  forwardOdds: ForwardOdds
+  confidenceBadge: ConfidenceBadge
+  rankSparkline: number[]
+}
+
+export interface RankChangeDriver {
+  id: string
+  label: string
+  polarity: 'UP' | 'DOWN' | 'NEUTRAL'
+  value: number
+  prevValue: number | null
+  delta: number | null
+  unit: string
+}
+
+export interface ForwardOdds {
+  playoffPct: number
+  top3Pct: number
+  titlePct: number
+  simCount: number
+}
+
+export interface ConfidenceBadge {
+  tier: 'GOLD' | 'SILVER' | 'BRONZE'
+  label: string
+  tooltip: string
 }
 
 export interface AntiGamingConstraintInfo {
@@ -1735,6 +1763,185 @@ function validateDrivers(drivers: Driver[]): boolean {
   return true
 }
 
+const DRIVER_LABELS: Record<string, string> = {
+  record_surge: 'Win streak',
+  record_slide: 'Losing streak',
+  points_for_spike: 'Scoring surge',
+  points_for_dip: 'Scoring drop',
+  points_against_luck: 'Schedule luck',
+  power_strength_gain: 'Roster strength up',
+  power_strength_drop: 'Roster strength down',
+  depth_safety_gain: 'Bench depth up',
+  depth_safety_drop: 'Bench depth thin',
+  luck_positive: 'Overperforming record',
+  luck_negative: 'Underperforming record',
+  market_value_gain: 'Rising market value',
+  market_value_drop: 'Falling market value',
+  league_demand_tailwind: 'League demand tailwind',
+  league_demand_headwind: 'League demand headwind',
+  trade_edge_positive: 'Trade savvy',
+  trade_edge_negative: 'Trade losses',
+  waiver_roi_positive: 'Waiver success',
+  waiver_roi_negative: 'Waiver misses',
+}
+
+function buildRankChangeDrivers(
+  drivers: Driver[],
+  prevMetrics: SnapshotMetrics | null,
+  currentMetrics: SnapshotMetrics | null,
+): RankChangeDriver[] {
+  const result: RankChangeDriver[] = []
+
+  for (const d of drivers.slice(0, 3)) {
+    const label = DRIVER_LABELS[d.id] ?? d.id
+    let value = d.impact
+    let prevValue: number | null = null
+    let delta: number | null = null
+    let unit = 'score'
+
+    if (d.id === 'record_surge' || d.id === 'record_slide') {
+      value = d.evidence?.streak ?? d.impact
+      unit = 'game streak'
+    } else if (d.id === 'points_for_spike' || d.id === 'points_for_dip') {
+      value = d.evidence?.pointsForWeek ?? d.impact
+      prevValue = d.evidence?.pointsForAvg ?? null
+      delta = prevValue != null ? Math.round((value - prevValue) * 10) / 10 : null
+      unit = 'ppg'
+    } else if (d.id === 'power_strength_gain' || d.id === 'power_strength_drop') {
+      value = currentMetrics ? Math.round(currentMetrics.starterValuePercentile * 100) : (d.evidence?.psPercentile ?? Math.round(d.impact * 100))
+      if (prevMetrics) {
+        prevValue = Math.round(prevMetrics.starterValuePercentile * 100)
+        delta = value - prevValue
+      }
+      unit = 'percentile'
+    } else if (d.id === 'luck_positive' || d.id === 'luck_negative') {
+      value = currentMetrics ? Math.round(currentMetrics.expectedWins * 10) / 10 : (d.evidence?.delta ?? d.impact)
+      if (prevMetrics) {
+        prevValue = Math.round(prevMetrics.expectedWins * 10) / 10
+        delta = Math.round((value - prevValue) * 10) / 10
+      }
+      unit = 'expected wins'
+    } else if (d.id === 'market_value_gain' || d.id === 'market_value_drop') {
+      value = d.evidence?.marketPercentile ?? Math.round(d.impact * 100)
+      unit = 'percentile'
+    } else if (d.id === 'trade_edge_positive' || d.id === 'trade_edge_negative') {
+      value = currentMetrics ? Math.round(currentMetrics.tradeEffPremium * 100) : (d.evidence?.avgTradePremiumPct ?? Math.round(d.impact * 100))
+      if (prevMetrics) {
+        prevValue = Math.round(prevMetrics.tradeEffPremium * 100)
+        delta = value - prevValue
+      }
+      unit = '% premium'
+    } else if (d.id === 'depth_safety_gain' || d.id === 'depth_safety_drop') {
+      value = d.evidence?.benchRank ?? Math.round(d.impact * 100)
+      unit = 'bench rank'
+    } else {
+      value = Math.round(d.impact * 100)
+      unit = 'impact %'
+    }
+
+    result.push({ id: d.id, label, polarity: d.polarity, value, prevValue, delta, unit })
+  }
+
+  return result
+}
+
+function computeAllForwardOdds(
+  allTeams: { rosterId: number; weeklyPts: number[]; record: { wins: number; losses: number; ties: number } }[],
+  leagueSize: number,
+): Map<number, ForwardOdds> {
+  const result = new Map<number, ForwardOdds>()
+  const SIM_COUNT = 1000
+  const defaultOdds: ForwardOdds = { playoffPct: 0, top3Pct: 0, titlePct: 0, simCount: 0 }
+
+  if (allTeams.length < 2) {
+    for (const t of allTeams) result.set(t.rosterId, defaultOdds)
+    return result
+  }
+
+  const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : 0
+  const sd = (arr: number[]) => {
+    if (arr.length < 2) return 15
+    const m = avg(arr)
+    return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length) || 10
+  }
+
+  const projections: { rosterId: number; proj: TeamProjection; currentWins: number }[] = allTeams.map(t => ({
+    rosterId: t.rosterId,
+    proj: { mean: avg(t.weeklyPts), stdDev: sd(t.weeklyPts) },
+    currentWins: t.record.wins,
+  }))
+
+  const gamesPlayed = allTeams[0] ? allTeams[0].record.wins + allTeams[0].record.losses + allTeams[0].record.ties : 0
+  const remainingWeeks = Math.max(1, 14 - gamesPlayed)
+  const playoffSpots = Math.max(2, Math.floor(leagueSize / 2))
+
+  const teamCount = projections.length
+  const playoffCounts = new Array(teamCount).fill(0)
+  const top3Counts = new Array(teamCount).fill(0)
+  const titleCounts = new Array(teamCount).fill(0)
+
+  for (let sim = 0; sim < SIM_COUNT; sim++) {
+    const simWins = projections.map(p => p.currentWins)
+
+    for (let w = 0; w < remainingWeeks; w++) {
+      for (let i = 0; i < teamCount; i++) {
+        const oppIdx = (i + 1 + w) % teamCount
+        const scoreA = projections[i].proj.mean + (Math.random() - 0.5) * projections[i].proj.stdDev * 2
+        const scoreB = projections[oppIdx].proj.mean + (Math.random() - 0.5) * projections[oppIdx].proj.stdDev * 2
+        if (scoreA > scoreB) simWins[i]++
+      }
+    }
+
+    const ranked = simWins
+      .map((w, idx) => ({ idx, wins: w }))
+      .sort((a, b) => b.wins - a.wins)
+
+    for (let r = 0; r < ranked.length; r++) {
+      if (r < playoffSpots) playoffCounts[ranked[r].idx]++
+      if (r < 3) top3Counts[ranked[r].idx]++
+    }
+
+    const playoffTeams = ranked.slice(0, playoffSpots).map(r => r.idx)
+    if (playoffTeams.length >= 2) {
+      let bracket = [...playoffTeams]
+      while (bracket.length > 1) {
+        const next: number[] = []
+        for (let i = 0; i < bracket.length; i += 2) {
+          if (i + 1 >= bracket.length) { next.push(bracket[i]); continue }
+          const a = projections[bracket[i]].proj
+          const b = projections[bracket[i + 1]].proj
+          const sA = a.mean + (Math.random() - 0.5) * a.stdDev * 2
+          const sB = b.mean + (Math.random() - 0.5) * b.stdDev * 2
+          next.push(sA >= sB ? bracket[i] : bracket[i + 1])
+        }
+        bracket = next
+      }
+      titleCounts[bracket[0]]++
+    }
+  }
+
+  for (let i = 0; i < teamCount; i++) {
+    result.set(projections[i].rosterId, {
+      playoffPct: Math.round((playoffCounts[i] / SIM_COUNT) * 1000) / 10,
+      top3Pct: Math.round((top3Counts[i] / SIM_COUNT) * 1000) / 10,
+      titlePct: Math.round((titleCounts[i] / SIM_COUNT) * 1000) / 10,
+      simCount: SIM_COUNT,
+    })
+  }
+
+  return result
+}
+
+function buildConfidenceBadge(dq: TeamDataQuality): ConfidenceBadge {
+  if (dq.confidenceRating === 'HIGH' && dq.dataCoverage === 'FULL') {
+    return { tier: 'GOLD', label: 'High Confidence', tooltip: `Ranking confidence ${dq.rankingConfidence}/100 — all data sources are fresh and complete.` }
+  }
+  if (dq.confidenceRating === 'HIGH' || (dq.confidenceRating === 'MEDIUM' && dq.dataCoverage !== 'MINIMAL')) {
+    return { tier: 'SILVER', label: 'Good Confidence', tooltip: `Ranking confidence ${dq.rankingConfidence}/100 — most data sources available but some may be aging.` }
+  }
+  return { tier: 'BRONZE', label: 'Limited Data', tooltip: `Ranking confidence ${dq.rankingConfidence}/100 — key data sources may be missing or stale. Rankings may shift as data improves.` }
+}
+
 function buildRankExplanation(
   ctx: DriverContext,
   leagueId: string,
@@ -2345,7 +2552,9 @@ function computeMotivationalFrame(
   }
 }
 
-function generateBadges(team: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming'>, allTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming'>[]): Badge[] {
+type RawTeam = Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming' | 'rankChangeDrivers' | 'forwardOdds' | 'confidenceBadge' | 'rankSparkline'>
+
+function generateBadges(team: RawTeam, allTeams: RawTeam[]): Badge[] {
   const badges: Badge[] = []
 
   const maxPS = Math.max(...allTeams.map(t => t.powerScore))
@@ -2398,10 +2607,11 @@ export async function computeLeagueRankingsV2(
   const leagueClassKey = isDynasty ? (isSF ? 'DYN_SF' : 'DYN_1QB') : (isSF ? 'RED_SF' : 'RED_1QB')
   const segmentKey = `${leagueClassKey}_${phase}`
 
-  const [dbRosterRecords, learnedParams, previousSnapshots] = await Promise.all([
+  const [dbRosterRecords, learnedParams, previousSnapshots, sparklineMap] = await Promise.all([
     fetchRosterRecords(leagueId),
     getActiveCompositeParams(segmentKey).catch(() => null),
     getPreviousWeekSnapshots({ leagueId, season, currentWeek: week }).catch(() => new Map()),
+    getLeagueSparklines({ leagueId, season, maxWeeks: 12 }).catch(() => new Map()),
   ])
 
   const fcSettings: FantasyCalcSettings = { isDynasty, numQbs: isSF ? 2 : 1, numTeams, ppr }
@@ -2509,7 +2719,7 @@ export async function computeLeagueRankingsV2(
 
   const ldiSampleCount = ldiData ? Object.values(ldiData).reduce((s: number, e: any) => s + (e?.sample ?? 0), 0) : 0
 
-  const rawTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming'>[] = []
+  const rawTeams: RawTeam[] = []
 
   const allStarterValues: number[] = []
   const allBenchValues: number[] = []
@@ -2807,6 +3017,13 @@ export async function computeLeagueRankingsV2(
 
   rawTeams.sort((a, b) => b.composite - a.composite)
 
+  const allTeamsForOdds = rawTeams.map(t => ({
+    rosterId: t.rosterId,
+    weeklyPts: weeklyPointsByRoster.get(t.rosterId) ?? [],
+    record: t.record,
+  }))
+  const forwardOddsMap = computeAllForwardOdds(allTeamsForOdds, rosters.length)
+
   const antiGamingInputs: AntiGamingInput[] = rawTeams.map((t, idx) => ({
     rosterId: t.rosterId,
     currentRank: idx + 1,
@@ -2839,6 +3056,19 @@ export async function computeLeagueRankingsV2(
     const finalRank = idx + 1
 
     const rawMetrics = teamSnapshotMetrics.get(t.rosterId) ?? null
+    const prevMetrics = prevSnap?.metrics ?? null
+
+    const rankChangeDrivers = buildRankChangeDrivers(
+      t.explanation.drivers,
+      prevMetrics,
+      rawMetrics,
+    )
+
+    const forwardOdds = forwardOddsMap.get(t.rosterId) ?? { playoffPct: 0, top3Pct: 0, titlePct: 0, simCount: 0 }
+
+    const confidenceBadge = buildConfidenceBadge(t.dataQuality)
+
+    const rankSparkline = sparklineMap.get(String(t.rosterId)) ?? []
 
     return {
       ...t,
@@ -2852,6 +3082,10 @@ export async function computeLeagueRankingsV2(
         justifications: agResult.justifications,
         failedMetrics: agResult.failedMetrics,
       } : null,
+      rankChangeDrivers,
+      forwardOdds,
+      confidenceBadge,
+      rankSparkline,
       _snapshotMetrics: rawMetrics,
     }
   })

@@ -97,3 +97,31 @@ export async function getRankHistory(args: {
 
   return rows.reverse()
 }
+
+export async function getLeagueSparklines(args: {
+  leagueId: string
+  season: string
+  maxWeeks?: number
+}): Promise<Map<string, number[]>> {
+  const rows = await prisma.rankingsSnapshot.findMany({
+    where: { leagueId: args.leagueId, season: args.season },
+    orderBy: [{ week: 'asc' }],
+    select: { rosterId: true, week: true, rank: true },
+  })
+
+  const map = new Map<string, number[]>()
+  const weekSet = new Set<number>()
+  for (const r of rows) weekSet.add(r.week)
+  const weeks = Array.from(weekSet).sort((a, b) => a - b)
+  const limit = args.maxWeeks ?? 12
+  const recentWeeks = weeks.slice(-limit)
+
+  const recentWeekSet = new Set(recentWeeks)
+  for (const r of rows) {
+    if (!recentWeekSet.has(r.week)) continue
+    if (!map.has(r.rosterId)) map.set(r.rosterId, [])
+    map.get(r.rosterId)!.push(r.rank)
+  }
+
+  return map
+}
