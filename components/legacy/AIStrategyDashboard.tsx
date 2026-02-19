@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toast } from 'sonner';
 import {
   Target,
   TrendingUp,
@@ -150,6 +151,8 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
 
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
+  const [voiceSupported, setVoiceSupported] = useState(true);
+  const [micPermissionDenied, setMicPermissionDenied] = useState(false);
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -166,11 +169,14 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   }, [chatMessages]);
 
   useEffect(() => {
-    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setVoiceSupported(false);
+      toast.info("Voice input not supported in this browser. Try Chrome/Edge for best experience.");
       return;
     }
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    recognitionRef.current = new SR();
+
+    recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = true;
     recognitionRef.current.lang = 'en-US';
@@ -186,10 +192,22 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
 
     recognitionRef.current.onend = () => {
       setIsListening(false);
+      if (transcript.trim()) {
+        handleChatSubmit(new Event('submit') as any);
+      }
     };
 
-    recognitionRef.current.onerror = () => {
+    recognitionRef.current.onerror = (event: any) => {
       setIsListening(false);
+      if (event.error === 'not-allowed') {
+        setMicPermissionDenied(true);
+        toast.error("Microphone access denied. Please enable it in browser settings.");
+      } else if (event.error === 'no-speech') {
+        toast.info("No speech detected. Try again.");
+      } else {
+        console.error('Speech error:', event.error);
+        toast.error(`Voice recognition error: ${event.error}`);
+      }
     };
 
     return () => {
@@ -472,7 +490,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                       <PolarGrid stroke="#334155" strokeDasharray="3 3" />
                       <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 13 }} stroke="#475569" />
                       <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: '#94a3b8' }} stroke="#475569" />
-                      <Radar name="Your Team" dataKey="A" stroke="#00f5d4" fill="#00f5d4" fillOpacity={0.35} animationDuration={1800} animationEasing="easeOut" />
+                      <Radar name="Your Team" dataKey="A" stroke="#00f5d4" fill="#00f5d4" fillOpacity={0.35} animationDuration={1800} animationEasing="ease-out" />
                       <Radar name="League Avg" dataKey="leagueAvg" stroke="#64748b" fill="#64748b" fillOpacity={0.15} dot={false} />
                       <Tooltip contentStyle={{ backgroundColor: '#1a1238', border: '1px solid #00f5d4', borderRadius: '12px', color: 'white', boxShadow: '0 0 20px rgba(0,245,212,0.3)' }} labelStyle={{ color: '#00f5d4' }} />
                       <Legend wrapperStyle={{ color: '#94a3b8' }} iconType="circle" />
