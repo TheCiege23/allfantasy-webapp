@@ -1,5 +1,8 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { buildBaselineMeta } from '@/lib/engine/response-guard'
 import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client'
@@ -257,6 +260,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
   try {
     const body = await request.json()
     const data = TradeFinderRequestSchema.parse(body)
+    const session = (await getServerSession(authOptions as any)) as { user?: { id?: string } } | null
 
     const ip = getClientIp(request)
     const rl = consumeRateLimit({
@@ -294,8 +298,32 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
         resolvedRosterId = matchedRoster.roster_id
       }
     }
+    if (!resolvedRosterId && session?.user?.id) {
+      try {
+        const localLeague = await (prisma as any).league.findFirst({
+          where: {
+            userId: session.user.id,
+            platformLeagueId: data.league_id,
+          },
+          include: { rosters: true },
+        })
+
+        const localRoster = localLeague?.rosters?.find((r: any) => r.platformUserId === session.user?.id)
+        if (localRoster?.platformUserId) {
+          const sleeperMatch = sleeperRosters.find((r: any) => r.owner_id === localRoster.platformUserId)
+          if (sleeperMatch?.roster_id) {
+            resolvedRosterId = Number(sleeperMatch.roster_id)
+          }
+        }
+      } catch (e) {
+        console.warn('[TradeFinder] Failed to auto-resolve roster id:', (e as Error)?.message)
+      }
+    }
     if (!resolvedRosterId) {
-      return NextResponse.json({ error: 'Could not determine your roster. Please link your Sleeper account in Settings.' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'Could not resolve your roster in this league. Re-sync league or pass user_roster_id.' },
+        { status: 400 }
+      )
     }
 
     const rosterSlots = parseSleeperRosterPositions(sleeperLeague.roster_positions)
