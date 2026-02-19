@@ -3,9 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Send, MessageCircle, X, Flag, SmilePlus } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Send, MessageCircle, X, Flag, Smile } from 'lucide-react'
+import { toast } from 'sonner'
 
-const REACTION_EMOJIS = ['👍', '😂', '🔥', '❤️', '💀', '🏀']
+const EMOJIS = [
+  '👍', '❤️', '😂', '🔥', '😭', '🤯', '🙌', '💯',
+  '👀', '🤔', '😤', '🎉', '💪', '🤩', '😱', '🤬',
+  '🥳', '😎', '🤝', '👑',
+]
 
 type Reaction = { emoji: string; userId: string }
 
@@ -13,6 +19,7 @@ type ChatMessage = {
   id: string
   message: string
   createdAt: string
+  isPinned?: boolean
   reactions?: Reaction[]
   user: {
     id: string
@@ -42,7 +49,10 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
-  const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null)
+  const [lastSent, setLastSent] = useState(0)
+  const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const typingTimeout = useRef<NodeJS.Timeout>()
+  const lastTypingPing = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -59,11 +69,25 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
     } catch {}
   }, [leagueId, open])
 
+  const fetchTyping = useCallback(async () => {
+    if (!open) return
+    try {
+      const res = await fetch(`/api/madness/typing?leagueId=${leagueId}`)
+      if (!res.ok) return
+      const data = await res.json()
+      setTypingUsers(data.typing || [])
+    } catch {}
+  }, [leagueId, open])
+
   useEffect(() => {
     fetchMessages()
-    const interval = setInterval(fetchMessages, 5000)
-    return () => clearInterval(interval)
-  }, [fetchMessages])
+    const msgInterval = setInterval(fetchMessages, 5000)
+    const typingInterval = setInterval(fetchTyping, 2000)
+    return () => {
+      clearInterval(msgInterval)
+      clearInterval(typingInterval)
+    }
+  }, [fetchMessages, fetchTyping])
 
   useEffect(() => {
     if (open) {
@@ -72,9 +96,32 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
     }
   }, [open, messages.length])
 
+  const sendTypingPing = useCallback(async () => {
+    const now = Date.now()
+    if (now - lastTypingPing.current < 2000) return
+    lastTypingPing.current = now
+    try {
+      await fetch('/api/madness/typing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId }),
+      })
+    } catch {}
+  }, [leagueId])
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value)
+    sendTypingPing()
+  }
+
   const sendMessage = async () => {
     const text = input.trim()
     if (!text || sending) return
+
+    if (Date.now() - lastSent < 5000) {
+      toast.error('Slow down — 5 sec between messages')
+      return
+    }
 
     setSending(true)
     try {
@@ -87,15 +134,20 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
         const msg = await res.json()
         setMessages(prev => [...prev, msg])
         setInput('')
+        setLastSent(Date.now())
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to send')
       }
-    } catch {} finally {
+    } catch {
+      toast.error('Failed to send message')
+    } finally {
       setSending(false)
     }
   }
 
   const toggleReaction = async (messageId: string, emoji: string) => {
-    setPickerOpenFor(null)
     try {
       const res = await fetch('/api/madness/react', {
         method: 'POST',
@@ -136,9 +188,10 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
       })
       if (res.ok) {
         setFlaggedIds(prev => new Set(prev).add(messageId))
+        toast.success('Message reported — thank you!')
       } else {
         const data = await res.json()
-        alert(data.error || 'Could not report message')
+        toast.error(data.error || 'Could not report message')
       }
     } catch {}
   }
@@ -160,36 +213,45 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
   }
 
   return (
-    <div className="fixed bottom-0 right-0 w-96 h-[28rem] bg-black/95 border border-cyan-900/50 rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80">
+    <div className="fixed bottom-0 right-0 w-96 h-[30rem] bg-black/95 border border-cyan-900/50 rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80">
       <div className="bg-gradient-to-r from-cyan-900 to-purple-900 p-4 flex items-center justify-between">
         <span className="text-white font-medium text-sm">Live League Chat</span>
-        <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-white/50">Moderated</span>
+          <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <p className="text-gray-500 text-sm text-center mt-8">No messages yet. Say something!</p>
         )}
         {messages.map(msg => {
           const grouped = groupReactions(msg.reactions || [], currentUserId)
           const isOwn = msg.user.id === currentUserId
+          const displayName = msg.user.displayName || msg.user.username
+          const initial = (displayName?.[0] || '?').toUpperCase()
 
           return (
-            <div key={msg.id} className={`group text-sm ${isOwn ? 'text-right' : ''}`}>
-              <div className="inline-flex items-end gap-1">
-                <div className={`inline-block max-w-[80%] rounded-2xl px-4 py-2 ${
-                  isOwn
-                    ? 'bg-cyan-900/60 text-white'
-                    : 'bg-gray-800/80 text-gray-100'
+            <div key={msg.id} className="group">
+              <div className="flex items-start gap-3">
+                <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
+                  isOwn ? 'bg-cyan-700 text-white' : 'bg-gray-700 text-gray-300'
                 }`}>
-                  {!isOwn && (
-                    <p className="text-cyan-400 text-xs font-medium mb-1">
-                      {msg.user.displayName || msg.user.username}
-                    </p>
-                  )}
-                  <p>{msg.message}</p>
+                  {initial}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className={`font-medium text-sm ${isOwn ? 'text-cyan-400' : 'text-cyan-300'}`}>
+                      {displayName}
+                    </span>
+                    <span className="text-[10px] text-gray-500">
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-200 mt-0.5 break-words">{msg.message}</p>
 
                   {grouped.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
@@ -197,76 +259,95 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
                         <button
                           key={r.emoji}
                           onClick={() => toggleReaction(msg.id, r.emoji)}
-                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs transition-colors ${
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
                             r.hasReacted
-                              ? 'bg-cyan-600/30 border border-cyan-500/50'
-                              : 'bg-gray-700/50 border border-gray-600/30 hover:bg-gray-600/50'
+                              ? 'bg-cyan-900/60 border border-cyan-500/50'
+                              : 'bg-gray-800 border border-gray-700 hover:bg-gray-700'
                           }`}
                         >
                           <span>{r.emoji}</span>
-                          <span className="text-[10px] text-gray-300">{r.count}</span>
+                          <span className="text-gray-300">{r.count}</span>
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => setPickerOpenFor(pickerOpenFor === msg.id ? null : msg.id)}
-                    className="h-6 w-6 flex items-center justify-center rounded text-gray-500 hover:text-cyan-400 transition-colors"
-                  >
-                    <SmilePlus className="h-3 w-3" />
-                  </button>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 flex-shrink-0">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-cyan-400">
+                        <Smile className="h-4 w-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3 bg-gray-950 border border-gray-800" side="left" align="start">
+                      <div className="grid grid-cols-5 gap-2">
+                        {EMOJIS.map(emoji => (
+                          <button
+                            key={emoji}
+                            onClick={() => toggleReaction(msg.id, emoji)}
+                            className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-gray-800"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
                   {!isOwn && !flaggedIds.has(msg.id) && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => reportMessage(msg.id)}
-                      className="h-6 w-6 flex items-center justify-center rounded text-gray-500 hover:text-red-400 transition-colors"
+                      className="h-7 w-7 text-gray-400 hover:text-red-400"
                     >
-                      <Flag className="h-3 w-3" />
-                    </button>
+                      <Flag className="h-3.5 w-3.5" />
+                    </Button>
                   )}
                   {flaggedIds.has(msg.id) && (
-                    <span className="text-[10px] text-red-400">Reported</span>
+                    <span className="text-[10px] text-red-400 self-center">Reported</span>
                   )}
                 </div>
               </div>
-
-              {pickerOpenFor === msg.id && (
-                <div className={`flex gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                  <div className="bg-gray-900 border border-gray-700 rounded-xl px-2 py-1 flex gap-1 shadow-lg">
-                    {REACTION_EMOJIS.map(emoji => (
-                      <button
-                        key={emoji}
-                        onClick={() => toggleReaction(msg.id, emoji)}
-                        className="hover:scale-125 transition-transform text-base px-0.5"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <p className="text-[10px] text-gray-600 mt-1">
-                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </p>
             </div>
           )
         })}
         <div ref={bottomRef} />
       </div>
 
+      {typingUsers.length > 0 && (
+        <div className="px-4 py-1.5 text-[11px] text-gray-400 border-t border-gray-800/50">
+          <span className="inline-flex items-center gap-1">
+            <span className="flex gap-0.5">
+              <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+            {typingUsers.length === 1
+              ? `${typingUsers[0]} is typing...`
+              : typingUsers.length === 2
+                ? `${typingUsers[0]} and ${typingUsers[1]} are typing...`
+                : `${typingUsers[0]} and ${typingUsers.length - 1} others are typing...`}
+          </span>
+        </div>
+      )}
+
       <div className="border-t border-gray-800 p-3 flex gap-2">
         <Input
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={handleInputChange}
           placeholder="Type a message..."
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           className="bg-gray-900 border-gray-700 text-white placeholder:text-gray-500"
           maxLength={1000}
         />
-        <Button onClick={sendMessage} size="icon" disabled={sending || !input.trim()} className="bg-cyan-600 hover:bg-cyan-500">
+        <Button
+          onClick={sendMessage}
+          size="icon"
+          disabled={sending || !input.trim()}
+          className="bg-cyan-600 hover:bg-cyan-500"
+        >
           <Send className="h-4 w-4" />
         </Button>
       </div>

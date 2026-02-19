@@ -3,7 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
-const ALLOWED_EMOJIS = ['👍', '😂', '🔥', '❤️', '💀', '🏀'];
+const ALLOWED_EMOJIS = [
+  '👍', '❤️', '😂', '🔥', '😭', '🤯', '🙌', '💯',
+  '👀', '🤔', '😤', '🎉', '💪', '🤩', '😱', '🤬',
+  '🥳', '😎', '🤝', '👑',
+];
 
 export async function POST(req: NextRequest) {
   const session = (await getServerSession(authOptions as any)) as {
