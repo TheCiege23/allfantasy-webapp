@@ -13,7 +13,8 @@ import {
 import { useState } from 'react'
 import Link from 'next/link'
 import { AFBrandingFooter } from '@/components/branding/AFWatermark'
-import { Trophy, Users, ArrowRight, BarChart3, TrendingUp, Zap, Plus } from 'lucide-react'
+import { Trophy, Users, ArrowRight, BarChart3, TrendingUp, Zap, Plus, ArrowLeft, Home } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 type LeagueTeamSummary = {
   id: string
@@ -45,6 +46,7 @@ interface LegacyHubClientProps {
 
 export default function LegacyHubClient({ userId, leagues = [], defaultTab = 'transfer' }: LegacyHubClientProps) {
   const [activeTab, setActiveTab] = useState(defaultTab)
+  const router = useRouter()
 
   return (
     <motion.div
@@ -57,6 +59,26 @@ export default function LegacyHubClient({ userId, leagues = [], defaultTab = 'tr
         <img src="/af-shield-bg.png" alt="" className="w-14 h-14 opacity-[0.07]" draggable={false} />
       </div>
       <div className="max-w-7xl mx-auto">
+        <motion.div
+          variants={fadeInUp}
+          className="flex items-center gap-3 mb-6"
+        >
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+          <Link
+            href="/"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-white/10 bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white transition-colors text-sm"
+          >
+            <Home className="w-4 h-4" />
+            Home
+          </Link>
+        </motion.div>
+
         <motion.div variants={staggerContainer} className="mb-10 text-center md:text-left">
           <motion.div variants={fadeInUp} className="flex items-center gap-3 justify-center md:justify-start mb-2">
             <img src="/af-shield-bg.png" alt="" className="w-10 h-10 opacity-60" draggable={false} />
