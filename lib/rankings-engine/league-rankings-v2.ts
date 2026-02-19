@@ -723,16 +723,34 @@ function computeWinScore(
   return Math.round(100 * wsBase)
 }
 
+interface PlayerInjuryProfile {
+  severity: number
+  recencyDecay: number
+  uncertainty: number
+  effectiveSeverity: number
+  isStarter: boolean
+  playerValue: number
+}
+
+interface RosterInjuryImpact {
+  powerHealthRatio: number
+  marketDiscount: number
+  riskConcentration: number
+  injuryProfiles: PlayerInjuryProfile[]
+}
+
 function computePowerScore(
   starterP: number,
   benchP: number,
   isDynasty: boolean,
-  injuryPenalty: number,
+  injuryImpact: RosterInjuryImpact,
 ): number {
   const rawWeighted = isDynasty
     ? 0.70 * starterP + 0.30 * benchP
     : 0.80 * starterP + 0.20 * benchP
-  const adjusted = rawWeighted * (0.85 + 0.30 * injuryPenalty)
+  const healthMultiplier = 0.85 + 0.30 * injuryImpact.powerHealthRatio
+  const riskPenalty = 1 - 0.05 * injuryImpact.riskConcentration
+  const adjusted = rawWeighted * healthMultiplier * riskPenalty
   return Math.round(100 * clamp01(adjusted))
 }
 
@@ -750,45 +768,201 @@ const INJURY_STATUS_SEVERITY: Record<string, number> = {
   'Active': 0.00,
 }
 
-function computeRosterInjuryPenalty(
+const INJURY_UNCERTAINTY: Record<string, number> = {
+  'Out': 0.10,
+  'IR': 0.05,
+  'Doubtful': 0.30,
+  'Questionable': 0.50,
+  'Probable': 0.60,
+  'Suspension': 0.10,
+  'PUP': 0.35,
+  'NFI': 0.35,
+  'COV': 0.40,
+  'NA': 0.00,
+  'Active': 0.00,
+}
+
+function computeRecencyDecay(injuryDateMs: number | null, nowMs: number): number {
+  if (!injuryDateMs) return 1.0
+  const daysSince = (nowMs - injuryDateMs) / (24 * 60 * 60 * 1000)
+  if (daysSince <= 3) return 1.0
+  if (daysSince <= 7) return 0.95
+  if (daysSince <= 14) return 0.80
+  if (daysSince <= 28) return 0.55
+  if (daysSince <= 56) return 0.30
+  return 0.15
+}
+
+function computePlayerInjuryProfile(
+  pid: string,
+  isStarter: boolean,
+  sleeperPlayers: Record<string, any> | null,
+  analyticsMap: Map<string, any> | undefined,
+  dbInjuryMap: Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }> | undefined,
+  valueMap: Map<string, PlayerValueMap>,
+  nowMs: number,
+): PlayerInjuryProfile {
+  const pVal = valueMap.get(pid)
+  const playerValue = pVal ? Math.max(pVal.value, pVal.redraftValue) : 1
+
+  let baseSeverity = 0
+  let uncertainty = 0
+  let injuryDateMs: number | null = null
+
+  if (sleeperPlayers && sleeperPlayers[pid]) {
+    const sp = sleeperPlayers[pid]
+    const status = sp.injury_status || sp.status || 'Active'
+    baseSeverity = INJURY_STATUS_SEVERITY[status] ?? 0
+    uncertainty = INJURY_UNCERTAINTY[status] ?? 0
+  }
+
+  const playerName = pVal?.name
+  if (dbInjuryMap && playerName) {
+    const dbInjury = dbInjuryMap.get(playerName.toLowerCase())
+    if (dbInjury) {
+      if (dbInjury.date) {
+        injuryDateMs = dbInjury.date.getTime()
+      }
+
+      const dbStatus = dbInjury.severity || ''
+      const dbSev = INJURY_STATUS_SEVERITY[dbStatus] ?? 0
+      if (dbSev > baseSeverity) {
+        baseSeverity = dbSev
+        uncertainty = INJURY_UNCERTAINTY[dbStatus] ?? uncertainty
+      }
+
+      if (dbInjury.type) {
+        const t = dbInjury.type.toLowerCase()
+        if (t.includes('acl') || t.includes('achilles') || t.includes('torn')) {
+          baseSeverity = Math.max(baseSeverity, 0.95)
+          uncertainty = Math.min(uncertainty, 0.10)
+        } else if (t.includes('concussion')) {
+          uncertainty = Math.max(uncertainty, 0.55)
+        } else if (t.includes('hamstring') || t.includes('groin') || t.includes('calf')) {
+          uncertainty = Math.max(uncertainty, 0.40)
+        }
+      }
+    }
+  }
+
+  if (analyticsMap && playerName) {
+    const analytics = analyticsMap.get(playerName)
+    if (analytics?.injurySeverityScore != null) {
+      const analyticsSev = Math.min(1, analytics.injurySeverityScore / 10)
+      if (analyticsSev > baseSeverity) {
+        baseSeverity = analyticsSev
+      }
+    }
+  }
+
+  const recencyDecay = computeRecencyDecay(injuryDateMs, nowMs)
+
+  const effectiveSeverity = baseSeverity * recencyDecay
+
+  return {
+    severity: baseSeverity,
+    recencyDecay,
+    uncertainty,
+    effectiveSeverity,
+    isStarter,
+    playerValue: Math.max(1, playerValue),
+  }
+}
+
+function computeRosterInjuryImpact(
   roster: SleeperRoster,
   sleeperPlayers: Record<string, any> | null,
   analyticsMap: Map<string, any> | undefined,
+  dbInjuryMap: Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }> | undefined,
   valueMap: Map<string, PlayerValueMap>,
-): number {
-  const starters = roster.starters || []
-  if (starters.length === 0) return 0.5
+): RosterInjuryImpact {
+  const starters = new Set(roster.starters || [])
+  const allPlayers = roster.players || []
+  if (allPlayers.length === 0) return { powerHealthRatio: 0.5, marketDiscount: 0, riskConcentration: 0, injuryProfiles: [] }
 
-  let totalWeight = 0
-  let healthyWeight = 0
+  const nowMs = Date.now()
+  const profiles: PlayerInjuryProfile[] = []
 
-  for (const pid of starters) {
+  for (const pid of allPlayers) {
     if (pid === '0') continue
-    const pVal = valueMap.get(pid)
-    const playerValue = pVal ? Math.max(pVal.value, pVal.redraftValue) : 1
-    const weight = Math.max(1, playerValue)
-    totalWeight += weight
-
-    let severity = 0
-
-    if (sleeperPlayers && sleeperPlayers[pid]) {
-      const sp = sleeperPlayers[pid]
-      const status = sp.injury_status || sp.status || 'Active'
-      severity = INJURY_STATUS_SEVERITY[status] ?? 0
-    }
-
-    if (analyticsMap && pVal?.name) {
-      const analytics = analyticsMap.get(pVal.name)
-      if (analytics?.injurySeverityScore != null && analytics.injurySeverityScore > severity) {
-        severity = Math.min(1, analytics.injurySeverityScore / 10)
-      }
-    }
-
-    healthyWeight += weight * (1 - severity)
+    const isStarter = starters.has(pid)
+    profiles.push(
+      computePlayerInjuryProfile(pid, isStarter, sleeperPlayers, analyticsMap, dbInjuryMap, valueMap, nowMs),
+    )
   }
 
-  if (totalWeight === 0) return 0.5
-  return clamp01(healthyWeight / totalWeight)
+  let starterTotalWeight = 0
+  let starterHealthyWeight = 0
+  let totalMarketValue = 0
+  let injuredMarketValue = 0
+  let highValueInjuredCount = 0
+
+  for (const p of profiles) {
+    if (p.isStarter) {
+      starterTotalWeight += p.playerValue
+      const healthFactor = 1 - p.effectiveSeverity
+      const uncertaintyBoost = p.uncertainty * 0.15 * p.effectiveSeverity
+      starterHealthyWeight += p.playerValue * (healthFactor + uncertaintyBoost)
+    }
+
+    totalMarketValue += p.playerValue
+
+    if (p.effectiveSeverity > 0.1) {
+      const marketPenalty = p.effectiveSeverity * (1 - p.uncertainty * 0.3)
+      injuredMarketValue += p.playerValue * marketPenalty
+    }
+
+    if (p.effectiveSeverity > 0.5 && p.playerValue > 50) {
+      highValueInjuredCount++
+    }
+  }
+
+  const powerHealthRatio = starterTotalWeight > 0
+    ? clamp01(starterHealthyWeight / starterTotalWeight)
+    : 0.5
+
+  const marketDiscount = totalMarketValue > 0
+    ? clamp01(injuredMarketValue / totalMarketValue)
+    : 0
+
+  const riskConcentration = Math.min(1, highValueInjuredCount / 3)
+
+  return { powerHealthRatio, marketDiscount, riskConcentration, injuryProfiles: profiles }
+}
+
+async function fetchDbInjuryMap(playerNames: string[]): Promise<Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }>> {
+  const result = new Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }>()
+  if (playerNames.length === 0) return result
+
+  try {
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+    const injuries = await prisma.sportsInjury.findMany({
+      where: {
+        playerName: { in: playerNames },
+        fetchedAt: { gte: cutoff },
+      },
+      orderBy: { fetchedAt: 'desc' },
+      distinct: ['playerName'],
+      select: {
+        playerName: true,
+        status: true,
+        date: true,
+        type: true,
+        description: true,
+      },
+    })
+
+    for (const inj of injuries) {
+      result.set(inj.playerName.toLowerCase(), {
+        severity: inj.status,
+        date: inj.date,
+        type: inj.type,
+        description: inj.description,
+      })
+    }
+  } catch {}
+
+  return result
 }
 
 function computeDraftGainPercentile(
