@@ -25,6 +25,7 @@ import {
   MessageSquare,
   History,
   Send,
+  Clock,
 } from 'lucide-react';
 import TeamArchetypeBadge from './TeamArchetypeBadge';
 
@@ -415,31 +416,36 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
           </div>
 
           {timelineEvents.length > 0 && (
-            <Card className="bg-gradient-to-r from-purple-950/40 to-cyan-950/40 border-none shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
+            <Card className="bg-gradient-to-br from-purple-950/50 via-cyan-950/40 to-[#0f0a24] border-none shadow-[0_0_50px_-15px_#a855f7]">
               <CardHeader>
-                <CardTitle className="text-2xl text-amber-300">Your Dynasty Timeline</CardTitle>
+                <CardTitle className="text-2xl text-amber-300 flex items-center gap-3">
+                  <Clock className="h-6 w-6 text-amber-400" />
+                  Your Dynasty Timeline
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="relative">
-                  <div className="absolute left-1/2 transform -translate-x-1/2 h-full w-1 bg-cyan-800/50" />
-                  {timelineEvents.map((event, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: i % 2 === 0 ? -50 : 50 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.3 }}
-                      className={`flex items-center mb-10 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}
-                    >
-                      <div className={`w-5/12 p-6 rounded-xl bg-[#1a1238]/90 border border-cyan-800/50 ${i % 2 === 0 ? 'mr-auto' : 'ml-auto'}`}>
-                        <h4 className="text-xl font-bold text-cyan-300 mb-2">{event.year}</h4>
-                        <p className="text-gray-300">{event.label}</p>
-                      </div>
-                      <div className="absolute left-1/2 transform -translate-x-1/2 w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg z-10">
-                        {event.year.slice(-2)}
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+              <CardContent className="relative pt-12 pb-20">
+                <div className="absolute left-1/2 top-0 bottom-0 w-1.5 bg-gradient-to-b from-transparent via-cyan-500/70 to-transparent transform -translate-x-1/2" />
+                {timelineEvents.map((event, i) => (
+                  <motion.div
+                    key={event.year}
+                    initial={{ opacity: 0, x: i % 2 === 0 ? -80 : 80, scale: 0.9 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    transition={{ duration: 0.7, delay: i * 0.4, ease: 'easeOut' }}
+                    className={`relative flex items-center mb-16 last:mb-0 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}
+                  >
+                    <div className="absolute left-1/2 transform -translate-x-1/2 w-14 h-14 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg shadow-[0_0_25px_8px_rgba(0,245,212,0.5)] z-10 border-2 border-white/20">
+                      {event.year.slice(2)}
+                    </div>
+                    <div className={`w-5/12 p-6 rounded-2xl backdrop-blur-md border border-cyan-800/40 ${i % 2 === 0 ? 'mr-auto' : 'ml-auto'} bg-[#1a1238]/90 shadow-[0_0_30px_-10px_#00f5d4]`}>
+                      <h4 className="text-xl font-bold text-cyan-200 mb-3 flex items-center gap-2">
+                        {event.icon || <Sparkles className="h-5 w-5 text-amber-400" />}
+                        {event.year}
+                      </h4>
+                      <p className="text-gray-200 leading-relaxed">{event.label}</p>
+                      {event.subtext && <p className="text-sm text-gray-400 mt-3 italic">{event.subtext}</p>}
+                    </div>
+                  </motion.div>
+                ))}
               </CardContent>
             </Card>
           )}
