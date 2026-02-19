@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
       where: { id: leagueId, userId: session.user.id },
       include: {
         teams: {
-          select: { id: true, ownerName: true, teamName: true },
+          select: { id: true, ownerName: true, teamName: true, avatarUrl: true },
           take: 20,
         },
         rosters: {
@@ -136,6 +136,17 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
     if (!Array.isArray(draftResults)) {
       console.error('[mock-draft] Unexpected response shape:', Object.keys(parsed))
       return NextResponse.json({ error: 'Invalid AI response format' }, { status: 500 })
+    }
+
+    const avatarMap: Record<string, string> = {}
+    for (const t of league.teams) {
+      const name = t.teamName || t.ownerName || ''
+      if (name && t.avatarUrl) avatarMap[name.toLowerCase()] = t.avatarUrl
+    }
+    for (const pick of draftResults) {
+      if (pick.manager) {
+        pick.managerAvatar = avatarMap[pick.manager.toLowerCase()] || null
+      }
     }
 
     try {

@@ -27,6 +27,7 @@ interface DraftPick {
   position: string
   team: string
   manager: string
+  managerAvatar?: string
   confidence: number
   isUser: boolean
   value: number
@@ -236,7 +237,15 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                                 {pick.playerName}
                               </div>
                               <div className="text-xs text-gray-500 truncate">{pick.position} &middot; {pick.team}</div>
-                              <div className="mt-2 flex items-center gap-1 text-xs">
+                              <div className="mt-2 flex items-center gap-1.5 text-xs">
+                                <div className="w-5 h-5 rounded-full overflow-hidden border border-gray-700 shrink-0">
+                                  <img
+                                    src={pick.managerAvatar || '/default-avatar.png'}
+                                    alt={pick.manager}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png' }}
+                                  />
+                                </div>
                                 <span className={`truncate ${pick.isUser ? 'text-cyan-400 font-semibold' : 'text-gray-600'}`}>
                                   {pick.manager}
                                 </span>
