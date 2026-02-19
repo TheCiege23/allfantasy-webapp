@@ -54,6 +54,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
   const [selectedLeagues, setSelectedLeagues] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
   const [transferResults, setTransferResults] = useState<TransferredLeague[]>([])
   const [transferProgress, setTransferProgress] = useState(0)
   const [expandedLeague, setExpandedLeague] = useState<string | null>(null)
@@ -169,6 +170,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
     setStep('transferring')
     setTransferProgress(0)
     setError(null)
+    setStatus(null)
 
     const selected = leagues.filter(l => selectedLeagues.has(l.league_id))
     const results: TransferredLeague[] = []
@@ -206,6 +208,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
 
         if (selected.length === 1) {
           confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } })
+          setStatus('Migration successful! Your legacy is now in AllFantasy')
           setTimeout(() => {
             router.push(`/leagues/${data.leagueId}?welcome=legacy`)
           }, 2500)
@@ -230,6 +233,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
           isDynasty: false,
           scoringType: getScoringLabel(league),
         })
+        setStatus(`Error: ${msg}`)
         console.error(`Transfer failed for ${league.name}:`, msg)
       }
 
@@ -239,11 +243,17 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
     setTransferResults(results)
     setStep('complete')
 
+    const failedCount = results.filter(r => r.name.includes('(failed)')).length
     if (selected.length > 1) {
       confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
       setTimeout(() => {
         confetti({ particleCount: 80, spread: 100, origin: { y: 0.5 } })
       }, 500)
+    }
+    if (failedCount === 0) {
+      setStatus(`Migration successful! ${results.length} league${results.length !== 1 ? 's' : ''} transferred`)
+    } else if (failedCount < results.length) {
+      setStatus(`Error: ${failedCount} of ${results.length} leagues failed to transfer`)
     }
   }
 
@@ -483,6 +493,18 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                   <p className="text-gray-400">Your leagues are now on AllFantasy with AI analysis ready</p>
                 </div>
 
+                {status && (
+                  <motion.p
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`mt-6 text-center text-lg font-medium ${
+                      status.includes('Error') ? 'text-red-400' : 'text-emerald-400'
+                    }`}
+                  >
+                    {status}
+                  </motion.p>
+                )}
+
                 <div className="space-y-3">
                   {transferResults.map((league, idx) => (
                     <motion.div
@@ -531,7 +553,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                   <motion.button
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => { setStep('connect'); setLeagues([]); setSelectedLeagues(new Set()); setTransferResults([]); setPreviewData(null); setPreviewHistory(null) }}
+                    onClick={() => { setStep('connect'); setLeagues([]); setSelectedLeagues(new Set()); setTransferResults([]); setPreviewData(null); setPreviewHistory(null); setStatus(null) }}
                     className="px-6 py-3 bg-white/10 border border-white/20 rounded-xl font-semibold hover:bg-white/15 transition-colors"
                   >
                     Transfer More
