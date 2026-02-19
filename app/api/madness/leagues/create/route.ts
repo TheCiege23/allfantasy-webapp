@@ -1,29 +1,22 @@
-import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/prisma"
+import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 import crypto from "crypto"
 
-export const runtime = "nodejs"
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   const session = (await getServerSession(authOptions as any)) as {
     user?: { id?: string }
   } | null
 
   if (!session?.user?.id) {
-    return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 })
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const body = await req.json()
-  const { name, maxManagers, deadline, scoringRules } = body
+  const { name, maxManagers, deadline, scoringRules } = await req.json()
 
-  if (!name || typeof name !== "string" || name.trim().length === 0) {
+  if (!name?.trim()) {
     return NextResponse.json({ error: "League name is required" }, { status: 400 })
-  }
-
-  if (maxManagers && (maxManagers < 2 || maxManagers > 1000)) {
-    return NextResponse.json({ error: "Max managers must be between 2 and 1000" }, { status: 400 })
   }
 
   let tournament = await (prisma as any).bracketTournament.findFirst({
@@ -49,7 +42,7 @@ export async function POST(req: NextRequest) {
       tournamentId: tournament.id,
       ownerId: session.user.id,
       joinCode,
-      maxManagers: maxManagers || 100,
+      maxManagers: Math.min(1000, maxManagers || 100),
       deadline: deadline ? new Date(deadline) : null,
       scoringRules: scoringRules || {
         round1: 10,
