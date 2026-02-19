@@ -1,15 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X } from 'lucide-react'
+import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
+
+interface ADPPlayer {
+  name: string
+  position: string
+  team: string | null
+  adp: number
+  adpTrend: number | null
+  value: number | null
+}
 
 interface LeagueOption {
   id: string
@@ -57,8 +66,79 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [isTrading, setIsTrading] = useState(false)
   const [roundNeeds, setRoundNeeds] = useState<Record<number, any>>({})
   const [loadingNeeds, setLoadingNeeds] = useState<Record<number, boolean>>({})
+  const [adpData, setAdpData] = useState<ADPPlayer[]>([])
+  const [showBestAvailable, setShowBestAvailable] = useState(false)
+  const [expandedNeedsRounds, setExpandedNeedsRounds] = useState<Set<number>>(new Set())
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
+
+  const normalizeName = useCallback((name: string) => {
+    return name.toLowerCase().replace(/[.\-']/g, '').replace(/\s+(jr|sr|ii|iii|iv|v)$/i, '').trim()
+  }, [])
+
+  const adpMap = useMemo(() => {
+    const map = new Map<string, ADPPlayer>()
+    for (const p of adpData) {
+      map.set(normalizeName(p.name), p)
+    }
+    return map
+  }, [adpData, normalizeName])
+
+  const bestAvailable = useMemo(() => {
+    if (adpData.length === 0 || draftResults.length === 0) return []
+    const drafted = new Set(draftResults.map(p => normalizeName(p.playerName)))
+    return adpData
+      .filter(p => !drafted.has(normalizeName(p.name)))
+      .slice(0, 20)
+  }, [adpData, draftResults, normalizeName])
+
+  const perRoundRosters = useMemo(() => {
+    if (draftResults.length === 0) return {}
+    const maxRound = Math.max(...draftResults.map(p => p.round))
+    const managers = Array.from(new Set(draftResults.map(p => p.manager)))
+    const result: Record<number, { manager: string; counts: Record<string, number>; isUser: boolean }[]> = {}
+    for (let r = 1; r <= maxRound; r++) {
+      result[r] = managers.map(mgr => {
+        const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
+        for (const p of draftResults) {
+          if (p.round <= r && p.manager === mgr && counts[p.position] !== undefined) counts[p.position]++
+        }
+        return { manager: mgr, counts, isUser: draftResults.some(p => p.round <= r && p.manager === mgr && p.isUser) }
+      })
+    }
+    return result
+  }, [draftResults])
+
+  useEffect(() => {
+    if (!selectedLeagueId || !selectedLeague) return
+    const fetchADP = async () => {
+      try {
+        const type = selectedLeague.isDynasty ? 'dynasty' : 'redraft'
+        const res = await fetch(`/api/mock-draft/adp?type=${type}&limit=300`)
+        if (res.ok) {
+          const data = await res.json()
+          setAdpData(data.entries || [])
+        }
+      } catch (err) {
+        console.error('[adp-fetch]', err)
+      }
+    }
+    fetchADP()
+  }, [selectedLeagueId, selectedLeague])
+
+  useEffect(() => {
+    if (adpData.length > 0 || draftResults.length === 0 || !selectedLeagueId) return
+    const fetchADP = async () => {
+      try {
+        const res = await fetch(`/api/mock-draft/adp?type=redraft&limit=300`)
+        if (res.ok) {
+          const data = await res.json()
+          setAdpData(data.entries || [])
+        }
+      } catch {}
+    }
+    fetchADP()
+  }, [draftResults, adpData.length, selectedLeagueId])
 
   const startMockDraft = async () => {
     if (!selectedLeagueId) return toast.error('Select a league first')
@@ -257,17 +337,49 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
       {draftResults.length > 0 && (
         <div id="draft-board" className="bg-black/80 border border-cyan-900/50 rounded-3xl p-8">
-          <div className="flex justify-between items-center mb-8">
+          <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">Live Mock Draft Board</h2>
-            <div className="flex gap-3">
-              <Button onClick={exportPDF} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
-              <Button onClick={copyShareLink}><Link className="mr-2 h-4 w-4" /> Share</Button>
-              <Button onClick={updateWeekly} variant="outline" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
-              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}) }} variant="outline" className="border-gray-600">
+            <div className="flex gap-3 flex-wrap">
+              <Button
+                onClick={() => setShowBestAvailable(!showBestAvailable)}
+                variant={showBestAvailable ? 'default' : 'outline'}
+                size="sm"
+                className={showBestAvailable ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
+              >
+                <Star className="mr-2 h-4 w-4" /> Best Available
+              </Button>
+              <Button onClick={exportPDF} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> PDF</Button>
+              <Button onClick={copyShareLink} size="sm"><Link className="mr-2 h-4 w-4" /> Share</Button>
+              <Button onClick={updateWeekly} variant="outline" size="sm" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
+              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}); setShowBestAvailable(false); setExpandedNeedsRounds(new Set()) }} variant="outline" size="sm" className="border-gray-600">
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
             </div>
           </div>
+
+          {showBestAvailable && bestAvailable.length > 0 && (
+            <div className="mb-8 bg-gradient-to-r from-emerald-950/30 to-black border border-emerald-500/30 rounded-2xl p-5">
+              <h3 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
+                <Star className="h-4 w-4" /> Best Available Players (by ADP)
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                {bestAvailable.map((p, idx) => (
+                  <div key={p.name} className={`flex items-center gap-2 p-2 rounded-lg text-xs ${idx === 0 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-gray-950/60'}`}>
+                    <span className="text-gray-600 font-mono w-5 shrink-0">{idx + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{p.name}</div>
+                      <div className="flex items-center gap-1">
+                        <Badge className={`${POSITION_COLORS[p.position] || ''} border text-[9px] px-1 py-0`}>{p.position}</Badge>
+                        <span className="text-gray-500">{p.team}</span>
+                        <span className="text-gray-600 ml-auto">ADP {p.adp.toFixed(1)}</span>
+                      </div>
+                    </div>
+                    {idx === 0 && <Star className="h-3 w-3 text-yellow-500 shrink-0" />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="space-y-12">
             {Array.from({ length: Math.max(...draftResults.map(p => p.round)) }).map((_, round) => {
@@ -322,7 +434,42 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                             </Badge>
                             <span className="text-sm text-gray-400">{pick.team}</span>
                           </div>
-                          <div className="text-xs text-emerald-400">Confidence: {pick.confidence}%</div>
+
+                          {(() => {
+                            const adpInfo = adpMap.get(normalizeName(pick.playerName))
+                            if (!adpInfo) return <div className="text-xs text-emerald-400">Confidence: {pick.confidence}%</div>
+                            const diff = pick.overall - adpInfo.adp
+                            const isSteal = diff > 3
+                            const isReach = diff < -3
+                            return (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-500">ADP {adpInfo.adp.toFixed(1)}</span>
+                                  <span className={`font-bold flex items-center gap-0.5 ${
+                                    isSteal ? 'text-emerald-400' : isReach ? 'text-orange-400' : 'text-gray-400'
+                                  }`}>
+                                    {isSteal ? <><TrendingUp className="h-3 w-3" /> STEAL</> :
+                                     isReach ? <><TrendingDown className="h-3 w-3" /> REACH</> :
+                                     <><Minus className="h-3 w-3" /> FAIR</>}
+                                  </span>
+                                </div>
+                                <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all ${
+                                      isSteal ? 'bg-emerald-500' : isReach ? 'bg-orange-500' : 'bg-gray-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, Math.max(10, 50 + diff * 3))}%` }}
+                                  />
+                                </div>
+                                {adpInfo.adpTrend != null && adpInfo.adpTrend !== 0 && (
+                                  <div className={`text-[9px] ${adpInfo.adpTrend < 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                    {adpInfo.adpTrend < 0 ? 'Rising' : 'Falling'} in drafts
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })()}
+
                           {pick.notes && (
                             <p className="text-[10px] text-gray-600 mt-2 line-clamp-2">{pick.notes}</p>
                           )}
@@ -357,64 +504,129 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                   </div>
 
                   <div className="mt-6">
-                    {!roundNeeds[round + 1] && !loadingNeeds[round + 1] && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => fetchRoundNeeds(round + 1)}
-                        className="border-gray-700 text-gray-400 hover:text-white text-xs"
-                      >
-                        <Users className="mr-2 h-3 w-3" /> Analyze Team Needs After Round {round + 1}
-                      </Button>
-                    )}
-                    {loadingNeeds[round + 1] && (
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Loader2 className="h-4 w-4 animate-spin" /> AI analyzing team needs...
-                      </div>
-                    )}
-                    {roundNeeds[round + 1]?.teams && (
-                      <div className="bg-black/40 border border-gray-800 rounded-xl p-5">
-                        <h4 className="text-sm font-medium text-gray-300 mb-3">AI Team Needs After Round {round + 1}</h4>
+                    {(() => {
+                      const rNum = round + 1
+                      const isExpanded = expandedNeedsRounds.has(rNum)
+                      const TARGETS: Record<string, number> = { QB: 1, RB: 4, WR: 4, TE: 1, K: 1, DEF: 1 }
+                      const quickNeeds = perRoundRosters[rNum] || []
+                      const userTeam = quickNeeds.find(t => t.isUser)
 
-                        {roundNeeds[round + 1].userAdvice && (
-                          <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 mb-4 text-sm text-cyan-300">
-                            {roundNeeds[round + 1].userAdvice}
-                          </div>
-                        )}
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                          {roundNeeds[round + 1].teams.map((t: any) => (
-                            <div key={t.manager} className={`p-3 rounded-lg ${t.isUser ? 'bg-cyan-950/30 border border-cyan-500/20' : 'bg-gray-950/50'}`}>
-                              <div className="font-medium mb-1 truncate">{t.manager} {t.isUser ? '(You)' : ''}</div>
-                              {t.roster && (
-                                <div className="text-gray-400 mb-1">
-                                  QB: {t.roster.QB || 0} · RB: {t.roster.RB || 0} · WR: {t.roster.WR || 0} · TE: {t.roster.TE || 0}
-                                </div>
-                              )}
-                              {t.needs?.length > 0 && (
-                                <div className="flex gap-1 flex-wrap mb-1">
-                                  {t.needs.map((n: any, idx: number) => (
-                                    <span key={idx} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                      n.urgency === 'critical' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
-                                      n.urgency === 'high' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
-                                      POSITION_COLORS[n.position] || 'text-gray-400 bg-gray-800'
-                                    }`}>
-                                      {n.urgency === 'critical' ? '!!' : n.urgency === 'high' ? '!' : ''} {n.position}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {t.strategy && (
-                                <p className="text-[10px] text-gray-600 line-clamp-2">{t.strategy}</p>
-                              )}
-                              {t.likelyTargets?.length > 0 && (
-                                <p className="text-[10px] text-purple-400 mt-1 truncate">Targets: {t.likelyTargets.join(', ')}</p>
-                              )}
+                      return (
+                        <>
+                          {userTeam && (
+                            <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-4 mb-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-xs font-bold text-cyan-400">Your Roster After Round {rNum}</span>
+                              </div>
+                              <div className="grid grid-cols-4 gap-2">
+                                {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => {
+                                  const count = userTeam.counts[pos]
+                                  const target = TARGETS[pos]
+                                  const pct = Math.min(100, (count / target) * 100)
+                                  const posColor = pos === 'QB' ? 'bg-red-500' : pos === 'RB' ? 'bg-cyan-500' : pos === 'WR' ? 'bg-green-500' : 'bg-purple-500'
+                                  return (
+                                    <div key={pos} className="text-center">
+                                      <div className="text-[10px] text-gray-500 mb-1">{pos}</div>
+                                      <div className="text-lg font-bold">{count}<span className="text-gray-600 text-xs">/{target}</span></div>
+                                      <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden mt-1">
+                                        <div className={`h-full rounded-full ${posColor} transition-all`} style={{ width: `${pct}%` }} />
+                                      </div>
+                                      {count < (pos === 'QB' || pos === 'TE' ? 1 : 2) && (
+                                        <div className="text-[9px] text-orange-400 mt-0.5 font-bold">NEED</div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                          )}
+
+                          <div className="flex gap-2 items-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const next = new Set(expandedNeedsRounds)
+                                isExpanded ? next.delete(rNum) : next.add(rNum)
+                                setExpandedNeedsRounds(next)
+                              }}
+                              className="text-gray-500 hover:text-white text-xs p-1 h-auto"
+                            >
+                              {isExpanded ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
+                              All Teams
+                            </Button>
+                            {!roundNeeds[rNum] && !loadingNeeds[rNum] && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fetchRoundNeeds(rNum)}
+                                className="border-gray-700 text-gray-400 hover:text-white text-xs h-7"
+                              >
+                                <Star className="mr-1 h-3 w-3" /> AI Analysis
+                              </Button>
+                            )}
+                            {loadingNeeds[rNum] && (
+                              <span className="flex items-center gap-1 text-xs text-gray-500">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Analyzing...
+                              </span>
+                            )}
+                          </div>
+
+                          {isExpanded && (
+                            <div className="mt-3 bg-black/40 border border-gray-800 rounded-xl p-4">
+                              {roundNeeds[rNum]?.userAdvice && (
+                                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 mb-3 text-xs text-cyan-300">
+                                  {roundNeeds[rNum].userAdvice}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
+                                {quickNeeds.map(t => {
+                                  const aiTeam = roundNeeds[rNum]?.teams?.find((at: any) => at.manager === t.manager)
+                                  return (
+                                    <div key={t.manager} className={`p-3 rounded-lg ${t.isUser ? 'bg-cyan-950/30 border border-cyan-500/20' : 'bg-gray-950/50'}`}>
+                                      <div className="font-medium mb-2 truncate text-xs">{t.manager} {t.isUser ? '(You)' : ''}</div>
+                                      <div className="space-y-1">
+                                        {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => {
+                                          const count = t.counts[pos]
+                                          const target = TARGETS[pos]
+                                          const pct = Math.min(100, (count / target) * 100)
+                                          const posColor = pos === 'QB' ? 'bg-red-500' : pos === 'RB' ? 'bg-cyan-500' : pos === 'WR' ? 'bg-green-500' : 'bg-purple-500'
+                                          return (
+                                            <div key={pos} className="flex items-center gap-2">
+                                              <span className={`w-6 text-[9px] font-bold ${POSITION_COLORS[pos]?.split(' ')[0] || 'text-gray-400'}`}>{pos}</span>
+                                              <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                                                <div className={`h-full rounded-full ${posColor}`} style={{ width: `${pct}%` }} />
+                                              </div>
+                                              <span className="text-[9px] text-gray-600 w-5 text-right">{count}/{target}</span>
+                                            </div>
+                                          )
+                                        })}
+                                      </div>
+                                      {aiTeam?.needs?.length > 0 && (
+                                        <div className="flex gap-1 flex-wrap mt-2">
+                                          {aiTeam.needs.slice(0, 3).map((n: any, idx: number) => (
+                                            <span key={idx} className={`px-1 py-0.5 rounded text-[8px] font-bold ${
+                                              n.urgency === 'critical' ? 'bg-red-500/20 text-red-400' :
+                                              n.urgency === 'high' ? 'bg-orange-500/20 text-orange-400' :
+                                              'bg-gray-800 text-gray-400'
+                                            }`}>
+                                              {n.urgency === 'critical' ? '!!' : n.urgency === 'high' ? '!' : ''}{n.position}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                      {aiTeam?.likelyTargets?.length > 0 && (
+                                        <p className="text-[9px] text-purple-400 mt-1 truncate">{aiTeam.likelyTargets.slice(0, 2).join(', ')}</p>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
               )
