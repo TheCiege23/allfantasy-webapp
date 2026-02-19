@@ -167,13 +167,19 @@ function HomeContent() {
             </div>
           </div>
 
-          {/* Right: Trade Analyzer */}
+          {/* Right: Robot King + Trade Analyzer */}
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative group"
+            className="relative group flex flex-col items-center"
           >
+            <img
+              src="/af-robot-king.png"
+              alt="AF Robot King"
+              className="w-48 sm:w-56 md:w-64 object-contain select-none -mb-4"
+              draggable={false}
+            />
             <InstantTradeAnalyzer />
             <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
           </motion.div>
