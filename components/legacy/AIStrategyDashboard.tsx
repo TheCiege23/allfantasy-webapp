@@ -556,6 +556,110 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               <TabsTrigger value="longterm">Long-Term Plan</TabsTrigger>
             </TabsList>
 
+            <div className="bg-[#1a1238]/60 backdrop-blur-md border border-cyan-900/40 rounded-2xl p-6 mb-8 mt-6 shadow-[0_0_30px_-10px_#00f5d4]">
+              <div className="flex flex-col md:flex-row gap-6 flex-wrap">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Position Focus</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['All', 'QB', 'RB', 'WR', 'TE', 'Picks'].map(pos => (
+                      <Button
+                        key={pos}
+                        variant={filters.position === pos.toLowerCase() ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setFilters(prev => ({ ...prev, position: pos.toLowerCase() }))}
+                        className={filters.position === pos.toLowerCase() ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
+                      >
+                        {pos}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Value Outcome</label>
+                  <select
+                    value={filters.valueDelta}
+                    onChange={e => setFilters(prev => ({ ...prev, valueDelta: e.target.value }))}
+                    className="bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="all">All Outcomes</option>
+                    <option value="strong win">Strong Win (+15%+)</option>
+                    <option value="slight win">Slight Win (+5–15%)</option>
+                    <option value="fair">Fair (±5%)</option>
+                    <option value="slight loss">Slight Loss (-5–15%)</option>
+                    <option value="strong loss">Strong Loss (-15%+)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Fit for My Team</label>
+                  <select
+                    value={filters.archetypeFit}
+                    onChange={e => setFilters(prev => ({ ...prev, archetypeFit: e.target.value }))}
+                    className="bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="all">All Fits</option>
+                    <option value="excellent">Excellent</option>
+                    <option value="good">Good</option>
+                    <option value="neutral">Neutral</option>
+                    <option value="poor">Poor</option>
+                    <option value="terrible">Terrible</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Risk Level</label>
+                  <select
+                    value={filters.riskLevel}
+                    onChange={e => setFilters(prev => ({ ...prev, riskLevel: e.target.value }))}
+                    className="bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-400"
+                  >
+                    <option value="all">Any Risk</option>
+                    <option value="low">Low Risk</option>
+                    <option value="medium">Medium Risk</option>
+                    <option value="high">High Risk</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <Button
+                    variant={filters.includePicks ? 'default' : 'outline'}
+                    onClick={() => setFilters(prev => ({ ...prev, includePicks: !prev.includePicks }))}
+                    className={filters.includePicks ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                  >
+                    {filters.includePicks ? 'Include Picks \u2713' : 'Exclude Picks'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFilters({ position: 'all', valueDelta: 'strong win', archetypeFit: 'excellent', riskLevel: 'low', includePicks: true, preset: 'contender' })}
+                  className="bg-emerald-900/40 hover:bg-emerald-800/60"
+                >
+                  Contender Push
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFilters({ position: 'all', valueDelta: 'all', archetypeFit: 'good', riskLevel: 'all', includePicks: true, preset: 'rebuild' })}
+                  className="bg-rose-900/40 hover:bg-rose-800/60"
+                >
+                  Rebuild Accumulate
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setFilters({ position: 'all', valueDelta: 'fair', archetypeFit: 'neutral', riskLevel: 'medium', includePicks: true, preset: 'balanced' })}
+                  className="bg-amber-900/40 hover:bg-amber-800/60"
+                >
+                  Balanced Mid-Season
+                </Button>
+              </div>
+            </div>
+
             <AnimatePresence mode="wait">
               {activeSubTab === 'outlook' && (
                 <motion.div
