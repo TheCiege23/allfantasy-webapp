@@ -6,9 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Trash2 } from 'lucide-react';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
+import { useAI } from '@/hooks/useAI';
 
 type Player = {
   id: string;
@@ -25,28 +27,25 @@ interface TradeAsset {
 
 interface TradeResult {
   winner: string;
-  winnerScore: number;
-  loserScore: number;
-  dynastyVerdict: string;
-  analysis: string;
-  teamAGrade: string;
-  teamBGrade: string;
-  vetoRisk: string;
-  agingConcerns: string[];
-  recommendations: string[];
+  valueDelta: string;
+  factors: string[];
   confidence: number;
+  dynastyVerdict?: string;
+  vetoRisk?: string;
+  agingConcerns?: string[];
+  recommendations?: string[];
 }
 
 export default function DynastyTradeForm() {
+  const { callAI, loading } = useAI<{ analysis: TradeResult }>();
+
   const [teamAName, setTeamAName] = useState('Team A');
   const [teamBName, setTeamBName] = useState('Team B');
   const [teamAAssets, setTeamAAssets] = useState<TradeAsset[]>([]);
   const [teamBAssets, setTeamBAssets] = useState<TradeAsset[]>([]);
   const [teamAPickInput, setTeamAPickInput] = useState('');
   const [teamBPickInput, setTeamBPickInput] = useState('');
-  const [leagueFormat, setLeagueFormat] = useState<'dynasty' | 'keeper'>('dynasty');
-  const [qbFormat, setQbFormat] = useState<'1qb' | 'sf'>('sf');
-  const [loading, setLoading] = useState(false);
+  const [leagueContext, setLeagueContext] = useState('12-team SF PPR dynasty');
   const [result, setResult] = useState<TradeResult | null>(null);
 
   function addPlayerAsset(side: 'a' | 'b', player: Player | null) {
@@ -82,52 +81,31 @@ export default function DynastyTradeForm() {
       return;
     }
 
-    setLoading(true);
-    setResult(null);
+    const sideADesc = teamAAssets.map(a => a.name).join(' + ');
+    const sideBDesc = teamBAssets.map(a => a.name).join(' + ');
 
-    try {
-      const sideADesc = teamAAssets.map(a => a.name).join(', ');
-      const sideBDesc = teamBAssets.map(a => a.name).join(', ');
-      const ctx = `${leagueFormat} ${qbFormat === 'sf' ? 'Superflex' : '1QB'} PPR`;
+    const { data } = await callAI(
+      '/api/dynasty-trade-analyzer',
+      {
+        sideA: sideADesc,
+        sideB: sideBDesc,
+        leagueContext,
+      },
+      { successMessage: 'Trade analyzed!' }
+    );
 
-      const res = await fetch('/api/dynasty-trade-analyzer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sideA: sideADesc,
-          sideB: sideBDesc,
-          leagueContext: ctx,
-        }),
+    if (data?.analysis) {
+      const a = data.analysis;
+      setResult({
+        winner: a.winner || 'Even',
+        valueDelta: a.valueDelta || '',
+        factors: Array.isArray(a.factors) ? a.factors : [],
+        confidence: a.confidence || 70,
+        dynastyVerdict: a.dynastyVerdict,
+        vetoRisk: a.vetoRisk,
+        agingConcerns: a.agingConcerns,
+        recommendations: a.recommendations,
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        toast.error(data.error || 'Analysis failed');
-        setLoading(false);
-        return;
-      }
-
-      const data = await res.json();
-      if (data.analysis) {
-        const a = data.analysis;
-        setResult({
-          winner: a.winner || 'Even',
-          winnerScore: 0,
-          loserScore: 0,
-          dynastyVerdict: a.valueDelta || '',
-          analysis: Array.isArray(a.factors) ? a.factors.join('\n') : (a.factors || ''),
-          teamAGrade: '',
-          teamBGrade: '',
-          vetoRisk: 'low',
-          agingConcerns: [],
-          recommendations: [],
-          confidence: a.confidence || 70,
-        });
-      }
-    } catch {
-      toast.error('Failed to analyze trade');
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -147,7 +125,7 @@ export default function DynastyTradeForm() {
                 : 'border-amber-500/40 text-amber-300 bg-amber-950/20'
             }`}
           >
-            {asset.type === 'pick' && '📋 '}
+            {asset.type === 'pick' && <span>📋 </span>}
             {asset.name}
             <button onClick={() => removeAsset(side, asset.id)} className="ml-1 hover:text-red-400">
               <X className="h-3 w-3" />
@@ -160,29 +138,14 @@ export default function DynastyTradeForm() {
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <Label>League Format</Label>
-          <select
-            value={leagueFormat}
-            onChange={(e) => setLeagueFormat(e.target.value as 'dynasty' | 'keeper')}
-            className="w-full rounded-md border border-purple-600/40 bg-gray-900 px-4 py-2 text-white focus:border-purple-500 focus:outline-none"
-          >
-            <option value="dynasty">Dynasty</option>
-            <option value="keeper">Keeper</option>
-          </select>
-        </div>
-        <div>
-          <Label>QB Format</Label>
-          <select
-            value={qbFormat}
-            onChange={(e) => setQbFormat(e.target.value as '1qb' | 'sf')}
-            className="w-full rounded-md border border-purple-600/40 bg-gray-900 px-4 py-2 text-white focus:border-purple-500 focus:outline-none"
-          >
-            <option value="sf">Superflex (2QB)</option>
-            <option value="1qb">1QB</option>
-          </select>
-        </div>
+      <div>
+        <label className="block text-sm font-medium mb-2 text-gray-300">League Context</label>
+        <Textarea
+          value={leagueContext}
+          onChange={(e) => setLeagueContext(e.target.value)}
+          placeholder="e.g. 12-team Superflex PPR dynasty, TE-premium, 1QB"
+          className="bg-gray-950 border-gray-700 min-h-[60px]"
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -298,23 +261,51 @@ export default function DynastyTradeForm() {
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-1">Winner</p>
                 <p className="text-3xl font-bold text-white mb-2">{result.winner}</p>
-                {result.dynastyVerdict && (
-                  <p className="text-gray-300 mt-2">{result.dynastyVerdict}</p>
+                {result.valueDelta && (
+                  <p className="text-gray-300 mt-2">{result.valueDelta}</p>
                 )}
               </div>
             </div>
 
-            {result.analysis && (
+            {result.factors.length > 0 && (
               <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <TrendingUp className="h-4 w-4 text-cyan-400" />
                   <span className="text-sm font-semibold text-cyan-400">Key Factors</span>
                 </div>
                 <ul className="space-y-2">
-                  {result.analysis.split('\n').filter(Boolean).map((factor, i) => (
+                  {result.factors.map((factor, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
                       <span className="mt-1 h-1.5 w-1.5 rounded-full bg-cyan-400 shrink-0" />
                       {factor}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {result.agingConcerns && result.agingConcerns.length > 0 && (
+              <div className="rounded-lg border border-amber-900/30 bg-gray-900/60 p-4">
+                <span className="text-sm font-semibold text-amber-400 mb-2 block">Aging Concerns</span>
+                <ul className="space-y-1">
+                  {result.agingConcerns.map((concern, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                      {concern}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {result.recommendations && result.recommendations.length > 0 && (
+              <div className="rounded-lg border border-green-900/30 bg-gray-900/60 p-4">
+                <span className="text-sm font-semibold text-green-400 mb-2 block">Recommendations</span>
+                <ul className="space-y-1">
+                  {result.recommendations.map((rec, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-green-400 shrink-0" />
+                      {rec}
                     </li>
                   ))}
                 </ul>
