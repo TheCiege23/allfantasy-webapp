@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { openaiChatJson } from '@/lib/openai-client';
+import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client';
 import { getPlayerADP, getLiveADP, formatADPForPrompt } from '@/lib/adp-data';
 
 export async function POST(req: Request) {
@@ -110,7 +110,13 @@ Output JSON only:
       );
     }
 
-    return NextResponse.json({ analysis: result.json });
+    const analysis = parseJsonContentFromChatCompletion(result.json);
+    if (!analysis || typeof analysis !== 'object') {
+      console.error('[dynasty-trade-analyzer] Invalid JSON payload from model');
+      return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
+    }
+
+    return NextResponse.json({ analysis });
   } catch (err) {
     console.error('[dynasty-trade-analyzer] Error:', err);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
