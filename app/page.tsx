@@ -81,6 +81,16 @@ function HomeContent() {
       {/* ── HERO SECTION ── full viewport height */}
       <section className="relative min-h-screen flex flex-col justify-center px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24 py-16 md:py-0">
 
+        {/* Background image */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <img
+            src="/af-shield-bg.png"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover opacity-15 dark:opacity-20"
+          />
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, var(--bg) 0%, transparent 25%, transparent 75%, var(--bg) 100%)' }} />
+        </div>
+
         {/* Animated background blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -left-20 top-20 w-96 h-96 rounded-full blur-[120px] animate-pulse-slow" style={{ background: 'var(--hero-blob-1, rgba(34,211,238,0.08))' }} />
