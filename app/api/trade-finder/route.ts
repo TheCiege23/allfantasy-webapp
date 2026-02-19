@@ -60,6 +60,11 @@ Your job:
 
 ${NEGOTIATION_RULES}
 
+WEATHER-AWARE CONTEXT:
+- Consider upcoming game weather if relevant (e.g. avoid suggesting outdoor kickers/DEF in heavy rain/snow).
+- If a player's upcoming matchup involves extreme weather conditions, factor that into short-term value and win-now recommendations.
+- Default to standard conditions unless game-specific weather data is provided in the payload.
+
 ADDITIONAL NEGOTIATION CONTEXT:
 - Messages should be ready-to-paste into a league chat (Sleeper DM style).
 - Counter-offers must reference specific asset ids from the allowedAssets lists in the payload.
