@@ -153,7 +153,7 @@ async function processLeague(
       update: {
         ownerName,
         teamName,
-        avatarUrl: owner?.avatar ? `https://sleepercdn.com/avatars/${owner.avatar}` : null,
+        avatarUrl: owner?.metadata?.avatar || `https://sleepercdn.com/avatars/${owner?.user_id || roster.owner_id}`,
         wins,
         losses,
         ties,
@@ -165,7 +165,7 @@ async function processLeague(
         externalId,
         ownerName,
         teamName,
-        avatarUrl: owner?.avatar ? `https://sleepercdn.com/avatars/${owner.avatar}` : null,
+        avatarUrl: owner?.metadata?.avatar || `https://sleepercdn.com/avatars/${owner?.user_id || roster.owner_id}`,
         wins,
         losses,
         ties,
