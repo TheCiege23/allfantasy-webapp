@@ -70,7 +70,6 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [bestAvailableTop, setBestAvailableTop] = useState<ADPPlayer[]>([])
   const [expandedNeedsRounds, setExpandedNeedsRounds] = useState<Set<number>>(new Set())
   const [tradeProposals, setTradeProposals] = useState<Record<number, any>>({})
-  const [loadingProposals, setLoadingProposals] = useState(false)
   const [dismissedProposals, setDismissedProposals] = useState<Set<number>>(new Set())
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
@@ -158,7 +157,20 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     if (data?.draftResults) {
       setDraftResults(data.draftResults)
       setCurrentDraftId((data as any).draftId || null)
-      toast.success('Mock draft complete! AI drafted for all managers.')
+
+      const inlineProposals = (data as any).proposals || []
+      if (inlineProposals.length > 0) {
+        const proposalMap: Record<number, any> = {}
+        for (const p of inlineProposals) {
+          proposalMap[p.pickOverall] = p
+        }
+        setTradeProposals(proposalMap)
+        setDismissedProposals(new Set())
+        toast.success(`Mock draft complete! ${inlineProposals.length} trade offer${inlineProposals.length > 1 ? 's' : ''} from other managers.`)
+      } else {
+        setTradeProposals({})
+        toast.success('Mock draft complete! AI drafted for all managers.')
+      }
     }
     setIsSimulating(false)
   }
@@ -254,38 +266,6 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     setIsTrading(false)
   }
 
-  const fetchTradeProposals = useCallback(async () => {
-    if (!selectedLeagueId || draftResults.length === 0 || loadingProposals) return
-    setLoadingProposals(true)
-    try {
-      const res = await fetch('/api/mock-draft/trade-propose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leagueId: selectedLeagueId, draftResults }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const proposalMap: Record<number, any> = {}
-        for (const p of (data.proposals || [])) {
-          proposalMap[p.pickOverall] = p
-        }
-        setTradeProposals(proposalMap)
-        setDismissedProposals(new Set())
-        const count = Object.keys(proposalMap).length
-        if (count > 0) toast.info(`${count} trade proposal${count > 1 ? 's' : ''} from other managers!`)
-      }
-    } catch (err) {
-      console.error('[trade-propose]', err)
-    }
-    setLoadingProposals(false)
-  }, [selectedLeagueId, draftResults, loadingProposals])
-
-  useEffect(() => {
-    if (draftResults.length > 0 && Object.keys(tradeProposals).length === 0 && !loadingProposals) {
-      const timer = setTimeout(() => fetchTradeProposals(), 2000)
-      return () => clearTimeout(timer)
-    }
-  }, [draftResults])
 
   const handleAcceptTrade = async (pickNumber: number) => {
     setIsTrading(true)
@@ -430,12 +410,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">Live Mock Draft Board</h2>
             <div className="flex gap-3 flex-wrap">
-              {loadingProposals && (
-                <span className="flex items-center gap-1 text-xs text-purple-400">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Finding trades...
-                </span>
-              )}
-              {!loadingProposals && Object.keys(tradeProposals).length > 0 && (
+              {Object.keys(tradeProposals).length > 0 && (
                 <span className="flex items-center gap-1 text-xs text-purple-400">
                   <Handshake className="h-3 w-3" /> {Object.keys(tradeProposals).length - dismissedProposals.size} offer{Object.keys(tradeProposals).length - dismissedProposals.size !== 1 ? 's' : ''}
                 </span>

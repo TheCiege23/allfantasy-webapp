@@ -7,6 +7,100 @@ import { getLiveADP, formatADPForPrompt } from '@/lib/adp-data'
 
 const openai = new OpenAI()
 
+const POSITION_TARGETS: Record<string, { starter: number; ideal: number }> = {
+  QB: { starter: 1, ideal: 2 },
+  RB: { starter: 2, ideal: 4 },
+  WR: { starter: 2, ideal: 4 },
+  TE: { starter: 1, ideal: 2 },
+}
+
+function getTeamNeeds(
+  picks: any[],
+  manager: string,
+  throughRound: number
+): { score: number; topNeed: string | null } {
+  const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0 }
+  for (const p of picks) {
+    if (p.manager === manager && p.round <= throughRound && counts[p.position] !== undefined) {
+      counts[p.position]++
+    }
+  }
+
+  let maxNeed = 0
+  let topNeed: string | null = null
+  let totalNeed = 0
+
+  for (const [pos, targets] of Object.entries(POSITION_TARGETS)) {
+    const count = counts[pos] || 0
+    let need = 0
+    if (count < targets.starter) {
+      need = 70 + (targets.starter - count) * 15
+    } else if (count < targets.ideal) {
+      need = 30 + (targets.ideal - count) * 10
+    }
+    totalNeed += need
+    if (need > maxNeed) {
+      maxNeed = need
+      topNeed = pos
+    }
+  }
+
+  return { score: Math.round(totalNeed / 4), topNeed }
+}
+
+function generateInlineTradeProposals(draftResults: any[], league: any): any[] {
+  const userManager = draftResults.find((p: any) => p.isUser)?.manager
+  if (!userManager) return []
+
+  const totalRounds = Math.max(...draftResults.map((p: any) => p.round))
+  const userPicks = draftResults.filter((p: any) => p.isUser)
+  const proposals: any[] = []
+
+  for (const userPick of userPicks) {
+    if (userPick.round > totalRounds - 2) continue
+
+    const nearbyPicks = draftResults.filter((p: any) =>
+      !p.isUser &&
+      Math.abs(p.overall - userPick.overall) <= 8 &&
+      Math.abs(p.overall - userPick.overall) >= 2
+    )
+
+    for (const candidatePick of nearbyPicks) {
+      const otherNeeds = getTeamNeeds(draftResults, candidatePick.manager, userPick.round)
+      if (otherNeeds.score < 40) continue
+
+      const userNeeds = getTeamNeeds(draftResults, userManager, userPick.round)
+      const playerAtUserPick = userPick.playerName
+      const playerAtOtherPick = candidatePick.playerName
+
+      const isUpTrade = candidatePick.overall < userPick.overall
+      const pickDiff = Math.abs(candidatePick.overall - userPick.overall)
+
+      if (isUpTrade && otherNeeds.score < 50) continue
+      if (!isUpTrade && pickDiff < 3) continue
+
+      proposals.push({
+        pickOverall: userPick.overall,
+        fromTeam: candidatePick.manager,
+        fromPick: candidatePick.overall,
+        direction: isUpTrade ? 'up' : 'down',
+        theyGive: `Pick #${candidatePick.overall} (${playerAtOtherPick}, ${candidatePick.position})`,
+        youGive: `Pick #${userPick.overall} (${playerAtUserPick}, ${userPick.position})`,
+        theirNeedScore: otherNeeds.score,
+        theirTopNeed: otherNeeds.topNeed,
+        yourNeedScore: userNeeds.score,
+        reason: '',
+      })
+
+      if (proposals.filter(p => p.pickOverall === userPick.overall).length >= 1) break
+    }
+  }
+
+  return proposals
+    .sort((a, b) => b.theirNeedScore - a.theirNeedScore)
+    .slice(0, 5)
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions as any) as { user?: { id?: string } } | null
@@ -47,7 +141,11 @@ export async function POST(req: NextRequest) {
       if (existing) {
         const age = Date.now() - existing.createdAt.getTime()
         if (age < 1000 * 60 * 60) {
-          return NextResponse.json({ draftResults: existing.results })
+          return NextResponse.json({
+            draftResults: existing.results,
+            draftId: existing.id,
+            proposals: (existing.proposals as any[]) || [],
+          })
         }
       }
     }
@@ -170,6 +268,49 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
       }
     }
 
+    const proposals = generateInlineTradeProposals(draftResults, league)
+
+    let proposalsWithReasons = proposals
+    if (proposals.length > 0) {
+      try {
+        const leagueFormat = `${league.scoring || 'PPR'} ${league.isDynasty ? 'dynasty' : 'redraft'}`
+        const userManager = draftResults.find((p: any) => p.isUser)?.manager || teamNames[userTeamIdx]
+
+        const reasonPrompt = `You are a fantasy football trade analyst. For each proposed draft-day trade, write a brief 1-sentence reason why this trade makes sense for both sides. Return valid JSON:
+{ "reasons": [string] }
+Each reason should be concise and mention the key motivation (positional need, value gain, draft capital movement).`
+
+        const reasonUserPrompt = `Generate reasons for these ${proposals.length} draft-day trade proposals in a ${leagueFormat} league:
+
+${proposals.map((p: any, i: number) => `${i + 1}. ${p.fromTeam} (need: ${p.theirTopNeed || 'depth'}, score: ${p.theirNeedScore}) offers pick #${p.fromPick} for ${userManager}'s pick #${p.pickOverall}. Direction: trade ${p.direction}.`).join('\n')}
+
+Return exactly ${proposals.length} reasons in the "reasons" array.`
+
+        const reasonCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: reasonPrompt },
+            { role: 'user', content: reasonUserPrompt },
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.6,
+          max_tokens: 1000,
+        })
+
+        const reasonContent = reasonCompletion.choices[0]?.message?.content
+        if (reasonContent) {
+          const reasonParsed = JSON.parse(reasonContent)
+          const reasons = reasonParsed.reasons || []
+          for (let i = 0; i < proposals.length; i++) {
+            proposals[i].reason = reasons[i] || ''
+          }
+        }
+      } catch (aiErr) {
+        console.error('[mock-draft] Trade reason generation failed:', aiErr)
+      }
+      proposalsWithReasons = proposals
+    }
+
     let draftId: string | null = null
     try {
       const saved = await prisma.mockDraft.create({
@@ -178,6 +319,7 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
           userId: session.user.id,
           rounds,
           results: draftResults,
+          proposals: proposalsWithReasons.length > 0 ? proposalsWithReasons : [],
         },
       })
       draftId = saved.id
@@ -185,7 +327,7 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
       console.error('[mock-draft] Failed to save draft:', saveErr)
     }
 
-    return NextResponse.json({ draftResults, draftId })
+    return NextResponse.json({ draftResults, draftId, proposals: proposalsWithReasons })
   } catch (err: any) {
     console.error('[mock-draft] Error:', err)
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
