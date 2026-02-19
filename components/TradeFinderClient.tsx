@@ -7,22 +7,50 @@ import { Trophy, Hammer, Scale } from 'lucide-react';
 import { useAI } from '@/hooks/useAI';
 import { toast } from 'sonner';
 
-type League = { id: string; name: string; sport: string; season: number };
+type League = { id: string; name: string; sport: string; season: number; platformLeagueId: string; platform: string; isDynasty: boolean };
 
 export default function TradeFinderClient({ initialLeagues }: { initialLeagues: League[] }) {
-  const { callAI, loading } = useAI<{ suggestions: any[] }>();
+  const { callAI, loading } = useAI<{ recommendations?: any[]; suggestions?: any[]; success?: boolean; meta?: any }>();
   const [leagueId, setLeagueId] = useState(initialLeagues[0]?.id || '');
   const [strategy, setStrategy] = useState<'win-now' | 'rebuild' | 'balanced'>('balanced');
   const [suggestions, setSuggestions] = useState<any[]>([]);
 
+  const selectedLeague = initialLeagues.find(l => l.id === leagueId);
+
+  const objectiveMap: Record<string, string> = {
+    'win-now': 'WIN_NOW',
+    'rebuild': 'REBUILD',
+    'balanced': 'BALANCED',
+  };
+
   const findTrades = async () => {
-    if (!leagueId) return toast.error('Select a league first');
+    if (!leagueId || !selectedLeague) return toast.error('Select a league first');
 
-    const result = await callAI('/api/trade-finder', { leagueId, strategy });
+    const result = await callAI('/api/trade-finder', {
+      league_id: selectedLeague.platformLeagueId,
+      user_roster_id: 1,
+      objective: objectiveMap[strategy] || 'BALANCED',
+      mode: 'FAST',
+    });
 
-    if (result.data?.suggestions) {
+    if (result.data?.recommendations?.length) {
+      const mapped = result.data.recommendations.map((rec: any) => ({
+        partner: `Team ${rec.tradeId?.split('-')[1] || '?'}`,
+        youGive: rec.teamA?.gives?.map((a: any) => a.name).join(' + ') || rec.summary || '',
+        youGet: rec.teamA?.receives?.map((a: any) => a.name).join(' + ') || '',
+        reason: rec.whyItHelpsYou || rec.summary || rec.negotiationTip || '',
+        confidence: rec.confidence,
+        confidenceScore: rec.confidenceScore,
+        negotiation: rec.negotiation,
+      }));
+      setSuggestions(mapped);
+      toast.success(`Found ${mapped.length} trade ideas!`);
+    } else if (result.data?.suggestions?.length) {
       setSuggestions(result.data.suggestions);
       toast.success(`Found ${result.data.suggestions.length} trade ideas!`);
+    } else {
+      setSuggestions([]);
+      toast.info(result.data?.meta?.message || 'No trade opportunities found right now.');
     }
   };
 
@@ -96,9 +124,28 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                     <p>{trade.youGet}</p>
                   </div>
                 </div>
+                {trade.confidence && (
+                  <div className="text-xs">
+                    <span className={`font-medium ${
+                      trade.confidence === 'HIGH' ? 'text-green-400' :
+                      trade.confidence === 'MEDIUM' ? 'text-yellow-400' : 'text-gray-400'
+                    }`}>
+                      {trade.confidence} confidence
+                    </span>
+                    {trade.confidenceScore != null && (
+                      <span className="text-gray-500 ml-2">({trade.confidenceScore}/100)</span>
+                    )}
+                  </div>
+                )}
                 <div className="text-xs text-gray-400 border-t border-gray-800 pt-3">
                   {trade.reason}
                 </div>
+                {trade.negotiation?.dmMessages?.[0] && (
+                  <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800">
+                    <p className="text-xs text-gray-500 mb-1">Suggested DM:</p>
+                    <p className="text-xs text-gray-300 italic">&ldquo;{trade.negotiation.dmMessages[0].message}&rdquo;</p>
+                  </div>
+                )}
                 <div className="flex justify-end gap-3 mt-4">
                   <Button variant="outline" size="sm">Propose</Button>
                   <Button size="sm">Details</Button>
@@ -109,7 +156,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
         </div>
       ) : (
         <div className="text-center py-20 text-gray-500 border border-dashed border-gray-700 rounded-2xl">
-          Select a league & strategy, then click "Find Trades" to see AI-powered suggestions
+          Select a league & strategy, then click &ldquo;Find Trades&rdquo; to see AI-powered suggestions
         </div>
       )}
     </div>

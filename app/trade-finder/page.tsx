@@ -13,7 +13,7 @@ export default async function TradeFinderPage() {
 
   const leagues = await (prisma as any).league.findMany({
     where: { userId: session.user.id },
-    select: { id: true, name: true, sport: true, season: true },
+    select: { id: true, name: true, sport: true, season: true, platformLeagueId: true, platform: true, isDynasty: true },
   });
 
   if (leagues.length === 0) {
