@@ -2240,6 +2240,7 @@ model BracketEntry {
   league       BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user         AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
   picks        MarchMadnessPick[]
+  shares       MarchMadnessShare[]
 
   @@index([leagueId])
   @@index([userId])
@@ -2259,6 +2260,18 @@ model MarchMadnessPick {
 
   @@unique([bracketId, gameId])
   @@index([gameId])
+}
+
+model MarchMadnessShare {
+  id        String   @id @default(uuid())
+  bracketId String
+  imageUrl  String?
+  createdAt DateTime @default(now())
+
+  bracket BracketEntry @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+
+  @@index([bracketId])
+  @@map("march_madness_shares")
 }
 
 enum VerificationMethod {
