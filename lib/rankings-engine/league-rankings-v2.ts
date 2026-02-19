@@ -266,6 +266,20 @@ export interface LeagueRankingsV2Output {
     }>
     weightVersion: string
     weightCalibratedAt: string
+    learnedParams?: LearnedCompositeParams
+    segmentKey?: string
+    modelConfidence: {
+      score: number
+      rating: 'HIGH' | 'MEDIUM' | 'LOW'
+      teamsCovered: number
+      teamsTotal: number
+      avgDataCoverage: number
+    }
+    dataFreshness: {
+      overall: 'fresh' | 'aging' | 'stale'
+      avgStalenessHours: number
+      staleSourceCount: number
+    }
   }
 }
 
@@ -1942,6 +1956,63 @@ function buildConfidenceBadge(dq: TeamDataQuality): ConfidenceBadge {
   return { tier: 'BRONZE', label: 'Limited Data', tooltip: `Ranking confidence ${dq.rankingConfidence}/100 — key data sources may be missing or stale. Rankings may shift as data improves.` }
 }
 
+function computeModelConfidence(teams: TeamScore[]): {
+  score: number
+  rating: 'HIGH' | 'MEDIUM' | 'LOW'
+  teamsCovered: number
+  teamsTotal: number
+  avgDataCoverage: number
+} {
+  if (teams.length === 0) return { score: 0, rating: 'LOW', teamsCovered: 0, teamsTotal: 0, avgDataCoverage: 0 }
+
+  const validTeams = teams.filter(t => t.dataQuality)
+  if (validTeams.length === 0) return { score: 0, rating: 'LOW', teamsCovered: 0, teamsTotal: teams.length, avgDataCoverage: 0 }
+
+  const coverageScores = validTeams.map(t => {
+    if (t.dataQuality.dataCoverage === 'FULL') return 100
+    if (t.dataQuality.dataCoverage === 'PARTIAL') return 60
+    return 25
+  })
+  const avgCoverage = Math.round(coverageScores.reduce((s, v) => s + v, 0) / validTeams.length)
+  const confScores = validTeams.map(t => t.dataQuality.rankingConfidence)
+  const avgConf = Math.round(confScores.reduce((s, v) => s + v, 0) / validTeams.length)
+  const covered = validTeams.filter(t => t.dataQuality.dataCoverage !== 'MINIMAL').length
+
+  const rating: 'HIGH' | 'MEDIUM' | 'LOW' = avgConf >= 70 ? 'HIGH' : avgConf >= 50 ? 'MEDIUM' : 'LOW'
+
+  return { score: avgConf, rating, teamsCovered: covered, teamsTotal: teams.length, avgDataCoverage: avgCoverage }
+}
+
+function computeDataFreshness(teams: TeamScore[]): {
+  overall: 'fresh' | 'aging' | 'stale'
+  avgStalenessHours: number
+  staleSourceCount: number
+} {
+  if (teams.length === 0) return { overall: 'stale', avgStalenessHours: 0, staleSourceCount: 0 }
+
+  let totalHours = 0
+  let staleCount = 0
+  let sourceCount = 0
+
+  for (const t of teams) {
+    if (t.dataQuality?.stalenessHours) {
+      for (const [, hours] of Object.entries(t.dataQuality.stalenessHours)) {
+        if (typeof hours === 'number') {
+          totalHours += hours
+          sourceCount++
+          if (hours > 48) staleCount++
+        }
+      }
+    }
+  }
+
+  if (sourceCount === 0) return { overall: 'stale', avgStalenessHours: 0, staleSourceCount: 0 }
+  const avgHours = Math.round((totalHours / sourceCount) * 10) / 10
+  const overall: 'fresh' | 'aging' | 'stale' = avgHours <= 12 ? 'fresh' : avgHours <= 48 ? 'aging' : 'stale'
+
+  return { overall, avgStalenessHours: avgHours, staleSourceCount: staleCount }
+}
+
 function buildRankExplanation(
   ctx: DriverContext,
   leagueId: string,
@@ -3200,6 +3271,8 @@ export async function computeLeagueRankingsV2(
       weightCalibratedAt: weightConfig.calibratedAt,
       learnedParams: learnedParams ?? undefined,
       segmentKey,
+      modelConfidence: computeModelConfidence(teams),
+      dataFreshness: computeDataFreshness(teams),
     },
   }
 }

@@ -83,6 +83,16 @@ const syncTasks: SyncTask[] = [
     lastRun: 0,
     running: false,
   },
+  {
+    name: 'Weekly Backtest + Param Learning',
+    url: `${BASE_URL}/api/admin/weekly-backtest`,
+    method: 'POST' as const,
+    intervalMs: 7 * 24 * 60 * 60 * 1000,
+    body: { season: '2025' },
+    requiresAuth: true,
+    lastRun: 0,
+    running: false,
+  },
 ];
 
 async function runTask(task: SyncTask): Promise<void> {

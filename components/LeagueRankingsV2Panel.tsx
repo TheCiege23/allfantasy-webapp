@@ -44,6 +44,29 @@ interface MotivationalFrame {
   trigger: string
 }
 
+interface RankChangeDriverType {
+  id: string
+  label: string
+  polarity: 'UP' | 'DOWN' | 'NEUTRAL'
+  value: number
+  prevValue: number | null
+  delta: number | null
+  unit: string
+}
+
+interface ForwardOddsType {
+  playoffPct: number
+  top3Pct: number
+  titlePct: number
+  simCount: number
+}
+
+interface ConfidenceBadgeType {
+  tier: 'GOLD' | 'SILVER' | 'BRONZE'
+  label: string
+  tooltip: string
+}
+
 interface TeamScore {
   rosterId: number
   ownerId: string
@@ -79,6 +102,10 @@ interface TeamScore {
   phase: string
   explanation: RankExplanation
   badges: { id: string; label: string; icon: string; tier: string }[]
+  rankChangeDrivers?: RankChangeDriverType[]
+  forwardOdds?: ForwardOddsType
+  confidenceBadge?: ConfidenceBadgeType
+  rankSparkline?: number[]
 }
 
 interface MarketInsight {
@@ -125,6 +152,15 @@ interface RankingsData {
   weeklyAwards?: { week: number; awards: WeeklyAward[] } | null
   tradeHubShortcuts?: TradeHubShortcut[]
   partnerTendencies?: Array<{ partnerName: string; sample: number; topOverpayPos: string | null; topDiscountPos: string | null }>
+  meta?: {
+    modelConfidence?: { score: number; rating: 'HIGH' | 'MEDIUM' | 'LOW'; teamsCovered: number; teamsTotal: number; avgDataCoverage: number }
+    dataFreshness?: { overall: 'fresh' | 'aging' | 'stale'; avgStalenessHours: number; staleSourceCount: number }
+    weightVersion?: string
+    weightCalibratedAt?: string
+    learnedParams?: any
+    segmentKey?: string
+    [key: string]: any
+  }
 }
 
 interface CoachInsight {
@@ -223,6 +259,123 @@ function ConfidenceBadge({ rating, score }: { rating: string; score: number }) {
     <span className={cx('text-[9px] px-2 py-0.5 rounded-full font-semibold border', config.bg, config.border, config.text)}>
       {rating} ({score})
     </span>
+  )
+}
+
+function TeamConfidenceBadge({ badge }: { badge: ConfidenceBadgeType }) {
+  const config = badge.tier === 'GOLD'
+    ? { bg: 'bg-amber-500/15', border: 'border-amber-500/30', text: 'text-amber-300', icon: '\u{1F947}' }
+    : badge.tier === 'SILVER'
+    ? { bg: 'bg-slate-300/15', border: 'border-slate-300/30', text: 'text-slate-300', icon: '\u{1F948}' }
+    : { bg: 'bg-orange-700/15', border: 'border-orange-700/30', text: 'text-orange-400', icon: '\u{1F949}' }
+
+  return (
+    <div className={cx('flex items-center gap-2 px-3 py-2 rounded-lg border text-[10px]', config.bg, config.border)} title={badge.tooltip}>
+      <span className="text-base">{config.icon}</span>
+      <div className="flex flex-col">
+        <span className={cx('font-semibold', config.text)}>{badge.label}</span>
+        <span className="text-white/30 text-[9px] leading-snug">{badge.tooltip}</span>
+      </div>
+    </div>
+  )
+}
+
+function ForwardOddsCard({ odds }: { odds: ForwardOddsType }) {
+  if (odds.simCount === 0) return null
+  const items = [
+    { label: 'Playoffs', pct: odds.playoffPct, color: 'text-emerald-400', bar: 'bg-emerald-500' },
+    { label: 'Top 3', pct: odds.top3Pct, color: 'text-cyan-400', bar: 'bg-cyan-500' },
+    { label: 'Title', pct: odds.titlePct, color: 'text-amber-400', bar: 'bg-amber-500' },
+  ]
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Forward Odds</span>
+        <span className="text-[8px] text-white/20">{odds.simCount.toLocaleString()} sims</span>
+      </div>
+      {items.map(it => (
+        <div key={it.label} className="space-y-0.5">
+          <div className="flex items-center justify-between text-[10px]">
+            <span className="text-white/50">{it.label}</span>
+            <span className={cx('font-bold tabular-nums', it.color)}>{it.pct}%</span>
+          </div>
+          <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className={cx('h-full rounded-full transition-all duration-500', it.bar)} style={{ width: `${Math.min(it.pct, 100)}%` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function RankChangeDriversCard({ drivers }: { drivers: RankChangeDriverType[] }) {
+  if (!drivers || drivers.length === 0) return null
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 space-y-2">
+      <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Why Rank Changed</span>
+      <div className="space-y-1.5">
+        {drivers.map(d => {
+          const isUp = d.polarity === 'UP'
+          const isDown = d.polarity === 'DOWN'
+          return (
+            <div key={d.id} className={cx(
+              'flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]',
+              isUp ? 'bg-emerald-500/8 border-emerald-500/20' : isDown ? 'bg-red-500/8 border-red-500/20' : 'bg-white/5 border-white/10',
+            )}>
+              <span className={cx('text-[10px] font-bold', isUp ? 'text-emerald-400' : isDown ? 'text-red-400' : 'text-white/40')}>
+                {isUp ? '\u25B2' : isDown ? '\u25BC' : '\u25CF'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <span className={cx('font-medium', isUp ? 'text-emerald-300' : isDown ? 'text-red-300' : 'text-white/60')}>
+                  {d.label}
+                </span>
+              </div>
+              <div className="text-right shrink-0">
+                <span className="text-white/70 font-bold tabular-nums">{typeof d.value === 'number' ? d.value : '—'}</span>
+                <span className="text-white/25 ml-0.5">{d.unit}</span>
+                {d.delta != null && (
+                  <span className={cx('ml-1.5 text-[9px] font-semibold', d.delta > 0 ? 'text-emerald-400' : d.delta < 0 ? 'text-red-400' : 'text-white/30')}>
+                    {d.delta > 0 ? '+' : ''}{d.delta}
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function RankSparklineCard({ sparkline, currentRank }: { sparkline: number[]; currentRank: number }) {
+  if (!sparkline || sparkline.length < 2) return null
+  const invertedPoints = sparkline.map(r => -r)
+  const best = Math.min(...sparkline)
+  const worst = Math.max(...sparkline)
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Rank History</span>
+        <div className="flex items-center gap-2 text-[9px] text-white/25">
+          <span>Best: #{best}</span>
+          <span>Worst: #{worst}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <MiniSparkline points={invertedPoints} width={120} height={28} />
+        <span className="text-xl font-bold text-white/70 tabular-nums">#{currentRank}</span>
+      </div>
+      <div className="flex gap-1 flex-wrap">
+        {sparkline.map((r, i) => (
+          <span key={i} className={cx(
+            'text-[8px] w-5 text-center rounded py-0.5 tabular-nums',
+            r === currentRank ? 'bg-cyan-500/20 text-cyan-300 font-bold' : 'bg-white/5 text-white/30',
+          )}>
+            {r}
+          </span>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -634,6 +787,26 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
           <p className="text-xs text-white/40 mt-0.5">
             {data.leagueName} &middot; {data.season}
             {data.computedAt && <> &middot; Updated {timeAgo(data.computedAt)}</>}
+            {data.meta?.modelConfidence && (
+              <span className={cx(
+                'ml-2 inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full border font-medium',
+                data.meta.modelConfidence.rating === 'HIGH' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                data.meta.modelConfidence.rating === 'MEDIUM' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                'bg-red-500/10 border-red-500/20 text-red-400',
+              )} title={`Model confidence: ${data.meta.modelConfidence.score}/100, ${data.meta.modelConfidence.teamsCovered}/${data.meta.modelConfidence.teamsTotal} teams covered`}>
+                {data.meta.modelConfidence.rating === 'HIGH' ? '\u2713' : data.meta.modelConfidence.rating === 'MEDIUM' ? '\u26A0' : '\u2717'} Model: {data.meta.modelConfidence.score}
+              </span>
+            )}
+            {data.meta?.dataFreshness && (
+              <span className={cx(
+                'ml-1 inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full border font-medium',
+                data.meta.dataFreshness.overall === 'fresh' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+                data.meta.dataFreshness.overall === 'aging' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                'bg-red-500/10 border-red-500/20 text-red-400',
+              )} title={`Avg staleness: ${data.meta.dataFreshness.avgStalenessHours}h, ${data.meta.dataFreshness.staleSourceCount} stale sources`}>
+                Data: {data.meta.dataFreshness.overall}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -990,9 +1163,21 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
 
                 {isExpanded && (
                   <div className="px-4 pb-4 border-t border-white/[0.05] pt-4 space-y-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
                       <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">Rank Explanation</span>
-                      {explanation && <ConfidenceBadge rating={explanation.confidence.rating} score={explanation.confidence.score} />}
+                      <div className="flex items-center gap-2">
+                        {team.confidenceBadge && (
+                          <span className={cx(
+                            'text-[9px] px-2 py-0.5 rounded-full font-semibold border',
+                            team.confidenceBadge.tier === 'GOLD' ? 'bg-amber-500/15 border-amber-500/30 text-amber-300' :
+                            team.confidenceBadge.tier === 'SILVER' ? 'bg-slate-300/15 border-slate-300/30 text-slate-300' :
+                            'bg-orange-700/15 border-orange-700/30 text-orange-400',
+                          )} title={team.confidenceBadge.tooltip}>
+                            {team.confidenceBadge.tier === 'GOLD' ? '\u{1F947}' : team.confidenceBadge.tier === 'SILVER' ? '\u{1F948}' : '\u{1F949}'} {team.confidenceBadge.label}
+                          </span>
+                        )}
+                        {explanation && <ConfidenceBadge rating={explanation.confidence.rating} score={explanation.confidence.score} />}
+                      </div>
                     </div>
 
                     <TierLabel team={team as any} />
@@ -1004,6 +1189,23 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                       <ScoreBar label="MKT" value={team.marketValueScore} color="bg-purple-500" />
                       <ScoreBar label="MGR" value={team.managerSkillScore} color="bg-pink-500" />
                     </div>
+
+                    {team.rankChangeDrivers && team.rankChangeDrivers.length > 0 && (
+                      <RankChangeDriversCard drivers={team.rankChangeDrivers} />
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {team.forwardOdds && team.forwardOdds.simCount > 0 && (
+                        <ForwardOddsCard odds={team.forwardOdds} />
+                      )}
+                      {team.rankSparkline && team.rankSparkline.length >= 2 && (
+                        <RankSparklineCard sparkline={team.rankSparkline} currentRank={team.rank} />
+                      )}
+                    </div>
+
+                    {team.confidenceBadge && (
+                      <TeamConfidenceBadge badge={team.confidenceBadge} />
+                    )}
 
                     {explanation && explanation.valid && explanation.drivers.length > 0 ? (
                       <div className="space-y-1.5">
