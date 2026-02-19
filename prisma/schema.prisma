@@ -2103,6 +2103,8 @@ model AppUser {
   chatFlags            ChatMessageFlag[]   @relation("ChatFlagReporter")
   chatReactions        MadnessChatReaction[]
   chatReadReceipts     ChatReadReceipt[]
+  sentDMs              PrivateChatMessage[] @relation("DMSender")
+  receivedDMs          PrivateChatMessage[] @relation("DMReceiver")
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2345,6 +2347,22 @@ model ChatReadReceipt {
   @@unique([leagueId, userId])
   @@index([leagueId])
   @@map("chat_read_receipts")
+}
+
+model PrivateChatMessage {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  message    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  sender   AppUser @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver AppUser @relation("DMReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, receiverId, createdAt])
+  @@index([receiverId, isRead])
+  @@map("private_chat_messages")
 }
 
 enum VerificationMethod {

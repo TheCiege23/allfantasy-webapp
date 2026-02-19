@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette, ArrowDown } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette, ArrowDown, Mail } from 'lucide-react'
+import DirectMessages from './DirectMessages'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
@@ -198,6 +199,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   })
   const [chatSearch, setChatSearch] = useState('')
   const [showScrollBtn, setShowScrollBtn] = useState(false)
+  const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null)
   const [emojiSearch, setEmojiSearch] = useState('')
   const filteredEmojis = useMemo(() => {
     const q = emojiSearch.toLowerCase().trim()
@@ -437,7 +439,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   }
 
   return (
-    <div className={`fixed bottom-0 right-0 w-96 h-[30rem] border rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80 ${t.container}`}>
+    <div className={`fixed bottom-0 right-0 w-96 h-[30rem] border rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80 relative ${t.container}`}>
       <div className={`${t.header} p-4 flex items-center justify-between`}>
         <span className={`${t.headerText} font-medium text-sm`}>Live League Chat</span>
         <div className="flex items-center gap-2">
@@ -452,6 +454,13 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
               <SelectItem value="classic" className="text-xs text-blue-300">Classic</SelectItem>
             </SelectContent>
           </Select>
+          <button
+            onClick={() => setDmTarget({ id: '', name: '' })}
+            className="text-white/70 hover:text-white transition-colors"
+            title="Direct Messages"
+          >
+            <Mail className="h-4 w-4" />
+          </button>
           <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
             <X className="h-4 w-4" />
           </button>
@@ -530,9 +539,18 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
-                    <span className={`font-medium text-sm ${isOwn ? t.nameOwn : t.nameOther}`}>
-                      {displayName}
-                    </span>
+                    {isOwn ? (
+                      <span className={`font-medium text-sm ${t.nameOwn}`}>{displayName}</span>
+                    ) : (
+                      <button
+                        onClick={() => setDmTarget({ id: msg.user.id, name: displayName })}
+                        className={`font-medium text-sm ${t.nameOther} hover:underline cursor-pointer inline-flex items-center gap-1`}
+                        title={`Message ${displayName}`}
+                      >
+                        {displayName}
+                        <Mail className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity" />
+                      </button>
+                    )}
                     <span className={`text-[10px] ${t.timestamp}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
@@ -706,6 +724,18 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
           <Send className="h-4 w-4" />
         </Button>
       </div>
+
+      {dmTarget && (
+        <div className="absolute inset-0 z-50 rounded-xl overflow-hidden">
+          <DirectMessages
+            userId={currentUserId}
+            theme={chatTheme}
+            initialPartnerId={dmTarget.id}
+            initialPartnerName={dmTarget.name}
+            onClose={() => setDmTarget(null)}
+          />
+        </div>
+      )}
     </div>
   )
 }
