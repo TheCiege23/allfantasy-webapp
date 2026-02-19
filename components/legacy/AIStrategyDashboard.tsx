@@ -216,21 +216,31 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   }, [filterStorageKey]);
 
   const filteredTrades = trades.filter(trade => {
-    if (filters.position !== 'all' && filters.position !== 'picks') {
-      const hasPos = [...trade.give, ...trade.get].some((p: any) => p.position?.toLowerCase() === filters.position);
-      if (!hasPos) return false;
+    if (filters.position !== 'all') {
+      if (filters.position === 'picks') {
+        if (!trade.hasPicks) return false;
+      } else {
+        const hasPos = [...(trade.give || []), ...(trade.get || [])].some(
+          (p: any) => p.position?.toLowerCase() === filters.position
+        );
+        if (!hasPos) return false;
+      }
     }
-    if (filters.position === 'picks' && !trade.includePicks) return false;
+
     if (filters.valueDelta !== 'all' && trade.analysis?.fairness !== filters.valueDelta) return false;
     if (filters.archetypeFit !== 'all' && trade.analysis?.archetypeFit !== filters.archetypeFit) return false;
     if (filters.riskLevel !== 'all' && trade.analysis?.riskLevel !== filters.riskLevel) return false;
+
     if (!filters.includePicks && trade.hasPicks) return false;
-    const allPlayers = [...(trade.give || []), ...(trade.get || [])];
-    const playerAges = allPlayers.filter((p: any) => p.age).map((p: any) => p.age);
-    if (playerAges.length > 0) {
-      if (playerAges.some((age: number) => age < filters.minAge || age > filters.maxAge)) return false;
-    }
-    if (filters.avoidByeWeek && trade.hasByeWeekConflict) return false;
+
+    const ages = [...(trade.give || []), ...(trade.get || [])]
+      .filter((p: any) => p.player || p.age)
+      .map((p: any) => p.player?.age || p.age || 27);
+    const avgAge = ages.length ? ages.reduce((a: number, b: number) => a + b, 0) / ages.length : 27;
+    if (avgAge < filters.minAge || avgAge > filters.maxAge) return false;
+
+    if (filters.avoidByeWeek && trade.hasByeConflict) return false;
+
     return true;
   });
 
