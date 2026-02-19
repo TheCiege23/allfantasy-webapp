@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { leagueId, rounds = 15, refresh = false, scoring: scoringTweak } = body
+    const { leagueId, rounds = 15, refresh = false, scoringTweak = 'default' } = body
 
     if (!leagueId) {
       return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })

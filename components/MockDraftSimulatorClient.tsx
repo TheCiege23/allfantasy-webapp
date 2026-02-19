@@ -65,8 +65,8 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     setDraftResults([])
     const { data } = await callAI('/api/mock-draft/simulate', {
       leagueId: selectedLeagueId,
-      rounds,
-      scoring: customScoring !== 'default' ? customScoring : undefined,
+      rounds: customRounds,
+      scoringTweak: customScoring,
     })
 
     if (data?.draftResults) {
@@ -184,7 +184,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             <div className="grid md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-sm text-gray-400 mb-2">Rounds</label>
-                <Select value={customRounds.toString()} onValueChange={v => { setCustomRounds(Number(v)); setRounds(Number(v)) }}>
+                <Select value={customRounds.toString()} onValueChange={v => setCustomRounds(Number(v))}>
                   <SelectTrigger className="bg-gray-950 border-purple-800">
                     <SelectValue />
                   </SelectTrigger>
