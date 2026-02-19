@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, Hammer, Scale, ExternalLink, ChevronDown } from 'lucide-react';
+import { Trophy, Hammer, Scale, ExternalLink, ChevronDown, Target, Layers, ArrowDownToLine } from 'lucide-react';
 import { useAI } from '@/hooks/useAI';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -35,6 +35,8 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
   const { callAI, loading, error } = useAI<{ recommendations?: any[]; suggestions?: any[]; candidates?: any[]; success?: boolean; meta?: any }>();
   const [leagueId, setLeagueId] = useState(initialLeagues[0]?.id || '');
   const [strategy, setStrategy] = useState<'win-now' | 'rebuild' | 'balanced'>('balanced');
+  const [preset, setPreset] = useState<'NONE' | 'TARGET_POSITION' | 'ACQUIRE_PICKS' | 'CONSOLIDATE'>('NONE');
+  const [targetPosition, setTargetPosition] = useState<'QB' | 'RB' | 'WR' | 'TE'>('RB');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [tab, setTab] = useState<'find' | 'partner'>('find');
@@ -102,6 +104,8 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
       ...(sleeperUserId ? { sleeper_user_id: sleeperUserId } : { user_roster_id: 1 }),
       objective: objectiveMap[strategy] || 'BALANCED',
       mode: 'FAST',
+      preset,
+      ...(preset === 'TARGET_POSITION' ? { target_position: targetPosition } : {}),
     });
 
     if (result.data?.recommendations?.length) {
@@ -300,12 +304,60 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
         </div>
       </div>
 
+      <div className="flex flex-col gap-3 bg-black/40 p-3 rounded-xl border border-gray-800">
+        <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">Focus Preset</p>
+        <div className="flex gap-2 flex-wrap">
+          {([
+            { key: 'NONE' as const, label: 'Any', icon: null },
+            { key: 'TARGET_POSITION' as const, label: 'Target Position', icon: Target },
+            { key: 'ACQUIRE_PICKS' as const, label: 'Acquire Picks', icon: ArrowDownToLine },
+            { key: 'CONSOLIDATE' as const, label: 'Consolidate', icon: Layers },
+          ] as const).map(({ key, label, icon: Icon }) => (
+            <Button
+              key={key}
+              variant={preset === key ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setPreset(key)}
+              className={cn(
+                'gap-1.5 text-xs',
+                preset === key
+                  ? 'bg-gradient-to-r from-cyan-700 to-purple-700'
+                  : 'border-gray-700 text-gray-400 hover:text-gray-200'
+              )}
+            >
+              {Icon && <Icon className="h-3.5 w-3.5" />}
+              {label}
+            </Button>
+          ))}
+        </div>
+        {preset === 'TARGET_POSITION' && (
+          <div className="flex gap-2">
+            {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => (
+              <Button
+                key={pos}
+                variant={targetPosition === pos ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTargetPosition(pos)}
+                className={cn(
+                  'flex-1 text-xs font-bold',
+                  targetPosition === pos
+                    ? 'bg-cyan-700 hover:bg-cyan-600'
+                    : 'border-gray-700 text-gray-400 hover:text-gray-200'
+                )}
+              >
+                {pos}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <Button
         onClick={findTrades}
         disabled={loading || !leagueId}
         className="w-full h-12 text-lg bg-gradient-to-r from-cyan-600 via-purple-600 to-pink-600 hover:opacity-90"
       >
-        {loading ? 'Searching for trades...' : 'Find Trades'}
+        {loading ? 'Searching for trades...' : preset === 'NONE' ? 'Find Trades' : `Find ${preset === 'TARGET_POSITION' ? targetPosition : preset === 'ACQUIRE_PICKS' ? 'Pick' : 'Consolidation'} Trades`}
       </Button>
 
       {loading ? (

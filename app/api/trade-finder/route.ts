@@ -40,6 +40,8 @@ const TradeFinderRequestSchema = z.object({
   sleeper_user_id: z.string().optional(),
   objective: z.enum(['WIN_NOW', 'REBUILD', 'BALANCED']).default('BALANCED'),
   mode: z.enum(['FAST', 'DEEP']).default('FAST'),
+  preset: z.enum(['NONE', 'TARGET_POSITION', 'ACQUIRE_PICKS', 'CONSOLIDATE']).default('NONE'),
+  target_position: z.enum(['QB', 'RB', 'WR', 'TE']).optional(),
   preferredTone: z.enum(['FRIENDLY', 'CONFIDENT', 'CASUAL', 'DATA_BACKED', 'SHORT']).optional(),
 })
 
@@ -333,6 +335,51 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
       objective: data.objective as TradeObjective,
       mode: data.mode as FinderMode,
     })
+
+    if (data.preset !== 'NONE' && generatorOutput.candidates.length > 0) {
+      generatorOutput.candidates = generatorOutput.candidates.filter(c => {
+        const userReceives = c.teamA.receives;
+        const userGives = c.teamA.gives;
+
+        if (data.preset === 'TARGET_POSITION' && data.target_position) {
+          return userReceives.some(a => !a.isPick && a.position === data.target_position);
+        }
+
+        if (data.preset === 'ACQUIRE_PICKS') {
+          return userReceives.some(a => a.isPick) && userReceives.filter(a => a.isPick).length >= userGives.filter(a => a.isPick).length;
+        }
+
+        if (data.preset === 'CONSOLIDATE') {
+          return userGives.filter(a => !a.isPick).length > userReceives.filter(a => !a.isPick).length;
+        }
+
+        return true;
+      });
+
+      if (data.preset === 'TARGET_POSITION' && data.target_position) {
+        generatorOutput.candidates.sort((a, b) => {
+          const aTargetValue = a.teamA.receives.filter(r => !r.isPick && r.position === data.target_position).reduce((s, r) => s + r.value, 0);
+          const bTargetValue = b.teamA.receives.filter(r => !r.isPick && r.position === data.target_position).reduce((s, r) => s + r.value, 0);
+          return bTargetValue - aTargetValue;
+        });
+      }
+
+      if (data.preset === 'ACQUIRE_PICKS') {
+        generatorOutput.candidates.sort((a, b) => {
+          const aPickCount = a.teamA.receives.filter(r => r.isPick).length;
+          const bPickCount = b.teamA.receives.filter(r => r.isPick).length;
+          return bPickCount - aPickCount;
+        });
+      }
+
+      if (data.preset === 'CONSOLIDATE') {
+        generatorOutput.candidates.sort((a, b) => {
+          const aConsolidation = a.teamA.gives.filter(g => !g.isPick).length - a.teamA.receives.filter(r => !r.isPick).length;
+          const bConsolidation = b.teamA.gives.filter(g => !g.isPick).length - b.teamA.receives.filter(r => !r.isPick).length;
+          return bConsolidation - aConsolidation;
+        });
+      }
+    }
 
     if (generatorOutput.candidates.length === 0) {
       const note = generatorOutput.opportunities.length > 0
@@ -641,6 +688,8 @@ export const GET = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFin
         sleeper_user_id: 'string (optional — your Sleeper user ID, used to auto-resolve roster)',
         objective: 'WIN_NOW | REBUILD | BALANCED (default: BALANCED)',
         mode: 'FAST | DEEP (default: FAST)',
+        preset: 'NONE | TARGET_POSITION | ACQUIRE_PICKS | CONSOLIDATE (default: NONE)',
+        target_position: 'QB | RB | WR | TE (required when preset is TARGET_POSITION)',
       },
     },
   })
