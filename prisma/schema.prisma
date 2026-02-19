@@ -2354,6 +2354,7 @@ model PrivateChatMessage {
   senderId   String
   receiverId String
   message    String
+  voiceUrl   String?
   isRead     Boolean  @default(false)
   createdAt  DateTime @default(now())
 
