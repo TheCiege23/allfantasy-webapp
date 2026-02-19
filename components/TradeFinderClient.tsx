@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, Hammer, Scale, ExternalLink } from 'lucide-react';
+import { Trophy, Hammer, Scale, ExternalLink, ChevronDown } from 'lucide-react';
 import { useAI } from '@/hooks/useAI';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,7 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
   const [hasSearched, setHasSearched] = useState(false);
   const [tab, setTab] = useState<'find' | 'partner'>('find');
   const [counterLoading, setCounterLoading] = useState<number | null>(null);
+  const [expandedDeepWhy, setExpandedDeepWhy] = useState<Record<string, boolean>>({});
 
   const selectedLeague = initialLeagues.find(l => l.id === leagueId);
 
@@ -94,6 +95,7 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
   const findTrades = async () => {
     if (!leagueId || !selectedLeague) return toast.error('Select a league first');
     setHasSearched(true);
+    setExpandedDeepWhy({});
 
     const result = await callAI('/api/trade-finder', {
       league_id: selectedLeague.platformLeagueId,
@@ -110,6 +112,7 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
         const fScore = candidate?.finderScore ?? 50;
         const vDelta = candidate?.valueDeltaPct ?? 0;
         return {
+          tradeId: rec.tradeId || `trade-${i}`,
           partner: `Team ${rec.tradeId?.split('-')[1] || '?'}`,
           partnerRosterId: candidate?.teamB?.teamId ? Number(candidate.teamB.teamId) : null,
           youGive: rec.teamA?.gives?.map((a: any) => a.name).join(' + ') || rec.summary || '',
@@ -122,6 +125,14 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
           negotiation: rec.negotiation,
           grade: computeTradeGrade(fScore, vDelta, conf),
           finderScore: fScore,
+          whyItHelpsYou: rec.whyItHelpsYou || null,
+          whyTheyAccept: rec.whyTheyAccept || null,
+          negotiationTip: rec.negotiationTip || null,
+          riskFlags: rec.riskFlags || [],
+          fallbackAsset: rec.fallbackAsset || null,
+          whyThisExists: candidate?.whyThisExists || [],
+          archetype: candidate?.archetype || null,
+          scoreBreakdown: candidate?.scoreBreakdown || null,
         };
       });
       const enriched = await Promise.all(mapped.map(enrichWithWeather));
@@ -408,6 +419,88 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
                 <div className="text-xs text-gray-400 border-t border-gray-800 pt-3">
                   {trade.reason}
                 </div>
+                {(trade.whyItHelpsYou || trade.whyTheyAccept || trade.riskFlags?.length > 0 || trade.scoreBreakdown || trade.whyThisExists?.length > 0) && (() => {
+                  const tradeKey = trade.tradeId || `trade-${i}`;
+                  return (
+                  <div className="border border-gray-800 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => setExpandedDeepWhy(prev => ({ ...prev, [tradeKey]: !prev[tradeKey] }))}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-gray-300 hover:bg-gray-800/50 transition-colors"
+                    >
+                      <span>Deep Why</span>
+                      <ChevronDown className={cn('h-3.5 w-3.5 text-gray-500 transition-transform', expandedDeepWhy[tradeKey] && 'rotate-180')} />
+                    </button>
+                    {expandedDeepWhy[tradeKey] && (
+                      <div className="px-3 pb-3 space-y-3 border-t border-gray-800">
+                        {trade.whyItHelpsYou && (
+                          <div className="pt-3">
+                            <p className="text-[11px] font-semibold text-cyan-400 uppercase tracking-wider mb-1">Value Angle</p>
+                            <p className="text-xs text-gray-300">{trade.whyItHelpsYou}</p>
+                            {trade.whyThisExists?.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                {trade.whyThisExists.map((tag: string, ti: number) => (
+                                  <span key={ti} className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950/50 text-cyan-400/80 border border-cyan-800/30">{tag}</span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {trade.scoreBreakdown && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-purple-400 uppercase tracking-wider mb-1.5">Roster Fit</p>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                              {[
+                                { label: 'Starter Upgrade', value: trade.scoreBreakdown.starterUpgrade },
+                                { label: 'Objective Fit', value: trade.scoreBreakdown.objectiveAlignment },
+                                { label: 'Value Fairness', value: trade.scoreBreakdown.valueFairness },
+                                { label: 'Roster Fit', value: trade.scoreBreakdown.rosterFit },
+                              ].map(({ label, value }) => (
+                                <div key={label} className="flex items-center justify-between">
+                                  <span className="text-[10px] text-gray-500">{label}</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <div className="w-12 h-1.5 rounded-full bg-gray-800 overflow-hidden">
+                                      <div
+                                        className={cn('h-full rounded-full', value >= 70 ? 'bg-green-500' : value >= 40 ? 'bg-yellow-500' : 'bg-orange-500')}
+                                        style={{ width: `${Math.min(100, value)}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[10px] text-gray-400 w-5 text-right">{value}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {trade.whyTheyAccept && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-green-400 uppercase tracking-wider mb-1">Partner Acceptance</p>
+                            <p className="text-xs text-gray-300">{trade.whyTheyAccept}</p>
+                            {trade.negotiationTip && (
+                              <p className="text-[11px] text-gray-500 mt-1 italic">Tip: {trade.negotiationTip}</p>
+                            )}
+                          </div>
+                        )}
+                        {trade.riskFlags?.length > 0 && (
+                          <div>
+                            <p className="text-[11px] font-semibold text-orange-400 uppercase tracking-wider mb-1">Risk Flags</p>
+                            <ul className="space-y-1">
+                              {trade.riskFlags.map((flag: string, fi: number) => (
+                                <li key={fi} className="text-xs text-orange-300/80 flex items-start gap-1.5">
+                                  <span className="text-orange-500 mt-0.5 shrink-0">!</span>
+                                  {flag}
+                                </li>
+                              ))}
+                            </ul>
+                            {trade.fallbackAsset && (
+                              <p className="text-[11px] text-gray-500 mt-1.5">Plan B: Target <span className="text-gray-300">{trade.fallbackAsset}</span> instead</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  );
+                })()}
                 {trade.negotiation?.dmMessages?.[0] && (
                   <div className="bg-gray-900/50 rounded-lg p-3 border border-gray-800">
                     <p className="text-xs text-gray-500 mb-1">Suggested DM:</p>
