@@ -820,65 +820,72 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                             <Skeleton key={i} className="h-32 w-full rounded-xl" />
                           ))}
                         </div>
-                      ) : strategy.waiverTargets ? (
-                        <div className="space-y-6">
-                          {strategy.waiverTargets.split('\n').filter(Boolean).map((line: string, i: number) => {
-                            const match = line.match(/^(\d+)\.\s*(.+?):\s*(.+)$/);
-                            if (!match) {
-                              return (
-                                <div key={i} className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40">
-                                  <p className="text-gray-200 leading-relaxed">{line}</p>
-                                </div>
-                              );
-                            }
-                            const [, rank, player, rationale] = match;
+                      ) : strategy.waiverTargets ? (() => {
+                        const filteredWaivers = strategy.waiverTargets.split('\n').filter(Boolean).map((line: string, i: number) => {
+                          const match = line.match(/^(\d+)\.\s*(.+?):\s*(.+)$/);
+                          if (!match) return { type: 'raw' as const, line, i };
+                          const [, rank, player, rationale] = match;
+                          const playerPos = player.match(/\((QB|RB|WR|TE)/i)?.[1]?.toLowerCase() || '';
+                          const matchesFilter = waiverFilter === 'all' || playerPos === waiverFilter;
+                          const rationaleLC = rationale.toLowerCase();
+                          const priorityMatch =
+                            waiverPriority === 'immediate' ? rationaleLC.includes('need') || rationaleLC.includes('starter') || rationaleLC.includes('start') || rationaleLC.includes('immediate') :
+                            waiverPriority === 'value' ? rationaleLC.includes('value') || rationaleLC.includes('undervalued') || rationaleLC.includes('bargain') || rationaleLC.includes('cheap') :
+                            waiverPriority === 'upside' ? rationaleLC.includes('upside') || rationaleLC.includes('rookie') || rationaleLC.includes('young') || rationaleLC.includes('breakout') || rationaleLC.includes('potential') :
+                            true;
+                          if (!matchesFilter || !priorityMatch) return null;
+                          return { type: 'parsed' as const, rank, player, rationale, i };
+                        }).filter(Boolean);
 
-                            const playerPos = player.match(/\((QB|RB|WR|TE)/i)?.[1]?.toLowerCase() || '';
-                            const matchesFilter = waiverFilter === 'all' || playerPos === waiverFilter;
-
-                            const rationaleLC = rationale.toLowerCase();
-                            const priorityMatch =
-                              waiverPriority === 'immediate' ? rationaleLC.includes('need') || rationaleLC.includes('starter') || rationaleLC.includes('start') || rationaleLC.includes('immediate') :
-                              waiverPriority === 'value' ? rationaleLC.includes('value') || rationaleLC.includes('undervalued') || rationaleLC.includes('bargain') || rationaleLC.includes('cheap') :
-                              waiverPriority === 'upside' ? rationaleLC.includes('upside') || rationaleLC.includes('rookie') || rationaleLC.includes('young') || rationaleLC.includes('breakout') || rationaleLC.includes('potential') :
-                              true;
-
-                            if (!matchesFilter || !priorityMatch) return null;
-
-                            return (
-                              <motion.div
-                                key={i}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: i * 0.08 }}
-                                className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40 hover:border-purple-600/60 transition-colors group"
-                              >
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <div className="flex items-center gap-3">
-                                      <Badge className="bg-purple-700 text-white font-bold text-lg px-3 py-1">
-                                        #{rank}
-                                      </Badge>
-                                      <h4 className="text-xl font-semibold text-purple-200 group-hover:text-purple-100">
-                                        {player.trim()}
-                                      </h4>
-                                    </div>
-                                    <p className="text-gray-300 mt-3 leading-relaxed">{rationale}</p>
+                        return filteredWaivers.length === 0 ? (
+                          <div className="text-center py-12 text-gray-400">
+                            No waiver targets match your current filters. Try broadening them or generating a new list.
+                          </div>
+                        ) : (
+                          <div className="space-y-6">
+                            {filteredWaivers.map((item: any) => {
+                              if (item.type === 'raw') {
+                                return (
+                                  <div key={item.i} className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40">
+                                    <p className="text-gray-200 leading-relaxed">{item.line}</p>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-purple-400 hover:text-purple-300"
-                                    onClick={() => navigator.clipboard.writeText(player.trim())}
-                                  >
-                                    Copy Name
-                                  </Button>
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      ) : (
+                                );
+                              }
+                              return (
+                                <motion.div
+                                  key={item.i}
+                                  initial={{ opacity: 0, x: -20 }}
+                                  animate={{ opacity: 1, x: 0 }}
+                                  transition={{ delay: item.i * 0.08 }}
+                                  className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40 hover:border-purple-600/60 transition-colors group"
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <div>
+                                      <div className="flex items-center gap-3">
+                                        <Badge className="bg-purple-700 text-white font-bold text-lg px-3 py-1">
+                                          #{item.rank}
+                                        </Badge>
+                                        <h4 className="text-xl font-semibold text-purple-200 group-hover:text-purple-100">
+                                          {item.player.trim()}
+                                        </h4>
+                                      </div>
+                                      <p className="text-gray-300 mt-3 leading-relaxed">{item.rationale}</p>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-purple-400 hover:text-purple-300"
+                                      onClick={() => navigator.clipboard.writeText(item.player.trim())}
+                                    >
+                                      Copy Name
+                                    </Button>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })() : (
                         <div className="text-center py-12">
                           <Button
                             onClick={() => loadSection('waiver')}
