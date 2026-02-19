@@ -28,6 +28,10 @@ export default function LoginContent() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const [sleeperUsername, setSleeperUsername] = useState("")
+  const [sleeperLoading, setSleeperLoading] = useState(false)
+  const [sleeperError, setSleeperError] = useState<string | null>(null)
+
   const [showAdmin, setShowAdmin] = useState(isAdminLogin)
   const [adminPassword, setAdminPassword] = useState("")
   const [adminLoading, setAdminLoading] = useState(false)
@@ -58,6 +62,37 @@ export default function LoginContent() {
       setError("Something went wrong. Please try again.")
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleSleeperLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setSleeperError(null)
+
+    if (!sleeperUsername.trim()) {
+      setSleeperError("Please enter your Sleeper username.")
+      return
+    }
+
+    setSleeperLoading(true)
+    try {
+      const result = await signIn("sleeper", {
+        sleeperUsername: sleeperUsername.trim(),
+        redirect: false,
+        callbackUrl: "/rankings",
+      })
+
+      if (result?.error) {
+        setSleeperError("Sleeper username not found. Check and try again.")
+      } else if (result?.url) {
+        router.push(result.url)
+      } else {
+        router.push("/rankings")
+      }
+    } catch {
+      setSleeperError("Something went wrong. Please try again.")
+    } finally {
+      setSleeperLoading(false)
     }
   }
 
@@ -245,6 +280,60 @@ export default function LoginContent() {
                   )}
                 </button>
               </form>
+            </div>
+
+            <div className="flex items-center gap-3 my-2">
+              <div className="h-px flex-1 bg-white/10" />
+              <span className="text-xs text-white/40">or sign in with</span>
+              <div className="h-px flex-1 bg-white/10" />
+            </div>
+
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-950/10 p-5 shadow-xl">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-600 text-xs font-bold">S</div>
+                <span className="text-sm font-medium text-white/80">Sleeper Account</span>
+              </div>
+
+              {sleeperError && (
+                <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+                  <div className="flex items-start gap-2">
+                    <TriangleAlert className="h-5 w-5 mt-0.5 shrink-0" />
+                    <div>{sleeperError}</div>
+                  </div>
+                </div>
+              )}
+
+              <form onSubmit={handleSleeperLogin} className="space-y-3">
+                <div>
+                  <label className="text-xs text-white/60">Sleeper Username</label>
+                  <input
+                    value={sleeperUsername}
+                    onChange={(e) => setSleeperUsername(e.target.value)}
+                    type="text"
+                    autoComplete="username"
+                    className="mt-1 w-full rounded-xl border border-cyan-500/20 bg-black/20 px-3 py-2.5 text-sm outline-none focus:border-cyan-500/40"
+                    placeholder="e.g. cjabar"
+                    disabled={sleeperLoading}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={sleeperLoading || !sleeperUsername.trim()}
+                  className="w-full rounded-xl bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-2.5 text-sm font-medium text-white hover:from-cyan-500 hover:to-cyan-400 disabled:opacity-50 transition-all"
+                >
+                  {sleeperLoading ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Connecting...
+                    </span>
+                  ) : (
+                    "Sign in with Sleeper"
+                  )}
+                </button>
+              </form>
+              <p className="mt-2 text-center text-xs text-white/30">
+                No password needed — we verify your Sleeper account directly.
+              </p>
             </div>
 
             <p className="text-center text-sm text-white/40">

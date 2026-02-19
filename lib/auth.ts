@@ -85,6 +85,57 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
+    CredentialsProvider({
+      id: "sleeper",
+      name: "Sleeper",
+      credentials: {
+        sleeperUsername: { label: "Sleeper Username", type: "text" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.sleeperUsername) return null
+
+        const username = credentials.sleeperUsername.trim()
+        if (!username) return null
+
+        const sleeperRes = await fetch(`https://api.sleeper.app/v1/user/${username}`)
+        if (!sleeperRes.ok) return null
+        const sleeperUser = await sleeperRes.json()
+        if (!sleeperUser?.user_id) return null
+
+        const sleeperUserId = sleeperUser.user_id
+        const displayName = sleeperUser.display_name || username
+        const avatarUrl = sleeperUser.avatar
+          ? `https://sleepercdn.com/avatars/${sleeperUser.avatar}`
+          : null
+
+        let user = await prisma.appUser.findFirst({
+          where: {
+            OR: [
+              { username: `sleeper_${sleeperUserId}` },
+              { username: displayName.toLowerCase() },
+            ],
+          },
+        })
+
+        if (!user) {
+          user = await prisma.appUser.create({
+            data: {
+              email: `${sleeperUserId}@sleeper.allfantasy.ai`,
+              username: `sleeper_${sleeperUserId}`,
+              displayName,
+              avatarUrl,
+            },
+          })
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.displayName || user.username,
+          image: user.avatarUrl,
+        }
+      },
+    }),
   ],
   session: {
     strategy: "jwt",
