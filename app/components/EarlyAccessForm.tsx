@@ -10,7 +10,7 @@ import { Loader2 } from 'lucide-react'
 import { gtagEvent } from '@/lib/gtag'
 
 const schema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+  name: z.string().optional().transform(v => v?.trim() || undefined),
   email: z.string().email('Please enter a valid email'),
 })
 
@@ -117,9 +117,6 @@ export default function EarlyAccessForm() {
           disabled={loading}
         />
       </div>
-      {errors.name && (
-        <p className="text-xs text-red-400 px-1">{errors.name.message}</p>
-      )}
       {errors.email && (
         <p className="text-xs text-red-400 px-1">{errors.email.message}</p>
       )}
