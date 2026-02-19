@@ -23,8 +23,8 @@ interface PulseData {
   rosterMoves: number;
   mostActiveManagers: { managerId: string; name: string; count: number }[];
   activitySpikePercent: string;
-  hotPlayers: { rosterId: number; points: number; matchupId: number }[];
-  coldPlayers: { rosterId: number; points: number; matchupId: number }[];
+  hotPlayers: { playerId: string; name: string; position: string; points: number; rosterId: number; vsProj: string; insight: string }[];
+  coldPlayers: { playerId: string; name: string; position: string; points: number; rosterId: number; vsProj: string; insight: string }[];
   userTeamPulse: { projectedThisWeek: number | null; actualThisWeek: number; starterCount: number } | null;
   recentTrades: any[];
   standings: any[];
@@ -229,13 +229,19 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
                       {pulseData.hotPlayers.length > 0 && (
                         <div>
                           <p className="text-sm text-gray-400 mb-3 flex items-center gap-2">
-                            <ArrowUpRight className="h-4 w-4 text-emerald-400" /> Top Scoring Teams
+                            <ArrowUpRight className="h-4 w-4 text-emerald-400" /> Hot Players
                           </p>
                           <div className="space-y-2">
-                            {pulseData.hotPlayers.slice(0, 3).map((hp, idx) => (
-                              <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-emerald-950/30">
-                                <span className="text-white text-sm">Roster {hp.rosterId}</span>
-                                <span className="text-emerald-400 font-bold">{hp.points.toFixed(1)} pts</span>
+                            {pulseData.hotPlayers.slice(0, 5).map((hp, idx) => (
+                              <div key={hp.playerId} className="flex justify-between items-center p-2 rounded-lg bg-emerald-950/30">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="border-emerald-700/50 text-emerald-300 text-xs px-1.5">{hp.position}</Badge>
+                                  <span className="text-white text-sm">{hp.name}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-emerald-400 font-bold text-sm">{hp.points} pts</span>
+                                  <span className="text-emerald-500/70 text-xs ml-2">{hp.vsProj}</span>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -244,13 +250,19 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
                       {pulseData.coldPlayers.length > 0 && (
                         <div>
                           <p className="text-sm text-gray-400 mb-3 flex items-center gap-2">
-                            <ArrowDownRight className="h-4 w-4 text-red-400" /> Lowest Scoring Teams
+                            <ArrowDownRight className="h-4 w-4 text-red-400" /> Cold Players
                           </p>
                           <div className="space-y-2">
-                            {pulseData.coldPlayers.slice(0, 3).map((cp, idx) => (
-                              <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-red-950/30">
-                                <span className="text-white text-sm">Roster {cp.rosterId}</span>
-                                <span className="text-red-400 font-bold">{cp.points.toFixed(1)} pts</span>
+                            {pulseData.coldPlayers.slice(0, 5).map((cp, idx) => (
+                              <div key={cp.playerId} className="flex justify-between items-center p-2 rounded-lg bg-red-950/30">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="border-red-700/50 text-red-300 text-xs px-1.5">{cp.position}</Badge>
+                                  <span className="text-white text-sm">{cp.name}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-red-400 font-bold text-sm">{cp.points} pts</span>
+                                  <span className="text-red-500/70 text-xs ml-2">{cp.vsProj}</span>
+                                </div>
                               </div>
                             ))}
                           </div>

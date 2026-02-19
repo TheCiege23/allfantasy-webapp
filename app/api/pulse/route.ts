@@ -10,8 +10,9 @@ import {
   getLeagueMatchups,
   getLeagueType,
   getScoringType,
+  getAllPlayers,
 } from '@/lib/sleeper-client'
-import type { SleeperTransaction, SleeperRoster, SleeperUser, SleeperMatchup } from '@/lib/sleeper-client'
+import type { SleeperTransaction, SleeperRoster, SleeperUser, SleeperMatchup, SleeperPlayer } from '@/lib/sleeper-client'
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
@@ -108,8 +109,9 @@ export async function GET(req: NextRequest) {
           avatarUrl: team.avatarUrl,
         }))
 
-    const hotPlayers = findHotPlayers(matchups)
-    const coldPlayers = findColdPlayers(matchups)
+    const allPlayers = matchups.length > 0 ? await getAllPlayers() : {}
+    const hotPlayers = findHotPlayers(matchups, allPlayers)
+    const coldPlayers = findColdPlayers(matchups, allPlayers)
 
     const recentTrades = dbLeague.trades.map(t => ({
       id: t.id,
@@ -154,7 +156,7 @@ export async function GET(req: NextRequest) {
     if (hotPlayers.length > 0) {
       alerts.push({
         type: 'hot_player',
-        message: `${hotPlayers[0].rosterId ? `Roster ${hotPlayers[0].rosterId}` : 'A team'} scored ${hotPlayers[0].points.toFixed(1)} pts this week`,
+        message: `${hotPlayers[0].name} (${hotPlayers[0].position}) scored ${hotPlayers[0].points} pts — ${hotPlayers[0].insight}!`,
         severity: 'info',
       })
     }
@@ -238,26 +240,69 @@ function calculateActivitySpike(thisWeek: SleeperTransaction[], lastWeek: Sleepe
   return 'Stable'
 }
 
-function findHotPlayers(matchups: SleeperMatchup[]) {
-  return matchups
-    .filter(m => m.points > 0)
-    .sort((a, b) => b.points - a.points)
-    .slice(0, 5)
-    .map(m => ({
-      rosterId: m.roster_id,
-      points: m.points,
-      matchupId: m.matchup_id,
-    }))
+function extractPlayerPoints(matchups: SleeperMatchup[]) {
+  const playerPoints: Record<string, { points: number; rosterId: number }> = {}
+  matchups.forEach(m => {
+    if (!m.starters || !m.starters_points) return
+    m.starters.forEach((playerId: string, index: number) => {
+      const pts = m.starters_points[index] || 0
+      if (!playerPoints[playerId]) {
+        playerPoints[playerId] = { points: 0, rosterId: m.roster_id }
+      }
+      playerPoints[playerId].points += pts
+    })
+  })
+  return playerPoints
 }
 
-function findColdPlayers(matchups: SleeperMatchup[]) {
-  return matchups
-    .filter(m => m.points >= 0)
+function findHotPlayers(matchups: SleeperMatchup[], allPlayers: Record<string, SleeperPlayer>) {
+  const playerPoints = extractPlayerPoints(matchups)
+
+  return Object.entries(playerPoints)
+    .filter(([id]) => id !== '0')
+    .map(([playerId, data]) => {
+      const p = allPlayers[playerId]
+      const name = p?.full_name || playerId
+      const pos = p?.position || '??'
+      const projected = 12
+      const delta = data.points - projected
+
+      return {
+        playerId,
+        name,
+        position: pos,
+        points: Number(data.points.toFixed(1)),
+        rosterId: data.rosterId,
+        vsProj: `+${delta.toFixed(1)}`,
+        insight: delta > 15 ? 'Breakout performance' : delta > 8 ? 'Strong week' : 'Solid outing',
+      }
+    })
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 6)
+}
+
+function findColdPlayers(matchups: SleeperMatchup[], allPlayers: Record<string, SleeperPlayer>) {
+  const playerPoints = extractPlayerPoints(matchups)
+
+  return Object.entries(playerPoints)
+    .filter(([id]) => id !== '0')
+    .map(([playerId, data]) => {
+      const p = allPlayers[playerId]
+      const name = p?.full_name || playerId
+      const pos = p?.position || '??'
+      const projected = 12
+      const delta = data.points - projected
+
+      return {
+        playerId,
+        name,
+        position: pos,
+        points: Number(data.points.toFixed(1)),
+        rosterId: data.rosterId,
+        vsProj: delta < 0 ? delta.toFixed(1) : `+${delta.toFixed(1)}`,
+        insight: delta < -12 ? 'Major disappointment' : delta < -6 ? 'Underperformed' : 'Quiet week',
+      }
+    })
     .sort((a, b) => a.points - b.points)
-    .slice(0, 5)
-    .map(m => ({
-      rosterId: m.roster_id,
-      points: m.points,
-      matchupId: m.matchup_id,
-    }))
+    .slice(0, 6)
 }
