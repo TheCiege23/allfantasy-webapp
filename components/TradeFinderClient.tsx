@@ -11,6 +11,26 @@ import PartnerMatchView from '@/components/PartnerMatchView';
 
 type League = { id: string; name: string; sport: string; season: number; platformLeagueId: string; platform: string; isDynasty: boolean };
 
+function computeTradeGrade(finderScore: number, valueDeltaPct: number, confidence: number | null): { letter: string; color: string; bg: string; border: string } {
+  const absDelta = Math.abs(valueDeltaPct);
+  const fairnessScore = absDelta <= 5 ? 100 : absDelta <= 10 ? 85 : absDelta <= 15 ? 70 : absDelta <= 25 ? 50 : Math.max(0, 100 - absDelta * 2);
+  const confNorm = confidence != null ? confidence : 50;
+  const composite = Math.round(finderScore * 0.50 + fairnessScore * 0.25 + confNorm * 0.25);
+
+  const gradeMap: { min: number; letter: string; color: string; bg: string; border: string }[] = [
+    { min: 90, letter: 'A+', color: 'text-emerald-300', bg: 'bg-emerald-500/20', border: 'border-emerald-500/50' },
+    { min: 80, letter: 'A',  color: 'text-emerald-400', bg: 'bg-emerald-500/15', border: 'border-emerald-500/40' },
+    { min: 70, letter: 'B+', color: 'text-green-400',   bg: 'bg-green-500/15',   border: 'border-green-500/40' },
+    { min: 60, letter: 'B',  color: 'text-lime-400',    bg: 'bg-lime-500/15',     border: 'border-lime-500/40' },
+    { min: 50, letter: 'C+', color: 'text-yellow-400',  bg: 'bg-yellow-500/15',   border: 'border-yellow-500/40' },
+    { min: 40, letter: 'C',  color: 'text-amber-400',   bg: 'bg-amber-500/15',    border: 'border-amber-500/40' },
+    { min: 30, letter: 'D',  color: 'text-orange-400',  bg: 'bg-orange-500/15',   border: 'border-orange-500/40' },
+    { min: 0,  letter: 'F',  color: 'text-red-400',     bg: 'bg-red-500/15',      border: 'border-red-500/40' },
+  ];
+
+  return gradeMap.find(g => composite >= g.min) || gradeMap[gradeMap.length - 1];
+}
+
 export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { initialLeagues: League[]; sleeperUserId?: string | null }) {
   const { callAI, loading, error } = useAI<{ recommendations?: any[]; suggestions?: any[]; candidates?: any[]; success?: boolean; meta?: any }>();
   const [leagueId, setLeagueId] = useState(initialLeagues[0]?.id || '');
@@ -86,6 +106,9 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
       const candidates = result.data.candidates || [];
       const mapped = result.data.recommendations.map((rec: any) => {
         const candidate = candidates.find((c: any) => c.tradeId === rec.tradeId);
+        const conf = typeof rec.confidence === 'number' ? rec.confidence : rec.confidenceScore ?? null;
+        const fScore = candidate?.finderScore ?? 50;
+        const vDelta = candidate?.valueDeltaPct ?? 0;
         return {
           partner: `Team ${rec.tradeId?.split('-')[1] || '?'}`,
           partnerRosterId: candidate?.teamB?.teamId ? Number(candidate.teamB.teamId) : null,
@@ -94,9 +117,11 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
           givesIds: rec.teamA?.gives?.map((a: any) => a.assetId) || [],
           receivesIds: rec.teamA?.receives?.map((a: any) => a.assetId) || [],
           reason: rec.whyItHelpsYou || rec.summary || rec.negotiationTip || '',
-          confidence: typeof rec.confidence === 'number' ? rec.confidence : rec.confidenceScore ?? null,
+          confidence: conf,
           winProbDelta: rec.winProbDelta || null,
           negotiation: rec.negotiation,
+          grade: computeTradeGrade(fScore, vDelta, conf),
+          finderScore: fScore,
         };
       });
       const enriched = await Promise.all(mapped.map(enrichWithWeather));
@@ -313,11 +338,19 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
               trade.status === 'countered' ? 'border-yellow-500/50 bg-yellow-950/15' :
               'border-purple-900/40 bg-black/50 hover:border-purple-500/60'
             )}>
-              <CardHeader>
-                <CardTitle className="flex justify-between text-lg">
+              <CardHeader className="relative">
+                <CardTitle className="flex justify-between text-lg pr-14">
                   <span>Trade Idea #{i + 1}</span>
                   <span className="text-cyan-400 text-sm font-normal">{trade.partner}</span>
                 </CardTitle>
+                {trade.grade && (
+                  <div className={cn(
+                    'absolute top-3 right-4 flex items-center justify-center w-11 h-11 rounded-lg border text-lg font-black',
+                    trade.grade.color, trade.grade.bg, trade.grade.border
+                  )}>
+                    {trade.grade.letter}
+                  </div>
+                )}
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex justify-between text-sm">
@@ -330,8 +363,21 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
                     <p>{trade.youGet}</p>
                   </div>
                 </div>
-                {(trade.confidence != null || trade.winProbDelta) && (
+                {(trade.confidence != null || trade.winProbDelta || trade.finderScore != null) && (
                   <div className="flex justify-between text-sm mt-3 pt-3 border-t border-gray-800">
+                    {trade.finderScore != null && (
+                      <div>
+                        <span className="text-gray-400">Score:</span>
+                        <span className={cn(
+                          'ml-1 font-bold',
+                          trade.finderScore >= 70 ? 'text-green-400' :
+                          trade.finderScore >= 50 ? 'text-yellow-400' :
+                          trade.finderScore >= 30 ? 'text-orange-400' : 'text-gray-400'
+                        )}>
+                          {trade.finderScore}
+                        </span>
+                      </div>
+                    )}
                     {trade.confidence != null && (
                       <div>
                         <span className="text-gray-400">Confidence:</span>
