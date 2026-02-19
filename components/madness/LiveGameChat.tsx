@@ -593,22 +593,35 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
           const displayName = msg.user.displayName || msg.user.username
           const initial = isChimmy ? '🧙' : (displayName?.[0] || '?').toUpperCase()
 
+          if (isChimmy) {
+            return (
+              <div key={msg.id} className="group">
+                <div className="bg-purple-900/30 p-4 rounded-xl border border-purple-500/40">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🧙</span>
+                    <span className="font-bold text-purple-300">Chimmy the AI Storyteller</span>
+                    <span className="text-[9px] bg-purple-800/60 text-purple-200 px-1.5 py-0.5 rounded-full">AI</span>
+                    <span className={`text-[10px] ${t.timestamp} ml-auto`}>
+                      {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-purple-100 break-words leading-relaxed">{msg.message}</p>
+                </div>
+              </div>
+            )
+          }
+
           return (
-            <div key={msg.id} className={`group ${msg.isPinned ? 'bg-amber-950/20 -mx-4 px-4 py-1 rounded-lg border-l-2 border-amber-500/50' : ''} ${isChimmy ? 'bg-purple-950/20 -mx-4 px-4 py-2 rounded-lg border-l-2 border-purple-500/50' : ''}`}>
+            <div key={msg.id} className={`group ${msg.isPinned ? 'bg-amber-950/20 -mx-4 px-4 py-1 rounded-lg border-l-2 border-amber-500/50' : ''}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
-                  isChimmy ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white' : isOwn ? t.avatarOwn : t.avatarOther
+                  isOwn ? t.avatarOwn : t.avatarOther
                 }`}>
                   {initial}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
-                    {isChimmy ? (
-                      <span className="font-medium text-sm text-purple-400 inline-flex items-center gap-1">
-                        Chimmy
-                        <span className="text-[9px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded-full">AI</span>
-                      </span>
-                    ) : isOwn ? (
+                    {isOwn ? (
                       <span className={`font-medium text-sm ${t.nameOwn}`}>{displayName}</span>
                     ) : (
                       <button
