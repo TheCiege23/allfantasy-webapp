@@ -334,6 +334,51 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                       ))}
                     </AnimatePresence>
                   </div>
+
+                  {(() => {
+                    const picksThrough = draftResults.filter(p => p.round <= round + 1)
+                    const managers = Array.from(new Set(draftResults.map(p => p.manager)))
+                    const teamNeeds = managers.map(mgr => {
+                      const drafted: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
+                      for (const p of picksThrough) {
+                        if (p.manager === mgr && drafted[p.position] !== undefined) {
+                          drafted[p.position]++
+                        }
+                      }
+                      const needs: string[] = []
+                      if (drafted.QB === 0) needs.push('QB')
+                      if (drafted.RB < 2) needs.push('RB')
+                      if (drafted.WR < 2) needs.push('WR')
+                      if (drafted.TE === 0) needs.push('TE')
+                      return { manager: mgr, drafted, needs, isUser: picksThrough.some(p => p.manager === mgr && p.isUser) }
+                    })
+                    const teamsWithNeeds = teamNeeds.filter(t => t.needs.length > 0)
+                    if (teamsWithNeeds.length === 0) return null
+                    return (
+                      <div className="mt-6 bg-black/40 border border-gray-800 rounded-xl p-5">
+                        <h4 className="text-sm font-medium text-gray-300 mb-3">Projected Team Needs After Round {round + 1}</h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                          {teamNeeds.slice(0, 12).map(t => (
+                            <div key={t.manager} className={`p-3 rounded-lg ${t.isUser ? 'bg-cyan-950/30 border border-cyan-500/20' : 'bg-gray-950/50'}`}>
+                              <div className="font-medium mb-1 truncate">{t.manager} {t.isUser ? '(You)' : ''}</div>
+                              <div className="text-gray-400">
+                                QB: {t.drafted.QB} · RB: {t.drafted.RB} · WR: {t.drafted.WR} · TE: {t.drafted.TE}
+                              </div>
+                              {t.needs.length > 0 && (
+                                <div className="mt-1 flex gap-1 flex-wrap">
+                                  {t.needs.map(n => (
+                                    <span key={n} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${POSITION_COLORS[n] || 'text-gray-400 bg-gray-800'}`}>
+                                      NEED {n}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })}
