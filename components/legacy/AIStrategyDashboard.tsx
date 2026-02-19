@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
-  ResponsiveContainer, Tooltip, Legend
+  ResponsiveContainer, Tooltip as RechartsTooltip, Legend
 } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import {
   Target,
@@ -492,7 +493,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                       <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: '#94a3b8' }} stroke="#475569" />
                       <Radar name="Your Team" dataKey="A" stroke="#00f5d4" fill="#00f5d4" fillOpacity={0.35} animationDuration={1800} animationEasing="ease-out" />
                       <Radar name="League Avg" dataKey="leagueAvg" stroke="#64748b" fill="#64748b" fillOpacity={0.15} dot={false} />
-                      <Tooltip contentStyle={{ backgroundColor: '#1a1238', border: '1px solid #00f5d4', borderRadius: '12px', color: 'white', boxShadow: '0 0 20px rgba(0,245,212,0.3)' }} labelStyle={{ color: '#00f5d4' }} />
+                      <RechartsTooltip contentStyle={{ backgroundColor: '#1a1238', border: '1px solid #00f5d4', borderRadius: '12px', color: 'white', boxShadow: '0 0 20px rgba(0,245,212,0.3)' }} labelStyle={{ color: '#00f5d4' }} />
                       <Legend wrapperStyle={{ color: '#94a3b8' }} iconType="circle" />
                     </RadarChart>
                   </ResponsiveContainer>
@@ -932,40 +933,60 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             <div ref={chatEndRef} />
           </div>
 
-          <form onSubmit={handleChatSubmit} className="flex gap-3 items-center">
-            <input
-              value={chatInput || transcript}
-              onChange={(e) => setChatInput(e.target.value)}
-              placeholder="Ask anything... or hold mic to speak"
-              disabled={isListening || !selectedLeagueId}
-              className="flex-1 bg-[#1a1238] border border-cyan-800/50 rounded-xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 disabled:opacity-50"
-            />
-            <Button
-              type="button"
-              onClick={toggleListening}
-              disabled={!selectedLeagueId}
-              variant="outline"
-              className={`border ${isListening ? 'border-red-500 text-red-400 animate-pulse' : 'border-cyan-600 text-cyan-400'} hover:bg-cyan-950/50`}
-            >
-              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </Button>
-            <Button
-              type="submit"
-              disabled={chatLoading || (!chatInput.trim() && !transcript.trim()) || !selectedLeagueId}
-              className="bg-purple-600 hover:bg-purple-700 px-6"
-            >
-              {chatLoading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+          <form onSubmit={handleChatSubmit}>
+            <div className="flex gap-3 items-center">
+              <input
+                value={chatInput || transcript}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder={voiceSupported ? "Ask anything... or hold mic to speak" : "Ask anything..."}
+                className="flex-1 bg-[#1a1238] border border-cyan-800/50 rounded-xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 disabled:opacity-50"
+                disabled={isListening}
+              />
+
+              {voiceSupported ? (
+                <Button
+                  type="button"
+                  onClick={toggleListening}
+                  variant="outline"
+                  className={`border ${isListening ? 'border-red-500 text-red-400 animate-pulse' : 'border-cyan-600 text-cyan-400'} hover:bg-cyan-950/50 relative`}
+                  disabled={micPermissionDenied}
+                >
+                  {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                  {micPermissionDenied && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white" title="Mic access denied" />
+                  )}
+                </Button>
               ) : (
-                <Send className="h-5 w-5" />
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" disabled className="text-gray-500 cursor-not-allowed">
+                        <MicOff className="h-5 w-5" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Voice input not supported in this browser
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
-            </Button>
-          </form>
-          {isListening && transcript && (
-            <div className="text-sm text-cyan-300 mt-2 italic">
-              Listening: &quot;{transcript}&quot;
+
+              <Button type="submit" disabled={chatLoading || (!chatInput.trim() && !transcript.trim())} className="bg-purple-600 hover:bg-purple-700 px-6">
+                {chatLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <Send className="h-5 w-5" />
+                )}
+              </Button>
             </div>
-          )}
+
+            {isListening && transcript && (
+              <div className="text-sm text-cyan-300 mt-2 italic flex items-center gap-2">
+                <Mic className="h-4 w-4 animate-pulse" />
+                Listening: &quot;{transcript}&quot;
+              </div>
+            )}
+          </form>
         </CardContent>
       </Card>
 
