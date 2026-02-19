@@ -13,6 +13,7 @@ export type ValueVerdict = {
   sideATotalValue: number
   sideBTotalValue: number
   confidence: number
+  deterministicConfidence: number
   vetoRisk: 'None' | 'Low' | 'Moderate' | 'High'
   reasons: string[]
   warnings: string[]
@@ -400,6 +401,7 @@ export function formatTradeResponse(
       sideATotalValue: ctx.sideA.totalValue,
       sideBTotalValue: ctx.sideB.totalValue,
       confidence: gate.adjustedConfidence,
+      deterministicConfidence: gate.deterministicConfidence,
       vetoRisk: computeVetoRisk(ctx.valueDelta.percentageDiff),
       reasons: gate.filteredReasons,
       warnings,

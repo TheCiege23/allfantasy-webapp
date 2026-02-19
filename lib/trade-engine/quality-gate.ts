@@ -1,5 +1,6 @@
 import type { TradeDecisionContextV1 } from './trade-decision-context'
 import type { PeerReviewConsensus } from './trade-analysis-schema'
+import { buildDeterministicIntelligence, type DeterministicIntelligence } from './deterministic-intelligence'
 
 export type QualityViolation = {
   rule: string
@@ -12,10 +13,12 @@ export type QualityGateResult = {
   passed: boolean
   violations: QualityViolation[]
   adjustedConfidence: number
-  originalConfidence: number
+  deterministicConfidence: number
+  originalLLMConfidence: number
   filteredReasons: string[]
   filteredCounters: string[]
   filteredWarnings: string[]
+  deterministicIntelligence: DeterministicIntelligence
 }
 
 const CONFIDENCE_CEILING_BY_COVERAGE: [number, number][] = [
@@ -433,9 +436,10 @@ export function runQualityGate(
   consensus: PeerReviewConsensus,
   ctx: TradeDecisionContextV1
 ): QualityGateResult {
+  const deterministic = buildDeterministicIntelligence(ctx)
   const allViolations: QualityViolation[] = []
 
-  const { violations: confidenceViolations, ceiling } = checkConfidenceVsCompleteness(consensus.confidence, ctx)
+  const { violations: confidenceViolations, ceiling } = checkConfidenceVsCompleteness(deterministic.confidence, ctx)
   allViolations.push(...confidenceViolations)
 
   const { violations: phantomViolations, phantomReasonIdxs, phantomCounterIdxs, phantomWarningIdxs } =
@@ -446,33 +450,89 @@ export function runQualityGate(
 
   allViolations.push(...checkValuationBoundConflicts(consensus, ctx))
 
-  const filteredReasons = consensus.reasons.filter((_, i) => !phantomReasonIdxs.has(i))
-  const filteredCounters = consensus.counters.filter((_, i) => !phantomCounterIdxs.has(i))
-  let filteredWarnings = consensus.warnings.filter((_, i) => !phantomWarningIdxs.has(i))
+  const llmReasons = consensus.reasons.filter((_, i) => !phantomReasonIdxs.has(i))
+  const llmCounters = consensus.counters.filter((_, i) => !phantomCounterIdxs.has(i))
+  const llmWarnings = consensus.warnings.filter((_, i) => !phantomWarningIdxs.has(i))
 
-  if (filteredReasons.length === 0 && consensus.reasons.length > 0) {
+  if (llmReasons.length === 0 && consensus.reasons.length > 0) {
     allViolations.push({
       rule: 'all_reasons_filtered',
       severity: 'hard',
-      detail: `All ${consensus.reasons.length} reasons contained phantom asset references`,
-      adjustment: 'Severe confidence reduction — no valid reasoning survived quality gate',
+      detail: `All ${consensus.reasons.length} LLM reasons contained phantom asset references`,
+      adjustment: 'LLM reasoning discarded — deterministic reasons are primary',
     })
   }
 
-  let adjustedConfidence = consensus.confidence
+  let adjustedConfidence = deterministic.confidence
+
+  const llmDelta = consensus.confidence - deterministic.confidence
+  const peerVerdict = consensus.verdict
+  const detFavored = ctx.valueDelta.favoredSide
+  const peerFavorsA = peerVerdict === 'Team A' || peerVerdict === 'Slight edge to Team A'
+  const peerFavorsB = peerVerdict === 'Team B' || peerVerdict === 'Slight edge to Team B'
+  const peerEven = peerVerdict === 'Even'
+  const detEven = detFavored === 'Even'
+
+  const llmAgreesWithDet =
+    (detFavored === 'A' && peerFavorsA) ||
+    (detFavored === 'B' && peerFavorsB) ||
+    (detEven && peerEven)
+
+  const llmContradictsdet =
+    (detFavored === 'A' && peerFavorsB) ||
+    (detFavored === 'B' && peerFavorsA)
+
+  if (consensus.meta.consensusMethod === 'agreement' && llmAgreesWithDet) {
+    adjustedConfidence += Math.max(0, Math.min(Math.round(llmDelta * 0.3), 10))
+  } else if (llmContradictsdet) {
+    adjustedConfidence -= 8
+  } else if (consensus.meta.consensusMethod === 'disagreement') {
+    adjustedConfidence -= 5
+  }
 
   const hardViolations = allViolations.filter(v => v.severity === 'hard')
   const softViolations = allViolations.filter(v => v.severity === 'soft')
 
   for (const _v of hardViolations) {
-    adjustedConfidence = Math.max(adjustedConfidence - 20, 10)
+    adjustedConfidence = Math.max(adjustedConfidence - 15, 10)
   }
 
   for (const _v of softViolations) {
-    adjustedConfidence = Math.max(adjustedConfidence - 5, 10)
+    adjustedConfidence = Math.max(adjustedConfidence - 3, 10)
   }
 
   adjustedConfidence = Math.min(adjustedConfidence, ceiling)
+
+  const filteredReasons = [
+    ...deterministic.reasons,
+    ...llmReasons.filter(lr => {
+      const lrLower = lr.toLowerCase()
+      return !deterministic.reasons.some(dr => {
+        const drLower = dr.toLowerCase()
+        const drWords = new Set(drLower.split(/\s+/).filter(w => w.length > 3))
+        const overlap = lrLower.split(/\s+/).filter(w => drWords.has(w)).length
+        return overlap >= 4
+      })
+    }),
+  ]
+
+  const filteredCounters = [
+    ...deterministic.counterBaselines,
+    ...llmCounters.filter(lc => {
+      const lcLower = lc.toLowerCase()
+      return !deterministic.counterBaselines.some(dc =>
+        lcLower.includes(dc.toLowerCase().slice(0, 30))
+      )
+    }),
+  ]
+
+  let filteredWarnings = [
+    ...deterministic.warnings,
+    ...llmWarnings.filter(lw => {
+      const lwLower = lw.toLowerCase()
+      return !deterministic.warnings.some(dw => lwLower.includes(dw.toLowerCase().slice(0, 25)))
+    }),
+  ]
 
   for (const v of allViolations) {
     if (v.rule !== 'phantom_asset_reference') {
@@ -485,10 +545,12 @@ export function runQualityGate(
   return {
     passed,
     violations: allViolations,
-    adjustedConfidence: Math.round(adjustedConfidence),
-    originalConfidence: consensus.confidence,
-    filteredReasons: filteredReasons.length > 0 ? filteredReasons : ['Insufficient grounded data for detailed analysis'],
+    adjustedConfidence: Math.max(15, Math.min(90, Math.round(adjustedConfidence))),
+    deterministicConfidence: deterministic.confidence,
+    originalLLMConfidence: consensus.confidence,
+    filteredReasons: filteredReasons.length > 0 ? filteredReasons : ['Insufficient data for detailed analysis'],
     filteredCounters,
     filteredWarnings,
+    deterministicIntelligence: deterministic,
   }
 }

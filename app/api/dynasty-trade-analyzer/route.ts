@@ -94,11 +94,9 @@ export async function POST(req: Request) {
 
     const gate = runQualityGate(consensus, tradeContext)
 
-    if (gate.violations.length > 0) {
-      console.log(`[dynasty-trade-analyzer] Quality gate: ${gate.passed ? 'PASSED' : 'SOFT-FAIL'} | ${gate.violations.length} violations | conf ${gate.originalConfidence}→${gate.adjustedConfidence}`)
-      for (const v of gate.violations) {
-        console.log(`  [${v.severity}] ${v.rule}: ${v.detail}`)
-      }
+    console.log(`[dynasty-trade-analyzer] Quality gate: ${gate.passed ? 'PASSED' : 'SOFT-FAIL'} | det-conf=${gate.deterministicConfidence} llm-conf=${gate.originalLLMConfidence} → final=${gate.adjustedConfidence} | ${gate.violations.length} violations`)
+    for (const v of gate.violations) {
+      console.log(`  [${v.severity}] ${v.rule}: ${v.detail}`)
     }
 
     const verdictToWinner = consensus.verdict === 'Disagreement' ? 'Even' as const : consensus.verdict
@@ -123,7 +121,8 @@ export async function POST(req: Request) {
       peerReview: {
         verdict: consensus.verdict,
         confidence: gate.adjustedConfidence,
-        originalConfidence: gate.originalConfidence,
+        deterministicConfidence: gate.deterministicConfidence,
+        originalLLMConfidence: gate.originalLLMConfidence,
         reasons: gate.filteredReasons,
         counters: gate.filteredCounters,
         warnings: gate.filteredWarnings,
@@ -139,7 +138,8 @@ export async function POST(req: Request) {
           detail: v.detail,
           adjustment: v.adjustment,
         })),
-        confidenceOriginal: gate.originalConfidence,
+        deterministicConfidence: gate.deterministicConfidence,
+        originalLLMConfidence: gate.originalLLMConfidence,
         confidenceAdjusted: gate.adjustedConfidence,
       },
       stageA: {
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
         dataSources: tradeContext.dataSources,
       },
       meta: {
-        pipeline: '2-stage-v1-peer-review-gated',
+        pipeline: '2-stage-v2-deterministic-first',
         stageALatencyMs: stageALatency,
         stageBLatencyMs: stageBLatency,
         totalLatencyMs: stageALatency + stageBLatency,
