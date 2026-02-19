@@ -104,6 +104,19 @@ Output **strict JSON only** with this structure:
     "First thing to do right now",
     "Second priority action"
   ],
+  "radarProfile": {
+    "qbStrength": 0-100,
+    "rbDepth": 0-100,
+    "wrYouth": 0-100,
+    "tePremiumFit": 0-100,
+    "futureCapital": 0-100,
+    "contentionWindow": 0-100
+  },
+  "dynastyTimeline": [
+    { "year": "2026", "label": "What to focus on this year" },
+    { "year": "2027", "label": "Next year projection and advice" },
+    { "year": "2028", "label": "Long-term outlook and recommendations" }
+  ],
   "weeklyBrief": "A paragraph-length weekly game plan and lineup advice",
   "rosterMoves": "Specific roster construction recommendations, cuts, IR stashes",
   "waiverTargets": "Top waiver wire targets with reasoning for this team archetype",

@@ -1,7 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ResponsiveContainer, Tooltip, Legend
+} from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,6 +22,9 @@ import {
   AlertCircle,
   Sparkles,
   Download,
+  MessageSquare,
+  History,
+  Send,
 } from 'lucide-react';
 import TeamArchetypeBadge from './TeamArchetypeBadge';
 
@@ -27,6 +34,20 @@ interface StrategyInsight {
   description: string;
   priority: 'high' | 'medium' | 'low';
   action: string;
+}
+
+interface RadarProfile {
+  qbStrength: number;
+  rbDepth: number;
+  wrYouth: number;
+  tePremiumFit: number;
+  futureCapital: number;
+  contentionWindow: number;
+}
+
+interface TimelineEvent {
+  year: string;
+  label: string;
 }
 
 interface StrategyResponse {
@@ -41,10 +62,18 @@ interface StrategyResponse {
   keyInsights: StrategyInsight[];
   rosterGrade: string;
   immediateActions: string[];
+  radarProfile?: RadarProfile;
+  dynastyTimeline?: TimelineEvent[];
   weeklyBrief: string;
   rosterMoves: string;
   waiverTargets: string;
   longTermPlan: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 const priorityColors = {
@@ -53,12 +82,52 @@ const priorityColors = {
   low: 'bg-emerald-950/60 text-emerald-300 border-emerald-800/40',
 };
 
+function buildRadarData(profile?: RadarProfile) {
+  if (!profile) {
+    return [
+      { subject: 'QB Strength', A: 50, fullMark: 100 },
+      { subject: 'RB Depth', A: 50, fullMark: 100 },
+      { subject: 'WR Youth', A: 50, fullMark: 100 },
+      { subject: 'TE Premium', A: 50, fullMark: 100 },
+      { subject: 'Future Capital', A: 50, fullMark: 100 },
+      { subject: 'Contention', A: 50, fullMark: 100 },
+    ];
+  }
+  return [
+    { subject: 'QB Strength', A: profile.qbStrength, fullMark: 100 },
+    { subject: 'RB Depth', A: profile.rbDepth, fullMark: 100 },
+    { subject: 'WR Youth', A: profile.wrYouth, fullMark: 100 },
+    { subject: 'TE Premium', A: profile.tePremiumFit, fullMark: 100 },
+    { subject: 'Future Capital', A: profile.futureCapital, fullMark: 100 },
+    { subject: 'Contention', A: profile.contentionWindow, fullMark: 100 },
+  ];
+}
+
 export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState('outlook');
+  const [reportsHistory, setReportsHistory] = useState<any[]>([]);
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectedLeagueId) {
+      fetch(`/api/strategy/reports?leagueId=${selectedLeagueId}`)
+        .then(r => r.json())
+        .then(data => setReportsHistory(data.reports || []))
+        .catch(() => {});
+    }
+  }, [selectedLeagueId, strategy]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
 
   const handleGenerate = async () => {
     if (!selectedLeagueId) {
@@ -90,6 +159,86 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
     }
   };
 
+  const handleChatSubmit = useCallback(async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const trimmed = chatInput.trim();
+    if (!trimmed || chatLoading) return;
+
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+    };
+
+    const assistantMsg: ChatMessage = {
+      id: `assistant-${Date.now()}`,
+      role: 'assistant',
+      content: '',
+    };
+
+    setChatMessages(prev => [...prev, userMsg, assistantMsg]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const allMessages = [...chatMessages, userMsg].map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const res = await fetch('/api/strategy/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: allMessages,
+          leagueId: selectedLeagueId,
+          context: {
+            archetype: strategy?.archetype || 'Unknown',
+            score: strategy?.archetypeScore ?? 0,
+            rosterSummary: strategy?.overallStrategy || 'No report generated yet',
+            insights: strategy?.immediateActions?.join('; ') || 'No insights yet',
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Chat request failed');
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No stream reader');
+
+      const decoder = new TextDecoder();
+      let accumulated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+        const current = accumulated;
+        setChatMessages(prev =>
+          prev.map(m => m.id === assistantMsg.id ? { ...m, content: current } : m)
+        );
+      }
+    } catch (err) {
+      setChatMessages(prev =>
+        prev.map(m =>
+          m.id === assistantMsg.id
+            ? { ...m, content: 'Sorry, something went wrong. Please try again.' }
+            : m
+        )
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  }, [chatInput, chatLoading, chatMessages, selectedLeagueId, strategy]);
+
+  const loadHistoricalReport = (report: any) => {
+    if (report.content && typeof report.content === 'object' && !report.content.type) {
+      setStrategy(report.content as StrategyResponse);
+    }
+  };
+
   const exportPDF = async () => {
     const element = document.getElementById('strategy-report');
     if (!element) return;
@@ -104,6 +253,9 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
       console.error('PDF export failed:', err);
     }
   };
+
+  const radarData = buildRadarData(strategy?.radarProfile);
+  const timelineEvents = strategy?.dynastyTimeline || [];
 
   return (
     <div className="space-y-8">
@@ -129,7 +281,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             ) : (
               <>
                 <Sparkles className="mr-2 h-5 w-5" />
-                Generate My AI Strategy Report
+                Generate Full AI Strategy Report
               </>
             )}
           </Button>
@@ -172,13 +324,65 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
           animate={{ opacity: 1, y: 0 }}
           className="space-y-8"
         >
-          <div className="mb-6">
-            <TeamArchetypeBadge
-              archetype={strategy.archetype as any}
-              score={strategy.archetypeScore}
-              explanation={strategy.archetypeExplanation}
-            />
+          <div className="flex flex-col md:flex-row gap-8 items-start">
+            <div className="shrink-0">
+              <TeamArchetypeBadge
+                archetype={strategy.archetype as any}
+                score={strategy.archetypeScore}
+                explanation={strategy.archetypeExplanation}
+              />
+            </div>
+
+            <Card className="flex-1 bg-[#0f0a24]/70 border-cyan-900/30 backdrop-blur-md">
+              <CardHeader>
+                <CardTitle className="text-xl text-cyan-300">Team Radar Profile</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-80">
+                  <ResponsiveContainer>
+                    <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                      <PolarGrid stroke="#334155" />
+                      <PolarAngleAxis dataKey="subject" stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="#94a3b8" tick={{ fontSize: 10 }} />
+                      <Radar name="Your Team" dataKey="A" stroke="#00f5d4" fill="#00f5d4" fillOpacity={0.3} />
+                      <Tooltip contentStyle={{ background: '#1a1238', border: '1px solid #00f5d4', borderRadius: '8px' }} />
+                      <Legend />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
           </div>
+
+          {timelineEvents.length > 0 && (
+            <Card className="bg-gradient-to-r from-purple-950/40 to-cyan-950/40 border-none">
+              <CardHeader>
+                <CardTitle className="text-2xl text-amber-300">Your Dynasty Timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="relative">
+                  <div className="absolute left-1/2 transform -translate-x-1/2 h-full w-1 bg-cyan-800/50" />
+                  {timelineEvents.map((event, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: i % 2 === 0 ? -50 : 50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.3 }}
+                      className={`flex items-center mb-10 ${i % 2 === 0 ? 'justify-start' : 'justify-end'}`}
+                    >
+                      <div className={`w-5/12 p-6 rounded-xl bg-[#1a1238]/90 border border-cyan-800/50 ${i % 2 === 0 ? 'mr-auto' : 'ml-auto'}`}>
+                        <h4 className="text-xl font-bold text-cyan-300 mb-2">{event.year}</h4>
+                        <p className="text-gray-300">{event.label}</p>
+                      </div>
+                      <div className="absolute left-1/2 transform -translate-x-1/2 w-12 h-12 rounded-full bg-gradient-to-br from-cyan-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg z-10">
+                        {event.year.slice(-2)}
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
             <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 bg-[#1a1238]/70 backdrop-blur-lg border border-white/10 rounded-xl">
@@ -428,6 +632,101 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             </AnimatePresence>
           </Tabs>
         </motion.div>
+      )}
+
+      <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm">
+        <CardHeader>
+          <CardTitle className="text-2xl flex items-center gap-3">
+            <MessageSquare className="h-6 w-6 text-purple-400" />
+            Live Strategy Chat
+          </CardTitle>
+          <p className="text-gray-400 text-sm mt-1">
+            {strategy
+              ? `Chatting as ${strategy.archetype} (${strategy.archetypeScore}/100) — context loaded`
+              : 'Generate a report first for context-aware responses'}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="h-96 overflow-y-auto p-4 bg-black/40 rounded-xl border border-purple-900/30 space-y-4">
+            {chatMessages.length === 0 && (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-gray-500 text-center">
+                  Ask anything about your dynasty strategy, trade targets, or roster construction...
+                </p>
+              </div>
+            )}
+            {chatMessages.map((m) => (
+              <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[80%] p-4 rounded-2xl whitespace-pre-wrap ${
+                    m.role === 'user'
+                      ? 'bg-cyan-950/70 text-white'
+                      : 'bg-purple-950/70 text-gray-100'
+                  }`}
+                >
+                  {m.content || (chatLoading && m.role === 'assistant' ? (
+                    <span className="text-cyan-400 animate-pulse">Thinking...</span>
+                  ) : null)}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+
+          <form onSubmit={handleChatSubmit} className="flex gap-3">
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder={selectedLeagueId ? 'Ask anything about your dynasty strategy...' : 'Enter a League ID above first...'}
+              disabled={!selectedLeagueId}
+              className="flex-1 bg-[#1a1238] border border-cyan-800/50 rounded-xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 disabled:opacity-50"
+            />
+            <Button
+              type="submit"
+              disabled={chatLoading || !chatInput.trim() || !selectedLeagueId}
+              className="bg-purple-600 hover:bg-purple-700 px-6"
+            >
+              {chatLoading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {reportsHistory.length > 0 && (
+        <div>
+          <h3 className="text-xl font-semibold text-amber-300 mb-4 flex items-center gap-2">
+            <History className="h-5 w-5" /> Previous Strategy Reports
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {reportsHistory
+              .filter(r => !(r.content as any)?.type)
+              .map(r => (
+                <Card
+                  key={r.id}
+                  onClick={() => loadHistoricalReport(r)}
+                  className="bg-[#1a1238]/60 hover:bg-[#1a1238]/90 transition-colors cursor-pointer border-white/5 hover:border-cyan-800/40"
+                >
+                  <CardContent className="pt-6">
+                    <p className="font-medium text-white">{r.title}</p>
+                    {r.archetype && (
+                      <Badge variant="outline" className="mt-2 text-xs border-amber-800/40 text-amber-400">
+                        {r.archetype} ({r.score}/100)
+                      </Badge>
+                    )}
+                    <p className="text-sm text-gray-400 mt-2">
+                      {new Date(r.createdAt).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        </div>
       )}
     </div>
   );
