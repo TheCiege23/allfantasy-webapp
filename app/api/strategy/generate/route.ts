@@ -105,9 +105,9 @@ export async function POST(req: NextRequest) {
     "contentionWindow": 0-100
   },
   "dynastyTimeline": [
-    { "year": "2026", "label": "What to focus on this year" },
-    { "year": "2027", "label": "Next year projection and advice" },
-    { "year": "2028", "label": "Long-term outlook and recommendations" }
+    { "year": "2026", "label": "What to focus on this year", "subtext": "Brief tactical advice", "icon": "trophy" },
+    { "year": "2027", "label": "Next year projection and advice", "subtext": "Brief tactical advice", "icon": "shield" },
+    { "year": "2028", "label": "Long-term outlook and recommendations", "subtext": "Brief tactical advice", "icon": "refresh" }
   ],
   "weeklyBrief": "A paragraph-length weekly game plan and lineup advice",
   "rosterMoves": "Specific roster construction recommendations, cuts, IR stashes",

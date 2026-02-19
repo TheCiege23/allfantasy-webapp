@@ -26,6 +26,9 @@ import {
   History,
   Send,
   Clock,
+  Trophy,
+  Shield,
+  RefreshCw,
 } from 'lucide-react';
 import TeamArchetypeBadge from './TeamArchetypeBadge';
 
@@ -49,7 +52,15 @@ interface RadarProfile {
 interface TimelineEvent {
   year: string;
   label: string;
+  subtext?: string;
+  icon?: string;
 }
+
+const TIMELINE_ICONS: Record<string, React.ReactNode> = {
+  trophy: <Trophy className="h-5 w-5 text-amber-400" />,
+  shield: <Shield className="h-5 w-5 text-cyan-400" />,
+  refresh: <RefreshCw className="h-5 w-5 text-purple-400" />,
+};
 
 interface StrategyResponse {
   archetype: string;
@@ -438,7 +449,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                     </div>
                     <div className={`w-5/12 p-6 rounded-2xl backdrop-blur-md border border-cyan-800/40 ${i % 2 === 0 ? 'mr-auto' : 'ml-auto'} bg-[#1a1238]/90 shadow-[0_0_30px_-10px_#00f5d4]`}>
                       <h4 className="text-xl font-bold text-cyan-200 mb-3 flex items-center gap-2">
-                        {event.icon || <Sparkles className="h-5 w-5 text-amber-400" />}
+                        {(event.icon && TIMELINE_ICONS[event.icon]) || <Sparkles className="h-5 w-5 text-amber-400" />}
                         {event.year}
                       </h4>
                       <p className="text-gray-200 leading-relaxed">{event.label}</p>
