@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, CheckCircle2, AlertCircle, Loader2, Shield, Zap, History, Users, ChevronDown, ChevronUp, RefreshCw, Trophy, TrendingUp, BarChart3 } from 'lucide-react'
-import { fadeInUp, staggerContainer } from '@/components/motion/variants'
+import { fadeInUp, staggerContainer, buttonHover } from '@/components/motion/variants'
 
 type SleeperLeague = {
   league_id: string
@@ -329,8 +329,10 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                     className="flex-1 px-4 py-3 bg-[#1a1238]/80 border border-cyan-500/30 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-400 backdrop-blur-sm"
                   />
                   <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
+                    variants={buttonHover}
+                    initial="rest"
+                    whileHover="hover"
+                    whileTap="tap"
                     onClick={fetchSleeperLeagues}
                     disabled={loading}
                     className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-600 rounded-xl font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
@@ -442,8 +444,10 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                 <div className="mt-8 flex items-center justify-between">
                   <p className="text-gray-400">{selectedLeagues.size} league{selectedLeagues.size !== 1 ? 's' : ''} selected</p>
                   <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
+                    variants={buttonHover}
+                    initial="rest"
+                    whileHover="hover"
+                    whileTap="tap"
                     onClick={startTransfer}
                     disabled={selectedLeagues.size === 0}
                     className="px-8 py-4 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-2xl font-bold text-lg shadow-2xl shadow-purple-500/30 hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
@@ -557,16 +561,20 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
 
                 <div className="mt-8 flex justify-center gap-4">
                   <motion.a
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
+                    variants={buttonHover}
+                    initial="rest"
+                    whileHover="hover"
+                    whileTap="tap"
                     href="/af-legacy"
                     className="px-6 py-3 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-purple-500/20"
                   >
                     Go to AF Legacy Hub
                   </motion.a>
                   <motion.button
-                    whileHover={{ scale: 1.03 }}
-                    whileTap={{ scale: 0.97 }}
+                    variants={buttonHover}
+                    initial="rest"
+                    whileHover="hover"
+                    whileTap="tap"
                     onClick={() => { setStep('connect'); setLeagues([]); setSelectedLeagues(new Set()); setTransferResults([]); setPreviewData(null); setPreviewHistory(null); setStatus(null) }}
                     className="px-6 py-3 bg-white/10 border border-white/20 rounded-xl font-semibold hover:bg-white/15 transition-colors"
                   >
