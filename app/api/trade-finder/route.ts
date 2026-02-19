@@ -83,8 +83,8 @@ RESPONSE FORMAT:
       "whyItHelpsYou": string,
       "whyTheyAccept": string,
       "negotiationTip": string,
-      "confidence": "HIGH" | "MEDIUM" | "LEARNING",
-      "confidenceScore": number,
+      "confidence": number (0-100, how likely this trade gets accepted AND helps the user),
+      "winProbDelta": string (estimated short-term win probability change, e.g. "+12%", "-5%", or "neutral"),
       "riskFlags": string[],
       "fallbackAsset": string | null,
       "negotiation": {

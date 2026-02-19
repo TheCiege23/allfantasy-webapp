@@ -93,8 +93,8 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
           givesIds: rec.teamA?.gives?.map((a: any) => a.assetId) || [],
           receivesIds: rec.teamA?.receives?.map((a: any) => a.assetId) || [],
           reason: rec.whyItHelpsYou || rec.summary || rec.negotiationTip || '',
-          confidence: rec.confidence,
-          confidenceScore: rec.confidenceScore,
+          confidence: typeof rec.confidence === 'number' ? rec.confidence : rec.confidenceScore ?? null,
+          winProbDelta: rec.winProbDelta || null,
           negotiation: rec.negotiation,
         };
       });
@@ -236,16 +236,26 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                     <p>{trade.youGet}</p>
                   </div>
                 </div>
-                {trade.confidence && (
-                  <div className="text-xs">
-                    <span className={`font-medium ${
-                      trade.confidence === 'HIGH' ? 'text-green-400' :
-                      trade.confidence === 'MEDIUM' ? 'text-yellow-400' : 'text-gray-400'
-                    }`}>
-                      {trade.confidence} confidence
-                    </span>
-                    {trade.confidenceScore != null && (
-                      <span className="text-gray-500 ml-2">({trade.confidenceScore}/100)</span>
+                {(trade.confidence != null || trade.winProbDelta) && (
+                  <div className="flex items-center gap-3 text-xs">
+                    {trade.confidence != null && (
+                      <span className={`font-medium ${
+                        trade.confidence >= 75 ? 'text-green-400' :
+                        trade.confidence >= 50 ? 'text-yellow-400' :
+                        trade.confidence >= 25 ? 'text-orange-400' : 'text-gray-400'
+                      }`}>
+                        {trade.confidence}/100 confidence
+                      </span>
+                    )}
+                    {trade.winProbDelta && trade.winProbDelta !== 'neutral' && (
+                      <span className={`font-medium ${
+                        trade.winProbDelta.startsWith('+') ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {trade.winProbDelta} win prob
+                      </span>
+                    )}
+                    {trade.winProbDelta === 'neutral' && (
+                      <span className="text-gray-500 font-medium">neutral win prob</span>
                     )}
                   </div>
                 )}
