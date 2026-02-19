@@ -52,6 +52,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#22d3ee" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <Script id="sw-register" strategy="afterInteractive">
+          {`if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js'); }`}
+        </Script>
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17768764414"
           strategy="afterInteractive"
