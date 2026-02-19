@@ -4,14 +4,53 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search } from 'lucide-react'
 import { toast } from 'sonner'
 
-const EMOJIS = [
-  '👍', '❤️', '😂', '🔥', '😭', '🤯', '🙌', '💯',
-  '👀', '🤔', '😤', '🎉', '💪', '🤩', '😱', '🤬',
-  '🥳', '😎', '🤝', '👑',
-]
+const EMOJI_MAP: Record<string, string> = {
+  '👍': 'thumbs up like',
+  '❤️': 'heart love',
+  '😂': 'laugh cry funny',
+  '🔥': 'fire hot lit',
+  '😭': 'crying sad',
+  '🤯': 'mind blown shocked',
+  '🙌': 'hands celebrate',
+  '💯': 'hundred perfect',
+  '👀': 'eyes looking',
+  '🤔': 'thinking hmm',
+  '😤': 'angry mad steam',
+  '🎉': 'party celebrate tada',
+  '💪': 'muscle strong flex',
+  '🤩': 'star eyes wow',
+  '😱': 'scream shocked',
+  '🤬': 'cursing angry swear',
+  '🥳': 'party celebrate birthday',
+  '😎': 'cool sunglasses',
+  '🤝': 'handshake deal',
+  '👑': 'crown king queen',
+  '🏀': 'basketball ball',
+  '🏆': 'trophy winner champion',
+  '💀': 'skull dead',
+  '🤡': 'clown joke',
+  '🧠': 'brain smart galaxy',
+  '📈': 'chart up stonks',
+  '📉': 'chart down crash',
+  '🗑️': 'trash garbage',
+  '💰': 'money bag rich',
+  '🎯': 'target bullseye',
+  '⭐': 'star favorite',
+  '🚀': 'rocket moon launch',
+  '🐐': 'goat greatest',
+  '💎': 'diamond gem',
+  '🤷': 'shrug whatever idk',
+  '😏': 'smirk sly',
+  '🥶': 'cold freezing ice',
+  '🫡': 'salute respect',
+  '🧊': 'ice cube cold',
+  '💩': 'poop crap',
+}
+
+const ALL_EMOJIS = Object.keys(EMOJI_MAP)
 
 type Reaction = { emoji: string; userId: string }
 
@@ -51,6 +90,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
   const [lastSent, setLastSent] = useState(0)
   const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const [emojiSearch, setEmojiSearch] = useState('')
   const typingTimeout = useRef<NodeJS.Timeout>()
   const lastTypingPing = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -311,23 +351,49 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                 </div>
 
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 flex-shrink-0">
-                  <Popover>
+                  <Popover onOpenChange={(o) => { if (!o) setEmojiSearch('') }}>
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-7 w-7 text-gray-400 hover:text-cyan-400">
                         <Smile className="h-4 w-4" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-3 bg-gray-950 border border-gray-800" side="left" align="start">
-                      <div className="grid grid-cols-5 gap-2">
-                        {EMOJIS.map(emoji => (
-                          <button
-                            key={emoji}
-                            onClick={() => toggleReaction(msg.id, emoji)}
-                            className="text-xl hover:scale-125 transition-transform p-1 rounded hover:bg-gray-800"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
+                    <PopoverContent className="w-72 p-3 bg-gray-950 border border-gray-800 shadow-2xl" side="left" align="start">
+                      <div className="relative mb-3">
+                        <Input
+                          placeholder="Search emojis..."
+                          value={emojiSearch}
+                          onChange={e => setEmojiSearch(e.target.value)}
+                          className="pl-9 bg-gray-900 border-gray-700 text-white placeholder:text-gray-500 h-8 text-sm"
+                        />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500" />
+                      </div>
+                      <div className="max-h-48 overflow-y-auto">
+                        {(() => {
+                          const q = emojiSearch.toLowerCase().trim()
+                          const filtered = q
+                            ? ALL_EMOJIS.filter(e => e.includes(q) || EMOJI_MAP[e].includes(q))
+                            : ALL_EMOJIS
+                          if (filtered.length === 0) {
+                            return <div className="text-center text-gray-500 text-sm py-6">No emojis found</div>
+                          }
+                          return (
+                            <div className="grid grid-cols-8 gap-1">
+                              {filtered.map(emoji => (
+                                <button
+                                  key={emoji}
+                                  onClick={() => {
+                                    toggleReaction(msg.id, emoji)
+                                    setEmojiSearch('')
+                                  }}
+                                  className="text-xl hover:scale-125 transition-transform duration-150 p-1 rounded hover:bg-gray-800"
+                                  title={EMOJI_MAP[emoji]}
+                                >
+                                  {emoji}
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        })()}
                       </div>
                     </PopoverContent>
                   </Popover>
