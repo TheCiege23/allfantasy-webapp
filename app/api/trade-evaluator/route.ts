@@ -29,6 +29,9 @@ import { logNarrativeValidation } from '@/lib/trade-engine/narrative-validation-
 import { detectTradeLabels, getPositiveLabels, getWarningLabels, TradeAsset, TradeLabel } from '@/lib/trade-labels'
 import { evaluateVeto, VetoResult } from '@/lib/trade-veto'
 import { buildLeagueDecisionContext, summarizeLeagueDecisionContext, LeagueDecisionContext } from '@/lib/league-decision-context'
+import { buildUnifiedTradeContext, summarizeUnifiedContext, type LegacyAssetInput } from '@/lib/trade-engine/unified-context'
+import { computeDataCoverageTier } from '@/lib/trade-engine/trade-decision-context'
+import type { TradeDecisionContextV1 } from '@/lib/trade-engine/trade-decision-context'
 import { getLeagueInfo, getLeagueRosters, getTradedDraftPicks, getAllPlayers } from '@/lib/sleeper-client'
 import { attachPlayerMediaBatch } from '@/lib/player-media'
 
@@ -699,6 +702,77 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
       })),
     ]
 
+    let canonicalContext: TradeDecisionContextV1 | null = null
+    try {
+      const mapToLegacyAsset = (
+        names: string[],
+        prices: PricedAsset[],
+        players: any[],
+        type: 'PLAYER' | 'PICK',
+      ): LegacyAssetInput[] =>
+        names.map((name, i) => {
+          const p = typeof players[i] === 'object' ? players[i] : {}
+          return {
+            name,
+            type,
+            position: p.position || prices[i]?.position || 'UNKNOWN',
+            age: p.age ?? null,
+            team: p.team ?? null,
+            value: compositeScore(prices[i].assetValue),
+            impactValue: prices[i].assetValue.impactValue,
+            vorpValue: prices[i].assetValue.vorpValue,
+            volatility: prices[i].assetValue.volatility,
+            valuedAt: new Date().toISOString(),
+          }
+        })
+
+      const sideALegacyAssets: LegacyAssetInput[] = [
+        ...mapToLegacyAsset(senderPlayerNames, senderPlayerPrices, data.sender.gives_players, 'PLAYER'),
+        ...senderPicksData.map((p, i) => ({
+          name: p.label,
+          type: 'PICK' as const,
+          position: 'PICK',
+          value: compositeScore(senderPickPrices[i].assetValue),
+          impactValue: senderPickPrices[i].assetValue.impactValue,
+          vorpValue: senderPickPrices[i].assetValue.vorpValue,
+          volatility: senderPickPrices[i].assetValue.volatility,
+        })),
+      ]
+
+      const sideBLegacyAssets: LegacyAssetInput[] = [
+        ...mapToLegacyAsset(receiverPlayerNames, receiverPlayerPrices, data.receiver.gives_players, 'PLAYER'),
+        ...receiverPicksData.map((p, i) => ({
+          name: p.label,
+          type: 'PICK' as const,
+          position: 'PICK',
+          value: compositeScore(receiverPickPrices[i].assetValue),
+          impactValue: receiverPickPrices[i].assetValue.impactValue,
+          vorpValue: receiverPickPrices[i].assetValue.vorpValue,
+          volatility: receiverPickPrices[i].assetValue.volatility,
+        })),
+      ]
+
+      canonicalContext = buildUnifiedTradeContext({
+        legacyContext: leagueDecisionCtx,
+        sideATeamId: data.sender.team_id,
+        sideBTeamId: data.receiver.team_id,
+        sideAName: data.sender.manager_name,
+        sideBName: data.receiver.manager_name,
+        sideAAssets: sideALegacyAssets,
+        sideBAssets: sideBLegacyAssets,
+        leagueConfig: {
+          leagueId: data.league_id,
+          leagueName: data.league?.scoring_summary || 'League',
+          scoringType: data.league?.scoring_summary || 'ppr',
+          isSF,
+          isTEP: data.league?.scoring_summary?.toLowerCase().includes('te premium') || false,
+        },
+        valuationFetchedAt: new Date().toISOString(),
+      })
+    } catch (ctxErr) {
+      console.warn('[TradeEval] Canonical context build failed (non-blocking):', (ctxErr as Error)?.message)
+    }
+
     const calWeights = await getCalibratedWeights()
     const isTEP = data.league?.scoring_summary?.toLowerCase().includes('te premium') || false
 
@@ -978,6 +1052,24 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
 
     if (!structuredValidation.success) {
       console.error('Structured AI response validation failed:', structuredValidation.error.errors)
+      let partialCanonicalMeta: Record<string, any> | undefined
+      if (canonicalContext) {
+        const coverage = computeDataCoverageTier(
+          canonicalContext.dataQuality,
+          canonicalContext.missingData,
+          canonicalContext.sourceFreshness,
+        )
+        partialCanonicalMeta = {
+          contextId: canonicalContext.contextId,
+          dataFreshness: canonicalContext.sourceFreshness ? {
+            compositeGrade: canonicalContext.sourceFreshness.compositeGrade,
+            compositeScore: canonicalContext.sourceFreshness.compositeScore,
+            warnings: canonicalContext.sourceFreshness.warnings,
+          } : null,
+          dataCoverage: { tier: coverage.tier, score: coverage.score, badge: coverage.badge },
+        }
+      }
+
       return NextResponse.json({
         success: true,
         evaluation: parsed,
@@ -990,6 +1082,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
         valuationReport: structuredPayload.valuationReport,
         serverConfidence: { score: computedConfidenceScore, factors: confidenceInputs },
         acceptProbability: acceptProbData,
+        ...(partialCanonicalMeta && { canonicalContext: partialCanonicalMeta }),
       })
     }
 
@@ -1145,6 +1238,39 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
       scoringType: isTEP ? 'TEP' : 'PPR',
     }).catch(() => {})
 
+    let canonicalContextMeta: Record<string, any> | undefined
+    if (canonicalContext) {
+      const coverage = computeDataCoverageTier(
+        canonicalContext.dataQuality,
+        canonicalContext.missingData,
+        canonicalContext.sourceFreshness,
+      )
+      canonicalContextMeta = {
+        contextId: canonicalContext.contextId,
+        version: canonicalContext.version,
+        dataFreshness: canonicalContext.sourceFreshness ? {
+          compositeGrade: canonicalContext.sourceFreshness.compositeGrade,
+          compositeScore: canonicalContext.sourceFreshness.compositeScore,
+          sources: {
+            rosters: { grade: canonicalContext.sourceFreshness.rosters.grade, age: canonicalContext.sourceFreshness.rosters.ageLabel },
+            valuations: { grade: canonicalContext.sourceFreshness.valuations.grade, age: canonicalContext.sourceFreshness.valuations.ageLabel },
+            injuries: { grade: canonicalContext.sourceFreshness.injuries.grade, age: canonicalContext.sourceFreshness.injuries.ageLabel },
+            adp: { grade: canonicalContext.sourceFreshness.adp.grade, age: canonicalContext.sourceFreshness.adp.ageLabel },
+            analytics: { grade: canonicalContext.sourceFreshness.analytics.grade, age: canonicalContext.sourceFreshness.analytics.ageLabel },
+            tradeHistory: { grade: canonicalContext.sourceFreshness.tradeHistory.grade, age: canonicalContext.sourceFreshness.tradeHistory.ageLabel },
+          },
+          warnings: canonicalContext.sourceFreshness.warnings,
+        } : null,
+        dataCoverage: {
+          tier: coverage.tier,
+          score: coverage.score,
+          badge: coverage.badge,
+          dimensions: coverage.dimensions,
+        },
+        dataQuality: canonicalContext.dataQuality,
+      }
+    }
+
     return NextResponse.json({
       success: true,
       evaluation: evalData,
@@ -1157,6 +1283,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-evaluator", tool: "Trad
       serverConfidence: { score: computedConfidenceScore, factors: confidenceInputs },
       acceptProbability: acceptProbData,
       ...(negotiationToolkit && { negotiationToolkit }),
+      ...(canonicalContextMeta && { canonicalContext: canonicalContextMeta }),
     })
   } catch (error) {
     console.error('Trade evaluator error:', error)

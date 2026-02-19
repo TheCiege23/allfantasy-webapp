@@ -12,6 +12,7 @@ import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search, Download, 
 import { Skeleton } from '@/components/ui/legacy-ui';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
 import { useAI } from '@/hooks/useAI';
+import TradeAnalysisBadges from '@/components/TradeAnalysisBadges';
 
 type Player = {
   id: string;
@@ -37,6 +38,26 @@ interface TradeResult {
   recommendations?: string[];
 }
 
+interface CanonicalContextMeta {
+  contextId?: string;
+  dataFreshness?: {
+    compositeGrade: string;
+    compositeScore: number;
+    sources?: Record<string, { grade: string; age: string }>;
+    warnings?: string[];
+  } | null;
+  dataCoverage?: {
+    tier: 'FULL' | 'PARTIAL' | 'MINIMAL';
+    score: number;
+    badge: { label: string; description: string; color: 'green' | 'yellow' | 'red' };
+    dimensions?: {
+      assetCoverage?: { score: number; detail: string };
+      sourceFreshness?: { score: number; detail: string };
+      dataCompleteness?: { score: number; detail: string };
+    };
+  } | null;
+}
+
 interface TradeSections {
   valueVerdict: {
     fairnessGrade: string;
@@ -50,6 +71,19 @@ interface TradeSections {
     vetoRisk: string;
     reasons: string[];
     warnings: string[];
+    dataFreshness?: {
+      staleSourceCount: number;
+      staleSources: string[];
+    };
+    dataCoverage?: CanonicalContextMeta['dataCoverage'];
+    disagreement?: {
+      winnerMismatch: boolean;
+      confidenceSpread: number;
+      keyDifferences: string[];
+      reviewMode: boolean;
+    };
+    disagreementCodes?: string[];
+    disagreementDetails?: string;
   };
   viabilityVerdict: {
     acceptanceLikelihood: string;
@@ -89,7 +123,7 @@ interface PlayerValue {
 }
 
 export default function DynastyTradeForm() {
-  const { callAI, loading } = useAI<{ analysis: TradeResult; sections: TradeSections }>();
+  const { callAI, loading } = useAI<{ analysis: TradeResult; sections: TradeSections; canonicalContext?: CanonicalContextMeta }>();
 
   const [teamAName, setTeamAName] = useState('Team A');
   const [teamBName, setTeamBName] = useState('Team B');
@@ -100,6 +134,7 @@ export default function DynastyTradeForm() {
   const [leagueContext, setLeagueContext] = useState('12-team SF PPR dynasty');
   const [result, setResult] = useState<TradeResult | null>(null);
   const [sections, setSections] = useState<TradeSections | null>(null);
+  const [canonicalCtx, setCanonicalCtx] = useState<CanonicalContextMeta | null>(null);
   const [playerValues, setPlayerValues] = useState<Record<string, PlayerValue>>({});
   const [valueLookupLoading, setValueLookupLoading] = useState<string | null>(null);
 
@@ -218,6 +253,9 @@ export default function DynastyTradeForm() {
       if (data.sections) {
         setSections(data.sections);
       }
+      if (data.canonicalContext) {
+        setCanonicalCtx(data.canonicalContext);
+      }
     }
   }
 
@@ -301,6 +339,7 @@ export default function DynastyTradeForm() {
     setLeagueContext('12-team SF PPR dynasty');
     setResult(null);
     setSections(null);
+    setCanonicalCtx(null);
     setPlayerValues({});
     setValueLookupLoading(null);
     localStorage.removeItem('dynastyTrade');
@@ -559,6 +598,13 @@ export default function DynastyTradeForm() {
                 <span>{teamAName}: <span className="text-white font-mono">{sections.valueVerdict.sideATotalValue.toLocaleString()}</span></span>
                 <span>{teamBName}: <span className="text-white font-mono">{sections.valueVerdict.sideBTotalValue.toLocaleString()}</span></span>
               </div>
+
+              <TradeAnalysisBadges
+                dataFreshness={canonicalCtx?.dataFreshness}
+                dataCoverage={canonicalCtx?.dataCoverage ?? sections.valueVerdict.dataCoverage}
+                disagreement={sections.valueVerdict.disagreement}
+                disagreementCodes={sections.valueVerdict.disagreementCodes}
+              />
 
               {sections.valueVerdict.reasons.length > 0 && (
                 <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
