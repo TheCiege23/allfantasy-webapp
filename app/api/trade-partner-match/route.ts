@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
+import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client';
 
 export async function GET(req: Request) {
   const session = (await getServerSession(authOptions as any)) as {
@@ -14,6 +15,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const leagueId = searchParams.get('leagueId');
+  const strategy = searchParams.get('strategy') || 'balanced';
 
   if (!leagueId) {
     return NextResponse.json({ error: 'leagueId required' }, { status: 400 });
@@ -63,6 +65,22 @@ export async function GET(req: Request) {
       return counts;
     };
 
+    const summarizeRoster = (roster: any): string => {
+      if (!roster?.players) return 'No roster data';
+      const players: any[] = Array.isArray(roster.players) ? roster.players : [];
+      const byPos: Record<string, string[]> = {};
+      for (const p of players) {
+        const pos = (p.position || p.pos || 'UNKNOWN').toUpperCase();
+        const name = p.name || p.fullName || p.playerName || 'Unknown';
+        const age = p.age ? ` (${p.age})` : '';
+        if (!byPos[pos]) byPos[pos] = [];
+        byPos[pos].push(`${name}${age}`);
+      }
+      return Object.entries(byPos)
+        .map(([pos, names]) => `${pos}: ${names.join(', ')}`)
+        .join(' | ');
+    };
+
     const detectNeeds = (counts: Record<string, number>): string[] => {
       const thresholds: Record<string, number> = { QB: 1, RB: 3, WR: 3, TE: 1, K: 1, DEF: 1 };
       const needs: string[] = [];
@@ -91,7 +109,7 @@ export async function GET(req: Request) {
 
     const otherTeams = teams.filter((t: any) => t.id !== userTeam.id);
 
-    const matches = otherTeams
+    const deterministicMatches = otherTeams
       .map((team: any) => {
         const teamCounts = positionCounts(team.legacyRoster);
         const teamNeeds = detectNeeds(teamCounts);
@@ -120,10 +138,73 @@ export async function GET(req: Request) {
           yourOffer,
           theirOffer,
           matchScore,
+          rosterSummary: summarizeRoster(team.legacyRoster),
         };
       })
       .filter((m) => m.matchScore > 40)
       .sort((a, b) => b.matchScore - a.matchScore);
+
+    const strategyDesc: Record<string, string> = {
+      'win-now': 'User is in WIN NOW mode — prioritize acquiring proven weekly starters, aging vets with upside, and players on contending NFL teams.',
+      'rebuild': 'User is REBUILDING — prioritize acquiring young players (24 and under), future draft picks, and high-upside prospects.',
+      'balanced': 'User wants BALANCED improvements — mix of win-now pieces and future assets, no extreme moves.',
+    };
+
+    const userRosterSummary = summarizeRoster(userTeam.legacyRoster);
+
+    const topCandidates = deterministicMatches.slice(0, 8);
+
+    let aiEnriched: any[] = deterministicMatches;
+
+    if (topCandidates.length > 0) {
+      try {
+        const prompt = `You are a fantasy football trade partner analyst.
+
+User strategy: ${strategyDesc[strategy] || strategyDesc.balanced}
+User roster: ${userRosterSummary}
+User strengths: ${userStrengths.join(', ') || 'None detected'}
+User needs: ${userNeeds.join(', ') || 'None detected'}
+
+Below are candidate trade partners from the league with their rosters and deterministic match data.
+Pick the best 4-6 partners. For each, provide:
+- teamName (exact match from input)
+- needs: what positions they need (string array)
+- yourOffer: specific description of what the user could offer them
+- theirOffer: specific description of what they could offer the user
+- matchScore: 0-100 reflecting true trade compatibility
+- tradeAngle: 1-2 sentence explanation of why this pairing works
+
+Candidates:
+${topCandidates.map(c => `${c.teamName} (${c.record}): Needs ${c.needs.join(', ') || 'unclear'}, Strengths: ${c.strengths.join(', ') || 'unclear'}, Roster: ${c.rosterSummary}`).join('\n')}
+
+Return ONLY a JSON array of partner objects. No markdown, no commentary.`;
+
+        const completion = await openaiChatJson({
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.4,
+        });
+
+        const parsed = parseJsonContentFromChatCompletion(completion);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          aiEnriched = parsed.map((p: any) => {
+            const det = deterministicMatches.find(d => d.teamName === p.teamName);
+            return {
+              teamId: det?.teamId || '',
+              teamName: p.teamName || det?.teamName || 'Unknown',
+              record: det?.record || '',
+              needs: Array.isArray(p.needs) ? p.needs : det?.needs || [],
+              strengths: det?.strengths || [],
+              yourOffer: p.yourOffer || det?.yourOffer || '',
+              theirOffer: p.theirOffer || det?.theirOffer || '',
+              matchScore: typeof p.matchScore === 'number' ? p.matchScore : det?.matchScore || 50,
+              tradeAngle: p.tradeAngle || '',
+            };
+          }).sort((a: any, b: any) => b.matchScore - a.matchScore);
+        }
+      } catch (aiErr) {
+        console.warn('[trade-partner-match] AI enrichment failed, using deterministic results:', aiErr);
+      }
+    }
 
     return NextResponse.json({
       userTeam: {
@@ -131,7 +212,7 @@ export async function GET(req: Request) {
         needs: userNeeds,
         strengths: userStrengths,
       },
-      matches,
+      matches: aiEnriched.slice(0, 6),
     });
   } catch (err) {
     console.error('[trade-partner-match] Error:', err);

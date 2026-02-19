@@ -10,6 +10,7 @@ type Match = {
   theirOffer: string;
   matchScore: number;
   record: string;
+  tradeAngle?: string;
 };
 
 export default function PartnerMatchView({ leagueId, strategy }: { leagueId: string; strategy: string }) {
@@ -101,10 +102,15 @@ export default function PartnerMatchView({ leagueId, strategy }: { leagueId: str
               <TrendingUp className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
               <span>You could offer: {match.yourOffer}</span>
             </div>
-            <div className="flex items-start gap-1.5 text-sm text-purple-300 border-t border-gray-800 pt-2">
+            <div className="flex items-start gap-1.5 text-sm text-purple-300">
               <ArrowRightLeft className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
               <span>They could offer: {match.theirOffer}</span>
             </div>
+            {match.tradeAngle && (
+              <p className="text-xs text-gray-400 border-t border-gray-800 pt-2 italic">
+                {match.tradeAngle}
+              </p>
+            )}
           </CardContent>
         </Card>
       ))}
