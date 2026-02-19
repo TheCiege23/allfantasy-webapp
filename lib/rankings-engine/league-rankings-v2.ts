@@ -626,13 +626,32 @@ function computeAgeAdjustedMarketValue(
     }
     if (playerInjuryMap) {
       const profile = playerInjuryMap.get(pid)
-      if (profile && profile.effectiveSeverity > 0.1) {
-        const certaintyFactor = 1 - profile.uncertainty * 0.3
-        const discount = profile.effectiveSeverity * certaintyFactor
-        if (isDynasty) {
-          val = val * (1 - discount * 0.25)
+      if (profile && profile.effectiveSeverity > 0.05) {
+        const recency = profile.recencyDecay
+        const sev = profile.severity
+        const eff = profile.effectiveSeverity
+        const unc = profile.uncertainty
+
+        const certaintyWeight = 1 - unc * 0.35
+        const recencyAmplifier = 0.5 + 0.5 * recency
+
+        let baseDiscount: number
+        if (sev >= 0.90) {
+          baseDiscount = isDynasty ? 0.15 : 0.70
+        } else if (sev >= 0.60) {
+          baseDiscount = isDynasty ? 0.10 : 0.45
+        } else if (sev >= 0.25) {
+          baseDiscount = isDynasty ? 0.06 : 0.25
         } else {
+          baseDiscount = isDynasty ? 0.02 : 0.10
+        }
+
+        const discount = baseDiscount * eff * certaintyWeight * recencyAmplifier
+
+        if (isDynasty && sev >= 0.90 && recency >= 0.80) {
           val = val * (1 - discount * 0.60)
+        } else {
+          val = val * (1 - discount)
         }
       }
     }
@@ -823,6 +842,7 @@ interface RosterInjuryImpact {
   powerHealthRatio: number
   marketDiscount: number
   riskConcentration: number
+  uncertaintyVolatility: number
   injuryProfiles: PlayerInjuryProfile[]
   byPlayerId: Map<string, PlayerInjuryProfile>
 }
@@ -891,8 +911,33 @@ function computePowerScore(
   const sbSplit = params?.starterBenchSplit ?? (isDynasty ? 0.70 : 0.80)
   const rawWeighted = sbSplit * starterP + (1 - sbSplit) * benchP
   const injInfluence = params?.injuryInfluence ?? 0.30
-  const healthMultiplier = (1 - injInfluence) + injInfluence * injuryImpact.powerHealthRatio
-  const riskPenalty = 1 - 0.05 * injuryImpact.riskConcentration
+
+  let starterPowerDrag = 0
+  let starterTotalValue = 0
+  let uncertaintyDrag = 0
+
+  for (const p of injuryImpact.injuryProfiles) {
+    if (!p.isStarter) continue
+    starterTotalValue += p.playerValue
+
+    const recencyWeight = p.recencyDecay
+    const severityDrag = p.effectiveSeverity * recencyWeight
+    const uncertaintyPenalty = p.uncertainty * p.effectiveSeverity * 0.12
+    starterPowerDrag += p.playerValue * (severityDrag - uncertaintyPenalty)
+    uncertaintyDrag += p.playerValue * p.uncertainty * p.effectiveSeverity * 0.08
+  }
+
+  const healthRatio = starterTotalValue > 0
+    ? clamp01(1 - starterPowerDrag / starterTotalValue)
+    : injuryImpact.powerHealthRatio
+
+  const healthMultiplier = (1 - injInfluence) + injInfluence * healthRatio
+
+  const uncertaintyVolatility = starterTotalValue > 0
+    ? clamp01(uncertaintyDrag / starterTotalValue)
+    : 0
+  const riskPenalty = 1 - 0.05 * injuryImpact.riskConcentration - 0.03 * uncertaintyVolatility
+
   const adjusted = rawWeighted * healthMultiplier * riskPenalty
   return Math.round(100 * clamp01(adjusted))
 }
@@ -1021,7 +1066,7 @@ function computeRosterInjuryImpact(
 ): RosterInjuryImpact {
   const starters = new Set(roster.starters || [])
   const allPlayers = roster.players || []
-  if (allPlayers.length === 0) return { powerHealthRatio: 0.5, marketDiscount: 0, riskConcentration: 0, injuryProfiles: [], byPlayerId: new Map() }
+  if (allPlayers.length === 0) return { powerHealthRatio: 0.5, marketDiscount: 0, riskConcentration: 0, uncertaintyVolatility: 0, injuryProfiles: [], byPlayerId: new Map() }
 
   const nowMs = Date.now()
   const profiles: PlayerInjuryProfile[] = []
@@ -1040,6 +1085,8 @@ function computeRosterInjuryImpact(
   let totalMarketValue = 0
   let injuredMarketValue = 0
   let highValueInjuredCount = 0
+  let uncertaintyWeightedSum = 0
+  let injuredPlayerWeight = 0
 
   for (const p of profiles) {
     if (p.isStarter) {
@@ -1054,6 +1101,8 @@ function computeRosterInjuryImpact(
     if (p.effectiveSeverity > 0.1) {
       const marketPenalty = p.effectiveSeverity * (1 - p.uncertainty * 0.3)
       injuredMarketValue += p.playerValue * marketPenalty
+      uncertaintyWeightedSum += p.playerValue * p.uncertainty * p.effectiveSeverity
+      injuredPlayerWeight += p.playerValue * p.effectiveSeverity
     }
 
     if (p.effectiveSeverity > 0.5 && p.playerValue > 50) {
@@ -1071,7 +1120,11 @@ function computeRosterInjuryImpact(
 
   const riskConcentration = Math.min(1, highValueInjuredCount / 3)
 
-  return { powerHealthRatio, marketDiscount, riskConcentration, injuryProfiles: profiles, byPlayerId }
+  const uncertaintyVolatility = injuredPlayerWeight > 0
+    ? clamp01(uncertaintyWeightedSum / injuredPlayerWeight)
+    : 0
+
+  return { powerHealthRatio, marketDiscount, riskConcentration, uncertaintyVolatility, injuryProfiles: profiles, byPlayerId }
 }
 
 async function fetchDbInjuryMap(playerNames: string[]): Promise<Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }>> {
@@ -1195,6 +1248,13 @@ function computeTeamDataQuality(
   if (injuredStarterCount >= 3) {
     confidence -= 5
     signals.push(`${injuredStarterCount} injured starters add uncertainty`)
+  }
+
+  if (rosterInjuryImpact.uncertaintyVolatility > 0.4) {
+    confidence -= 3
+    signals.push('High injury uncertainty — multiple Questionable/Doubtful players')
+  } else if (rosterInjuryImpact.uncertaintyVolatility > 0.2) {
+    confidence -= 1
   }
 
   confidence = Math.max(10, Math.min(100, confidence))
