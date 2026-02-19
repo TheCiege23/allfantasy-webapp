@@ -218,34 +218,7 @@ export default function AdminLayout({
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-white" data-mode="dark" style={{
-      '--bg': '#000000',
-      '--panel': '#0A0A0A',
-      '--panel2': '#141414',
-      '--border': 'rgba(255,255,255,0.10)',
-      '--text': 'rgba(255,255,255,0.92)',
-      '--muted': 'rgba(255,255,255,0.68)',
-      '--muted2': 'rgba(255,255,255,0.48)',
-      '--accent': '#7C3AED',
-      '--accent-cyan': '#67e8f9',
-      '--accent-cyan-strong': '#22d3ee',
-      '--accent-emerald': '#6ee7b7',
-      '--accent-emerald-strong': '#34d399',
-      '--accent-amber': '#fcd34d',
-      '--accent-amber-strong': '#f59e0b',
-      '--accent-red': '#fca5a5',
-      '--accent-red-strong': '#ef4444',
-      '--accent-purple': '#c084fc',
-      '--heading-from': '#67e8f9',
-      '--heading-via': '#ffffff',
-      '--heading-to': '#d8b4fe',
-      '--subtle-bg': 'rgba(255,255,255,0.1)',
-      '--badge-text-amber': '#fde68a',
-      '--badge-text-cyan': '#a5f3fc',
-      '--badge-text-emerald': '#a7f3d0',
-      '--badge-text-red': '#fecaca',
-      '--on-accent-bg': '#000000',
-    } as React.CSSProperties}>
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       <div className="fixed inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-cyan-950/20 pointer-events-none" />
       
       <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
