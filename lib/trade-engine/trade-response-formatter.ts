@@ -1,4 +1,4 @@
-import type { TradeDecisionContextV1 } from './trade-decision-context'
+import type { TradeDecisionContextV1, AssetValuation, PlayerRiskMarker } from './trade-decision-context'
 import type { PeerReviewConsensus, DisagreementBlock } from './trade-analysis-schema'
 import type { QualityGateResult, ConditionalRecommendation } from './quality-gate'
 
@@ -27,6 +27,36 @@ export type ValueVerdict = {
   disagreement: DisagreementBlock
 }
 
+export type RankingsImpact = {
+  sideARankDelta: number
+  sideBRankDelta: number
+  sideAProjectedTier: string
+  sideBProjectedTier: string
+  leaguePositionSignal: string
+  details: string[]
+}
+
+export type InjuryAdjustedValue = {
+  sideAHealthyValue: number
+  sideBHealthyValue: number
+  sideAAdjustedValue: number
+  sideBAdjustedValue: number
+  sideAInjuryDiscount: number
+  sideBInjuryDiscount: number
+  netInjuryExposureShift: string
+  details: string[]
+}
+
+export type StarterBenchDelta = {
+  sideAStarterImpact: number
+  sideBStarterImpact: number
+  sideABenchValue: number
+  sideBBenchValue: number
+  netStarterDelta: number
+  starterImpactLabel: string
+  details: string[]
+}
+
 export type ViabilityVerdict = {
   acceptanceLikelihood: 'Very Likely' | 'Likely' | 'Uncertain' | 'Unlikely' | 'Very Unlikely'
   acceptanceScore: number
@@ -42,6 +72,9 @@ export type ViabilityVerdict = {
     timingFit: string
     details: string[]
   }
+  rankingsImpact: RankingsImpact
+  injuryAdjustedValue: InjuryAdjustedValue
+  starterBenchDelta: StarterBenchDelta
   leagueActivity: string
   signals: string[]
 }
@@ -227,7 +260,43 @@ function computeTimingFit(ctx: TradeDecisionContextV1): {
   return { sideAWindow, sideBWindow, timingFit, details }
 }
 
-function computeAcceptanceScore(ctx: TradeDecisionContextV1, partnerFitScore: number): {
+function computeViabilityBonus(
+  rankings: RankingsImpact,
+  injury: InjuryAdjustedValue,
+  starter: StarterBenchDelta
+): { bonus: number; signals: string[] } {
+  let bonus = 0
+  const signals: string[] = []
+
+  if (rankings.sideARankDelta > 0.1 && rankings.sideBRankDelta > 0.1) {
+    bonus += 8
+    signals.push('Both teams project to improve in league standings')
+  } else if (rankings.sideARankDelta > 0.1 || rankings.sideBRankDelta > 0.1) {
+    bonus += 3
+  }
+
+  const discountDiff = Math.abs(injury.sideAInjuryDiscount - injury.sideBInjuryDiscount)
+  if (discountDiff > 15) {
+    bonus -= 5
+    signals.push(`Significant injury exposure imbalance (${Math.round(discountDiff)}% gap)`)
+  } else if (discountDiff > 5) {
+    bonus -= 2
+    signals.push('Moderate injury risk asymmetry between sides')
+  }
+
+  const absStarterDelta = Math.abs(starter.netStarterDelta)
+  if (absStarterDelta < 200) {
+    bonus += 5
+    signals.push('Even starter-level talent exchange — balanced lineup impact')
+  } else if (absStarterDelta > 1000) {
+    bonus -= 3
+    signals.push('Large gap in starter-caliber talent being exchanged')
+  }
+
+  return { bonus, signals }
+}
+
+function computeAcceptanceScore(ctx: TradeDecisionContextV1, partnerFitScore: number, viabilityBonus: { bonus: number; signals: string[] }): {
   score: number
   likelihood: ViabilityVerdict['acceptanceLikelihood']
   signals: string[]
@@ -251,6 +320,9 @@ function computeAcceptanceScore(ctx: TradeDecisionContextV1, partnerFitScore: nu
   }
 
   score += Math.round((partnerFitScore - 50) * 0.3)
+
+  score += viabilityBonus.bonus
+  signals.push(...viabilityBonus.signals)
 
   if (ctx.sideB.managerPreferences) {
     const prefs = ctx.sideB.managerPreferences
@@ -377,6 +449,299 @@ function buildActionPlan(
   }
 }
 
+const TIER_RANK: Record<string, number> = {
+  champion: 4,
+  contender: 3,
+  middle: 2,
+  rebuild: 1,
+}
+
+const TIER_LABELS: Record<number, string> = {
+  4: 'Championship contender',
+  3: 'Playoff contender',
+  2: 'Mid-tier team',
+  1: 'Rebuilding',
+}
+
+function computeRankingsImpact(ctx: TradeDecisionContextV1): RankingsImpact {
+  const details: string[] = []
+
+  const aTier = TIER_RANK[ctx.sideA.contenderTier] ?? 2
+  const bTier = TIER_RANK[ctx.sideB.contenderTier] ?? 2
+
+  const aSSI = ctx.sideA.rosterComposition.starterStrengthIndex
+  const bSSI = ctx.sideB.rosterComposition.starterStrengthIndex
+
+  const competitorSSIs = ctx.competitors.map(c => c.starterStrengthIndex)
+  const leagueAvgSSI = competitorSSIs.length > 0
+    ? competitorSSIs.reduce((s, v) => s + v, 0) / competitorSSIs.length
+    : (aSSI + bSSI) / 2
+
+  const aAssetsAvgValue = ctx.sideA.assets.length > 0
+    ? ctx.sideA.assets.reduce((s, a) => s + a.marketValue, 0) / ctx.sideA.assets.length
+    : 0
+  const bAssetsAvgValue = ctx.sideB.assets.length > 0
+    ? ctx.sideB.assets.reduce((s, a) => s + a.marketValue, 0) / ctx.sideB.assets.length
+    : 0
+
+  const sideAValueShift = (bAssetsAvgValue - aAssetsAvgValue) / Math.max(leagueAvgSSI, 1)
+  const sideBValueShift = (aAssetsAvgValue - bAssetsAvgValue) / Math.max(leagueAvgSSI, 1)
+
+  const aIsContender = aTier >= 3
+  const bIsContender = bTier >= 3
+  const aIsRebuilder = aTier <= 1
+  const bIsRebuilder = bTier <= 1
+
+  const aYouthReceived = ctx.sideB.assets.filter(a => a.age !== null && a.age <= 25).length
+  const bYouthReceived = ctx.sideA.assets.filter(a => a.age !== null && a.age <= 25).length
+  const aPrimeReceived = ctx.sideB.assets.filter(a => a.age !== null && a.age >= 26 && a.age <= 30).length
+  const bPrimeReceived = ctx.sideA.assets.filter(a => a.age !== null && a.age >= 26 && a.age <= 30).length
+
+  let aDirectionBonus = 0
+  let bDirectionBonus = 0
+  if (aIsContender && aPrimeReceived > 0) {
+    aDirectionBonus = aPrimeReceived * 0.15
+    details.push(`Side A (contender) acquires ${aPrimeReceived} prime-age asset${aPrimeReceived > 1 ? 's' : ''} — strengthens win-now window`)
+  }
+  if (aIsRebuilder && aYouthReceived > 0) {
+    aDirectionBonus = aYouthReceived * 0.12
+    details.push(`Side A (rebuilder) acquires ${aYouthReceived} young asset${aYouthReceived > 1 ? 's' : ''} — aligns with rebuild`)
+  }
+  if (bIsContender && bPrimeReceived > 0) {
+    bDirectionBonus = bPrimeReceived * 0.15
+    details.push(`Side B (contender) acquires ${bPrimeReceived} prime-age asset${bPrimeReceived > 1 ? 's' : ''} — strengthens win-now window`)
+  }
+  if (bIsRebuilder && bYouthReceived > 0) {
+    bDirectionBonus = bYouthReceived * 0.12
+    details.push(`Side B (rebuilder) acquires ${bYouthReceived} young asset${bYouthReceived > 1 ? 's' : ''} — aligns with rebuild`)
+  }
+
+  if (aIsContender && aYouthReceived > aPrimeReceived && aPrimeReceived === 0) {
+    aDirectionBonus -= 0.1
+    details.push('Side A (contender) receiving mostly youth — may not help this season')
+  }
+  if (bIsContender && bYouthReceived > bPrimeReceived && bPrimeReceived === 0) {
+    bDirectionBonus -= 0.1
+    details.push('Side B (contender) receiving mostly youth — may not help this season')
+  }
+
+  const sideARankDelta = Math.round((sideAValueShift + aDirectionBonus) * 100) / 100
+  const sideBRankDelta = Math.round((sideBValueShift + bDirectionBonus) * 100) / 100
+
+  const aNewTier = Math.max(1, Math.min(4, Math.round(aTier + sideARankDelta)))
+  const bNewTier = Math.max(1, Math.min(4, Math.round(bTier + sideBRankDelta)))
+
+  const sideAProjectedTier = TIER_LABELS[aNewTier] || 'Mid-tier team'
+  const sideBProjectedTier = TIER_LABELS[bNewTier] || 'Mid-tier team'
+
+  if (aNewTier !== aTier) {
+    details.push(`Side A projected tier shift: ${TIER_LABELS[aTier]} → ${sideAProjectedTier}`)
+  }
+  if (bNewTier !== bTier) {
+    details.push(`Side B projected tier shift: ${TIER_LABELS[bTier]} → ${sideBProjectedTier}`)
+  }
+
+  let leaguePositionSignal: string
+  if (sideARankDelta > 0.1 && sideBRankDelta > 0.1) {
+    leaguePositionSignal = 'Both teams improve their league standing — win-win trade'
+  } else if (sideARankDelta > 0.1 && sideBRankDelta < -0.1) {
+    leaguePositionSignal = 'Side A improves, Side B weakens in league standings'
+  } else if (sideBRankDelta > 0.1 && sideARankDelta < -0.1) {
+    leaguePositionSignal = 'Side B improves, Side A weakens in league standings'
+  } else {
+    leaguePositionSignal = 'Minimal shift in league standings for both sides'
+  }
+
+  return { sideARankDelta, sideBRankDelta, sideAProjectedTier, sideBProjectedTier, leaguePositionSignal, details }
+}
+
+const INJURY_DISCOUNT: Record<string, number> = {
+  Out: 0.90,
+  IR: 0.85,
+  Doubtful: 0.70,
+  Questionable: 0.35,
+  Probable: 0.10,
+  'Day-to-Day': 0.20,
+}
+
+const REINJURY_MULTIPLIER: Record<string, number> = {
+  high: 1.5,
+  moderate: 1.2,
+  low: 1.0,
+  unknown: 1.1,
+}
+
+function computeInjuryAdjustedReplacementValue(ctx: TradeDecisionContextV1): InjuryAdjustedValue {
+  const details: string[] = []
+
+  function discountAssets(assets: AssetValuation[], riskMarkers: PlayerRiskMarker[]): {
+    healthyTotal: number
+    adjustedTotal: number
+    discountPct: number
+  } {
+    const riskByName = new Map(riskMarkers.map(r => [r.playerName, r]))
+    let healthyTotal = 0
+    let adjustedTotal = 0
+
+    for (const asset of assets) {
+      const mv = asset.marketValue
+      healthyTotal += mv
+
+      const risk = riskByName.get(asset.name)
+      if (!risk?.injuryStatus) {
+        adjustedTotal += mv
+        continue
+      }
+
+      const status = risk.injuryStatus.status
+      const baseDiscount = INJURY_DISCOUNT[status] ?? 0
+      const reinjury = risk.injuryStatus.reinjuryRisk
+      const multiplier = REINJURY_MULTIPLIER[reinjury] ?? 1.0
+
+      const finalDiscount = Math.min(0.95, baseDiscount * multiplier)
+      const adjustedValue = mv * (1 - finalDiscount)
+      adjustedTotal += adjustedValue
+
+      if (finalDiscount >= 0.30) {
+        details.push(`${asset.name} (${status}, ${reinjury} reinjury risk): value discounted ${Math.round(finalDiscount * 100)}%`)
+      }
+    }
+
+    const discountPct = healthyTotal > 0
+      ? Math.round((1 - adjustedTotal / healthyTotal) * 1000) / 10
+      : 0
+
+    return { healthyTotal, adjustedTotal, discountPct }
+  }
+
+  const sideA = discountAssets(ctx.sideA.assets, ctx.sideA.riskMarkers)
+  const sideB = discountAssets(ctx.sideB.assets, ctx.sideB.riskMarkers)
+
+  let netInjuryExposureShift: string
+  const aDiscountPct = sideA.discountPct
+  const bDiscountPct = sideB.discountPct
+
+  if (Math.abs(aDiscountPct - bDiscountPct) < 2) {
+    netInjuryExposureShift = 'Similar injury risk on both sides'
+  } else if (aDiscountPct > bDiscountPct) {
+    netInjuryExposureShift = `Side A sending riskier assets — Side B takes on ${Math.round(aDiscountPct - bDiscountPct)}% more injury exposure`
+    details.push(`Side A assets carry ${aDiscountPct}% injury discount vs Side B at ${bDiscountPct}%`)
+  } else {
+    netInjuryExposureShift = `Side B sending riskier assets — Side A takes on ${Math.round(bDiscountPct - aDiscountPct)}% more injury exposure`
+    details.push(`Side B assets carry ${bDiscountPct}% injury discount vs Side A at ${aDiscountPct}%`)
+  }
+
+  if (ctx.missingData.injuryDataStale) {
+    details.push('Injury data may be stale — injury-adjusted values are approximate')
+  }
+
+  return {
+    sideAHealthyValue: sideA.healthyTotal,
+    sideBHealthyValue: sideB.healthyTotal,
+    sideAAdjustedValue: Math.round(sideA.adjustedTotal),
+    sideBAdjustedValue: Math.round(sideB.adjustedTotal),
+    sideAInjuryDiscount: aDiscountPct,
+    sideBInjuryDiscount: bDiscountPct,
+    netInjuryExposureShift,
+    details,
+  }
+}
+
+const POSITION_SCARCITY: Record<string, number> = {
+  QB: 0.95, RB: 0.80, WR: 0.70, TE: 0.85, K: 0.30, DEF: 0.30, DL: 0.50, LB: 0.55, DB: 0.50,
+}
+
+function estimateStarterLikelihood(asset: AssetValuation): number {
+  if (asset.type !== 'PLAYER') {
+    const roundGuess = asset.position.includes('1') ? 1 : asset.position.includes('2') ? 2 : 3
+    return roundGuess === 1 ? 0.75 : roundGuess === 2 ? 0.40 : 0.15
+  }
+
+  const pos = asset.position.toUpperCase()
+  const mv = asset.marketValue
+  if (mv <= 0) return 0
+
+  const scarcity = POSITION_SCARCITY[pos] ?? 0.65
+  const maxMarket = pos === 'QB' ? 10000 : pos === 'RB' ? 9000 : pos === 'WR' ? 8500 : 5000
+  const tierPercentile = Math.min(1, mv / maxMarket)
+
+  if (tierPercentile >= 0.70) return 1.0 * scarcity + 0.35 * (1 - scarcity)
+  if (tierPercentile >= 0.40) return 0.70 * scarcity + 0.20 * (1 - scarcity)
+  if (tierPercentile >= 0.20) return 0.35 * scarcity + 0.10 * (1 - scarcity)
+  return 0.10
+}
+
+function computeStarterBenchDelta(ctx: TradeDecisionContextV1): StarterBenchDelta {
+  const details: string[] = []
+  const starterThreshold = 0.50
+
+  function splitAssets(assets: AssetValuation[]): { starterValue: number; benchValue: number; starterNames: string[]; benchNames: string[] } {
+    let starterValue = 0
+    let benchValue = 0
+    const starterNames: string[] = []
+    const benchNames: string[] = []
+
+    for (const asset of assets) {
+      const likelihood = estimateStarterLikelihood(asset)
+      if (likelihood >= starterThreshold) {
+        starterValue += asset.marketValue * likelihood
+        starterNames.push(asset.name)
+      } else {
+        benchValue += asset.marketValue
+        benchNames.push(asset.name)
+      }
+    }
+
+    return { starterValue: Math.round(starterValue), benchValue: Math.round(benchValue), starterNames, benchNames }
+  }
+
+  const sideA = splitAssets(ctx.sideA.assets)
+  const sideB = splitAssets(ctx.sideB.assets)
+
+  if (sideA.starterNames.length > 0) {
+    details.push(`Side A sends ${sideA.starterNames.length} starter-caliber asset${sideA.starterNames.length > 1 ? 's' : ''}: ${sideA.starterNames.slice(0, 3).join(', ')}`)
+  }
+  if (sideB.starterNames.length > 0) {
+    details.push(`Side B sends ${sideB.starterNames.length} starter-caliber asset${sideB.starterNames.length > 1 ? 's' : ''}: ${sideB.starterNames.slice(0, 3).join(', ')}`)
+  }
+  if (sideA.benchNames.length > 0) {
+    details.push(`Side A sends ${sideA.benchNames.length} bench/depth piece${sideA.benchNames.length > 1 ? 's' : ''}`)
+  }
+  if (sideB.benchNames.length > 0) {
+    details.push(`Side B sends ${sideB.benchNames.length} bench/depth piece${sideB.benchNames.length > 1 ? 's' : ''}`)
+  }
+
+  const netStarterDelta = sideB.starterValue - sideA.starterValue
+
+  let starterImpactLabel: string
+  const absDelta = Math.abs(netStarterDelta)
+  if (absDelta < 200) {
+    starterImpactLabel = 'Even starter-level exchange'
+  } else if (netStarterDelta > 0) {
+    starterImpactLabel = `Side A gains net starter value (+${absDelta})`
+  } else {
+    starterImpactLabel = `Side B gains net starter value (+${absDelta})`
+  }
+
+  const totalStarterMoving = sideA.starterValue + sideB.starterValue
+  const totalBenchMoving = sideA.benchValue + sideB.benchValue
+  if (totalStarterMoving > 0 && totalBenchMoving === 0) {
+    details.push('Pure starter-for-starter swap — high lineup impact on both sides')
+  } else if (totalStarterMoving === 0 && totalBenchMoving > 0) {
+    details.push('Bench-piece exchange — minimal starting lineup impact')
+  }
+
+  return {
+    sideAStarterImpact: sideA.starterValue,
+    sideBStarterImpact: sideB.starterValue,
+    sideABenchValue: sideA.benchValue,
+    sideBBenchValue: sideB.benchValue,
+    netStarterDelta,
+    starterImpactLabel,
+    details,
+  }
+}
+
 export function formatTradeResponse(
   consensus: PeerReviewConsensus,
   ctx: TradeDecisionContextV1,
@@ -384,7 +749,12 @@ export function formatTradeResponse(
 ): FormattedTradeResponse {
   const partnerFit = computeNeedsAlignment(ctx)
   const timing = computeTimingFit(ctx)
-  const { score: acceptanceScore, likelihood, signals } = computeAcceptanceScore(ctx, partnerFit.fitScore)
+  const rankingsImpact = computeRankingsImpact(ctx)
+  const injuryAdjustedValue = computeInjuryAdjustedReplacementValue(ctx)
+  const starterBenchDelta = computeStarterBenchDelta(ctx)
+
+  const viabilityBonus = computeViabilityBonus(rankingsImpact, injuryAdjustedValue, starterBenchDelta)
+  const { score: acceptanceScore, likelihood, signals } = computeAcceptanceScore(ctx, partnerFit.fitScore, viabilityBonus)
 
   const leagueFreq = ctx.tradeHistoryStats.leagueTradeFrequency
   const leagueActivity = leagueFreq === 'high'
@@ -442,6 +812,9 @@ export function formatTradeResponse(
       acceptanceScore,
       partnerFit,
       timing,
+      rankingsImpact,
+      injuryAdjustedValue,
+      starterBenchDelta,
       leagueActivity,
       signals,
     },
