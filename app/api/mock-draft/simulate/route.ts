@@ -151,8 +151,9 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
       }
     }
 
+    let draftId: string | null = null
     try {
-      await prisma.mockDraft.create({
+      const saved = await prisma.mockDraft.create({
         data: {
           leagueId,
           userId: session.user.id,
@@ -160,11 +161,12 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
           results: draftResults,
         },
       })
+      draftId = saved.id
     } catch (saveErr) {
       console.error('[mock-draft] Failed to save draft:', saveErr)
     }
 
-    return NextResponse.json({ draftResults })
+    return NextResponse.json({ draftResults, draftId })
   } catch (err: any) {
     console.error('[mock-draft] Error:', err)
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })

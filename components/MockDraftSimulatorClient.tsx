@@ -49,6 +49,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const { callAI, loading } = useAI<{ draftResults: DraftPick[] }>()
   const [selectedLeagueId, setSelectedLeagueId] = useState('')
   const [draftResults, setDraftResults] = useState<DraftPick[]>([])
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null)
   const [isSimulating, setIsSimulating] = useState(false)
   const [rounds, setRounds] = useState(15)
   const [customRounds, setCustomRounds] = useState(18)
@@ -73,6 +74,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
     if (data?.draftResults) {
       setDraftResults(data.draftResults)
+      setCurrentDraftId((data as any).draftId || null)
       toast.success('Mock draft complete! AI drafted for all managers.')
     }
     setIsSimulating(false)
@@ -126,22 +128,21 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   }
 
   const generateShareLink = async () => {
-    if (draftResults.length === 0) return
-    const leagueName = selectedLeague?.name || 'Mock Draft'
-    const totalRds = Math.max(...draftResults.map(p => p.round))
-    const summary = userPicks.map(p => `R${p.round}.${p.pick} ${p.playerName} (${p.position})`).join('\n')
-    const text = `🏈 ${leagueName} Mock Draft\n${draftResults.length} picks • ${totalRds} rounds\n\nMy Picks:\n${summary}\n\nSimulated on AllFantasy`
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `${leagueName} Mock Draft`, text })
-        toast.success('Shared successfully!')
-      } catch {
-        await navigator.clipboard.writeText(text)
-        toast.success('Draft results copied to clipboard!')
-      }
-    } else {
-      await navigator.clipboard.writeText(text)
-      toast.success('Draft results copied to clipboard!')
+    if (draftResults.length === 0 || !selectedLeagueId) return
+    try {
+      const res = await fetch('/api/mock-draft/share', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, results: draftResults, draftId: currentDraftId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to create share link')
+      const url = `${window.location.origin}/mock-draft/share/${data.shareId}`
+      await navigator.clipboard.writeText(url)
+      toast.success('Shareable link copied to clipboard!')
+    } catch (err: any) {
+      console.error('[share]', err)
+      toast.error(err.message || 'Failed to generate share link')
     }
   }
 
@@ -195,7 +196,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             <Button onClick={updateWeekly} variant="outline" className="h-12 border-purple-500/50 shrink-0" disabled={isSimulating || loading}>
               <RefreshCw className="mr-2 h-4 w-4" /> Update Weekly
             </Button>
-            <Button onClick={() => { setDraftResults([]); setIsSimulating(false) }} variant="outline" className="h-12 border-gray-600 shrink-0">
+            <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false) }} variant="outline" className="h-12 border-gray-600 shrink-0">
               <RotateCcw className="mr-2 h-4 w-4" /> Reset
             </Button>
           </>
