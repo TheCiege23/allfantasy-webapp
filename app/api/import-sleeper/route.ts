@@ -140,6 +140,53 @@ export async function POST(req: Request) {
         });
       }
 
+      const teamsByRosterId = new Map<string, string>();
+      for (const roster of rosters) {
+        const externalId = roster.roster_id?.toString();
+        if (!externalId) continue;
+        const team = await prisma.leagueTeam.findUnique({
+          where: { leagueId_externalId: { leagueId: league.id, externalId } },
+          select: { id: true },
+        });
+        if (team) {
+          teamsByRosterId.set(roster.roster_id?.toString(), team.id);
+        }
+      }
+
+      const currentWeek = l.settings?.leg ?? 10;
+      const maxWeek = Math.min(currentWeek, 18);
+
+      for (let week = 1; week <= maxWeek; week++) {
+        try {
+          const matchupRes = await fetch(
+            `https://api.sleeper.app/v1/league/${platformLeagueId}/matchups/${week}`
+          );
+          if (!matchupRes.ok) continue;
+          const matchups = await matchupRes.json();
+          if (!Array.isArray(matchups)) continue;
+
+          for (const m of matchups) {
+            const teamId = teamsByRosterId.get(m.roster_id?.toString());
+            if (!teamId || m.points == null) continue;
+
+            await prisma.teamPerformance.upsert({
+              where: {
+                teamId_season_week: { teamId, season, week },
+              },
+              update: { points: m.points || 0 },
+              create: {
+                teamId,
+                week,
+                season,
+                points: m.points || 0,
+              },
+            });
+          }
+        } catch {
+          continue;
+        }
+      }
+
       imported++;
     }
 
