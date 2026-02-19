@@ -3,6 +3,7 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import LeagueTransferClient from '@/components/legacy/LeagueTransferClient'
+import AIStrategyDashboard from '@/components/legacy/AIStrategyDashboard'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   fadeInUp,
@@ -130,15 +131,15 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
               >
                 <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-2xl shadow-purple-950/20">
                   <CardHeader>
-                    <CardTitle className="text-3xl bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">
-                      AI Strategy Hub
+                    <CardTitle className="text-4xl bg-gradient-to-r from-amber-300 via-cyan-300 to-purple-400 bg-clip-text text-transparent flex items-center gap-3">
+                      <span className="text-5xl">🧠</span> AI Strategy Engine
                     </CardTitle>
-                    <CardDescription className="text-gray-300 text-lg">
-                      Personalized dynasty strategy powered by your team archetype, roster data, and league context.
+                    <CardDescription className="text-xl text-gray-300">
+                      Your personal dynasty strategist. Powered by real-time data + elite AI.
                     </CardDescription>
                   </CardHeader>
-                  <CardContent className="min-h-[400px] flex items-center justify-center text-gray-400 text-xl">
-                    Coming soon — AI-driven buy/sell targets, roster construction blueprints, and win-window projections.
+                  <CardContent>
+                    <AIStrategyDashboard userId={userId} />
                   </CardContent>
                 </Card>
               </motion.div>
