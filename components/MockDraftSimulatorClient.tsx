@@ -267,43 +267,16 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
 
   const handleTradeAction = async (pickNumber: number, action: 'accept' | 'reject') => {
-    setIsTrading(true)
-    if (action === 'accept') toast.info('Executing trade...')
+    const { data } = await callAI('/api/mock-draft/trade-action', {
+      leagueId: selectedLeagueId,
+      pickNumber,
+      action,
+    })
 
-    try {
-      const { data } = await callAI('/api/mock-draft/trade-action', {
-        leagueId: selectedLeagueId,
-        pickNumber,
-        action,
-      })
-
-      if (action === 'accept' && data?.updatedDraft) {
-        setDraftResults(data.updatedDraft)
-        setCurrentDraftId((data as any).draftId || null)
-        setOnClockPick(null)
-        setTradeProposals({})
-        setDismissedProposals(new Set())
-        toast.success('Trade accepted! Board updated.')
-      } else {
-        setTradeProposals(prev => {
-          const updated = { ...prev }
-          delete updated[pickNumber]
-          return updated
-        })
-        setDismissedProposals(prev => new Set([...prev, pickNumber]))
-        if (data?.updatedDraft) setDraftResults(data.updatedDraft)
-        toast.info('Trade rejected. Continuing normal draft.')
-      }
-    } catch (err: any) {
-      console.error(`[${action}-trade]`, err)
-      if (action === 'accept') {
-        toast.error(err.message || 'Failed to execute trade')
-      } else {
-        setDismissedProposals(prev => new Set([...prev, pickNumber]))
-        toast.info('Trade rejected. Continuing normal draft.')
-      }
+    if (data?.updatedDraft) {
+      setDraftResults(data.updatedDraft)
+      toast.success(action === 'accept' ? 'Trade accepted — board updated!' : 'Trade rejected — draft continues.')
     }
-    setIsTrading(false)
   }
 
   const copyShareLink = async () => {
