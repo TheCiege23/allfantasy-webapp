@@ -44,8 +44,8 @@ export default function BracketEntry() {
         setUserBracketsCount(leagueData.userBracketsCount || 0)
         setLeagueName(leagueData.name || '')
       }
-      if (gamesData.games) {
-        setGames(gamesData.games)
+      if (Array.isArray(gamesData)) {
+        setGames(gamesData)
       }
       setLoading(false)
     })
