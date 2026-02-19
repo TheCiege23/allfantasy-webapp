@@ -10,6 +10,19 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
 const MAX_TOOL_TURNS = 5;
 
+type FactEvidence = { source: 'league' | 'roster' | 'news' | 'model'; metric: string; value: string };
+
+type WaiverSuggestionOut = {
+  playerName: string;
+  rank: number;
+  score: number;
+  reason: string[];
+  projectedPoints: number;
+  faabBidRecommendation: number | null;
+  sensitivityNote: string | null;
+  factualEvidence?: FactEvidence[];
+};
+
 const GROK_TOOLS: OpenAI.ChatCompletionTool[] = [
   {
     type: 'function',
@@ -59,11 +72,70 @@ async function executeWebSearch(query: string): Promise<any> {
   }
 }
 
-async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Promise<string> {
+function safeParseRoster(raw: string): any[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function buildDeterministicFacts(args: {
+  rosterData: string;
+  resolvedLeagueSize: number;
+  resolvedScoring: string;
+  resolvedIsDynasty: boolean;
+  resolvedFAAB: number;
+  userContention: string;
+}): { facts: string[]; evidence: FactEvidence[] } {
+  const roster = safeParseRoster(args.rosterData);
+  const posCounts: Record<string, number> = {};
+  let avgAge = 0;
+  let ageN = 0;
+
+  for (const p of roster) {
+    const pos = String((p as any)?.position || (p as any)?.pos || '').toUpperCase().trim();
+    if (pos) posCounts[pos] = (posCounts[pos] || 0) + 1;
+    const age = Number((p as any)?.age);
+    if (Number.isFinite(age) && age > 0) {
+      avgAge += age;
+      ageN += 1;
+    }
+  }
+
+  const sortedPos = Object.entries(posCounts).sort((a, b) => a[1] - b[1]);
+  const weakest = sortedPos.slice(0, 2).map(([pos]) => pos).filter(Boolean);
+
+  const leagueFacts = [
+    `League format: ${args.resolvedLeagueSize}-team ${args.resolvedIsDynasty ? 'dynasty' : 'redraft'} ${args.resolvedScoring.toUpperCase()}`,
+    `FAAB remaining: ${args.resolvedFAAB}%`,
+    `Contention window: ${args.userContention}`,
+    ageN > 0 ? `Roster average age: ${(avgAge / ageN).toFixed(1)}` : 'Roster average age unavailable',
+    weakest.length > 0 ? `Weakest position depth by count: ${weakest.join(', ')}` : 'Position depth unavailable',
+  ];
+
+  const evidence: FactEvidence[] = [
+    { source: 'league', metric: 'format', value: `${args.resolvedLeagueSize}-team ${args.resolvedIsDynasty ? 'dynasty' : 'redraft'} ${args.resolvedScoring}` },
+    { source: 'league', metric: 'faab_remaining_pct', value: `${args.resolvedFAAB}` },
+    { source: 'league', metric: 'contention_window', value: args.userContention },
+  ];
+
+  if (ageN > 0) evidence.push({ source: 'roster', metric: 'avg_age', value: (avgAge / ageN).toFixed(1) });
+  for (const [pos, count] of Object.entries(posCounts)) {
+    evidence.push({ source: 'roster', metric: `depth_${pos}`, value: String(count) });
+  }
+
+  return { facts: leagueFacts, evidence: evidence.slice(0, 12) };
+}
+
+async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Promise<{ content: string; newsEvidence: FactEvidence[] }> {
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: 'Analyze this roster and find the best waiver wire targets. ' + (useRealTime ? 'Use your tools to search for the latest injuries, signings, rookie buzz, and X sentiment for relevant players.' : 'Focus on player profiles, roster fit, and value analysis.') },
   ];
+
+  const newsEvidence: FactEvidence[] = [];
 
   for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
     const response = await grok.chat.completions.create({
@@ -78,7 +150,7 @@ async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Pro
     messages.push(msg);
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
-      return msg.content || '{}';
+      return { content: msg.content || '{}', newsEvidence: newsEvidence.slice(0, 10) };
     }
 
     for (const toolCall of msg.tool_calls) {
@@ -92,6 +164,9 @@ async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Pro
 
       if (fnName === 'web_search') {
         result = await executeWebSearch(args.query || 'NFL fantasy football waiver wire 2026');
+        if (result?.results?.length) {
+          newsEvidence.push({ source: 'news', metric: 'web_search', value: `${args.query || 'waiver'} (${result.results.length} results)` });
+        }
       } else if (fnName === 'x_keyword_search') {
         try {
           const xRes = await fetch('https://api.x.ai/v1/tools/x_keyword_search', {
@@ -104,6 +179,7 @@ async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Pro
             signal: AbortSignal.timeout(5000),
           });
           result = xRes.ok ? await xRes.json().catch(() => ({ note: 'X search parse failed' })) : { note: `X search returned ${xRes.status}` };
+          if (xRes.ok) newsEvidence.push({ source: 'news', metric: 'x_keyword_search', value: `${args.query || 'nfl'} (ok)` });
         } catch (err: any) {
           result = { note: 'X search timeout or unavailable', query: args.query };
         }
@@ -121,9 +197,9 @@ async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Pro
 
   const finalMsg = messages[messages.length - 1];
   if (finalMsg.role === 'assistant' && typeof finalMsg.content === 'string') {
-    return finalMsg.content;
+    return { content: finalMsg.content, newsEvidence: newsEvidence.slice(0, 10) };
   }
-  return '{}';
+  return { content: '{}', newsEvidence: newsEvidence.slice(0, 10) };
 }
 
 export async function POST(req: NextRequest) {
@@ -209,8 +285,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const deterministic = buildDeterministicFacts({
+      rosterData,
+      resolvedLeagueSize,
+      resolvedScoring,
+      resolvedIsDynasty,
+      resolvedFAAB,
+      userContention,
+    });
+
     const realTimeClause = useRealTimeNews
-      ? `\n\nREAL-TIME DATA ENABLED: Use your web_search and x_keyword_search tools to find the latest injuries, transactions, signings, coaching changes, rookie draft capital/landing spots, and breaking news. Flag any time-sensitive pickups.`
+      ? `\n\nREAL-TIME DATA ENABLED: Use your web_search and x_keyword_search tools to find the latest injuries, transactions, signings, coaching changes, rookie draft capital/landing spots, and breaking news. Flag any time-sensitive pickups and note if info has uncertainty.`
       : '';
 
     const systemPrompt = `You are the #1 Waiver Wire AI for 2026 fantasy football.
@@ -221,7 +306,10 @@ LEAGUE CONTEXT (CRITICAL):
 - Contention window: ${userContention}
 - FAAB remaining: ${resolvedFAAB}%${leagueSettings}
 
-USER ROSTER (analyze needs, surplus, potential busts, age curve):
+DETERMINISTIC FACTS (MUST BE USED):
+${deterministic.facts.map((f) => `- ${f}`).join('\n')}
+
+USER ROSTER:
 """
 ${rosterData}
 """
@@ -231,15 +319,13 @@ Prioritize waiver targets that:
 2. Fit the user's contention window (${userContention}) — win-now targets for contenders, stash/upside for rebuilders
 3. Offer breakout upside or long-term stash value in dynasty formats
 4. Replace potential busts, aging, or injury-prone players currently on the roster
-5. Are realistic FAAB spends given ${resolvedFAAB}% remaining budget — don't blow the budget on marginal upgrades
+5. Are realistic FAAB spends given ${resolvedFAAB}% remaining budget
 6. Consider roster construction holistically — depth vs ceiling, bye week coverage, handcuff value
 ${pickupClause}${profileClause}${realTimeClause}
 
-For each target, explain WHY they fit THIS specific roster and contention window. Be concrete — reference specific roster players they complement or replace.
+For each target, explain WHY they fit THIS specific roster and contention window using specific measurable facts (depth count, FAAB %, injury status, role changes, recent production, draft capital). Avoid subjective statements without evidence.
 
-If relevant, mention any players on the current roster that look like potential busts or sell-high candidates based on age, injury history, situation, or market trends.
-
-Return 6–8 waiver targets ranked by priority. Output analysis as detailed text — the synthesis step will format it.`;
+Return 6–8 waiver targets ranked by priority. Output detailed text — synthesis step will enforce strict JSON.`;
 
     const grokResearch = await runGrokWithTools(systemPrompt, useRealTimeNews);
 
@@ -248,7 +334,7 @@ Return 6–8 waiver targets ranked by priority. Output analysis as detailed text
       messages: [
         {
           role: 'system',
-          content: `You are a fantasy football waiver wire synthesizer. Given Grok's research and analysis, produce a final structured JSON response. Be precise and actionable. Output ONLY valid JSON.
+          content: `You are a fantasy football waiver wire synthesizer. Given Grok's research and deterministic facts, produce final structured JSON. Output ONLY valid JSON.
 
 Required format:
 {
@@ -256,11 +342,14 @@ Required format:
     {
       "playerName": string,
       "rank": number,
-      "score": number (0-100 composite fit score),
-      "reason": string[] (2-4 specific reasons tied to this roster),
-      "projectedPoints": number (weekly PPR projection),
-      "faabBidRecommendation": number | null (% of total budget),
-      "sensitivityNote": string | null (injury risk, usage concern, or upside caveat)
+      "score": number,
+      "reason": string[] (2-4 fact-based reasons with concrete details),
+      "projectedPoints": number,
+      "faabBidRecommendation": number | null,
+      "sensitivityNote": string | null,
+      "factualEvidence": [
+        { "source": "league" | "roster" | "news" | "model", "metric": string, "value": string }
+      ]
     }
   ],
   "rosterAlerts": [
@@ -269,23 +358,62 @@ Required format:
       "alertType": "bust_risk" | "sell_high" | "injury_concern" | "aging_out",
       "reason": string
     }
-  ]
+  ],
+  "explanation": {
+    "leagueFit": string,
+    "rosterNeedsSummary": string,
+    "decisionBasis": "fact_based"
+  }
 }`,
         },
         {
           role: 'user',
-          content: `Grok research complete. Here is the analysis:\n\n${grokResearch}\n\nSynthesize into final ranked waiver suggestions with roster alerts.`,
+          content: `Deterministic facts:\n${JSON.stringify(deterministic.facts)}\n\nGrok research:\n${grokResearch.content}\n\nNews evidence:\n${JSON.stringify(grokResearch.newsEvidence)}\n\nSynthesize into ranked waiver suggestions with explicit factual evidence per player.`,
         },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.3,
+      temperature: 0.2,
       max_tokens: 2000,
     });
 
     const finalContent = synthesis.choices[0]?.message?.content || '{}';
     const parsed = JSON.parse(finalContent);
 
-    return NextResponse.json(parsed);
+    const suggestions: WaiverSuggestionOut[] = Array.isArray(parsed?.suggestions)
+      ? parsed.suggestions.map((s: any, idx: number) => {
+          const ev: FactEvidence[] = Array.isArray(s?.factualEvidence)
+            ? s.factualEvidence
+                .filter((e: any) => e && typeof e.metric === 'string' && typeof e.value === 'string')
+                .slice(0, 6)
+            : [];
+
+          return {
+            playerName: String(s?.playerName || 'Unknown Player'),
+            rank: Number.isFinite(Number(s?.rank)) ? Number(s.rank) : idx + 1,
+            score: Number.isFinite(Number(s?.score)) ? Math.max(0, Math.min(100, Number(s.score))) : 50,
+            reason: Array.isArray(s?.reason) ? s.reason.filter((r: any) => typeof r === 'string').slice(0, 4) : ['No reason provided'],
+            projectedPoints: Number.isFinite(Number(s?.projectedPoints)) ? Number(s.projectedPoints) : 0,
+            faabBidRecommendation:
+              s?.faabBidRecommendation == null || !Number.isFinite(Number(s.faabBidRecommendation))
+                ? null
+                : Math.max(0, Math.min(100, Number(s.faabBidRecommendation))),
+            sensitivityNote: typeof s?.sensitivityNote === 'string' ? s.sensitivityNote : null,
+            factualEvidence: ev.length ? ev : deterministic.evidence.slice(0, 3),
+          };
+        })
+      : [];
+
+    return NextResponse.json({
+      suggestions,
+      rosterAlerts: Array.isArray(parsed?.rosterAlerts) ? parsed.rosterAlerts : [],
+      explanation: parsed?.explanation || {
+        leagueFit: deterministic.facts[0],
+        rosterNeedsSummary: deterministic.facts[4] || deterministic.facts[3],
+        decisionBasis: 'fact_based',
+      },
+      decisionBasis: 'fact_based',
+      factsUsed: deterministic.facts,
+    });
   } catch (error) {
     console.error('[waiver-ai/grok]', error);
     return NextResponse.json({ error: 'Failed to generate waiver suggestions' }, { status: 500 });
