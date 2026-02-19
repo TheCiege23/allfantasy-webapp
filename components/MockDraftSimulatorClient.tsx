@@ -287,19 +287,15 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }, [draftResults])
 
-  const handleAcceptTrade = async (pickOverall: number) => {
-    const proposal = tradeProposals[pickOverall]
-    if (!proposal) return
+  const handleAcceptTrade = async (pickNumber: number) => {
     setIsTrading(true)
     toast.info('Executing trade...')
 
     try {
-      const { data } = await callAI('/api/mock-draft/trade-simulate', {
+      const { data } = await callAI('/api/mock-draft/trade-action', {
         leagueId: selectedLeagueId,
-        currentPick: pickOverall,
-        direction: proposal.direction,
-        rounds: customRounds,
-        tradePartnerPick: proposal.fromPick,
+        pickNumber,
+        action: 'accept',
       })
 
       if (data?.updatedDraft) {
@@ -308,12 +304,12 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
         setRoundNeeds({})
         setTradeProposals({})
         setTradeResult({
-          direction: proposal.direction,
-          pickNumber: pickOverall,
+          direction: tradeProposals[pickNumber]?.direction || 'up',
+          pickNumber,
           tradeDescription: (data as any).tradeDescription,
           tradedPicks: (data as any).tradedPicks,
         })
-        toast.success(`Trade accepted! You swapped pick #${pickOverall} with ${proposal.fromTeam}'s pick #${proposal.fromPick}.`)
+        toast.success('Trade accepted! Board updated.')
       }
     } catch (err: any) {
       console.error('[accept-trade]', err)
@@ -322,9 +318,25 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     setIsTrading(false)
   }
 
-  const handleRejectTrade = (pickOverall: number) => {
-    setDismissedProposals(prev => new Set([...prev, pickOverall]))
-    toast.info('Trade rejected')
+  const handleRejectTrade = async (pickNumber: number) => {
+    try {
+      const { data } = await callAI('/api/mock-draft/trade-action', {
+        leagueId: selectedLeagueId,
+        pickNumber,
+        action: 'reject',
+      })
+
+      setDismissedProposals(prev => new Set([...prev, pickNumber]))
+
+      if (data?.updatedDraft) {
+        setDraftResults(data.updatedDraft)
+        toast.info('Trade rejected. Continuing normal draft.')
+      }
+    } catch (err: any) {
+      console.error('[reject-trade]', err)
+      setDismissedProposals(prev => new Set([...prev, pickNumber]))
+      toast.info('Trade rejected. Continuing normal draft.')
+    }
   }
 
   const copyShareLink = async () => {

@@ -60,16 +60,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
     }
 
+    const draft = await prisma.mockDraft.findFirst({
+      where: { leagueId, userId: session.user.id },
+      orderBy: { createdAt: 'desc' },
+    })
+
     let draftResults: any[] = clientDraft
     if (!draftResults || !Array.isArray(draftResults) || draftResults.length === 0) {
-      const draft = await prisma.mockDraft.findFirst({
-        where: { leagueId, userId: session.user.id },
-        orderBy: { createdAt: 'desc' },
-      })
       if (!draft || !Array.isArray(draft.results)) {
         return NextResponse.json({ error: 'No draft found' }, { status: 404 })
       }
       draftResults = draft.results as any[]
+    }
+
+    if (!draft) {
+      return NextResponse.json({ error: 'No draft record found' }, { status: 404 })
     }
 
     const league = await prisma.league.findFirst({
@@ -170,6 +175,15 @@ Return exactly ${bestProposals.length} reasons in the "reasons" array.`
       }
     } catch (aiErr) {
       console.error('[trade-propose] AI reason generation failed:', aiErr)
+    }
+
+    try {
+      await prisma.mockDraft.update({
+        where: { id: draft.id },
+        data: { proposals: bestProposals },
+      })
+    } catch (saveErr) {
+      console.error('[trade-propose] Failed to save proposals:', saveErr)
     }
 
     return NextResponse.json({ proposals: bestProposals })
