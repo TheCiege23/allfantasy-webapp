@@ -111,6 +111,33 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
     }
   };
 
+  const handlePropose = async (trade: any) => {
+    if (!selectedLeague) return;
+    try {
+      const res = await fetch('/api/trade/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leagueId: selectedLeague.platformLeagueId,
+          offerFrom: 1,
+          offerTo: trade.partnerRosterId || 0,
+          adds: trade.receivesIds || trade.youGet.split(' + '),
+          drops: trade.givesIds || trade.youGive.split(' + '),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const deepLink = `https://sleeper.app/leagues/${selectedLeague.platformLeagueId}/trade`;
+        window.open(data.sleeperDeepLink || deepLink, '_blank');
+        toast.info('Opening Sleeper — start the trade there!');
+      } else {
+        toast.error(data.error || 'Failed to save proposal');
+      }
+    } catch {
+      toast.error('Failed to send proposal');
+    }
+  };
+
   return (
     <div className="space-y-10">
       <div className="flex rounded-xl overflow-hidden border border-purple-900/50 mb-2">
@@ -276,41 +303,14 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                 )}
                 <div className="flex justify-end gap-3 mt-4">
                   <Button
-                    variant="outline"
                     size="sm"
-                    className="bg-cyan-600 hover:bg-cyan-700 border-cyan-600 text-white gap-1.5"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (!selectedLeague) return;
-                      try {
-                        const res = await fetch('/api/trade/propose', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            leagueId: selectedLeague.platformLeagueId,
-                            offerFrom: 1,
-                            offerTo: trade.partnerRosterId || 0,
-                            adds: trade.receivesIds || trade.youGet.split(' + '),
-                            drops: trade.givesIds || trade.youGive.split(' + '),
-                          }),
-                        });
-                        const data = await res.json();
-                        if (res.ok) {
-                          const deepLink = `https://sleeper.app/leagues/${selectedLeague.platformLeagueId}/trade`;
-                          window.open(data.sleeperDeepLink || deepLink, '_blank');
-                          toast.info('Opening Sleeper — start the trade there!');
-                        } else {
-                          toast.error(data.error || 'Failed to save proposal');
-                        }
-                      } catch {
-                        toast.error('Failed to send proposal');
-                      }
-                    }}
+                    onClick={() => handlePropose(trade)}
+                    className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 gap-1.5"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     Propose in Sleeper
                   </Button>
-                  <Button size="sm">Details</Button>
+                  <Button size="sm" variant="outline" className="border-gray-700">Details</Button>
                 </div>
               </CardContent>
             </Card>
