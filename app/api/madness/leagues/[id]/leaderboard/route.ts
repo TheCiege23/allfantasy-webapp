@@ -22,7 +22,7 @@ export async function GET(
   const entries = await (prisma as any).bracketEntry.findMany({
     where: { leagueId: params.id },
     include: {
-      user: { select: { displayName: true, email: true } },
+      user: { select: { displayName: true, email: true, username: true, avatarUrl: true } },
       picks: { select: { gameId: true, winnerTeam: true } },
     },
   })
@@ -55,7 +55,8 @@ export async function GET(
     return {
       bracketId: entry.id,
       bracketName: entry.name,
-      ownerName: entry.user?.displayName || entry.user?.email || "Unknown",
+      ownerName: entry.user?.displayName || entry.user?.username || entry.user?.email || "Unknown",
+      avatar: entry.user?.avatarUrl || null,
       score,
       correct,
       total,
