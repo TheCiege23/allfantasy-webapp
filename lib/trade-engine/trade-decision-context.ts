@@ -174,6 +174,8 @@ export const TradeDecisionContextV1Schema = z.object({
     rostersFetchedAt: z.string().nullable(),
     tradeHistoryFetchedAt: z.string().nullable(),
   }).strict(),
+
+  sourceFreshness: SourceFreshnessSchema.optional(),
 }).strict()
 
 export type TradeDecisionContextV1 = z.infer<typeof TradeDecisionContextV1Schema>
@@ -203,6 +205,146 @@ const LeagueTeamSnapshotSchema = TeamSnapshotSchema.extend({
   tradeCount: z.number().int(),
 })
 
+export const FreshnessGradeEnum = z.enum(['fresh', 'aging', 'stale', 'expired', 'unavailable'])
+
+const SingleSourceFreshnessSchema = z.object({
+  source: z.string(),
+  fetchedAt: z.string().nullable(),
+  ageMs: z.number(),
+  ageLabel: z.string(),
+  grade: FreshnessGradeEnum,
+  confidencePenalty: z.number(),
+}).strict()
+
+export const SourceFreshnessSchema = z.object({
+  rosters: SingleSourceFreshnessSchema,
+  valuations: SingleSourceFreshnessSchema,
+  injuries: SingleSourceFreshnessSchema,
+  adp: SingleSourceFreshnessSchema,
+  analytics: SingleSourceFreshnessSchema,
+  tradeHistory: SingleSourceFreshnessSchema,
+  compositeScore: z.number().min(0).max(100),
+  compositeGrade: FreshnessGradeEnum,
+  totalConfidencePenalty: z.number(),
+  warnings: z.array(z.string()),
+}).strict()
+
+export type FreshnessGrade = z.infer<typeof FreshnessGradeEnum>
+export type SingleSourceFreshness = z.infer<typeof SingleSourceFreshnessSchema>
+export type SourceFreshness = z.infer<typeof SourceFreshnessSchema>
+
+const SOURCE_FRESHNESS_THRESHOLDS: Record<string, { aging: number; stale: number; expired: number }> = {
+  rosters:      { aging: 1 * 60 * 60 * 1000, stale: 6 * 60 * 60 * 1000, expired: 24 * 60 * 60 * 1000 },
+  valuations:   { aging: 24 * 60 * 60 * 1000, stale: 3 * 24 * 60 * 60 * 1000, expired: 7 * 24 * 60 * 60 * 1000 },
+  injuries:     { aging: 6 * 60 * 60 * 1000, stale: 24 * 60 * 60 * 1000, expired: 7 * 24 * 60 * 60 * 1000 },
+  adp:          { aging: 3 * 24 * 60 * 60 * 1000, stale: 7 * 24 * 60 * 60 * 1000, expired: 14 * 24 * 60 * 60 * 1000 },
+  analytics:    { aging: 7 * 24 * 60 * 60 * 1000, stale: 14 * 24 * 60 * 60 * 1000, expired: 30 * 24 * 60 * 60 * 1000 },
+  tradeHistory: { aging: 24 * 60 * 60 * 1000, stale: 7 * 24 * 60 * 60 * 1000, expired: 30 * 24 * 60 * 60 * 1000 },
+}
+
+const GRADE_PENALTIES: Record<FreshnessGrade, number> = {
+  fresh: 0,
+  aging: -2,
+  stale: -5,
+  expired: -8,
+  unavailable: -10,
+}
+
+const GRADE_SCORES: Record<FreshnessGrade, number> = {
+  fresh: 100,
+  aging: 70,
+  stale: 40,
+  expired: 15,
+  unavailable: 0,
+}
+
+function formatAge(ms: number): string {
+  if (ms < 60_000) return 'just now'
+  if (ms < 60 * 60 * 1000) return `${Math.round(ms / 60_000)}m ago`
+  if (ms < 24 * 60 * 60 * 1000) return `${Math.round(ms / (60 * 60 * 1000))}h ago`
+  return `${Math.round(ms / (24 * 60 * 60 * 1000))}d ago`
+}
+
+function gradeSource(ageMs: number, thresholdKey: string): FreshnessGrade {
+  const t = SOURCE_FRESHNESS_THRESHOLDS[thresholdKey] || SOURCE_FRESHNESS_THRESHOLDS.valuations
+  if (ageMs <= t.aging) return 'fresh'
+  if (ageMs <= t.stale) return 'aging'
+  if (ageMs <= t.expired) return 'stale'
+  return 'expired'
+}
+
+function scoreSingle(fetchedAt: string | null, sourceLabel: string, thresholdKey: string, now: number): SingleSourceFreshness {
+  if (!fetchedAt) {
+    return {
+      source: sourceLabel,
+      fetchedAt: null,
+      ageMs: -1,
+      ageLabel: 'unavailable',
+      grade: 'unavailable',
+      confidencePenalty: GRADE_PENALTIES.unavailable,
+    }
+  }
+  const ageMs = Math.max(0, now - new Date(fetchedAt).getTime())
+  const grade = gradeSource(ageMs, thresholdKey)
+  return {
+    source: sourceLabel,
+    fetchedAt,
+    ageMs,
+    ageLabel: formatAge(ageMs),
+    grade,
+    confidencePenalty: GRADE_PENALTIES[grade],
+  }
+}
+
+export function computeSourceFreshness(dataSources: {
+  valuationFetchedAt: string
+  adpFetchedAt: string | null
+  injuryFetchedAt: string | null
+  analyticsFetchedAt: string | null
+  rostersFetchedAt: string | null
+  tradeHistoryFetchedAt: string | null
+}): SourceFreshness {
+  const now = Date.now()
+
+  const rosters = scoreSingle(dataSources.rostersFetchedAt, 'Sleeper Rosters', 'rosters', now)
+  const valuations = scoreSingle(dataSources.valuationFetchedAt, 'Player Valuations', 'valuations', now)
+  const injuries = scoreSingle(dataSources.injuryFetchedAt, 'Injury Reports', 'injuries', now)
+  const adp = scoreSingle(dataSources.adpFetchedAt, 'ADP Rankings', 'adp', now)
+  const analytics = scoreSingle(dataSources.analyticsFetchedAt, 'Player Analytics', 'analytics', now)
+  const tradeHistory = scoreSingle(dataSources.tradeHistoryFetchedAt, 'Trade History', 'tradeHistory', now)
+
+  const sources = [rosters, valuations, injuries, adp, analytics, tradeHistory]
+  const weights = { rosters: 0.2, valuations: 0.25, injuries: 0.2, adp: 0.15, analytics: 0.1, tradeHistory: 0.1 }
+  const weightedScore =
+    GRADE_SCORES[rosters.grade] * weights.rosters +
+    GRADE_SCORES[valuations.grade] * weights.valuations +
+    GRADE_SCORES[injuries.grade] * weights.injuries +
+    GRADE_SCORES[adp.grade] * weights.adp +
+    GRADE_SCORES[analytics.grade] * weights.analytics +
+    GRADE_SCORES[tradeHistory.grade] * weights.tradeHistory
+
+  const compositeScore = Math.round(Math.max(0, Math.min(100, weightedScore)))
+  const compositeGrade: FreshnessGrade =
+    compositeScore >= 80 ? 'fresh' :
+    compositeScore >= 55 ? 'aging' :
+    compositeScore >= 25 ? 'stale' :
+    'expired'
+
+  const totalConfidencePenalty = sources.reduce((sum, s) => sum + s.confidencePenalty, 0)
+
+  const warnings: string[] = []
+  for (const s of sources) {
+    if (s.grade === 'expired') warnings.push(`${s.source} data is expired (${s.ageLabel}) — results may be unreliable`)
+    else if (s.grade === 'stale') warnings.push(`${s.source} data is stale (${s.ageLabel}) — consider refreshing`)
+    else if (s.grade === 'unavailable') warnings.push(`${s.source} data is unavailable — confidence significantly reduced`)
+  }
+
+  return {
+    rosters, valuations, injuries, adp, analytics, tradeHistory,
+    compositeScore, compositeGrade, totalConfidencePenalty, warnings,
+  }
+}
+
 export const LeagueDecisionContextSchema = z.object({
   version: z.literal(LEAGUE_DECISION_CONTEXT_VERSION),
   assembledAt: z.string(),
@@ -225,6 +367,8 @@ export const LeagueDecisionContextSchema = z.object({
     rostersFetchedAt: z.string().nullable(),
     tradeHistoryFetchedAt: z.string().nullable(),
   }).strict(),
+
+  sourceFreshness: SourceFreshnessSchema,
 })
 
 export type LeagueDecisionContext = z.infer<typeof LeagueDecisionContextSchema>

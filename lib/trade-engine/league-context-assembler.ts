@@ -26,6 +26,7 @@ import {
   TRADE_DECISION_CONTEXT_VERSION,
   TradeDecisionContextV1Schema,
   classifyAgeBucket,
+  computeSourceFreshness,
 } from './trade-decision-context'
 
 type SleeperUser = {
@@ -646,6 +647,15 @@ export async function buildLeagueDecisionContext(
       rostersFetchedAt: assembledAt,
       tradeHistoryFetchedAt: assembledAt,
     },
+
+    sourceFreshness: computeSourceFreshness({
+      valuationFetchedAt,
+      adpFetchedAt,
+      injuryFetchedAt: latestInjuryFetchedAt,
+      analyticsFetchedAt: analyticsMap.size > 0 ? assembledAt : null,
+      rostersFetchedAt: assembledAt,
+      tradeHistoryFetchedAt: assembledAt,
+    }),
   }
 
   return leagueCtx
@@ -733,6 +743,7 @@ export function deriveTradeDecisionContext(
     missingData: leagueCtx.missingData,
     dataQuality: leagueCtx.dataQuality,
     dataSources: leagueCtx.dataSources,
+    sourceFreshness: leagueCtx.sourceFreshness,
   }
 
   return TradeDecisionContextV1Schema.parse(raw)

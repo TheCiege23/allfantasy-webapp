@@ -828,7 +828,10 @@ Return JSON array of TradeSuggestion objects. Skip managers with no trade fit. F
       tradeSuggestions,
       managerCount: managerRosters.length + 1,
       ...(parseWarning ? { warning: parseWarning } : {}),
-      ...(unifiedLeagueCtx ? { contextId: unifiedLeagueCtx.contextId } : {}),
+      ...(unifiedLeagueCtx ? {
+        contextId: unifiedLeagueCtx.contextId,
+        sourceFreshness: unifiedLeagueCtx.sourceFreshness,
+      } : {}),
     }
 
     writeSnapshot({

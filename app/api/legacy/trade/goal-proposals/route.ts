@@ -97,6 +97,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/goal-proposals",
         rosterId: userRoster.rosterId,
       },
       contextId: leagueCtx.contextId,
+      sourceFreshness: leagueCtx.sourceFreshness,
     })
 
   } catch (error: any) {

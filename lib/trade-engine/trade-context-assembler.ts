@@ -20,6 +20,7 @@ import {
   type ManagerPreferenceVector,
   TRADE_DECISION_CONTEXT_VERSION,
   classifyAgeBucket,
+  computeSourceFreshness,
 } from './trade-decision-context'
 
 export interface TradeParty {
@@ -686,6 +687,15 @@ export async function assembleTradeDecisionContext(
       rostersFetchedAt: managerA?.rostersFetchedAt || managerB?.rostersFetchedAt || null,
       tradeHistoryFetchedAt: tradeHistory.fetchedAt,
     },
+
+    sourceFreshness: computeSourceFreshness({
+      valuationFetchedAt,
+      adpFetchedAt,
+      injuryFetchedAt: latestInjuryFetchedAt,
+      analyticsFetchedAt: analyticsMap.size > 0 ? assembledAt : null,
+      rostersFetchedAt: managerA?.rostersFetchedAt || managerB?.rostersFetchedAt || null,
+      tradeHistoryFetchedAt: tradeHistory.fetchedAt,
+    }),
   }
 
   return TradeDecisionContextV1Schema.parse(raw)

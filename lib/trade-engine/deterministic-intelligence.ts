@@ -1,4 +1,4 @@
-import type { TradeDecisionContextV1, AssetValuation, PlayerRiskMarker } from './trade-decision-context'
+import type { TradeDecisionContextV1, AssetValuation, PlayerRiskMarker, SourceFreshness } from './trade-decision-context'
 
 export type DeterministicIntelligence = {
   confidence: number
@@ -23,21 +23,37 @@ function computeDeterministicConfidence(ctx: TradeDecisionContextV1): number {
   else if (pctDiff >= 8) confidence += 4
   else if (pctDiff <= 3) confidence -= 5
 
-  const staleCount = [
-    ctx.missingData.injuryDataStale,
-    ctx.missingData.valuationDataStale,
-    ctx.missingData.adpDataStale,
-    ctx.missingData.analyticsDataStale,
-    ctx.missingData.tradeHistoryStale,
-  ].filter(Boolean).length
+  if (ctx.sourceFreshness) {
+    confidence += ctx.sourceFreshness.totalConfidencePenalty
 
-  confidence -= staleCount * 4
+    const missingCount =
+      ctx.missingData.valuationsMissing.length +
+      ctx.missingData.adpMissing.length +
+      ctx.missingData.analyticsMissing.length
+    const unavailableSources = [
+      ctx.sourceFreshness.valuations,
+      ctx.sourceFreshness.adp,
+      ctx.sourceFreshness.analytics,
+    ].filter(s => s.grade === 'unavailable').length
+    if (unavailableSources === 0) {
+      confidence -= Math.min(missingCount * 3, 15)
+    }
+  } else {
+    const staleCount = [
+      ctx.missingData.injuryDataStale,
+      ctx.missingData.valuationDataStale,
+      ctx.missingData.adpDataStale,
+      ctx.missingData.analyticsDataStale,
+      ctx.missingData.tradeHistoryStale,
+    ].filter(Boolean).length
+    confidence -= staleCount * 4
 
-  const missingCount =
-    ctx.missingData.valuationsMissing.length +
-    ctx.missingData.adpMissing.length +
-    ctx.missingData.analyticsMissing.length
-  confidence -= Math.min(missingCount * 3, 15)
+    const missingCount =
+      ctx.missingData.valuationsMissing.length +
+      ctx.missingData.adpMissing.length +
+      ctx.missingData.analyticsMissing.length
+    confidence -= Math.min(missingCount * 3, 15)
+  }
 
   if (ctx.missingData.managerTendenciesUnavailable.length > 0) confidence -= 3
   if (ctx.missingData.competitorDataUnavailable) confidence -= 2
@@ -150,10 +166,16 @@ function buildDeterministicWarnings(ctx: TradeDecisionContextV1): string[] {
     warnings.push(`Analytics data missing for ${ctx.missingData.analyticsMissing.length} player(s)`)
   }
 
-  if (ctx.missingData.valuationDataStale) warnings.push('Player valuations may be outdated (>3 days)')
-  if (ctx.missingData.injuryDataStale) warnings.push('Injury reports may be outdated (>7 days)')
-  if (ctx.missingData.adpDataStale) warnings.push('ADP rankings may be outdated')
-  if (ctx.missingData.tradeHistoryStale) warnings.push('League trade history may be outdated')
+  if (ctx.sourceFreshness) {
+    for (const w of ctx.sourceFreshness.warnings) {
+      warnings.push(w)
+    }
+  } else {
+    if (ctx.missingData.valuationDataStale) warnings.push('Player valuations may be outdated (>3 days)')
+    if (ctx.missingData.injuryDataStale) warnings.push('Injury reports may be outdated (>7 days)')
+    if (ctx.missingData.adpDataStale) warnings.push('ADP rankings may be outdated')
+    if (ctx.missingData.tradeHistoryStale) warnings.push('League trade history may be outdated')
+  }
 
   const cliffPlayers = [...ctx.sideA.riskMarkers, ...ctx.sideB.riskMarkers].filter(r => r.ageBucket === 'cliff')
   for (const r of cliffPlayers.slice(0, 3)) {

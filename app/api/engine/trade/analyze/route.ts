@@ -107,6 +107,7 @@ export async function POST(req: Request) {
       ...(canonicalContext ? {
         contextId: canonicalContext.ctx.contextId,
         ...(canonicalContext.leagueContextId ? { leagueContextId: canonicalContext.leagueContextId } : {}),
+        sourceFreshness: canonicalContext.ctx.sourceFreshness || null,
         dataFreshness: {
           staleSourceCount: [
             canonicalContext.ctx.missingData.valuationDataStale,
