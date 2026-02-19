@@ -106,6 +106,8 @@ Team names in draft order: ${teamNames.join(', ')}
 
 The user controls "${teamNames[userTeamIdx]}" (pick position #${userTeamIdx + 1}).${draftOrderContext}${rosterContext}
 
+Custom settings: ${rounds} rounds • Scoring tweak: ${scoringTweak || 'default'}
+
 Generate all ${rounds * numTeams} picks with realistic player selections based on current ADP data.`
 
     const completion = await openai.chat.completions.create({
