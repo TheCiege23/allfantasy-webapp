@@ -17,6 +17,7 @@ import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../
 import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights, type CompositeWeightConfig } from './composite-weights'
 import { getActiveCompositeParams, type LearnedCompositeParams } from './composite-param-learning'
+import { getActiveWeightsForSegment } from './weekly-weight-learning'
 import { applyAntiGamingConstraints, type AntiGamingInput } from './anti-gaming'
 import { getPreviousWeekSnapshots, getLeagueSparklines, type SnapshotMetrics } from './snapshots'
 import { type TeamProjection } from '../monte-carlo'
@@ -843,6 +844,41 @@ function applyLearnedParamsToProfile(
     draftGain: Math.max(0, profile.draftGain * rebalanceFactor),
     futureCapital: Math.max(0, profile.futureCapital + fcDelta),
   }
+}
+
+function applyAdaptiveComponentWeights(
+  profile: import('./composite-weights').CompositeWeightProfile,
+  cw: { market: number; impact: number; scarcity: number; demand: number },
+): import('./composite-weights').CompositeWeightProfile {
+  const baseline = { market: 0.25, impact: 0.25, scarcity: 0.25, demand: 0.25 }
+  const marketShift = (cw.market - baseline.market) / baseline.market
+  const impactShift = (cw.impact - baseline.impact) / baseline.impact
+
+  const MAX_SHIFT = 0.15
+  const clampedMarketDelta = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, marketShift * 0.10))
+  const clampedImpactDelta = Math.max(-MAX_SHIFT, Math.min(MAX_SHIFT, impactShift * 0.10))
+
+  const adjusted = {
+    win: Math.max(0, profile.win + clampedImpactDelta * profile.win),
+    power: Math.max(0, profile.power + clampedImpactDelta * profile.power),
+    luck: profile.luck,
+    market: Math.max(0, profile.market + clampedMarketDelta * profile.market),
+    skill: profile.skill,
+    draftGain: profile.draftGain,
+    futureCapital: Math.max(0, profile.futureCapital + clampedMarketDelta * profile.futureCapital * 0.5),
+  }
+
+  const total = adjusted.win + adjusted.power + adjusted.luck + adjusted.market + adjusted.skill + adjusted.draftGain + adjusted.futureCapital
+  const origTotal = profile.win + profile.power + profile.luck + profile.market + profile.skill + profile.draftGain + profile.futureCapital
+  if (total > 0 && origTotal > 0) {
+    const scale = origTotal / total
+    adjusted.win *= scale
+    adjusted.power *= scale
+    adjusted.market *= scale
+    adjusted.futureCapital *= scale
+  }
+
+  return adjusted
 }
 
 function computePowerScore(
@@ -2678,11 +2714,12 @@ export async function computeLeagueRankingsV2(
   const leagueClassKey = isDynasty ? (isSF ? 'DYN_SF' : 'DYN_1QB') : (isSF ? 'RED_SF' : 'RED_1QB')
   const segmentKey = `${leagueClassKey}_${phase}`
 
-  const [dbRosterRecords, learnedParams, previousSnapshots, sparklineMap] = await Promise.all([
+  const [dbRosterRecords, learnedParams, previousSnapshots, sparklineMap, adaptiveComponentWeights] = await Promise.all([
     fetchRosterRecords(leagueId),
     getActiveCompositeParams(segmentKey).catch(() => null),
     getPreviousWeekSnapshots({ leagueId, season, currentWeek: week }).catch(() => new Map()),
     getLeagueSparklines({ leagueId, season, maxWeeks: 12 }).catch(() => new Map()),
+    getActiveWeightsForSegment(segmentKey).catch(() => null),
   ])
 
   const fcSettings: FantasyCalcSettings = { isDynasty, numQbs: isSF ? 2 : 1, numTeams, ppr }
@@ -2965,7 +3002,11 @@ export async function computeLeagueRankingsV2(
     const adaptedProfile = learnedParams
       ? applyLearnedParamsToProfile(activeWeightProfile, learnedParams)
       : activeWeightProfile
-    const composite = computeCompositeFromWeights(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore, adaptedProfile)
+
+    const finalProfile = adaptiveComponentWeights
+      ? applyAdaptiveComponentWeights(adaptedProfile, adaptiveComponentWeights)
+      : adaptedProfile
+    const composite = computeCompositeFromWeights(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore, finalProfile)
     const streak = computeStreak(weeklyPts, weeklyOppPts)
 
     const starterPer = robustPercentileRank(rosterValues.starterValue, allStarterValues)
@@ -3043,6 +3084,15 @@ export async function computeLeagueRankingsV2(
       expectedWins,
       injuryHealthRatio: rosterInjuryImpact.powerHealthRatio,
       tradeEffPremium: tradeEff.avgPremium,
+      winScore,
+      powerScore,
+      luckScore,
+      marketValueScore,
+      managerSkillScore,
+      futureCapitalScore,
+      draftGainP,
+      benchPercentile: benchPer,
+      riskConcentration: rosterInjuryImpact.riskConcentration,
     }
     teamSnapshotMetrics.set(roster.roster_id, snapshotMetrics)
 
@@ -3270,6 +3320,7 @@ export async function computeLeagueRankingsV2(
       weightVersion: weightConfig.version,
       weightCalibratedAt: weightConfig.calibratedAt,
       learnedParams: learnedParams ?? undefined,
+      adaptiveWeights: adaptiveComponentWeights ?? undefined,
       segmentKey,
       modelConfidence: computeModelConfidence(teams),
       dataFreshness: computeDataFreshness(teams),

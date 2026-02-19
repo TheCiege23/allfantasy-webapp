@@ -5,6 +5,15 @@ export interface SnapshotMetrics {
   expectedWins: number
   injuryHealthRatio: number
   tradeEffPremium: number
+  winScore?: number
+  powerScore?: number
+  luckScore?: number
+  marketValueScore?: number
+  managerSkillScore?: number
+  futureCapitalScore?: number
+  draftGainP?: number
+  benchPercentile?: number
+  riskConcentration?: number
 }
 
 export async function saveRankingsSnapshot(args: {

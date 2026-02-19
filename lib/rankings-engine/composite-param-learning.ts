@@ -1,7 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { resolveLeagueClass, type LeagueClass } from './adaptive-weight-learning'
 import type { CompositeWeightProfile } from './composite-weights'
-import { getCompositeWeightConfig, resolveWeightProfile } from './composite-weights'
+import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights } from './composite-weights'
+import { runBacktestForWeek, type BacktestResult } from './backtest'
 
 export interface LearnedCompositeParams {
   injuryInfluence: number
@@ -72,6 +73,7 @@ interface ParamCandidate {
 
 export async function learnCompositeParamsFromBacktest(
   segmentKey: string,
+  backtestLeagueId?: string,
 ): Promise<{ learned: LearnedCompositeParams; improved: boolean; baselineScore: number; learnedScore: number }> {
   const baseKey = segmentKey.replace(/_inseason|_offseason|_postDraft|_postSeason/, '')
   const defaults = getDefaultCompositeParams(baseKey)
@@ -99,6 +101,12 @@ export async function learnCompositeParamsFromBacktest(
     'futureCapitalInfluence',
   ]
 
+  const useRecompute = !!backtestLeagueId
+  const recomputeWeeks = backtestResults
+    .filter((r: any) => r.leagueId === backtestLeagueId)
+    .map((r: any) => ({ week: r.weekEvaluated as number, season: String(r.season || '2025'), target: r.targetType as 'win_pct_3w' | 'playoff_qual' | 'championship_finish' }))
+    .slice(0, 6)
+
   for (const key of paramKeys) {
     const [lo, hi] = PARAM_BOUNDS[key]
     const current = currentApplied[key]
@@ -109,8 +117,18 @@ export async function learnCompositeParamsFromBacktest(
       const candidate = { ...currentApplied }
       candidate[key] = clamp(current + delta * step, lo, hi)
 
-      const projectedScore = projectBacktestScore(backtestResults, candidate, currentApplied)
-      candidates.push({ params: candidate, score: projectedScore })
+      if (useRecompute && recomputeWeeks.length >= 3) {
+        const recomputedScore = await evaluateCandidateViaBacktest(
+          backtestLeagueId!,
+          recomputeWeeks,
+          segmentKey,
+          candidate,
+        )
+        candidates.push({ params: candidate, score: recomputedScore ?? projectBacktestScore(backtestResults, candidate, currentApplied) })
+      } else {
+        const projectedScore = projectBacktestScore(backtestResults, candidate, currentApplied)
+        candidates.push({ params: candidate, score: projectedScore })
+      }
     }
   }
 
@@ -127,6 +145,37 @@ export async function learnCompositeParamsFromBacktest(
     baselineScore: Math.round(baselineScore * 10000) / 10000,
     learnedScore: Math.round(best.score * 10000) / 10000,
   }
+}
+
+async function evaluateCandidateViaBacktest(
+  leagueId: string,
+  weeks: Array<{ week: number; season: string; target: 'win_pct_3w' | 'playoff_qual' | 'championship_finish' }>,
+  segmentKey: string,
+  candidateParams: LearnedCompositeParams,
+): Promise<number | null> {
+  const results: Array<{ brier: number; ece: number; ndcg: number; spearman: number }> = []
+
+  for (const w of weeks) {
+    try {
+      const result = await runBacktestForWeek(
+        leagueId,
+        w.season,
+        w.week,
+        segmentKey,
+        w.target,
+        3,
+        candidateParams,
+      )
+      if (result) {
+        results.push(result.metrics)
+      }
+    } catch {
+      continue
+    }
+  }
+
+  if (results.length < 2) return null
+  return computeAggregateScore(results)
 }
 
 function computeAggregateScore(

@@ -33,7 +33,7 @@ export const POST = withApiUsage({ endpoint: "/api/admin/weekly-backtest", tool:
       const results = await runBacktestSweep(leagueId, season, segment, maxWeek)
       backtestResults.push({ segment, resultCount: results.length })
 
-      const paramResult = await learnCompositeParamsFromBacktest(`${segment}_inseason`)
+      const paramResult = await learnCompositeParamsFromBacktest(`${segment}_inseason`, leagueId)
       if (paramResult.improved && !dryRun) {
         await persistLearnedCompositeParams(`${segment}_inseason`, paramResult.learned)
       }

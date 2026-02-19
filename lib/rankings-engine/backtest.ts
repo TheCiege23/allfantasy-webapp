@@ -1,5 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { getLeagueMatchups } from '@/lib/sleeper-client'
+import { computeCompositeFromWeights, resolveWeightProfile, getCompositeWeightConfig, type CompositeWeightProfile } from './composite-weights'
+import { type LearnedCompositeParams } from './composite-param-learning'
 
 export type BacktestTargetType = 'win_pct_3w' | 'playoff_qual' | 'championship_finish'
 
@@ -34,6 +36,64 @@ interface SnapshotRow {
   rank: number
   composite: number
   expectedWins: number | null
+  winScore: number | null
+  powerScore: number | null
+  luckScore: number | null
+  marketValueScore: number | null
+  managerSkillScore: number | null
+  futureCapitalScore: number | null
+  draftGainP: number | null
+  starterPercentile: number | null
+  benchPercentile: number | null
+  injuryHealthRatio: number | null
+  riskConcentration: number | null
+}
+
+function hasComponentScores(row: SnapshotRow): boolean {
+  return row.winScore != null && row.powerScore != null && row.luckScore != null
+    && row.marketValueScore != null && row.managerSkillScore != null
+}
+
+function recomputeComposite(
+  row: SnapshotRow,
+  profile: CompositeWeightProfile,
+  params: LearnedCompositeParams | null,
+  phase: string,
+  isDynasty: boolean,
+): number {
+  if (!hasComponentScores(row)) {
+    return Number(row.composite)
+  }
+
+  let adjustedProfile = profile
+  if (params) {
+    const luckScale = 2.0 / Math.max(1.0, params.luckDampening)
+    const fcDelta = params.futureCapitalInfluence - 0.05
+    const totalOther = profile.win + profile.power + profile.market + profile.skill + profile.draftGain
+    const rebalanceFactor = totalOther > 0 ? (totalOther - fcDelta) / totalOther : 1
+    adjustedProfile = {
+      win: Math.max(0, profile.win * rebalanceFactor),
+      power: Math.max(0, profile.power * rebalanceFactor),
+      luck: Math.max(0, profile.luck * luckScale),
+      market: Math.max(0, profile.market * rebalanceFactor),
+      skill: Math.max(0, profile.skill * rebalanceFactor),
+      draftGain: Math.max(0, profile.draftGain * rebalanceFactor),
+      futureCapital: Math.max(0, profile.futureCapital + fcDelta),
+    }
+  }
+
+  return computeCompositeFromWeights(
+    row.winScore!,
+    row.powerScore!,
+    row.luckScore!,
+    row.marketValueScore!,
+    row.managerSkillScore!,
+    row.draftGainP ?? 0,
+    phase,
+    isDynasty,
+    row.futureCapitalScore ?? 0,
+    adjustedProfile,
+  )
 }
 
 function computeBrier(predictions: number[], outcomes: number[]): number {
@@ -185,6 +245,14 @@ function snapshotToPredictedWinPct(composite: number): number {
   return Math.max(0, Math.min(1, composite / 100))
 }
 
+function parseSegmentKey(segmentKey: string): { phase: string; isDynasty: boolean } {
+  const base = segmentKey.replace(/_inseason|_offseason|_postDraft|_postSeason/, '')
+  const phaseMatch = segmentKey.match(/_(.+)$/)
+  const phase = phaseMatch ? phaseMatch[1].replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '') : 'inseason'
+  const isDynasty = base.startsWith('DYN')
+  return { phase, isDynasty }
+}
+
 export async function runBacktestForWeek(
   leagueId: string,
   season: string,
@@ -192,6 +260,7 @@ export async function runBacktestForWeek(
   segmentKey: string,
   targetType: BacktestTargetType = 'win_pct_3w',
   horizon: number = 3,
+  candidateParams?: LearnedCompositeParams | null,
 ): Promise<BacktestResult | null> {
   const snapshots = await prisma.rankingsSnapshot.findMany({
     where: { leagueId, season, week },
@@ -200,12 +269,34 @@ export async function runBacktestForWeek(
 
   if (snapshots.length < 4) return null
 
-  const teams: SnapshotRow[] = snapshots.map(s => ({
-    rosterId: s.rosterId,
-    rank: s.rank,
-    composite: Number(s.composite),
-    expectedWins: s.expectedWins ? Number(s.expectedWins) : null,
-  }))
+  const teams: SnapshotRow[] = snapshots.map(s => {
+    const m = (s.metricsJson || {}) as Record<string, any>
+    return {
+      rosterId: s.rosterId,
+      rank: s.rank,
+      composite: Number(s.composite),
+      expectedWins: s.expectedWins ? Number(s.expectedWins) : null,
+      winScore: m.winScore ?? null,
+      powerScore: m.powerScore ?? null,
+      luckScore: m.luckScore ?? null,
+      marketValueScore: m.marketValueScore ?? null,
+      managerSkillScore: m.managerSkillScore ?? null,
+      futureCapitalScore: m.futureCapitalScore ?? null,
+      draftGainP: m.draftGainP ?? null,
+      starterPercentile: m.starterValuePercentile ?? null,
+      benchPercentile: m.benchPercentile ?? null,
+      injuryHealthRatio: m.injuryHealthRatio ?? null,
+      riskConcentration: m.riskConcentration ?? null,
+    }
+  })
+
+  const { phase, isDynasty } = parseSegmentKey(segmentKey)
+
+  let weightProfile: CompositeWeightProfile | null = null
+  if (candidateParams && hasComponentScores(teams[0])) {
+    const config = await getCompositeWeightConfig()
+    weightProfile = resolveWeightProfile(config, phase, isDynasty)
+  }
 
   const rosterIds = teams.map(t => t.rosterId)
   let predictions: number[] = []
@@ -215,7 +306,11 @@ export async function runBacktestForWeek(
     const actualWinPcts = await computeWinPct3W(leagueId, week, horizon, rosterIds)
     if (!actualWinPcts) return null
 
-    predictions = teams.map(t => snapshotToPredictedWinPct(t.composite))
+    if (weightProfile && candidateParams) {
+      predictions = teams.map(t => snapshotToPredictedWinPct(recomputeComposite(t, weightProfile!, candidateParams, phase, isDynasty)))
+    } else {
+      predictions = teams.map(t => snapshotToPredictedWinPct(t.composite))
+    }
     outcomes = teams.map(t => actualWinPcts.get(t.rosterId) ?? 0.5)
   } else if (targetType === 'playoff_qual') {
     const endSnapshots = await prisma.rankingsSnapshot.findMany({
@@ -234,10 +329,15 @@ export async function runBacktestForWeek(
       endRanks.set(s.rosterId, s.rank)
     }
 
-    predictions = teams.map(t => {
-      const rank = t.rank
-      return Math.max(0, Math.min(1, 1 - (rank - 1) / totalTeams))
-    })
+    if (weightProfile && candidateParams) {
+      const recomposites = teams.map(t => recomputeComposite(t, weightProfile!, candidateParams, phase, isDynasty))
+      predictions = recomposites.map(c => Math.max(0, Math.min(1, 1 - (1 - c / 100) * (totalTeams - 1) / totalTeams)))
+    } else {
+      predictions = teams.map(t => {
+        const rank = t.rank
+        return Math.max(0, Math.min(1, 1 - (rank - 1) / totalTeams))
+      })
+    }
     outcomes = teams.map(t => {
       const finalRank = endRanks.get(t.rosterId)
       if (finalRank === undefined) return 0.5
@@ -258,9 +358,13 @@ export async function runBacktestForWeek(
       endRanks.set(s.rosterId, s.rank)
     }
 
-    predictions = teams.map(t => {
-      return Math.max(0, Math.min(1, (totalTeams - t.rank + 1) / totalTeams))
-    })
+    if (weightProfile && candidateParams) {
+      predictions = teams.map(t => snapshotToPredictedWinPct(recomputeComposite(t, weightProfile!, candidateParams, phase, isDynasty)))
+    } else {
+      predictions = teams.map(t => {
+        return Math.max(0, Math.min(1, (totalTeams - t.rank + 1) / totalTeams))
+      })
+    }
     outcomes = teams.map(t => {
       const finalRank = endRanks.get(t.rosterId)
       if (finalRank === undefined) return 0.5
