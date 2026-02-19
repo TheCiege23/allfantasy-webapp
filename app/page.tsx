@@ -81,16 +81,6 @@ function HomeContent() {
       {/* ── HERO SECTION ── full viewport height */}
       <section className="relative min-h-screen flex flex-col justify-center px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24 py-16 md:py-0">
 
-        {/* Hero background image */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <img
-            src="/allfantasy-hero.png"
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover opacity-20 dark:opacity-30 dark:mix-blend-lighten mix-blend-multiply invert dark:invert-0"
-          />
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, var(--bg) 0%, transparent 30%, transparent 70%, var(--bg) 100%)' }} />
-        </div>
-
         {/* Animated background blobs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -left-20 top-20 w-96 h-96 rounded-full blur-[120px] animate-pulse-slow" style={{ background: 'var(--hero-blob-1, rgba(34,211,238,0.08))' }} />
@@ -160,13 +150,18 @@ function HomeContent() {
             </div>
           </div>
 
-          {/* Right: Trade Analyzer */}
+          {/* Right: Logo + Trade Analyzer */}
           <motion.div
             initial={{ opacity: 0, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative group"
+            className="relative group flex flex-col items-center"
           >
+            <img
+              src="/allfantasy-hero.png"
+              alt="AllFantasy"
+              className="w-full max-w-lg rounded-2xl mb-4"
+            />
             <InstantTradeAnalyzer />
             <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
           </motion.div>
