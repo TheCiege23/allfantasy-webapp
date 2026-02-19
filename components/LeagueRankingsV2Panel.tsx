@@ -747,6 +747,56 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
         </div>
       )}
 
+      {sortedTeams.length > 0 && (() => {
+        const totalPoints = sortedTeams.reduce((sum, t) => sum + (t.pointsFor || 0), 0)
+        const BAR_COLORS = [
+          'linear-gradient(to right, #a855f7, #c084fc)',
+          'linear-gradient(to right, #ec4899, #f472b6)',
+          'linear-gradient(to right, #f97316, #fb923c)',
+          'linear-gradient(to right, #06b6d4, #22d3ee)',
+          'linear-gradient(to right, #10b981, #34d399)',
+          'linear-gradient(to right, #eab308, #facc15)',
+          'linear-gradient(to right, #6366f1, #818cf8)',
+          'linear-gradient(to right, #ef4444, #f87171)',
+          'linear-gradient(to right, #8b5cf6, #a78bfa)',
+          'linear-gradient(to right, #14b8a6, #2dd4bf)',
+          'linear-gradient(to right, #f59e0b, #fbbf24)',
+          'linear-gradient(to right, #3b82f6, #60a5fa)',
+          'linear-gradient(to right, #d946ef, #e879f9)',
+          'linear-gradient(to right, #84cc16, #a3e635)',
+        ]
+        return totalPoints > 0 ? (
+          <div className="mb-6 bg-black/60 border border-cyan-900/50 rounded-2xl p-6">
+            <h3 className="text-sm font-medium mb-4 flex items-center gap-2 text-white/80">
+              League Power Breakdown <span className="text-[10px] text-cyan-400 font-normal">(by total points scored)</span>
+            </h3>
+            <div className="h-7 bg-gray-900 rounded-full overflow-hidden flex">
+              {sortedTeams.map((team, i) => {
+                const pct = (team.pointsFor / totalPoints) * 100
+                return pct > 0 ? (
+                  <div
+                    key={team.rosterId}
+                    className="h-full flex items-center justify-center text-[10px] font-mono text-white/90 relative group cursor-default transition-all hover:brightness-125"
+                    style={{ width: `${pct}%`, background: BAR_COLORS[i % BAR_COLORS.length] }}
+                    title={`${team.displayName || team.username || `Team ${team.rosterId}`} — ${team.pointsFor.toFixed(1)} pts (${pct.toFixed(1)}%)`}
+                  >
+                    {pct > 4 && <span className="group-hover:scale-125 transition-transform truncate px-0.5">{team.rank}</span>}
+                  </div>
+                ) : null
+              })}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3">
+              {sortedTeams.slice(0, 6).map((team, i) => (
+                <div key={team.rosterId} className="flex items-center gap-1.5 text-[10px] text-white/50">
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: BAR_COLORS[i % BAR_COLORS.length].replace('linear-gradient(to right, ', '').split(',')[0] }} />
+                  <span>{team.displayName || team.username || `#${team.rank}`}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null
+      })()}
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-8 space-y-2">
           <div className="flex items-center justify-between mb-1">
