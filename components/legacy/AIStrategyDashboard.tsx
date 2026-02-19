@@ -11,7 +11,7 @@ import jsPDF from 'jspdf';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Target,
@@ -31,6 +31,7 @@ import {
   RefreshCw,
   Mic,
   MicOff,
+  Search,
 } from 'lucide-react';
 import TeamArchetypeBadge from './TeamArchetypeBadge';
 import LoadReportModal from './LoadReportModal';
@@ -742,34 +743,89 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               {activeSubTab === 'waiver' && (
                 <motion.div
                   key="waiver"
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
-                  className="mt-8"
+                  className="mt-8 space-y-8"
                 >
-                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
+                  <Card className="bg-gradient-to-br from-purple-950/60 to-[#0f0a24] border-none shadow-[0_0_40px_-10px_#a855f7]">
                     <CardHeader>
-                      <CardTitle className="text-2xl text-emerald-300">Waiver AI</CardTitle>
+                      <CardTitle className="text-2xl text-purple-300 flex items-center gap-3">
+                        <Search className="h-6 w-6" />
+                        Waiver Wire Oracle
+                      </CardTitle>
+                      <CardDescription className="text-gray-300">
+                        AI-ranked targets tailored to your {strategy?.archetype || 'team'} build and positional needs.
+                      </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      {strategy.waiverTargets ? (
-                        <div className="prose prose-invert max-w-none text-lg leading-relaxed whitespace-pre-wrap">
-                          {strategy.waiverTargets}
+                      {sectionLoading === 'waiver' ? (
+                        <div className="space-y-6">
+                          {[...Array(5)].map((_, i) => (
+                            <Skeleton key={i} className="h-32 w-full rounded-xl" />
+                          ))}
+                        </div>
+                      ) : strategy.waiverTargets ? (
+                        <div className="space-y-6">
+                          {strategy.waiverTargets.split('\n').filter(Boolean).map((line: string, i: number) => {
+                            const match = line.match(/^(\d+)\.\s*(.+?):\s*(.+)$/);
+                            if (!match) {
+                              return (
+                                <div key={i} className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40">
+                                  <p className="text-gray-200 leading-relaxed">{line}</p>
+                                </div>
+                              );
+                            }
+                            const [, rank, player, rationale] = match;
+                            return (
+                              <motion.div
+                                key={i}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: i * 0.1 }}
+                                className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40 hover:border-purple-600/60 transition-colors group"
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="flex items-center gap-3">
+                                      <Badge className="bg-purple-700 text-white font-bold text-lg px-3 py-1">
+                                        #{rank}
+                                      </Badge>
+                                      <h4 className="text-xl font-semibold text-purple-200 group-hover:text-purple-100">
+                                        {player.trim()}
+                                      </h4>
+                                    </div>
+                                    <p className="text-gray-300 mt-3 leading-relaxed">{rationale}</p>
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-purple-400 hover:text-purple-300"
+                                    onClick={() => navigator.clipboard.writeText(player.trim())}
+                                  >
+                                    Copy Name
+                                  </Button>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
                         </div>
                       ) : (
-                        <div className="text-center py-8">
-                          <p className="text-gray-400 text-lg mb-4">Find the best waiver wire pickups ranked by dynasty value and team fit.</p>
+                        <div className="text-center py-12">
                           <Button
                             onClick={() => loadSection('waiver')}
                             disabled={sectionLoading === 'waiver'}
-                            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold py-4 px-6 rounded-xl"
+                            className="bg-purple-600 hover:bg-purple-700 text-lg py-6 px-10"
                           >
                             {sectionLoading === 'waiver' ? (
                               <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generating...</>
                             ) : (
-                              <><Sparkles className="mr-2 h-5 w-5" /> Generate Waiver Targets</>
+                              <>Generate Waiver Targets Now</>
                             )}
                           </Button>
+                          <p className="text-gray-400 mt-4 text-sm">
+                            AI will scan available players and rank them by dynasty value + your team fit.
+                          </p>
                         </div>
                       )}
                     </CardContent>

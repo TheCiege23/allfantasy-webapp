@@ -127,8 +127,8 @@ export async function POST(req: NextRequest) {
         maxTokens: 1500,
       },
       waiver: {
-        instruction: 'Identify top 5-10 waiver wire targets this week, ranked by dynasty value and fit for this specific team archetype. Include FAAB bid suggestions.',
-        schema: `{ "waiverTargets": "Ranked list of waiver targets with player names, positions, ownership %, dynasty value reasoning, and recommended FAAB bids for this archetype" }`,
+        instruction: 'Identify top 5-10 waiver wire targets this week, ranked by dynasty value and fit for this specific team archetype. Include FAAB bid suggestions. IMPORTANT: Format each target as a numbered line like "1. Player Name (POS): Reasoning here including ownership %, dynasty value, FAAB bid suggestion". Each target MUST be on its own line with this exact format so it can be parsed.',
+        schema: `{ "waiverTargets": "Numbered list where each line is formatted as: N. Player Name (POS): Reasoning with ownership %, dynasty value, and FAAB bid" }`,
         maxTokens: 1500,
       },
       longterm: {
