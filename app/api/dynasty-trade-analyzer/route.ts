@@ -2,16 +2,15 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import {
-  assembleTradeContext,
-  contextToPrompt,
+  assembleTradeDecisionContext,
+  contextToPromptV1,
   type TradeParty,
   type LeagueContextInput,
-  type TradeContextSnapshot,
 } from '@/lib/trade-engine/trade-context-assembler';
 import {
   runDualBrainTradeAnalysis,
-  type DualBrainRequest,
 } from '@/lib/trade-engine/dual-brain-trade-analyzer';
+import type { TradeDecisionContextV1 } from '@/lib/trade-engine/trade-decision-context';
 
 function parseLeagueContext(raw: string | undefined): LeagueContextInput {
   if (!raw) return {}
@@ -28,18 +27,28 @@ function parseLeagueContext(raw: string | undefined): LeagueContextInput {
   }
 }
 
-function buildSystemPrompt(ctx: TradeContextSnapshot, isCounter: boolean): string {
+function buildSystemPrompt(ctx: TradeDecisionContextV1, isCounter: boolean): string {
   const base = isCounter
     ? `You are a dynasty fantasy football team manager who just received a trade offer. You must return ONLY valid JSON. You are interested in the deal but want slightly better terms. Use the deterministic fact layer below as your SOLE source of truth for valuations, roster composition, and league context. Do not hallucinate values — use the numbers provided. Be reasonable — your counter should be close to fair, not a fleece.`
     : `You are a top dynasty fantasy football analyst. You must return ONLY valid JSON. Never hallucinate player stats or values — the deterministic fact layer below is your SOLE source of truth. Use the provided market values, ADP, injury data, analytics, and manager context to make your evaluation. If data quality warnings exist, factor uncertainty into your confidence score.`
 
+  const missingFlags: string[] = []
+  if (ctx.missingData.valuationsMissing.length > 0) missingFlags.push(`Missing valuations for: ${ctx.missingData.valuationsMissing.join(', ')}`)
+  if (ctx.missingData.injuryDataStale) missingFlags.push('Injury data may be stale')
+  if (ctx.missingData.tradeHistoryInsufficient) missingFlags.push('Limited trade history available')
+
+  let missingWarning = ''
+  if (missingFlags.length > 0) {
+    missingWarning = `\n\nDATA GAPS (reduce confidence accordingly):\n${missingFlags.map(f => `- ${f}`).join('\n')}`
+  }
+
   return `${base}
 
-IMPORTANT: The fact layer below was assembled deterministically from live data sources. Trust these numbers over your training data. Your role is DECISION-MAKING only — the facts have already been established.`
+IMPORTANT: The fact layer below was assembled deterministically from live data sources at ${ctx.assembledAt} (Context ID: ${ctx.contextId}). Trust these numbers over your training data. Your role is DECISION-MAKING only — the facts have already been established.${missingWarning}`
 }
 
-function buildUserPrompt(ctx: TradeContextSnapshot, isCounter: boolean): string {
-  const factLayer = contextToPrompt(ctx)
+function buildUserPrompt(ctx: TradeDecisionContextV1, isCounter: boolean): string {
+  const factLayer = contextToPromptV1(ctx)
 
   if (isCounter) {
     return `${factLayer}
@@ -110,10 +119,10 @@ export async function POST(req: Request) {
     const partyB: TradeParty = { name: 'Team B', assets: sideBAssets }
 
     const stageAStart = Date.now()
-    const tradeContext = await assembleTradeContext(partyA, partyB, parsedLeague)
+    const tradeContext = await assembleTradeDecisionContext(partyA, partyB, parsedLeague)
     const stageALatency = Date.now() - stageAStart
 
-    console.log(`[dynasty-trade-analyzer] Stage A assembled in ${stageALatency}ms — ${tradeContext.dataQuality.playersCovered}/${tradeContext.dataQuality.playersTotal} players valued, ${tradeContext.dataQuality.adpHitRate}% ADP hit, ${tradeContext.dataQuality.warnings.length} warnings`)
+    console.log(`[dynasty-trade-analyzer] Stage A assembled in ${stageALatency}ms — ctx=${tradeContext.contextId}, ${tradeContext.dataQuality.assetsCovered}/${tradeContext.dataQuality.assetsTotal} assets (${tradeContext.dataQuality.coveragePercent}%), ${tradeContext.dataQuality.warnings.length} warnings`)
 
     const systemPrompt = buildSystemPrompt(tradeContext, !!counterFromPartner)
     const userPrompt = buildUserPrompt(tradeContext, !!counterFromPartner)
@@ -148,14 +157,19 @@ export async function POST(req: Request) {
         reason: consensus.reason,
       },
       stageA: {
+        contextId: tradeContext.contextId,
+        version: tradeContext.version,
+        assembledAt: tradeContext.assembledAt,
         valueDelta: tradeContext.valueDelta,
         sideATotalValue: tradeContext.sideA.totalValue,
         sideBTotalValue: tradeContext.sideB.totalValue,
         dataQuality: tradeContext.dataQuality,
-        leagueTradeHistory: tradeContext.leagueTradeHistory,
+        missingData: tradeContext.missingData,
+        tradeHistoryStats: tradeContext.tradeHistoryStats,
+        dataSources: tradeContext.dataSources,
       },
       meta: {
-        pipeline: '2-stage',
+        pipeline: '2-stage-v1',
         stageALatencyMs: stageALatency,
         stageBLatencyMs: stageBLatency,
         totalLatencyMs: stageALatency + stageBLatency,

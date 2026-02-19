@@ -1,5 +1,5 @@
 import { prisma } from '../prisma'
-import { priceAssets, pricePlayer, pricePick, type PricedAsset, type ValuationContext, type AssetsInput, type PickInput } from '../hybrid-valuation'
+import { priceAssets, type PricedAsset, type ValuationContext, type AssetsInput, type PickInput } from '../hybrid-valuation'
 import { getPlayerAnalyticsBatch, type PlayerAnalytics } from '../player-analytics'
 import { buildManagerProfile, type ManagerTendencyProfile } from './manager-tendency-engine'
 import {
@@ -9,6 +9,18 @@ import {
 } from './league-intelligence'
 import { type Asset, type LeagueSettings, DEFAULT_THRESHOLDS } from './types'
 import { getPlayerADP, type ADPEntry } from '../adp-data'
+import {
+  TradeDecisionContextV1Schema,
+  type TradeDecisionContextV1,
+  type AssetValuation,
+  type PlayerRiskMarker,
+  type TeamSnapshot,
+  type CompetitorSnapshot,
+  type MissingDataFlags,
+  type ManagerPreferenceVector,
+  TRADE_DECISION_CONTEXT_VERSION,
+  classifyAgeBucket,
+} from './trade-decision-context'
 
 export interface TradeParty {
   name: string
@@ -18,6 +30,7 @@ export interface TradeParty {
 export interface LeagueContextInput {
   leagueId?: string
   leagueName?: string
+  platform?: string
   scoringType?: string
   numTeams?: number
   isSF?: boolean
@@ -28,92 +41,6 @@ export interface LeagueContextInput {
   benchSlots?: number
   taxiSlots?: number
   scoringSettings?: Record<string, number>
-}
-
-export interface PlayerFact {
-  name: string
-  position: string
-  age: number | null
-  team: string | null
-  marketValue: number
-  impactValue: number
-  vorpValue: number
-  volatility: number
-  source: string
-  adp: { rank: number; position: string; value: number | null } | null
-  injuryStatus: { status: string; type: string | null; description: string | null; date: string | null } | null
-  analytics: {
-    athleticGrade: number | null
-    collegeProductionGrade: number | null
-    weeklyVolatility: number | null
-    breakoutAge: number | null
-    comparablePlayers: string | null
-  } | null
-  isCornerstone: boolean
-  cornerstoneReason: string
-}
-
-export interface ManagerFact {
-  managerId: string
-  managerName: string
-  tendencies: ManagerTendencyProfile | null
-  contenderTier: string
-  needs: string[]
-  surplus: string[]
-  starterStrengthIndex: number
-  rosterSize: number
-  pickCount: number
-  youngAssetCount: number
-}
-
-export interface TradeContextSnapshot {
-  assembledAt: string
-  version: string
-
-  league: {
-    name: string
-    scoringType: string
-    numTeams: number
-    isSF: boolean
-    isTEP: boolean
-    tepBonus: number
-    starterSlots: number
-    rosterPositions: string[]
-    scoringSettings: Record<string, number>
-  }
-
-  sideA: {
-    assets: PlayerFact[]
-    totalValue: number
-    manager: ManagerFact | null
-  }
-
-  sideB: {
-    assets: PlayerFact[]
-    totalValue: number
-    manager: ManagerFact | null
-  }
-
-  valueDelta: {
-    absoluteDiff: number
-    percentageDiff: number
-    favoredSide: 'A' | 'B' | 'Even'
-  }
-
-  leagueTradeHistory: {
-    totalTrades: number
-    recentTrades: number
-    avgValueDelta: number
-  }
-
-  dataQuality: {
-    playersCovered: number
-    playersTotal: number
-    adpHitRate: number
-    injuryDataAvailable: boolean
-    analyticsAvailable: boolean
-    warnings: string[]
-  }
 }
 
 function extractPlayerNames(assets: string[]): string[] {
@@ -155,8 +82,8 @@ function parsePickFromString(asset: string): PickInput {
   }
 }
 
-async function fetchInjuries(playerNames: string[]): Promise<Map<string, { status: string; type: string | null; description: string | null; date: string | null }>> {
-  const result = new Map<string, { status: string; type: string | null; description: string | null; date: string | null }>()
+async function fetchInjuries(playerNames: string[]): Promise<Map<string, { status: string; type: string | null; description: string | null; date: string | null; fetchedAt: string | null }>> {
+  const result = new Map<string, { status: string; type: string | null; description: string | null; date: string | null; fetchedAt: string | null }>()
   if (playerNames.length === 0) return result
 
   try {
@@ -175,6 +102,7 @@ async function fetchInjuries(playerNames: string[]): Promise<Map<string, { statu
           type: inj.type,
           description: inj.description,
           date: inj.date ? inj.date.toISOString().split('T')[0] : null,
+          fetchedAt: inj.fetchedAt ? inj.fetchedAt.toISOString() : null,
         })
       }
     }
@@ -185,11 +113,25 @@ async function fetchInjuries(playerNames: string[]): Promise<Map<string, { statu
   return result
 }
 
+interface ManagerContextResult {
+  managerId: string
+  managerName: string
+  tendencies: ManagerTendencyProfile | null
+  contenderTier: 'champion' | 'contender' | 'middle' | 'rebuild'
+  needs: string[]
+  surplus: string[]
+  starterStrengthIndex: number
+  rosterSize: number
+  pickCount: number
+  youngAssetCount: number
+  rostersFetchedAt: string | null
+}
+
 async function fetchManagerContext(
   leagueId: string | undefined,
   partyName: string,
   settings: LeagueSettings
-): Promise<ManagerFact | null> {
+): Promise<ManagerContextResult | null> {
   if (!leagueId) return null
 
   try {
@@ -265,6 +207,7 @@ async function fetchManagerContext(
       rosterSize: rosterAssets.length,
       pickCount: picks,
       youngAssetCount: youngAssets,
+      rostersFetchedAt: (roster as any).updatedAt ? new Date((roster as any).updatedAt).toISOString() : null,
     }
   } catch (e) {
     console.warn('[trade-context] Manager context fetch failed:', e)
@@ -272,12 +215,71 @@ async function fetchManagerContext(
   }
 }
 
-async function fetchLeagueTradeHistory(leagueId: string | undefined): Promise<{ totalTrades: number; recentTrades: number; avgValueDelta: number }> {
-  if (!leagueId) return { totalTrades: 0, recentTrades: 0, avgValueDelta: 0 }
+async function fetchCompetitorSnapshots(
+  leagueId: string | undefined,
+  excludeNames: string[],
+  settings: LeagueSettings
+): Promise<{ competitors: CompetitorSnapshot[]; fetchedAt: string | null }> {
+  if (!leagueId) return { competitors: [], fetchedAt: null }
+
+  try {
+    const league = await prisma.league.findFirst({
+      where: { platformLeagueId: leagueId },
+      include: { rosters: true },
+    })
+
+    if (!league || !league.rosters.length) return { competitors: [], fetchedAt: null }
+
+    const excludeLower = excludeNames.map(n => n.toLowerCase())
+    const competitors: CompetitorSnapshot[] = []
+
+    for (const roster of league.rosters) {
+      const pd = roster.playerData as any
+      const ownerName = pd?.ownerDisplayName || pd?.displayName || `Team ${roster.id}`
+      if (excludeLower.some(e => ownerName.toLowerCase().includes(e))) continue
+
+      const playerData = Array.isArray(roster.playerData)
+        ? (roster.playerData as any[])
+        : (pd?.players || [])
+
+      const rosterAssets: Asset[] = playerData.map((p: any, idx: number) => ({
+        id: `comp-${roster.id}-${idx}`,
+        name: p.fullName || p.playerName || 'Unknown',
+        type: 'PLAYER' as const,
+        pos: p.position || 'UNKNOWN',
+        value: p.marketValue || p.value || 0,
+        age: p.age || null,
+      }))
+
+      const { needs, surplus } = computeNeedsSurplus(rosterAssets, settings)
+      const starterIdx = computeStarterStrengthIndex(rosterAssets, settings.starterSlots || 8)
+
+      competitors.push({
+        teamId: String(roster.id),
+        teamName: ownerName,
+        contenderTier: 'middle',
+        starterStrengthIndex: starterIdx,
+        needs,
+        surplus,
+      })
+    }
+
+    return {
+      competitors: competitors.slice(0, 10),
+      fetchedAt: new Date().toISOString(),
+    }
+  } catch {
+    return { competitors: [], fetchedAt: null }
+  }
+}
+
+async function fetchLeagueTradeHistory(leagueId: string | undefined): Promise<{ totalTrades: number; recentTrades: number; avgValueDelta: number; fetchedAt: string }> {
+  const now = new Date().toISOString()
+  if (!leagueId) return { totalTrades: 0, recentTrades: 0, avgValueDelta: 0, fetchedAt: now }
 
   try {
     const league = await prisma.league.findFirst({ where: { platformLeagueId: leagueId } })
-    if (!league) return { totalTrades: 0, recentTrades: 0, avgValueDelta: 0 }
+    if (!league) return { totalTrades: 0, recentTrades: 0, avgValueDelta: 0, fetchedAt: now }
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     const [total, recent] = await Promise.all([
@@ -285,17 +287,32 @@ async function fetchLeagueTradeHistory(leagueId: string | undefined): Promise<{ 
       prisma.tradeNotification.count({ where: { userId: league.userId, createdAt: { gte: thirtyDaysAgo } } }),
     ])
 
-    return { totalTrades: total, recentTrades: recent, avgValueDelta: 0 }
+    return { totalTrades: total, recentTrades: recent, avgValueDelta: 0, fetchedAt: now }
   } catch {
-    return { totalTrades: 0, recentTrades: 0, avgValueDelta: 0 }
+    return { totalTrades: 0, recentTrades: 0, avgValueDelta: 0, fetchedAt: now }
   }
 }
 
-export async function assembleTradeContext(
+function tendencyToPreferenceVector(t: ManagerTendencyProfile): ManagerPreferenceVector {
+  return {
+    sampleSize: t.sampleSize,
+    starterPremium: t.starterPremium,
+    positionBias: t.positionBias,
+    riskTolerance: t.riskTolerance,
+    consolidationBias: t.consolidationBias,
+    overpayThreshold: t.overpayThreshold,
+    fairnessTolerance: t.fairnessTolerance,
+    computedAt: new Date(t.computedAt).toISOString(),
+  }
+}
+
+export async function assembleTradeDecisionContext(
   sideA: TradeParty,
   sideB: TradeParty,
   leagueInput: LeagueContextInput
-): Promise<TradeContextSnapshot> {
+): Promise<TradeDecisionContextV1> {
+  const assembledAt = new Date().toISOString()
+  const contextId = `tdc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const warnings: string[] = []
 
   const leagueSettings: LeagueSettings = {
@@ -320,6 +337,7 @@ export async function assembleTradeContext(
   const allAssetNames = [...sideA.assets, ...sideB.assets]
   const allPlayerNames = extractPlayerNames(allAssetNames)
 
+  const valuationFetchedAt = new Date().toISOString()
   const valuationCtx: ValuationContext = {
     asOfDate: new Date().toISOString().split('T')[0],
     isSuperFlex: leagueSettings.isSF ?? false,
@@ -328,9 +346,13 @@ export async function assembleTradeContext(
 
   const playerNames: string[] = []
   const pickInputs: PickInput[] = []
+  const pickNameMap = new Map<number, string>()
+
   for (const name of allAssetNames) {
     if (isPickAsset(name)) {
+      const idx = pickInputs.length
       pickInputs.push(parsePickFromString(name))
+      pickNameMap.set(idx, name.trim())
     } else {
       playerNames.push(name.trim())
     }
@@ -341,7 +363,7 @@ export async function assembleTradeContext(
     picks: pickInputs,
   }
 
-  const [pricedResult, analyticsMap, injuryMap, adpResults, managerA, managerB, tradeHistory] = await Promise.all([
+  const [pricedResult, analyticsMap, injuryMap, adpResults, managerA, managerB, tradeHistory, competitorData] = await Promise.all([
     priceAssets(assetsInput, valuationCtx).catch(e => {
       warnings.push(`Valuation failed: ${e.message}`)
       return { total: 0, compositeTotal: 0, items: [] as PricedAsset[], stats: { playersFromExcel: 0, playersFromFantasyCalc: 0, playersUnknown: 0, picksFromExcel: 0, picksFromCurve: 0 } }
@@ -357,31 +379,40 @@ export async function assembleTradeContext(
     fetchManagerContext(leagueInput.leagueId, sideA.name, leagueSettings),
     fetchManagerContext(leagueInput.leagueId, sideB.name, leagueSettings),
     fetchLeagueTradeHistory(leagueInput.leagueId),
+    fetchCompetitorSnapshots(leagueInput.leagueId, [sideA.name, sideB.name], leagueSettings),
   ])
 
-  const pricedItems = pricedResult.items
-
-  const adpMap = new Map<string, ADPEntry>()
-  for (const entry of adpResults) {
-    if (entry) adpMap.set(entry.name.toLowerCase(), entry)
-  }
-
   const pricedMap = new Map<string, PricedAsset>()
-  for (const p of pricedItems) {
+  for (const p of pricedResult.items) {
     pricedMap.set(p.name.toLowerCase(), p)
   }
 
-  function buildPlayerFact(assetName: string): PlayerFact {
+  const adpMap = new Map<string, ADPEntry>()
+  let adpFetchedAt: string | null = null
+  for (const entry of adpResults) {
+    if (entry) {
+      adpMap.set(entry.name.toLowerCase(), entry)
+      if (!adpFetchedAt) adpFetchedAt = assembledAt
+    }
+  }
+
+  let latestInjuryFetchedAt: string | null = null
+  for (const [, inj] of injuryMap) {
+    if (inj.fetchedAt && (!latestInjuryFetchedAt || inj.fetchedAt > latestInjuryFetchedAt)) {
+      latestInjuryFetchedAt = inj.fetchedAt
+    }
+  }
+
+  function buildAssetValuation(assetName: string): AssetValuation {
     const nameLower = assetName.trim().toLowerCase()
     const priced = pricedMap.get(nameLower)
-    const analytics = analyticsMap.get(assetName.trim()) || null
-    const injury = injuryMap.get(assetName.trim()) || null
     const adp = adpMap.get(nameLower)
+    const isPick = isPickAsset(assetName)
 
     const asset: Asset = {
       id: `ctx-${nameLower.replace(/\s+/g, '-')}`,
       name: assetName.trim(),
-      type: isPickAsset(assetName) ? 'PICK' : 'PLAYER',
+      type: isPick ? 'PICK' : 'PLAYER',
       pos: priced?.position || 'UNKNOWN',
       value: priced?.value || 0,
       age: priced?.age || null,
@@ -391,16 +422,56 @@ export async function assembleTradeContext(
 
     return {
       name: assetName.trim(),
+      type: isPick ? 'PICK' : 'PLAYER',
       position: priced?.position || 'UNKNOWN',
       age: priced?.age || null,
-      team: null,
+      team: (priced as any)?.team || null,
       marketValue: priced?.assetValue?.marketValue || 0,
       impactValue: priced?.assetValue?.impactValue || 0,
       vorpValue: priced?.assetValue?.vorpValue || 0,
       volatility: priced?.assetValue?.volatility || 0,
-      source: priced?.source || 'unknown',
-      adp: adp ? { rank: adp.adp, position: adp.position, value: adp.value } : null,
-      injuryStatus: injury,
+      valuationSource: {
+        source: priced?.source || 'unknown',
+        valuedAt: valuationFetchedAt,
+      },
+      adp: adp ? {
+        rank: adp.adp,
+        positionalRank: adp.position || null,
+        value: adp.value,
+        fetchedAt: assembledAt,
+      } : null,
+      isCornerstone: classified.isCornerstone || false,
+      cornerstoneReason: classified.cornerstoneReason || '',
+    }
+  }
+
+  function buildRiskMarker(assetName: string): PlayerRiskMarker {
+    const nameTrimmed = assetName.trim()
+    const nameLower = nameTrimmed.toLowerCase()
+    const priced = pricedMap.get(nameLower)
+    const analytics = analyticsMap.get(nameTrimmed) || null
+    const injury = injuryMap.get(nameTrimmed) || null
+
+    const age = priced?.age || null
+    const position = priced?.position || 'UNKNOWN'
+
+    let recencyDays: number | null = null
+    if (injury?.date) {
+      const injDate = new Date(injury.date)
+      recencyDays = Math.round((Date.now() - injDate.getTime()) / (1000 * 60 * 60 * 24))
+    }
+
+    return {
+      playerName: nameTrimmed,
+      ageBucket: classifyAgeBucket(age, position),
+      currentAge: age,
+      injuryStatus: injury ? {
+        status: injury.status,
+        type: injury.type,
+        description: injury.description,
+        reportDate: injury.date,
+        recencyDays,
+      } : null,
       analytics: analytics ? {
         athleticGrade: analytics.combine?.athleticismScore ?? null,
         collegeProductionGrade: analytics.college?.dominatorRating ?? null,
@@ -408,113 +479,206 @@ export async function assembleTradeContext(
         breakoutAge: analytics.college?.breakoutAge ?? null,
         comparablePlayers: analytics.comparablePlayers?.join(', ') ?? null,
       } : null,
-      isCornerstone: classified.isCornerstone || false,
-      cornerstoneReason: classified.cornerstoneReason || '',
     }
   }
 
-  const sideAFacts = sideA.assets.map(buildPlayerFact)
-  const sideBFacts = sideB.assets.map(buildPlayerFact)
+  function buildTeamSnapshot(
+    party: TradeParty,
+    managerCtx: ManagerContextResult | null
+  ): TeamSnapshot {
+    const assets = party.assets.map(buildAssetValuation)
+    const totalValue = assets.reduce((sum, a) => sum + a.marketValue, 0)
 
-  const totalA = sideAFacts.reduce((sum, f) => sum + f.marketValue, 0)
-  const totalB = sideBFacts.reduce((sum, f) => sum + f.marketValue, 0)
+    const playerAssetNames = party.assets.filter(a => !isPickAsset(a))
+    const riskMarkers = playerAssetNames.map(buildRiskMarker)
+
+    const pickCount = party.assets.filter(a => isPickAsset(a)).length
+    const youngCount = assets.filter(a => a.age != null && a.age <= 25).length
+
+    return {
+      teamId: managerCtx?.managerId || party.name,
+      teamName: party.name,
+      assets,
+      totalValue,
+      riskMarkers,
+      rosterComposition: {
+        size: managerCtx?.rosterSize || assets.length,
+        pickCount: managerCtx?.pickCount || pickCount,
+        youngAssetCount: managerCtx?.youngAssetCount || youngCount,
+        starterStrengthIndex: managerCtx?.starterStrengthIndex || 0,
+      },
+      needs: managerCtx?.needs || [],
+      surplus: managerCtx?.surplus || [],
+      contenderTier: managerCtx?.contenderTier || 'middle',
+      managerPreferences: managerCtx?.tendencies
+        ? tendencyToPreferenceVector(managerCtx.tendencies)
+        : null,
+    }
+  }
+
+  const teamA = buildTeamSnapshot(sideA, managerA)
+  const teamB = buildTeamSnapshot(sideB, managerB)
+
+  const totalA = teamA.totalValue
+  const totalB = teamB.totalValue
   const absDiff = Math.abs(totalA - totalB)
   const maxVal = Math.max(totalA, totalB, 1)
   const pctDiff = Math.round((absDiff / maxVal) * 100)
 
   const adpHits = allPlayerNames.filter(n => adpMap.has(n.toLowerCase())).length
-  const playersCovered = allPlayerNames.filter(n => pricedMap.has(n.toLowerCase())).length + pickInputs.length
+  const assetsTotal = allPlayerNames.length + pickInputs.length
+  const assetsCovered = allPlayerNames.filter(n => pricedMap.has(n.toLowerCase())).length + pickInputs.length
+  const coveragePercent = assetsTotal > 0 ? Math.round((assetsCovered / assetsTotal) * 100) : 0
 
-  return {
-    assembledAt: new Date().toISOString(),
-    version: '2.0.0',
+  const valuationsMissing = allPlayerNames.filter(n => !pricedMap.has(n.toLowerCase()))
+  const adpMissing = allPlayerNames.filter(n => !adpMap.has(n.toLowerCase()))
+  const analyticsMissing = allPlayerNames.filter(n => !analyticsMap.has(n))
 
-    league: {
+  const managerTendenciesUnavailable: string[] = []
+  if (!managerA?.tendencies) managerTendenciesUnavailable.push(sideA.name)
+  if (!managerB?.tendencies) managerTendenciesUnavailable.push(sideB.name)
+
+  const tradeFrequency = tradeHistory.totalTrades >= 20
+    ? 'high' as const
+    : tradeHistory.totalTrades >= 5
+    ? 'medium' as const
+    : 'low' as const
+
+  const missingData: MissingDataFlags = {
+    valuationsMissing,
+    adpMissing,
+    analyticsMissing,
+    injuryDataStale: latestInjuryFetchedAt
+      ? (Date.now() - new Date(latestInjuryFetchedAt).getTime()) > 7 * 24 * 60 * 60 * 1000
+      : true,
+    managerTendenciesUnavailable,
+    competitorDataUnavailable: competitorData.competitors.length === 0,
+    tradeHistoryInsufficient: tradeHistory.totalTrades < 3,
+  }
+
+  const raw = {
+    version: TRADE_DECISION_CONTEXT_VERSION,
+    assembledAt,
+    contextId,
+
+    leagueConfig: {
+      leagueId: leagueInput.leagueId || null,
       name: leagueSettings.leagueName,
+      platform: leagueInput.platform || null,
       scoringType: leagueSettings.scoringType,
       numTeams: leagueSettings.numTeams,
       isSF: leagueSettings.isSF ?? false,
       isTEP: leagueSettings.isTEP,
       tepBonus: leagueSettings.tepBonus,
-      starterSlots: leagueSettings.starterSlots,
       rosterPositions: leagueSettings.rosterPositions,
+      starterSlots: leagueSettings.starterSlots,
+      benchSlots: leagueSettings.benchSlots || 6,
+      taxiSlots: leagueSettings.taxiSlots || 0,
       scoringSettings: leagueInput.scoringSettings || {},
     },
 
-    sideA: {
-      assets: sideAFacts,
-      totalValue: totalA,
-      manager: managerA,
-    },
+    sideA: teamA,
+    sideB: teamB,
 
-    sideB: {
-      assets: sideBFacts,
-      totalValue: totalB,
-      manager: managerB,
-    },
+    competitors: competitorData.competitors,
 
     valueDelta: {
       absoluteDiff: absDiff,
       percentageDiff: pctDiff,
-      favoredSide: pctDiff <= 5 ? 'Even' : totalA > totalB ? 'A' : 'B',
+      favoredSide: pctDiff <= 5 ? 'Even' as const : totalA > totalB ? 'A' as const : 'B' as const,
     },
 
-    leagueTradeHistory: tradeHistory,
+    tradeHistoryStats: {
+      totalTrades: tradeHistory.totalTrades,
+      recentTrades: tradeHistory.recentTrades,
+      recencyWindowDays: 30,
+      avgValueDelta: tradeHistory.avgValueDelta,
+      leagueTradeFrequency: tradeFrequency,
+      computedAt: tradeHistory.fetchedAt,
+    },
+
+    missingData,
 
     dataQuality: {
-      playersCovered,
-      playersTotal: allPlayerNames.length + pickInputs.length,
+      assetsCovered,
+      assetsTotal,
+      coveragePercent,
       adpHitRate: allPlayerNames.length > 0 ? Math.round((adpHits / allPlayerNames.length) * 100) : 0,
       injuryDataAvailable: injuryMap.size > 0,
       analyticsAvailable: analyticsMap.size > 0,
       warnings,
     },
+
+    dataSources: {
+      valuationFetchedAt,
+      adpFetchedAt,
+      injuryFetchedAt: latestInjuryFetchedAt,
+      analyticsFetchedAt: analyticsMap.size > 0 ? assembledAt : null,
+      rostersFetchedAt: managerA?.rostersFetchedAt || managerB?.rostersFetchedAt || null,
+      tradeHistoryFetchedAt: tradeHistory.fetchedAt,
+    },
   }
+
+  return TradeDecisionContextV1Schema.parse(raw)
 }
 
-export function contextToPrompt(ctx: TradeContextSnapshot): string {
+export function contextToPromptV1(ctx: TradeDecisionContextV1): string {
   const lines: string[] = []
 
-  lines.push(`=== DETERMINISTIC FACT LAYER (Stage A) ===`)
+  lines.push(`=== TRADE DECISION CONTEXT V1 ===`)
+  lines.push(`Context ID: ${ctx.contextId}`)
   lines.push(`Assembled: ${ctx.assembledAt} | Version: ${ctx.version}`)
-  lines.push(`Data Quality: ${ctx.dataQuality.playersCovered}/${ctx.dataQuality.playersTotal} players valued, ${ctx.dataQuality.adpHitRate}% ADP hit rate`)
+  lines.push(`Coverage: ${ctx.dataQuality.assetsCovered}/${ctx.dataQuality.assetsTotal} assets (${ctx.dataQuality.coveragePercent}%), ADP: ${ctx.dataQuality.adpHitRate}%`)
   if (ctx.dataQuality.warnings.length > 0) {
     lines.push(`Warnings: ${ctx.dataQuality.warnings.join('; ')}`)
   }
   lines.push('')
 
-  lines.push(`--- LEAGUE FORMAT ---`)
-  lines.push(`${ctx.league.name} | ${ctx.league.scoringType} | ${ctx.league.numTeams} teams`)
-  lines.push(`SF: ${ctx.league.isSF} | TEP: ${ctx.league.isTEP} (bonus: ${ctx.league.tepBonus})`)
-  lines.push(`Starters: ${ctx.league.starterSlots} | Positions: ${ctx.league.rosterPositions.join(', ')}`)
+  lines.push(`--- LEAGUE CONFIG ---`)
+  lines.push(`${ctx.leagueConfig.name} | ${ctx.leagueConfig.scoringType} | ${ctx.leagueConfig.numTeams} teams`)
+  lines.push(`SF: ${ctx.leagueConfig.isSF} | TEP: ${ctx.leagueConfig.isTEP} (bonus: ${ctx.leagueConfig.tepBonus})`)
+  lines.push(`Starters: ${ctx.leagueConfig.starterSlots} | Bench: ${ctx.leagueConfig.benchSlots} | Taxi: ${ctx.leagueConfig.taxiSlots}`)
+  lines.push(`Positions: ${ctx.leagueConfig.rosterPositions.join(', ')}`)
   lines.push('')
 
   for (const [label, side] of [['SIDE A', ctx.sideA], ['SIDE B', ctx.sideB]] as const) {
-    lines.push(`--- ${label} (Total Value: ${side.totalValue}) ---`)
+    lines.push(`--- ${label}: ${side.teamName} (Total: ${side.totalValue}) ---`)
+    lines.push(`  Tier: ${side.contenderTier} | Roster: ${side.rosterComposition.size} | Picks: ${side.rosterComposition.pickCount} | Young: ${side.rosterComposition.youngAssetCount} | SSI: ${side.rosterComposition.starterStrengthIndex}`)
+    lines.push(`  Needs: ${side.needs.join(', ') || 'None'} | Surplus: ${side.surplus.join(', ') || 'None'}`)
+
+    if (side.managerPreferences) {
+      const mp = side.managerPreferences
+      lines.push(`  Prefs (n=${mp.sampleSize}): StarterPrem=${mp.starterPremium.toFixed(2)}, Risk=${mp.riskTolerance.toFixed(2)}, Consol=${mp.consolidationBias.toFixed(2)}, Overpay=${mp.overpayThreshold.toFixed(2)}`)
+      lines.push(`  PosBias: QB=${mp.positionBias.QB.toFixed(2)} RB=${mp.positionBias.RB.toFixed(2)} WR=${mp.positionBias.WR.toFixed(2)} TE=${mp.positionBias.TE.toFixed(2)} PICK=${mp.positionBias.PICK.toFixed(2)}`)
+    }
+
+    lines.push(`  Assets:`)
     for (const a of side.assets) {
-      let line = `  ${a.name} [${a.position}] — Market: ${a.marketValue}, Impact: ${a.impactValue}, VORP: ${a.vorpValue}, Vol: ${(a.volatility * 100).toFixed(0)}%`
+      let line = `    ${a.name} [${a.position}/${a.type}] — Mkt: ${a.marketValue}, Impact: ${a.impactValue}, VORP: ${a.vorpValue}, Vol: ${(a.volatility * 100).toFixed(0)}%`
       if (a.age) line += `, Age: ${a.age}`
-      if (a.adp) line += `, ADP: #${a.adp.rank} (${a.adp.position}), Val: ${a.adp.value ?? 'N/A'}`
-      if (a.injuryStatus) line += ` | INJURY: ${a.injuryStatus.status}${a.injuryStatus.type ? ` (${a.injuryStatus.type})` : ''}`
+      if (a.team) line += `, Team: ${a.team}`
+      line += ` (src: ${a.valuationSource.source})`
+      if (a.adp) line += ` | ADP: #${a.adp.rank}`
       if (a.isCornerstone) line += ` | CORNERSTONE: ${a.cornerstoneReason}`
-      if (a.analytics) {
-        const parts: string[] = []
-        if (a.analytics.athleticGrade != null) parts.push(`Athletic: ${a.analytics.athleticGrade.toFixed(1)}`)
-        if (a.analytics.collegeProductionGrade != null) parts.push(`CollegeProd: ${a.analytics.collegeProductionGrade.toFixed(1)}`)
-        if (a.analytics.breakoutAge != null) parts.push(`BreakoutAge: ${a.analytics.breakoutAge}`)
-        if (parts.length) line += ` | Analytics: ${parts.join(', ')}`
-      }
       lines.push(line)
     }
 
-    if (side.manager) {
-      const m = side.manager
-      lines.push(`  Manager: ${m.managerName} | Tier: ${m.contenderTier} | Roster: ${m.rosterSize} | Picks: ${m.pickCount} | Young: ${m.youngAssetCount}`)
-      lines.push(`  Needs: ${m.needs.join(', ') || 'None'} | Surplus: ${m.surplus.join(', ') || 'None'}`)
-      if (m.tendencies) {
-        lines.push(`  Tendencies: StarterPrem=${m.tendencies.starterPremium.toFixed(2)}, Risk=${m.tendencies.riskTolerance.toFixed(2)}, Consol=${m.tendencies.consolidationBias.toFixed(2)}, Overpay=${m.tendencies.overpayThreshold.toFixed(2)}`)
-        const bias = m.tendencies.positionBias
-        lines.push(`  PosBias: QB=${bias.QB.toFixed(2)} RB=${bias.RB.toFixed(2)} WR=${bias.WR.toFixed(2)} TE=${bias.TE.toFixed(2)} PICK=${bias.PICK.toFixed(2)}`)
+    if (side.riskMarkers.length > 0) {
+      lines.push(`  Risk Markers:`)
+      for (const rm of side.riskMarkers) {
+        let line = `    ${rm.playerName}: age=${rm.ageBucket}`
+        if (rm.injuryStatus) {
+          line += ` | INJURY: ${rm.injuryStatus.status}`
+          if (rm.injuryStatus.recencyDays != null) line += ` (${rm.injuryStatus.recencyDays}d ago)`
+        }
+        if (rm.analytics) {
+          const parts: string[] = []
+          if (rm.analytics.athleticGrade != null) parts.push(`Ath:${rm.analytics.athleticGrade.toFixed(1)}`)
+          if (rm.analytics.collegeProductionGrade != null) parts.push(`ColProd:${rm.analytics.collegeProductionGrade.toFixed(1)}`)
+          if (rm.analytics.breakoutAge != null) parts.push(`BA:${rm.analytics.breakoutAge}`)
+          if (parts.length) line += ` | ${parts.join(', ')}`
+        }
+        lines.push(line)
       }
     }
     lines.push('')
@@ -524,13 +688,44 @@ export function contextToPrompt(ctx: TradeContextSnapshot): string {
   lines.push(`Absolute: ${ctx.valueDelta.absoluteDiff} | Percentage: ${ctx.valueDelta.percentageDiff}% | Favored: Side ${ctx.valueDelta.favoredSide}`)
   lines.push('')
 
-  if (ctx.leagueTradeHistory.totalTrades > 0) {
-    lines.push(`--- LEAGUE TRADE HISTORY ---`)
-    lines.push(`Total: ${ctx.leagueTradeHistory.totalTrades} | Last 30 days: ${ctx.leagueTradeHistory.recentTrades}`)
+  if (ctx.tradeHistoryStats.totalTrades > 0) {
+    lines.push(`--- TRADE HISTORY (${ctx.tradeHistoryStats.recencyWindowDays}d window) ---`)
+    lines.push(`Total: ${ctx.tradeHistoryStats.totalTrades} | Recent: ${ctx.tradeHistoryStats.recentTrades} | Frequency: ${ctx.tradeHistoryStats.leagueTradeFrequency || 'unknown'}`)
     lines.push('')
   }
 
-  lines.push(`=== END FACT LAYER ===`)
+  if (ctx.competitors.length > 0) {
+    lines.push(`--- KEY COMPETITORS (${ctx.competitors.length}) ---`)
+    for (const c of ctx.competitors.slice(0, 5)) {
+      lines.push(`  ${c.teamName}: ${c.contenderTier}, SSI=${c.starterStrengthIndex}, Needs=[${c.needs.join(',')}], Surplus=[${c.surplus.join(',')}]`)
+    }
+    lines.push('')
+  }
+
+  const md = ctx.missingData
+  const flags: string[] = []
+  if (md.valuationsMissing.length > 0) flags.push(`Valuations missing: ${md.valuationsMissing.join(', ')}`)
+  if (md.adpMissing.length > 0) flags.push(`ADP missing: ${md.adpMissing.join(', ')}`)
+  if (md.injuryDataStale) flags.push('Injury data stale (>7d)')
+  if (md.managerTendenciesUnavailable.length > 0) flags.push(`No tendency data: ${md.managerTendenciesUnavailable.join(', ')}`)
+  if (md.competitorDataUnavailable) flags.push('No competitor data')
+  if (md.tradeHistoryInsufficient) flags.push('Insufficient trade history (<3 trades)')
+
+  if (flags.length > 0) {
+    lines.push(`--- MISSING DATA FLAGS ---`)
+    for (const f of flags) lines.push(`  ! ${f}`)
+    lines.push('')
+  }
+
+  lines.push(`--- DATA SOURCES ---`)
+  lines.push(`  Valuations: ${ctx.dataSources.valuationFetchedAt}`)
+  if (ctx.dataSources.adpFetchedAt) lines.push(`  ADP: ${ctx.dataSources.adpFetchedAt}`)
+  if (ctx.dataSources.injuryFetchedAt) lines.push(`  Injuries: ${ctx.dataSources.injuryFetchedAt}`)
+  if (ctx.dataSources.analyticsFetchedAt) lines.push(`  Analytics: ${ctx.dataSources.analyticsFetchedAt}`)
+  if (ctx.dataSources.rostersFetchedAt) lines.push(`  Rosters: ${ctx.dataSources.rostersFetchedAt}`)
+  lines.push('')
+
+  lines.push(`=== END CONTEXT ===`)
 
   return lines.join('\n')
 }
