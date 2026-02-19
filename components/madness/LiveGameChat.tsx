@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -91,6 +91,11 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   const [lastSent, setLastSent] = useState(0)
   const [typingUsers, setTypingUsers] = useState<string[]>([])
   const [emojiSearch, setEmojiSearch] = useState('')
+  const filteredEmojis = useMemo(() => {
+    const q = emojiSearch.toLowerCase().trim()
+    if (!q) return ALL_EMOJIS
+    return ALL_EMOJIS.filter(e => e.includes(q) || EMOJI_MAP[e].includes(q))
+  }, [emojiSearch])
   const typingTimeout = useRef<NodeJS.Timeout>()
   const lastTypingPing = useRef(0)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -368,32 +373,25 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500" />
                       </div>
                       <div className="max-h-48 overflow-y-auto">
-                        {(() => {
-                          const q = emojiSearch.toLowerCase().trim()
-                          const filtered = q
-                            ? ALL_EMOJIS.filter(e => e.includes(q) || EMOJI_MAP[e].includes(q))
-                            : ALL_EMOJIS
-                          if (filtered.length === 0) {
-                            return <div className="text-center text-gray-500 text-sm py-6">No emojis found</div>
-                          }
-                          return (
-                            <div className="grid grid-cols-8 gap-1">
-                              {filtered.map(emoji => (
-                                <button
-                                  key={emoji}
-                                  onClick={() => {
-                                    toggleReaction(msg.id, emoji)
-                                    setEmojiSearch('')
-                                  }}
-                                  className="text-xl hover:scale-125 transition-transform duration-150 p-1 rounded hover:bg-gray-800"
-                                  title={EMOJI_MAP[emoji]}
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                          )
-                        })()}
+                        {filteredEmojis.length === 0 ? (
+                          <div className="text-center text-gray-500 text-sm py-6">No emojis found</div>
+                        ) : (
+                          <div className="grid grid-cols-8 gap-1">
+                            {filteredEmojis.map(emoji => (
+                              <button
+                                key={emoji}
+                                onClick={() => {
+                                  toggleReaction(msg.id, emoji)
+                                  setEmojiSearch('')
+                                }}
+                                className="text-xl hover:scale-125 transition-transform duration-150 p-1 rounded hover:bg-gray-800"
+                                title={EMOJI_MAP[emoji]}
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </PopoverContent>
                   </Popover>
