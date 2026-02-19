@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { leagueId, rounds = 15, refresh = false } = body
+    const { leagueId, rounds = 15, refresh = false, scoring: scoringTweak } = body
 
     if (!leagueId) {
       return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
@@ -92,7 +92,7 @@ Rules:
 - Base picks on realistic ADP values and positional needs
 - Each AI manager should have a distinct draft style (some reach, some go BPA, some are position-focused)
 - Team at index ${userTeamIdx} ("${teamNames[userTeamIdx]}") is the user's team — mark those picks with isUser: true
-- League format: ${league.scoring || 'PPR'}, ${league.isDynasty ? 'Dynasty' : 'Redraft'}
+- League format: ${league.scoring || 'PPR'}, ${league.isDynasty ? 'Dynasty' : 'Redraft'}${scoringTweak === 'sf' ? '\n- SUPERFLEX LEAGUE: QBs are significantly more valuable. Draft QBs earlier and expect 2-3 QBs taken in Round 1. Value QBs like top-10 overall picks.' : ''}${scoringTweak === 'tep' ? '\n- TE PREMIUM LEAGUE: TEs receive bonus PPR scoring (1.5-2.0 PPR). Draft elite TEs earlier (Rounds 1-3 for top TEs). TEs like Kelce, LaPorta, Bowers are valued much higher.' : ''}
 - Include real NFL player names with correct positions and teams
 - Confidence represents how strongly the AI recommends that pick (60-95 range)
 - Notes should be a brief scouting blurb

@@ -49,6 +49,8 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [draftResults, setDraftResults] = useState<DraftPick[]>([])
   const [isSimulating, setIsSimulating] = useState(false)
   const [rounds, setRounds] = useState(15)
+  const [customRounds, setCustomRounds] = useState(18)
+  const [customScoring, setCustomScoring] = useState('default')
   const [expandedRound, setExpandedRound] = useState<number | null>(null)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
@@ -64,6 +66,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     const { data } = await callAI('/api/mock-draft/simulate', {
       leagueId: selectedLeagueId,
       rounds,
+      scoring: customScoring !== 'default' ? customScoring : undefined,
     })
 
     if (data?.draftResults) {
@@ -174,6 +177,53 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 {pos}: {count}
               </Badge>
             ))}
+          </div>
+
+          <div className="bg-black/60 border border-purple-900/50 rounded-2xl p-6">
+            <h3 className="text-lg font-medium mb-4">Customize Simulation</h3>
+            <div className="grid md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Rounds</label>
+                <Select value={customRounds.toString()} onValueChange={v => { setCustomRounds(Number(v)); setRounds(Number(v)) }}>
+                  <SelectTrigger className="bg-gray-950 border-purple-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="15">15 Rounds</SelectItem>
+                    <SelectItem value="18">18 Rounds (Standard)</SelectItem>
+                    <SelectItem value="20">20 Rounds (Deep)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Scoring Tweak</label>
+                <Select value={customScoring} onValueChange={setCustomScoring}>
+                  <SelectTrigger className="bg-gray-950 border-purple-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default League Settings</SelectItem>
+                    <SelectItem value="sf">Superflex Boost</SelectItem>
+                    <SelectItem value="tep">TE Premium</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  onClick={startMockDraft}
+                  disabled={isSimulating || loading}
+                  className="w-full h-10 bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700"
+                >
+                  {isSimulating ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Re-Simulating...</>
+                  ) : (
+                    <><RefreshCw className="mr-2 h-4 w-4" /> Re-Run Mock Draft</>
+                  )}
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="bg-black/80 border border-cyan-900/50 rounded-3xl p-4 sm:p-8">
