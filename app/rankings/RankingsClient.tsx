@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Trophy, TrendingUp, TrendingDown, Minus, Users, ChevronDown, RefreshCw } from "lucide-react";
+import { Trophy, TrendingUp, TrendingDown, Minus, Users, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { LineChart, Line } from "recharts";
 import { toast } from "sonner";
@@ -172,24 +173,22 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
           </div>
           <div className="flex items-center gap-3">
             {allLeagues.length > 1 && (
-              <div className="relative">
-                <select
-                  value={selectedIdx}
-                  onChange={(e) => setSelectedIdx(Number(e.target.value))}
-                  className="appearance-none rounded-md border border-cyan-600/40 bg-gray-900 py-2 pl-3 pr-8 text-sm text-white focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
-                >
+              <Select
+                value={selectedIdx.toString()}
+                onValueChange={(val) => setSelectedIdx(Number(val))}
+              >
+                <SelectTrigger className="w-[280px] border-cyan-600/40 bg-gray-900 text-white">
+                  <SelectValue placeholder="Select League" />
+                </SelectTrigger>
+                <SelectContent className="border-cyan-900/50 bg-gray-900">
                   {allLeagues.map((l, i) => (
-                    <option key={l.id} value={i}>
+                    <SelectItem key={l.id} value={i.toString()}>
                       {l.name || "League"} ({l.sport} {l.season})
-                    </option>
+                    </SelectItem>
                   ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              </div>
+                </SelectContent>
+              </Select>
             )}
-            <Button variant="outline" className="border-cyan-600/40 hover:bg-cyan-950/40">
-              Export CSV
-            </Button>
             <Button
               onClick={handleRefresh}
               disabled={!hasRealData || refreshing}
@@ -218,6 +217,7 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
               </CardTitle>
               <CardDescription>
                 Sorted by AI-adjusted power score (current performance + rest-of-season projection)
+                {" • "}Last updated {new Date().toLocaleDateString()}
               </CardDescription>
             </CardHeader>
             <CardContent>
