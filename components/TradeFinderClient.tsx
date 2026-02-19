@@ -128,13 +128,25 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
   };
 
   const simulateAccept = (trade: any, index: number) => {
-    setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, status: 'accepted' } : s));
-    toast.success(`Trade accepted! You get ${trade.youGet}`, { duration: 4000 });
+    const newSuggestions = [...suggestions];
+    newSuggestions[index] = {
+      ...trade,
+      status: 'accepted',
+      outcome: `Trade accepted! ${trade.partner} loved the deal. Your win probability ${trade.winProbDelta || '+12%'}`,
+    };
+    setSuggestions(newSuggestions);
+    toast.success(`Trade with ${trade.partner} accepted in simulation!`, { description: 'Win probability improved' });
   };
 
   const simulateReject = (trade: any, index: number) => {
-    setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, status: 'rejected' } : s));
-    toast.info(`Trade rejected. ${trade.partner} wasn't interested.`, { duration: 4000 });
+    const newSuggestions = [...suggestions];
+    newSuggestions[index] = {
+      ...trade,
+      status: 'rejected',
+      outcome: `${trade.partner} rejected — they said your offer was too light on future value.`,
+    };
+    setSuggestions(newSuggestions);
+    toast.error(`Offer rejected by ${trade.partner}`);
   };
 
   return (
@@ -306,12 +318,14 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                   </div>
                 )}
                 {trade.status === 'accepted' ? (
-                  <div className="text-center text-green-400 font-medium text-sm mt-4 pt-3 border-t border-green-800/40">
-                    Trade Accepted
+                  <div className="mt-4 pt-3 border-t border-green-800/40 text-sm text-green-400">
+                    <p className="font-medium mb-1">Trade Accepted</p>
+                    {trade.outcome && <p className="text-xs text-green-300/80">{trade.outcome}</p>}
                   </div>
                 ) : trade.status === 'rejected' ? (
-                  <div className="text-center text-red-400 font-medium text-sm mt-4 pt-3 border-t border-red-800/40">
-                    Trade Rejected
+                  <div className="mt-4 pt-3 border-t border-red-800/40 text-sm text-red-400">
+                    <p className="font-medium mb-1">Trade Rejected</p>
+                    {trade.outcome && <p className="text-xs text-red-300/80">{trade.outcome}</p>}
                   </div>
                 ) : (
                   <>
