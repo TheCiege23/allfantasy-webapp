@@ -457,6 +457,106 @@ Example format:
       })
     }
 
+    for (const mgr of managers) {
+      const externalId = String(mgr.rosterId)
+      const pointsForNum = parseFloat(mgr.pointsFor) || 0
+      await prisma.leagueTeam.upsert({
+        where: {
+          leagueId_externalId: {
+            leagueId: dbLeague.id,
+            externalId,
+          },
+        },
+        update: {
+          ownerName: mgr.displayName,
+          teamName: mgr.displayName,
+          avatarUrl: mgr.avatar,
+          wins: mgr.wins,
+          losses: mgr.losses,
+          ties: mgr.ties,
+          pointsFor: pointsForNum,
+        },
+        create: {
+          leagueId: dbLeague.id,
+          externalId,
+          ownerName: mgr.displayName,
+          teamName: mgr.displayName,
+          avatarUrl: mgr.avatar,
+          wins: mgr.wins,
+          losses: mgr.losses,
+          ties: mgr.ties,
+          pointsFor: pointsForNum,
+        },
+      })
+    }
+
+    if (rosters && rosters.length > 0) {
+      for (const roster of rosters) {
+        const ownerId = roster.owner_id || `unowned_${roster.roster_id}`
+        const playerList = (roster.players || []).map((pid: string) => {
+          const p = playerMap[pid]
+          return {
+            playerId: pid,
+            name: p?.name || pid,
+            position: p?.position || '',
+            team: p?.team || '',
+            isStarter: roster.starters?.includes(pid) || false,
+          }
+        })
+
+        await prisma.roster.upsert({
+          where: {
+            leagueId_platformUserId: {
+              leagueId: dbLeague.id,
+              platformUserId: ownerId,
+            },
+          },
+          update: {
+            playerData: playerList,
+          },
+          create: {
+            leagueId: dbLeague.id,
+            platformUserId: ownerId,
+            playerData: playerList,
+          },
+        })
+      }
+    }
+
+    for (const mgr of managers) {
+      for (const matchupWeek of allMatchups) {
+        const mgrMatchup = matchupWeek.matchups.find(m => m.roster_id === mgr.rosterId)
+        if (mgrMatchup && mgrMatchup.points > 0) {
+          const teamRecord = await prisma.leagueTeam.findUnique({
+            where: {
+              leagueId_externalId: {
+                leagueId: dbLeague.id,
+                externalId: String(mgr.rosterId),
+              },
+            },
+          })
+          if (teamRecord) {
+            await prisma.teamPerformance.upsert({
+              where: {
+                teamId_season_week: {
+                  teamId: teamRecord.id,
+                  season: seasonNum,
+                  week: matchupWeek.week,
+                },
+              },
+              update: { points: mgrMatchup.points },
+              create: {
+                teamId: teamRecord.id,
+                season: seasonNum,
+                week: matchupWeek.week,
+                points: mgrMatchup.points,
+              },
+            })
+          }
+        }
+      }
+    }
+
     await prisma.historicalSeason.upsert({
       where: {
         leagueId_season: {
