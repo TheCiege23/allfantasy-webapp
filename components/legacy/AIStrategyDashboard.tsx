@@ -85,21 +85,21 @@ const priorityColors = {
 function buildRadarData(profile?: RadarProfile) {
   if (!profile) {
     return [
-      { subject: 'QB Strength', A: 50, fullMark: 100 },
-      { subject: 'RB Depth', A: 50, fullMark: 100 },
-      { subject: 'WR Youth', A: 50, fullMark: 100 },
-      { subject: 'TE Premium', A: 50, fullMark: 100 },
-      { subject: 'Future Capital', A: 50, fullMark: 100 },
-      { subject: 'Contention', A: 50, fullMark: 100 },
+      { subject: 'QB Strength', A: 50, leagueAvg: 70 },
+      { subject: 'RB Depth', A: 50, leagueAvg: 65 },
+      { subject: 'WR Youth', A: 50, leagueAvg: 75 },
+      { subject: 'TE Fit', A: 50, leagueAvg: 60 },
+      { subject: 'Future Capital', A: 50, leagueAvg: 50 },
+      { subject: 'Contention Window', A: 50, leagueAvg: 72 },
     ];
   }
   return [
-    { subject: 'QB Strength', A: profile.qbStrength, fullMark: 100 },
-    { subject: 'RB Depth', A: profile.rbDepth, fullMark: 100 },
-    { subject: 'WR Youth', A: profile.wrYouth, fullMark: 100 },
-    { subject: 'TE Premium', A: profile.tePremiumFit, fullMark: 100 },
-    { subject: 'Future Capital', A: profile.futureCapital, fullMark: 100 },
-    { subject: 'Contention', A: profile.contentionWindow, fullMark: 100 },
+    { subject: 'QB Strength', A: profile.qbStrength, leagueAvg: 70 },
+    { subject: 'RB Depth', A: profile.rbDepth, leagueAvg: 65 },
+    { subject: 'WR Youth', A: profile.wrYouth, leagueAvg: 75 },
+    { subject: 'TE Fit', A: profile.tePremiumFit, leagueAvg: 60 },
+    { subject: 'Future Capital', A: profile.futureCapital, leagueAvg: 50 },
+    { subject: 'Contention Window', A: profile.contentionWindow, leagueAvg: 72 },
   ];
 }
 
@@ -389,20 +389,24 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               />
             </div>
 
-            <Card className="flex-1 bg-[#0f0a24]/70 border-cyan-900/30 backdrop-blur-md shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
+            <Card className="flex-1 bg-[#0f0a24]/70 border-cyan-900/30 backdrop-blur-md shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#00f5d4] transition-shadow duration-700">
               <CardHeader>
-                <CardTitle className="text-xl text-cyan-300">Team Radar Profile</CardTitle>
+                <CardTitle className="text-xl text-cyan-300 flex items-center gap-3">
+                  <Sparkles className="h-5 w-5 text-purple-400" />
+                  Team Radar Profile
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="h-80">
+                <div className="h-96">
                   <ResponsiveContainer>
                     <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
-                      <PolarGrid stroke="#334155" />
-                      <PolarAngleAxis dataKey="subject" stroke="#94a3b8" tick={{ fontSize: 12 }} />
-                      <PolarRadiusAxis angle={30} domain={[0, 100]} stroke="#94a3b8" tick={{ fontSize: 10 }} />
-                      <Radar name="Your Team" dataKey="A" stroke="#00f5d4" fill="#00f5d4" fillOpacity={0.3} />
-                      <Tooltip contentStyle={{ background: '#1a1238', border: '1px solid #00f5d4', borderRadius: '8px' }} />
-                      <Legend />
+                      <PolarGrid stroke="#334155" strokeDasharray="3 3" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 13 }} stroke="#475569" />
+                      <PolarRadiusAxis angle={90} domain={[0, 100]} tick={{ fill: '#94a3b8' }} stroke="#475569" />
+                      <Radar name="Your Team" dataKey="A" stroke="#00f5d4" fill="#00f5d4" fillOpacity={0.35} animationDuration={1800} animationEasing="easeOut" />
+                      <Radar name="League Avg" dataKey="leagueAvg" stroke="#64748b" fill="#64748b" fillOpacity={0.15} dot={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1a1238', border: '1px solid #00f5d4', borderRadius: '12px', color: 'white', boxShadow: '0 0 20px rgba(0,245,212,0.3)' }} labelStyle={{ color: '#00f5d4' }} />
+                      <Legend wrapperStyle={{ color: '#94a3b8' }} iconType="circle" />
                     </RadarChart>
                   </ResponsiveContainer>
                 </div>
