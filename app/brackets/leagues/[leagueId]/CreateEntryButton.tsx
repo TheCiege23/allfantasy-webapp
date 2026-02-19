@@ -29,6 +29,10 @@ export default function CreateEntryButton({
       })
       const data = await res.json()
       if (!res.ok) {
+        if (data.error === "PAYMENT_REQUIRED_FOR_EXTRA_ENTRIES") {
+          setError(data.message || "3+ brackets require payment confirmation by the commissioner.")
+          return
+        }
         setError(data.error ?? "Failed to create entry")
         return
       }
