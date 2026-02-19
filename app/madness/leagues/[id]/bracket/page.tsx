@@ -7,15 +7,18 @@ import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
 import { Check, Lock } from 'lucide-react'
 
-interface GameNode {
+interface Game {
   id: string
-  slot: string
   round: number
+  gameNumber: number
   region: string | null
-  homeTeamName: string | null
-  awayTeamName: string | null
-  seedHome: number | null
-  seedAway: number | null
+  team1: string
+  team2: string
+  team1Seed: number | null
+  team2Seed: number | null
+  winnerId: string | null
+  date: string | null
+  venue: string | null
 }
 
 export default function BracketEntry() {
@@ -26,41 +29,38 @@ export default function BracketEntry() {
   const [deadlinePassed, setDeadlinePassed] = useState(false)
   const [deadline, setDeadline] = useState<string | null>(null)
   const [userBracketsCount, setUserBracketsCount] = useState(0)
-  const [games, setGames] = useState<GameNode[]>([])
+  const [games, setGames] = useState<Game[]>([])
   const [leagueName, setLeagueName] = useState('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`/api/madness/leagues/${id}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) return
-        setDeadlinePassed(data.deadline ? new Date() > new Date(data.deadline) : false)
-        setDeadline(data.deadline)
-        setUserBracketsCount(data.userBracketsCount || 0)
-        setLeagueName(data.name || '')
-        if (data.tournament?.nodes) {
-          setGames(data.tournament.nodes)
-        }
-      })
+    Promise.all([
+      fetch(`/api/madness/leagues/${id}`).then(res => res.json()),
+      fetch('/api/madness/games').then(res => res.json()),
+    ]).then(([leagueData, gamesData]) => {
+      if (!leagueData.error) {
+        setDeadlinePassed(leagueData.deadline ? new Date() > new Date(leagueData.deadline) : false)
+        setDeadline(leagueData.deadline)
+        setUserBracketsCount(leagueData.userBracketsCount || 0)
+        setLeagueName(leagueData.name || '')
+      }
+      if (gamesData.games) {
+        setGames(gamesData.games)
+      }
+      setLoading(false)
+    })
   }, [id])
 
   const makePick = (gameId: string, team: string) => {
     if (deadlinePassed) return toast.error('Picks locked — deadline passed')
     if (userBracketsCount >= 3) return toast.error('Max 3 brackets allowed')
-
-    setPicks(prev => {
-      const updated = { ...prev }
-      const gameKeys = Object.keys(updated).filter(k => k.startsWith(gameId.split('_')[0]))
-      gameKeys.forEach(k => delete updated[k])
-      updated[gameId] = team
-      return updated
-    })
+    setPicks(prev => ({ ...prev, [gameId]: team }))
   }
 
   const finalizeBracket = async () => {
-    const totalGames = games.length || 32
-    if (Object.keys(picks).length < totalGames) {
-      return toast.error(`Complete all ${totalGames} picks first`)
+    const round1Games = games.filter(g => g.round === 1)
+    if (Object.keys(picks).length < round1Games.length) {
+      return toast.error(`Complete all ${round1Games.length} picks first`)
     }
 
     const res = await fetch('/api/madness/brackets/create', {
@@ -78,20 +78,16 @@ export default function BracketEntry() {
     }
   }
 
-  const displayGames = games.length > 0
-    ? games
-    : Array.from({ length: 32 }, (_, i) => ({
-        id: `placeholder_${i}`,
-        slot: `r1g${i + 1}`,
-        round: 1,
-        region: i < 8 ? 'East' : i < 16 ? 'West' : i < 24 ? 'South' : 'Midwest',
-        homeTeamName: null,
-        awayTeamName: null,
-        seedHome: null,
-        seedAway: null,
-      }))
+  const round1Games = games.filter(g => g.round === 1)
+  const regions = Array.from(new Set(round1Games.map(g => g.region).filter(Boolean))) as string[]
 
-  const regions = Array.from(new Set(displayGames.map(g => g.region).filter(Boolean)))
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="text-gray-400 text-lg">Loading bracket...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] py-12">
@@ -114,53 +110,92 @@ export default function BracketEntry() {
         ) : null}
 
         <div className="space-y-12">
-          {regions.length > 0 ? regions.map(region => {
-            const regionGames = displayGames.filter(g => g.region === region)
-            return (
-              <div key={region}>
-                <h3 className="text-2xl font-bold mb-4 text-cyan-300">{region} Region</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                  {regionGames.map((game) => (
-                    <div key={game.id} className="bg-gray-950 border border-gray-800 rounded-xl p-4 hover:border-cyan-500/40 transition-colors">
-                      <p className="text-center text-xs text-gray-500 mb-3">{game.slot}</p>
-                      <div className="flex flex-col gap-2">
-                        <Button
-                          variant={picks[game.id] === (game.homeTeamName || 'Home') ? 'default' : 'outline'}
-                          onClick={() => makePick(game.id, game.homeTeamName || 'Home')}
-                          className="w-full justify-between text-sm"
-                          disabled={deadlinePassed}
-                        >
-                          <span>{game.seedHome ? `(${game.seedHome})` : ''} {game.homeTeamName || 'TBD'}</span>
-                          {picks[game.id] === (game.homeTeamName || 'Home') && <Check className="h-4 w-4 text-green-400" />}
-                        </Button>
-                        <Button
-                          variant={picks[game.id] === (game.awayTeamName || 'Away') ? 'default' : 'outline'}
-                          onClick={() => makePick(game.id, game.awayTeamName || 'Away')}
-                          className="w-full justify-between text-sm"
-                          disabled={deadlinePassed}
-                        >
-                          <span>{game.seedAway ? `(${game.seedAway})` : ''} {game.awayTeamName || 'TBD'}</span>
-                          {picks[game.id] === (game.awayTeamName || 'Away') && <Check className="h-4 w-4 text-green-400" />}
-                        </Button>
+          <div>
+            <h3 className="text-2xl font-bold mb-4 text-white">Round of 64</h3>
+            {regions.length > 0 ? regions.map(region => {
+              const regionGames = round1Games.filter(g => g.region === region)
+              return (
+                <div key={region} className="mb-8">
+                  <h4 className="text-lg font-semibold mb-3 text-cyan-300">{region} Region</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {regionGames.map(game => (
+                      <div key={game.id} className="bg-gray-950 border border-gray-800 rounded-xl p-4 hover:border-cyan-500/40 transition-colors">
+                        <p className="text-center font-medium mb-3 text-sm text-gray-300">
+                          <span className="text-cyan-400">{game.team1Seed}</span> {game.team1}
+                          <span className="text-gray-600 mx-1">vs</span>
+                          <span className="text-cyan-400">{game.team2Seed}</span> {game.team2}
+                        </p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant={picks[game.id] === game.team1 ? 'default' : 'outline'}
+                            onClick={() => makePick(game.id, game.team1)}
+                            className="flex-1 text-xs"
+                            disabled={deadlinePassed}
+                          >
+                            {picks[game.id] === game.team1 && <Check className="h-3 w-3 mr-1" />}
+                            {game.team1}
+                          </Button>
+                          <Button
+                            variant={picks[game.id] === game.team2 ? 'default' : 'outline'}
+                            onClick={() => makePick(game.id, game.team2)}
+                            className="flex-1 text-xs"
+                            disabled={deadlinePassed}
+                          >
+                            {picks[game.id] === game.team2 && <Check className="h-3 w-3 mr-1" />}
+                            {game.team2}
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
+              )
+            }) : round1Games.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {round1Games.map(game => (
+                  <div key={game.id} className="bg-gray-950 border border-gray-800 rounded-xl p-4">
+                    <p className="text-center font-medium mb-2 text-sm text-gray-300">
+                      <span className="text-cyan-400">{game.team1Seed}</span> {game.team1}
+                      <span className="text-gray-600 mx-1">vs</span>
+                      <span className="text-cyan-400">{game.team2Seed}</span> {game.team2}
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={picks[game.id] === game.team1 ? 'default' : 'outline'}
+                        onClick={() => makePick(game.id, game.team1)}
+                        className="flex-1 text-xs"
+                        disabled={deadlinePassed}
+                      >
+                        {picks[game.id] === game.team1 && <Check className="h-3 w-3 mr-1" />}
+                        {game.team1}
+                      </Button>
+                      <Button
+                        variant={picks[game.id] === game.team2 ? 'default' : 'outline'}
+                        onClick={() => makePick(game.id, game.team2)}
+                        className="flex-1 text-xs"
+                        disabled={deadlinePassed}
+                      >
+                        {picks[game.id] === game.team2 && <Check className="h-3 w-3 mr-1" />}
+                        {game.team2}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )
-          }) : (
-            <div className="text-center text-gray-500 py-12">
-              <p className="text-lg">Tournament bracket not yet available</p>
-              <p className="text-sm mt-2">Check back when teams are announced</p>
-            </div>
-          )}
+            ) : (
+              <div className="text-center text-gray-500 py-12">
+                <p className="text-lg">Tournament bracket not yet available</p>
+                <p className="text-sm mt-2">Check back when teams are announced</p>
+              </div>
+            )}
+          </div>
 
-          <div className="text-center mt-12">
+          <div className="text-center mt-12 space-y-4">
             <Input
               value={bracketName}
               onChange={e => setBracketName(e.target.value)}
               placeholder="Bracket Name (e.g. My Madness 1)"
-              className="mb-4 max-w-md mx-auto"
+              className="max-w-md mx-auto"
               disabled={deadlinePassed}
             />
             <Button
@@ -171,10 +206,10 @@ export default function BracketEntry() {
               <Check className="mr-2 h-5 w-5" /> Finalize Bracket
             </Button>
             {userBracketsCount >= 3 && !deadlinePassed && (
-              <p className="text-red-400 mt-4">Max 3 brackets reached</p>
+              <p className="text-red-400">Max 3 brackets reached</p>
             )}
-            <p className="text-gray-500 text-sm mt-3">
-              {Object.keys(picks).length} / {displayGames.length} picks made
+            <p className="text-gray-500 text-sm">
+              {Object.keys(picks).length} / {round1Games.length} picks made
             </p>
           </div>
         </div>

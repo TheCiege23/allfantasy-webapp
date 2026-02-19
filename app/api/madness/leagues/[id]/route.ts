@@ -17,12 +17,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     include: {
       _count: { select: { members: true, entries: true } },
       tournament: {
-        include: {
-          nodes: {
-            where: { round: 1 },
-            orderBy: { slot: "asc" },
-          },
-        },
+        select: { id: true, name: true, season: true },
       },
     },
   })
@@ -48,16 +43,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     tournament: {
       id: league.tournament.id,
       name: league.tournament.name,
-      nodes: league.tournament.nodes.map((n: any) => ({
-        id: n.id,
-        slot: n.slot,
-        round: n.round,
-        region: n.region,
-        homeTeamName: n.homeTeamName,
-        awayTeamName: n.awayTeamName,
-        seedHome: n.seedHome,
-        seedAway: n.seedAway,
-      })),
+      season: league.tournament.season,
     },
   })
 }
