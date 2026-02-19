@@ -2287,6 +2287,7 @@ model MadnessChatMessage {
   leagueId  String
   userId    String
   message   String
+  audioUrl  String?
   isPinned  Boolean  @default(false)
   createdAt DateTime @default(now())
 

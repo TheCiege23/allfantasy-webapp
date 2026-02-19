@@ -4,7 +4,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette, ArrowDown, Mail } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette, ArrowDown, Mail, Mic, MicOff, Loader2 } from 'lucide-react'
+import { useReactMediaRecorder } from 'react-media-recorder'
 import { useRouter } from 'next/navigation'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
@@ -151,6 +152,7 @@ type Reaction = { emoji: string; userId: string }
 type ChatMessage = {
   id: string
   message: string
+  audioUrl?: string | null
   createdAt: string
   isPinned?: boolean
   reactions?: Reaction[]
@@ -208,6 +210,15 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   }, [emojiSearch])
   const typingTimeout = useRef<NodeJS.Timeout>()
   const lastTypingPing = useRef(0)
+
+  const [voiceRecording, setVoiceRecording] = useState(false)
+  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null)
+  const [sendingVoice, setSendingVoice] = useState(false)
+  const {
+    startRecording: startVoiceRecording,
+    stopRecording: stopVoiceRecording,
+    mediaBlobUrl: voiceBlobUrl,
+  } = useReactMediaRecorder({ audio: true, blobPropertyBag: { type: 'audio/webm' } })
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -326,6 +337,56 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
     } finally {
       setSending(false)
     }
+  }
+
+  useEffect(() => {
+    if (voiceBlobUrl) {
+      setVoicePreviewUrl(voiceBlobUrl)
+    }
+  }, [voiceBlobUrl])
+
+  const toggleVoiceRecord = () => {
+    if (voiceRecording) {
+      stopVoiceRecording()
+      setVoiceRecording(false)
+    } else {
+      startVoiceRecording()
+      setVoiceRecording(true)
+    }
+  }
+
+  const sendVoiceMessage = async () => {
+    if (!voiceBlobUrl) return
+    setSendingVoice(true)
+    try {
+      const blob = await fetch(voiceBlobUrl).then(r => r.blob())
+      if (blob.size > 2 * 1024 * 1024) {
+        toast.error('Voice message too long (max 2MB)')
+        return
+      }
+      const formData = new FormData()
+      formData.append('audio', blob, 'voice.webm')
+      formData.append('leagueId', leagueId)
+
+      const res = await fetch('/api/madness/chat/voice', { method: 'POST', body: formData })
+      if (res.ok) {
+        const msg = await res.json()
+        setMessages(prev => [...prev, msg])
+        setVoicePreviewUrl(null)
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Failed to send voice')
+      }
+    } catch {
+      toast.error('Failed to send voice message')
+    } finally {
+      setSendingVoice(false)
+    }
+  }
+
+  const discardVoice = () => {
+    setVoicePreviewUrl(null)
   }
 
   const toggleReaction = async (messageId: string, emoji: string) => {
@@ -555,7 +616,20 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className={`text-sm mt-0.5 break-words ${t.msgText}`}>{msg.message}</p>
+                  {msg.audioUrl ? (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Mic className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                      <audio
+                        src={msg.audioUrl}
+                        controls
+                        preload="metadata"
+                        className="h-8 max-w-[200px]"
+                        style={{ filter: 'invert(1) hue-rotate(180deg)', opacity: 0.85 }}
+                      />
+                    </div>
+                  ) : (
+                    <p className={`text-sm mt-0.5 break-words ${t.msgText}`}>{msg.message}</p>
+                  )}
 
                   {isOwn && (
                     <div className="flex items-center gap-1 mt-0.5">
@@ -706,23 +780,62 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
         </div>
       )}
 
-      <div className={`border-t ${t.border} p-3 flex gap-2`}>
-        <Input
-          value={input}
-          onChange={handleInputChange}
-          placeholder="Type a message..."
-          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-          className={`${t.inputBg} ${t.inputBorder} ${t.inputText}`}
-          maxLength={1000}
-        />
-        <Button
-          onClick={sendMessage}
-          size="icon"
-          disabled={sending || !input.trim()}
-          className={t.sendBtn}
-        >
-          <Send className="h-4 w-4" />
-        </Button>
+      <div className={`border-t ${t.border} p-3`}>
+        {voicePreviewUrl ? (
+          <div className="flex items-center gap-2 bg-gray-900 rounded-full px-4 py-2">
+            <Mic className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+            <audio controls src={voicePreviewUrl} className="h-8 w-48" />
+            {sendingVoice ? (
+              <Loader2 className="w-4 h-4 text-cyan-400 animate-spin flex-shrink-0" />
+            ) : (
+              <>
+                <Button size="sm" onClick={sendVoiceMessage} className="bg-green-600 hover:bg-green-700 text-white h-7 text-xs">
+                  Send
+                </Button>
+                <Button variant="ghost" size="icon" onClick={discardVoice} className="text-gray-400 hover:text-white h-7 w-7">
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-2 items-center">
+            <Button
+              onClick={toggleVoiceRecord}
+              size="icon"
+              variant="ghost"
+              className={voiceRecording ? 'text-red-500 animate-pulse hover:text-red-400' : 'text-gray-400 hover:text-cyan-400'}
+              title={voiceRecording ? 'Stop recording' : 'Record voice message'}
+            >
+              {voiceRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </Button>
+            {voiceRecording ? (
+              <div className="flex-1 flex items-center gap-2 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-1.5">
+                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                <span className="text-red-400 text-sm">Recording...</span>
+              </div>
+            ) : (
+              <>
+                <Input
+                  value={input}
+                  onChange={handleInputChange}
+                  placeholder="Type a message..."
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                  className={`${t.inputBg} ${t.inputBorder} ${t.inputText}`}
+                  maxLength={1000}
+                />
+                <Button
+                  onClick={sendMessage}
+                  size="icon"
+                  disabled={sending || !input.trim()}
+                  className={t.sendBtn}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
     </div>
