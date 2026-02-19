@@ -52,6 +52,23 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 **League Sync System:**
 A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage and a shared sync core.
 
+**Sleeper Transfer Pipeline (Feb 2026):**
+When a user enters their Sleeper username in the Legacy Hub transfer flow:
+1. Sleeper username/userId is saved to `UserProfile` (links Sleeper identity to user account)
+2. All user leagues are discovered via Sleeper API
+3. For each selected league, the transfer API (`/api/legacy/transfer`) pulls and persists:
+   - `League` record with scoring_settings, roster_positions (starters), league settings (trade deadline, waiver type/budget, playoff teams)
+   - `LeagueManager` records for each league member
+   - `LeagueTeam` records with Sleeper team names (from user metadata.team_name), wins/losses/ties, pointsFor/pointsAgainst
+   - `Roster` records with enriched player data: name, position, team, age, yearsExp, college, status, isStarter/isReserve/isTaxi
+   - `TeamPerformance` weekly point records from matchup data
+   - `HistoricalSeason` records including previous season standings and champions
+   - `Trade` records from completed transactions with player names and draft pick details
+   - AI-generated storylines for the league
+4. Auto-detection: If Sleeper username not provided, attempts to match user's AllFantasy username/displayName to Sleeper league members
+5. Strategy API finds the user's own roster by matching `platformUserId` to `userProfile.sleeperUserId`
+6. AI prompts include league context: scoring format (PPR/SF/TEP/IDP), lineup slots, league size, and season
+
 ## Launch Week Status (Feb 2026)
 **Feature Freeze: ACTIVE** - Legacy Hub is frozen for launch. Only bugfixes accepted.
 - Release commit: `e623d85` (checkpoint before hardening)

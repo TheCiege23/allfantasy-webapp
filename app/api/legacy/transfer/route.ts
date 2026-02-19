@@ -32,6 +32,10 @@ interface SleeperUser {
   username: string
   display_name: string
   avatar?: string
+  metadata?: {
+    team_name?: string
+    [key: string]: unknown
+  }
 }
 
 interface SleeperRoster {
@@ -47,6 +51,8 @@ interface SleeperRoster {
     ties?: number
     fpts?: number
     fpts_decimal?: number
+    fpts_against?: number
+    fpts_against_decimal?: number
   }
 }
 
@@ -121,7 +127,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
   }
 
   try {
-    const { leagueId, sleeperLeagueId: altId } = await req.json()
+    const { leagueId, sleeperLeagueId: altId, sleeperUsername: inputUsername } = await req.json()
     const rawId = leagueId || altId
     
     if (!rawId || typeof rawId !== 'string') {
@@ -129,6 +135,30 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
     }
 
     const cleanId = rawId.trim()
+
+    if (inputUsername && typeof inputUsername === 'string') {
+      try {
+        const sleeperUserRes = await fetchSleeperData(`https://api.sleeper.app/v1/user/${inputUsername.trim()}`)
+        if (sleeperUserRes?.user_id) {
+          await prisma.userProfile.upsert({
+            where: { userId: sessionUserId },
+            update: {
+              sleeperUsername: sleeperUserRes.username || inputUsername.trim(),
+              sleeperUserId: sleeperUserRes.user_id,
+              sleeperLinkedAt: new Date(),
+            },
+            create: {
+              userId: sessionUserId,
+              sleeperUsername: sleeperUserRes.username || inputUsername.trim(),
+              sleeperUserId: sleeperUserRes.user_id,
+              sleeperLinkedAt: new Date(),
+            },
+          })
+        }
+      } catch (e) {
+        console.warn('[Transfer] Sleeper username link failed (non-critical):', e)
+      }
+    }
     
     const league: SleeperLeague = await fetchSleeperData(`https://api.sleeper.app/v1/league/${cleanId}`)
     if (!league) {
@@ -147,6 +177,40 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
         const user = users.find(u => u.user_id === roster.owner_id)
         if (user) rosterToUser[roster.roster_id] = user
       })
+    }
+
+    if (!inputUsername && users && users.length > 0) {
+      try {
+        const existingProfile = await prisma.userProfile.findUnique({
+          where: { userId: sessionUserId },
+          select: { sleeperUsername: true, sleeperUserId: true },
+        })
+        if (!existingProfile?.sleeperUserId) {
+          const appUserRecord = await prisma.appUser.findUnique({ where: { id: sessionUserId }, select: { username: true, email: true, displayName: true } })
+          const matchCandidate = users.find(u =>
+            (appUserRecord?.username && u.username?.toLowerCase() === appUserRecord.username.toLowerCase()) ||
+            (appUserRecord?.displayName && u.display_name?.toLowerCase() === appUserRecord.displayName.toLowerCase())
+          )
+          if (matchCandidate) {
+            await prisma.userProfile.upsert({
+              where: { userId: sessionUserId },
+              update: {
+                sleeperUsername: matchCandidate.username,
+                sleeperUserId: matchCandidate.user_id,
+                sleeperLinkedAt: new Date(),
+              },
+              create: {
+                userId: sessionUserId,
+                sleeperUsername: matchCandidate.username,
+                sleeperUserId: matchCandidate.user_id,
+                sleeperLinkedAt: new Date(),
+              },
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('[Transfer] Auto Sleeper identity detection failed (non-critical):', e)
+      }
     }
 
     let transactions: SleeperTransaction[] = []
@@ -190,7 +254,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
       .filter(h => h.leagueId !== cleanId)
       .map(h => ({ season: h.season, champion: h.champion, leagueId: h.leagueId }))
 
-    const playerMap: Record<string, { name: string; position: string; team: string }> = {}
+    const playerMap: Record<string, { name: string; position: string; team: string; age?: number; yearsExp?: number; college?: string; status?: string }> = {}
 
     const allRosteredIds = new Set<string>()
     rosters?.forEach(r => {
@@ -207,6 +271,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
             name: sp.full_name || `${sp.first_name || ''} ${sp.last_name || ''}`.trim(),
             position: sp.position || '',
             team: sp.team || '',
+            age: sp.age || undefined,
+            yearsExp: sp.years_exp || undefined,
+            college: sp.college || undefined,
+            status: sp.status || undefined,
           }
         }
       })
@@ -226,16 +294,19 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
 
     const managers = rosters?.map(roster => {
       const user = rosterToUser[roster.roster_id]
+      const teamName = user?.metadata?.team_name?.trim() || user?.display_name || user?.username || 'Unknown'
       return {
         rosterId: roster.roster_id,
         ownerId: roster.owner_id,
         username: user?.username || 'Unknown',
         displayName: user?.display_name || user?.username || 'Unknown',
+        teamName,
         avatar: user?.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
         wins: roster.settings?.wins || 0,
         losses: roster.settings?.losses || 0,
         ties: roster.settings?.ties || 0,
         pointsFor: ((roster.settings?.fpts || 0) + (roster.settings?.fpts_decimal || 0) / 100).toFixed(2),
+        pointsAgainst: ((roster.settings?.fpts_against || 0) + (roster.settings?.fpts_against_decimal || 0) / 100).toFixed(2),
         rosterSize: roster.players?.length || 0,
         starters: roster.starters || [],
         players: roster.players || [],
@@ -393,6 +464,17 @@ Example format:
     const isDynasty = league.settings?.type === 2
     const seasonNum = parseInt(league.season) || new Date().getFullYear()
 
+    const leagueSettings = {
+      ...league,
+      scoring_settings: league.scoring_settings || {},
+      roster_positions: league.roster_positions || [],
+      trade_deadline: (league as any).settings?.trade_deadline,
+      waiver_type: (league as any).settings?.waiver_type,
+      waiver_budget: (league as any).settings?.waiver_budget,
+      playoff_teams: league.settings?.playoff_teams,
+      num_teams: league.settings?.num_teams,
+    }
+
     const dbLeague = await prisma.league.upsert({
       where: {
         userId_platform_platformLeagueId: {
@@ -408,7 +490,8 @@ Example format:
         isDynasty,
         scoring: scoringType,
         leagueSize: league.total_rosters || managers.length,
-        settings: league as any,
+        starters: league.roster_positions || [],
+        settings: leagueSettings as any,
         lastSyncedAt: new Date(),
         syncStatus: 'success',
         syncError: null,
@@ -423,7 +506,8 @@ Example format:
         isDynasty,
         scoring: scoringType,
         leagueSize: league.total_rosters || managers.length,
-        settings: league as any,
+        starters: league.roster_positions || [],
+        settings: leagueSettings as any,
         lastSyncedAt: new Date(),
         syncStatus: 'success',
       },
@@ -460,6 +544,7 @@ Example format:
     for (const mgr of managers) {
       const externalId = String(mgr.rosterId)
       const pointsForNum = parseFloat(mgr.pointsFor) || 0
+      const pointsAgainstNum = parseFloat(mgr.pointsAgainst) || 0
       await prisma.leagueTeam.upsert({
         where: {
           leagueId_externalId: {
@@ -469,23 +554,25 @@ Example format:
         },
         update: {
           ownerName: mgr.displayName,
-          teamName: mgr.displayName,
+          teamName: mgr.teamName,
           avatarUrl: mgr.avatar,
           wins: mgr.wins,
           losses: mgr.losses,
           ties: mgr.ties,
           pointsFor: pointsForNum,
+          pointsAgainst: pointsAgainstNum,
         },
         create: {
           leagueId: dbLeague.id,
           externalId,
           ownerName: mgr.displayName,
-          teamName: mgr.displayName,
+          teamName: mgr.teamName,
           avatarUrl: mgr.avatar,
           wins: mgr.wins,
           losses: mgr.losses,
           ties: mgr.ties,
           pointsFor: pointsForNum,
+          pointsAgainst: pointsAgainstNum,
         },
       })
     }
@@ -500,7 +587,13 @@ Example format:
             name: p?.name || pid,
             position: p?.position || '',
             team: p?.team || '',
+            age: p?.age || null,
+            yearsExp: p?.yearsExp || null,
+            college: p?.college || null,
+            status: p?.status || null,
             isStarter: roster.starters?.includes(pid) || false,
+            isReserve: roster.reserve?.includes(pid) || false,
+            isTaxi: roster.taxi?.includes(pid) || false,
           }
         })
 

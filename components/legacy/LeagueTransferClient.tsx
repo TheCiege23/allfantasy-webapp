@@ -189,7 +189,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
         const res = await fetch('/api/legacy/transfer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sleeperLeagueId: league.league_id }),
+          body: JSON.stringify({ sleeperLeagueId: league.league_id, sleeperUsername: sleeperUsername.trim() }),
         })
 
         if (!res.ok) {

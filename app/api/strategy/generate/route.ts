@@ -41,7 +41,20 @@ export const POST = withApiUsage({ endpoint: "/api/strategy/generate", tool: "St
       return NextResponse.json({ error: 'League not found. Please sync your league first.' }, { status: 404 })
     }
 
-    const userRoster = league.rosters?.[0]
+    let userProfile: { sleeperUserId?: string | null; sleeperUsername?: string | null } | null = null
+    try {
+      userProfile = await prisma.userProfile.findUnique({
+        where: { userId },
+        select: { sleeperUserId: true, sleeperUsername: true },
+      })
+    } catch {}
+
+    let userRoster = league.rosters?.[0]
+    if (userProfile?.sleeperUserId && league.rosters.length > 1) {
+      const matched = league.rosters.find(r => r.platformUserId === userProfile!.sleeperUserId)
+      if (matched) userRoster = matched
+    }
+
     const playerData = (userRoster?.playerData as any[] | null) || []
     const rosterPlayers: RosterPlayer[] = playerData.map((p: any) => ({
       playerId: p.playerId || p.id || '',
@@ -61,9 +74,19 @@ export const POST = withApiUsage({ endpoint: "/api/strategy/generate", tool: "St
       .map(i => `${i.playerName}: ${i.insight} (${i.games} games)`)
       .join('\n') || 'No recent performance insights available.'
 
-    const rosterSummary = rosterPlayers
-      .map(p => `${p.playerId} (${p.position}, age ${p.age ?? '?'})`)
+    const rosterSummary = playerData
+      .map((p: any) => `${p.name || p.playerId} (${p.position}, age ${p.age ?? '?'}, ${p.team || '?'})${p.isStarter ? ' [STARTER]' : ''}`)
       .join(', ')
+
+    const leagueSettings = league.settings as any || {}
+    const scoringSettings = leagueSettings.scoring_settings || {}
+    const rosterPositions = (league.starters as string[] || leagueSettings.roster_positions || [])
+    const pprValue = scoringSettings.rec || 0
+    const tepValue = scoringSettings.bonus_rec_te || 0
+    const hasSuperFlex = rosterPositions.includes('SUPER_FLEX')
+    const hasIDP = rosterPositions.some((p: string) => ['DL', 'LB', 'DB', 'IDP_FLEX'].includes(p))
+    const scoringLabel = `${pprValue === 1 ? 'Full PPR' : pprValue === 0.5 ? 'Half PPR' : 'Standard'}${hasSuperFlex ? ' Superflex' : ''}${tepValue > 0 ? ` TEP (+${tepValue})` : ''}${hasIDP ? ' IDP' : ''}`
+    const lineupSlots = rosterPositions.filter((p: string) => p !== 'BN').join(', ')
 
     const sectionPrompts: Record<string, { instruction: string; schema: string; maxTokens: number }> = {
       full: {
@@ -143,17 +166,26 @@ export const POST = withApiUsage({ endpoint: "/api/strategy/generate", tool: "St
 
     const prompt = `You are AllFantasy's elite dynasty fantasy football strategist.
 
+League Context:
+- League: ${league.name || 'Unknown'}
+- Format: ${league.isDynasty ? 'Dynasty' : 'Redraft'} • ${scoringLabel}
+- League Size: ${league.leagueSize || 'Unknown'} teams
+- Lineup Slots: ${lineupSlots || 'Standard'}
+- Season: ${league.season || new Date().getFullYear()}
+
 Team Data:
 - Archetype: ${teamData.archetype} (Score: ${teamData.score}/100)
 - Explanation: ${teamData.explanation}
 - Positional Needs: ${teamData.positionalNeeds}
 - Future Draft Capital: ${futurePicksCount} picks
-- Roster: ${rosterSummary}
+- Roster (${playerData.length} players): ${rosterSummary}
 
 Rolling Insights:
 ${insightsText}
 
 ${sectionConfig.instruction}
+
+IMPORTANT: Tailor your advice to this league's specific scoring settings (${scoringLabel}). ${hasSuperFlex ? 'Superflex leagues value QBs significantly higher.' : ''} ${hasIDP ? 'This is an IDP league - defensive player advice is critical.' : ''} ${tepValue > 0 ? 'TEP premium means elite TEs have extra value.' : ''}
 
 Output **strict JSON only** with this structure:
 
