@@ -1,6 +1,13 @@
 import { openaiChatJson, parseJsonContentFromChatCompletion } from "@/lib/openai-client";
 import { xaiChatJson, parseTextFromXaiChatCompletion } from "@/lib/xai-client";
 import {
+  PEER_REVIEW_PROMPT_CONTRACT,
+  PEER_REVIEW_TEMPERATURE,
+  PEER_REVIEW_MAX_TOKENS,
+  validateAndParsePeerReview,
+  mergePeerReviews,
+  type PeerReviewProviderResult,
+  type PeerReviewConsensus,
   TradeAnalysisSchema,
   validateAndParseAnalysis,
   scoreProviderResult,
@@ -22,6 +29,13 @@ export interface DualBrainRequest {
   maxTokens?: number;
   mode?: TradeAiMode;
   primary?: TradeAiPrimary;
+  timeoutMs?: number;
+}
+
+export interface PeerReviewRequest {
+  factLayerPrompt: string;
+  dataGapsPrompt?: string;
+  mode?: TradeAiMode;
   timeoutMs?: number;
 }
 
@@ -63,6 +77,120 @@ async function withTimeout<T>(
       setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
     ),
   ]);
+}
+
+function parseJsonFromText(text: string | null): any {
+  if (!text) return null;
+  try {
+    const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch {}
+    }
+  }
+  return null;
+}
+
+async function callProviderForPeerReview(
+  provider: "openai" | "grok",
+  messages: ChatMessage[],
+  timeoutMs: number
+): Promise<PeerReviewProviderResult> {
+  const start = Date.now();
+  try {
+    let parsed: any = null;
+
+    if (provider === "openai") {
+      const result = await withTimeout(
+        openaiChatJson({ messages, temperature: PEER_REVIEW_TEMPERATURE, maxTokens: PEER_REVIEW_MAX_TOKENS }),
+        timeoutMs,
+        "OpenAI"
+      );
+      if (!result.ok) {
+        return { provider, verdict: null, raw: null, latencyMs: Date.now() - start, error: result.details, schemaValid: false };
+      }
+      parsed = parseJsonContentFromChatCompletion(result.json);
+    } else {
+      const result = await withTimeout(
+        xaiChatJson({ messages, temperature: PEER_REVIEW_TEMPERATURE, maxTokens: PEER_REVIEW_MAX_TOKENS }),
+        timeoutMs,
+        "Grok"
+      );
+      if (!result.ok) {
+        return { provider, verdict: null, raw: null, latencyMs: Date.now() - start, error: result.details, schemaValid: false };
+      }
+      const text = parseTextFromXaiChatCompletion(result.json);
+      parsed = parseJsonFromText(text);
+    }
+
+    const latencyMs = Date.now() - start;
+    const { valid, verdict } = validateAndParsePeerReview(parsed);
+
+    return { provider, verdict, raw: parsed, latencyMs, schemaValid: valid };
+  } catch (e: any) {
+    return { provider, verdict: null, raw: null, latencyMs: Date.now() - start, error: String(e?.message || e), schemaValid: false };
+  }
+}
+
+export async function runPeerReviewAnalysis(
+  req: PeerReviewRequest
+): Promise<PeerReviewConsensus | null> {
+  const mode = resolveMode(req.mode);
+  const timeoutMs = resolveTimeout(req.timeoutMs);
+
+  if (mode === "off") return null;
+
+  const systemPrompt = `${PEER_REVIEW_PROMPT_CONTRACT}${req.dataGapsPrompt ? `\n\n${req.dataGapsPrompt}` : ""}`;
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: req.factLayerPrompt },
+  ];
+
+  const results: PeerReviewProviderResult[] = [];
+
+  if (mode === "both") {
+    const [openaiResult, grokResult] = await Promise.allSettled([
+      callProviderForPeerReview("openai", messages, timeoutMs),
+      callProviderForPeerReview("grok", messages, timeoutMs),
+    ]);
+
+    results.push(
+      openaiResult.status === "fulfilled"
+        ? openaiResult.value
+        : { provider: "openai", verdict: null, raw: null, latencyMs: 0, error: String(openaiResult.reason), schemaValid: false }
+    );
+    results.push(
+      grokResult.status === "fulfilled"
+        ? grokResult.value
+        : { provider: "grok", verdict: null, raw: null, latencyMs: 0, error: String(grokResult.reason), schemaValid: false }
+    );
+  } else {
+    const primary: "openai" | "grok" = mode === "openai" ? "openai" : "grok";
+    const fallback: "openai" | "grok" = primary === "openai" ? "grok" : "openai";
+
+    const result = await callProviderForPeerReview(primary, messages, timeoutMs);
+    results.push(result);
+
+    if (!result.verdict) {
+      console.warn(`[peer-review] ${primary} failed, attempting ${fallback} fallback`);
+      const fb = await callProviderForPeerReview(fallback, messages, timeoutMs);
+      results.push(fb);
+    }
+  }
+
+  const consensus = mergePeerReviews(results);
+
+  if (consensus) {
+    console.log(
+      `[peer-review] ${consensus.meta.consensusMethod} | verdict=${consensus.verdict} conf=${consensus.confidence}% | adj=${consensus.meta.confidenceAdjustment}`
+    );
+  }
+
+  return consensus;
 }
 
 async function callOpenAI(
@@ -148,21 +276,7 @@ async function callGrok(
     }
 
     const text = parseTextFromXaiChatCompletion(result.json);
-    let parsed: any = null;
-    if (text) {
-      try {
-        const cleaned = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-        parsed = JSON.parse(cleaned);
-      } catch {
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            parsed = JSON.parse(jsonMatch[0]);
-          } catch {}
-        }
-      }
-    }
-
+    const parsed = parseJsonFromText(text);
     const { valid, analysis } = validateAndParseAnalysis(parsed);
 
     const providerResult: ProviderResult = {
@@ -186,38 +300,6 @@ async function callGrok(
       confidenceScore: 0,
     };
   }
-}
-
-function checkContradictions(results: ProviderResult[]): string[] {
-  const contradictions: string[] = [];
-  const valid = results.filter((r) => r.analysis);
-
-  if (valid.length < 2) return contradictions;
-
-  const [a, b] = valid;
-  const aWinner = a.analysis!.winner;
-  const bWinner = b.analysis!.winner;
-
-  const isTeamAWin = (w: string) => w === "Team A" || w === "Slight edge to Team A";
-  const isTeamBWin = (w: string) => w === "Team B" || w === "Slight edge to Team B";
-
-  if (
-    (isTeamAWin(aWinner) && isTeamBWin(bWinner)) ||
-    (isTeamBWin(aWinner) && isTeamAWin(bWinner))
-  ) {
-    contradictions.push(
-      `Winner disagreement: ${a.provider} says "${aWinner}", ${b.provider} says "${bWinner}"`
-    );
-  }
-
-  const confDiff = Math.abs(a.analysis!.confidence - b.analysis!.confidence);
-  if (confDiff > 25) {
-    contradictions.push(
-      `Confidence gap: ${a.provider}=${a.analysis!.confidence}, ${b.provider}=${b.analysis!.confidence} (Δ${confDiff})`
-    );
-  }
-
-  return contradictions;
 }
 
 export async function runDualBrainTradeAnalysis(
@@ -289,19 +371,5 @@ export async function runDualBrainTradeAnalysis(
     }
   }
 
-  const contradictions = checkContradictions(results);
-  if (contradictions.length > 0) {
-    console.log("[dual-brain] Contradictions detected:", contradictions);
-  }
-
-  const consensus = mergeAnalyses(results, primary);
-
-  if (consensus && contradictions.length > 0) {
-    consensus.meta.providers = consensus.meta.providers.map((p) => ({
-      ...p,
-      contradictions,
-    })) as any;
-  }
-
-  return consensus;
+  return mergeAnalyses(results, primary);
 }
