@@ -365,8 +365,10 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             </Button>
           )}
           <LoadReportModal
-            reports={reportsHistory.filter(r => !(r.content as any)?.type)}
-            onLoad={loadHistoricalReport}
+            reports={reportsHistory}
+            onLoad={(r) => {
+              setStrategy(r.content as StrategyResponse);
+            }}
           />
         </div>
       </div>
