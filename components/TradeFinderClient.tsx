@@ -317,15 +317,12 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                     <p className="text-xs text-gray-300 italic">&ldquo;{trade.negotiation.dmMessages[0].message}&rdquo;</p>
                   </div>
                 )}
-                {trade.status === 'accepted' ? (
-                  <div className="mt-4 pt-3 border-t border-green-800/40 text-sm text-green-400">
-                    <p className="font-medium mb-1">Trade Accepted</p>
-                    {trade.outcome && <p className="text-xs text-green-300/80">{trade.outcome}</p>}
-                  </div>
-                ) : trade.status === 'rejected' ? (
-                  <div className="mt-4 pt-3 border-t border-red-800/40 text-sm text-red-400">
-                    <p className="font-medium mb-1">Trade Rejected</p>
-                    {trade.outcome && <p className="text-xs text-red-300/80">{trade.outcome}</p>}
+                {trade.status === 'accepted' || trade.status === 'rejected' ? (
+                  <div className={cn(
+                    'mt-4 p-3 rounded-lg text-sm font-medium',
+                    trade.status === 'accepted' ? 'bg-green-950/50 text-green-300' : 'bg-red-950/50 text-red-300'
+                  )}>
+                    {trade.outcome}
                   </div>
                 ) : (
                   <>
