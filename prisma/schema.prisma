@@ -2283,13 +2283,14 @@ model MarchMadnessShare {
 }
 
 model MadnessChatMessage {
-  id        String   @id @default(uuid())
-  leagueId  String
-  userId    String
-  message   String
-  audioUrl  String?
-  isPinned  Boolean  @default(false)
-  createdAt DateTime @default(now())
+  id           String   @id @default(uuid())
+  leagueId     String
+  userId       String
+  message      String
+  audioUrl     String?
+  animationUrl String?
+  isPinned     Boolean  @default(false)
+  createdAt    DateTime @default(now())
 
   league    BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user      AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
