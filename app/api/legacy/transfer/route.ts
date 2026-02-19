@@ -2,7 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
-import { getAllPlayers } from '@/lib/sleeper-client'
+import { getAllPlayers, getLeagueHistoryChain } from '@/lib/sleeper-client'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
@@ -158,18 +158,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
       }
     }
 
-    let previousSeasons: { season: string; league: SleeperLeague }[] = []
-    let prevId = league.previous_league_id
-    while (prevId) {
-      const prevLeague = await fetchSleeperData(`https://api.sleeper.app/v1/league/${prevId}`)
-      if (prevLeague) {
-        previousSeasons.push({ season: prevLeague.season, league: prevLeague })
-        prevId = prevLeague.previous_league_id
-      } else {
-        break
-      }
-      if (previousSeasons.length >= 10) break
-    }
+    const historyChain = await getLeagueHistoryChain(cleanId, 4)
+    const previousSeasons = historyChain
+      .filter(h => h.leagueId !== cleanId)
+      .map(h => ({ season: h.season, champion: h.champion, leagueId: h.leagueId }))
 
     const playerMap: Record<string, { name: string; position: string; team: string }> = {}
 
@@ -303,6 +295,7 @@ Example format:
         totalDraftPicks: draftPicks.length,
         totalMatchups: allMatchups.reduce((sum, w) => sum + w.matchups.length, 0),
         previousSeasons: previousSeasons.map(s => s.season),
+        champions: previousSeasons.filter(s => s.champion).map(s => ({ season: s.season, champion: s.champion })),
       },
       recentTrades: trades.slice(0, 5).map(t => {
         const rosterIds = t.roster_ids || []
@@ -470,8 +463,8 @@ Example format:
       },
     })
 
-    for (const prevSeason of previousSeasons) {
-      const prevSeasonNum = parseInt(prevSeason.season) || 0
+    for (const past of previousSeasons) {
+      const prevSeasonNum = parseInt(past.season) || 0
       if (prevSeasonNum === 0) continue
       await prisma.historicalSeason.upsert({
         where: {
@@ -481,12 +474,14 @@ Example format:
           },
         },
         update: {
-          metadata: { leagueId: prevSeason.league.league_id, status: prevSeason.league.status },
+          champion: past.champion || undefined,
+          metadata: { originalLeagueId: past.leagueId },
         },
         create: {
           leagueId: dbLeague.id,
           season: prevSeasonNum,
-          metadata: { leagueId: prevSeason.league.league_id, status: prevSeason.league.status },
+          champion: past.champion,
+          metadata: { originalLeagueId: past.leagueId },
         },
       })
     }
