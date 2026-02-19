@@ -438,25 +438,3 @@ html[data-mode="light"] .via-white\/10 { --tw-gradient-stops: var(--tw-gradient-
 .animate-neon-pulse {
   animation: neon-pulse 3s ease-in-out infinite;
 }
-
-@keyframes float-slow {
-  0%, 100% { transform: translateY(0) translateX(0); }
-  50% { transform: translateY(-40px) translateX(20px); }
-}
-@keyframes float-medium {
-  0%, 100% { transform: translateY(0) translateX(0); }
-  50% { transform: translateY(-60px) translateX(-30px); }
-}
-@keyframes float-fast {
-  0%, 100% { transform: translateY(0) translateX(0); }
-  50% { transform: translateY(-80px) translateX(40px); }
-}
-@keyframes gradient-slow {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-.animate-float-slow { animation: float-slow 18s infinite ease-in-out; }
-.animate-float-medium { animation: float-medium 14s infinite ease-in-out; }
-.animate-float-fast { animation: float-fast 10s infinite ease-in-out; }
-.animate-gradient-slow { animation: gradient-slow 25s ease infinite; background-size: 400% 400%; }

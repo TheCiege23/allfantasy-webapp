@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma"
-import { triggerChimmyForAllLeagues } from "@/lib/chimmy-storyline"
 
 type TheSportsDbEvent = {
   idEvent: string
@@ -273,137 +272,201 @@ export async function upsertEventsToSportsGame(
   return { upserted }
 }
 
-export async function matchEventsToGames(
+export async function matchEventsToNodes(
   tournamentId: string
-): Promise<{ updated: number }> {
+): Promise<{ linked: number }> {
   const tournament = await prisma.bracketTournament.findUnique({
     where: { id: tournamentId },
     select: { season: true },
   })
-  if (!tournament) return { updated: 0 }
+  if (!tournament) return { linked: 0 }
 
-  const games = await (prisma as any).marchMadnessGame.findMany({
+  const nodes = await prisma.bracketNode.findMany({
     where: {
       tournamentId,
-      winnerId: null,
-      team1: { not: null },
-      team2: { not: null },
+      sportsGameId: null,
+      homeTeamName: { not: null },
+      awayTeamName: { not: null },
     },
     select: {
       id: true,
-      team1: true,
-      team2: true,
+      homeTeamName: true,
+      awayTeamName: true,
     },
   })
 
   const { start, end } = marchMadnessWindow(tournament.season)
-  const sportsGames = await prisma.sportsGame.findMany({
+  const games = await prisma.sportsGame.findMany({
     where: {
       sport: SPORT,
       source: SOURCE,
-      status: "final",
       startTime: { gte: start, lte: end },
     },
     select: {
       id: true,
       homeTeam: true,
       awayTeam: true,
-      homeScore: true,
-      awayScore: true,
       startTime: true,
     },
     orderBy: { startTime: "asc" },
     take: 2500,
   })
 
-  const pairToGame = new Map<string, typeof sportsGames[0]>()
-  for (const sg of sportsGames) {
-    const a = normalizeTeamName(sg.homeTeam)
-    const b = normalizeTeamName(sg.awayTeam)
+  const pairToGameId = new Map<string, string>()
+  for (const g of games) {
+    const a = normalizeTeamName(g.homeTeam)
+    const b = normalizeTeamName(g.awayTeam)
     if (!a || !b) continue
     const key1 = `${a}|${b}`
     const key2 = `${b}|${a}`
-    if (!pairToGame.has(key1)) pairToGame.set(key1, sg)
-    if (!pairToGame.has(key2)) pairToGame.set(key2, sg)
+    if (!pairToGameId.has(key1)) pairToGameId.set(key1, g.id)
+    if (!pairToGameId.has(key2)) pairToGameId.set(key2, g.id)
   }
 
-  let updated = 0
+  const updates: ReturnType<typeof prisma.bracketNode.update>[] = []
 
-  for (const g of games) {
-    if (isPlaceholderTeam(g.team1) || isPlaceholderTeam(g.team2)) continue
-    const key = `${normalizeTeamName(g.team1)}|${normalizeTeamName(g.team2)}`
-    const match = pairToGame.get(key)
-    if (!match) continue
-
-    const winner = winnerFromScores(
-      match.homeTeam,
-      match.awayTeam,
-      match.homeScore,
-      match.awayScore
-    )
-    if (!winner) continue
-
-    const normalizedWinner = normalizeTeamName(winner)
-    let winnerId: string
-    if (normalizeTeamName(g.team1) === normalizedWinner) {
-      winnerId = g.team1
-    } else if (normalizeTeamName(g.team2) === normalizedWinner) {
-      winnerId = g.team2
-    } else {
+  for (const n of nodes) {
+    if (isPlaceholderTeam(n.homeTeamName) || isPlaceholderTeam(n.awayTeamName))
       continue
-    }
+    const key = `${normalizeTeamName(n.homeTeamName)}|${normalizeTeamName(n.awayTeamName)}`
+    const gameId = pairToGameId.get(key)
+    if (!gameId) continue
 
-    await (prisma as any).marchMadnessGame.update({
-      where: { id: g.id },
-      data: { winnerId },
-    })
-    updated++
+    updates.push(
+      prisma.bracketNode.update({
+        where: { id: n.id },
+        data: { sportsGameId: gameId },
+      })
+    )
   }
 
-  return { updated }
+  if (!updates.length) return { linked: 0 }
+  await prisma.$transaction(updates)
+  return { linked: updates.length }
 }
 
 export async function scoreAndAdvanceFinals(
   tournamentId: string
-): Promise<{ finalized: number; seeded: number }> {
-  const games = await (prisma as any).marchMadnessGame.findMany({
-    where: { tournamentId, winnerId: { not: null } },
+): Promise<{ finalized: number; advanced: number; seeded: number }> {
+  const nodes = await prisma.bracketNode.findMany({
+    where: { tournamentId, sportsGameId: { not: null } },
     select: {
       id: true,
       round: true,
-      team1: true,
-      team2: true,
-      winnerId: true,
+      homeTeamName: true,
+      awayTeamName: true,
+      sportsGameId: true,
+      nextNodeId: true,
+      nextNodeSide: true,
     },
   })
 
+  const gameIds = nodes
+    .map((n) => n.sportsGameId!)
+    .filter(Boolean)
+  const games = await prisma.sportsGame.findMany({
+    where: { id: { in: gameIds } },
+    select: {
+      id: true,
+      homeTeam: true,
+      awayTeam: true,
+      homeScore: true,
+      awayScore: true,
+      status: true,
+    },
+  })
+  const gameById = new Map(games.map((g) => [g.id, g]))
+
   let finalized = 0
+  let advanced = 0
   let seeded = 0
 
-  for (const game of games) {
-    if (!game.team1 || !game.team2 || !game.winnerId) continue
+  for (const node of nodes) {
+    const g = gameById.get(node.sportsGameId!)
+    if (!g) continue
 
-    const winner = game.winnerId
-    const pts = pointsForRound(game.round)
+    if (!node.homeTeamName && g.homeTeam) {
+      await prisma.bracketNode.update({
+        where: { id: node.id },
+        data: { homeTeamName: g.homeTeam },
+      })
+      node.homeTeamName = g.homeTeam
+      seeded++
+    }
+    if (!node.awayTeamName && g.awayTeam) {
+      await prisma.bracketNode.update({
+        where: { id: node.id },
+        data: { awayTeamName: g.awayTeam },
+      })
+      node.awayTeamName = g.awayTeam
+      seeded++
+    }
 
-    await (prisma as any).marchMadnessPick.updateMany({
-      where: { gameId: game.id, winnerTeam: winner },
+    if (normalizeStatus(g.status) !== "final") continue
+
+    const rawWinner = winnerFromScores(
+      g.homeTeam,
+      g.awayTeam,
+      g.homeScore,
+      g.awayScore
+    )
+    if (!rawWinner) continue
+    if (!node.homeTeamName || !node.awayTeamName) continue
+
+    const normalizedWinner = normalizeTeamName(rawWinner)
+    let winner: string
+    if (normalizeTeamName(node.homeTeamName) === normalizedWinner) {
+      winner = node.homeTeamName
+    } else if (normalizeTeamName(node.awayTeamName) === normalizedWinner) {
+      winner = node.awayTeamName
+    } else {
+      continue
+    }
+
+    const pts = pointsForRound(node.round)
+
+    await prisma.bracketPick.updateMany({
+      where: { nodeId: node.id, pickedTeamName: winner },
       data: { isCorrect: true, points: pts },
     })
 
-    await (prisma as any).marchMadnessPick.updateMany({
+    await prisma.bracketPick.updateMany({
       where: {
-        gameId: game.id,
-        winnerTeam: { not: null },
-        NOT: { winnerTeam: winner },
+        nodeId: node.id,
+        pickedTeamName: { not: null },
+        NOT: { pickedTeamName: winner },
       },
       data: { isCorrect: false, points: 0 },
     })
 
     finalized++
+
+    if (node.nextNodeId && node.nextNodeSide) {
+      const next = await prisma.bracketNode.findUnique({
+        where: { id: node.nextNodeId },
+        select: { id: true, homeTeamName: true, awayTeamName: true },
+      })
+      if (!next) continue
+
+      const current =
+        node.nextNodeSide === "HOME"
+          ? next.homeTeamName
+          : next.awayTeamName
+
+      if (isPlaceholderTeam(current) || !current) {
+        await prisma.bracketNode.update({
+          where: { id: next.id },
+          data:
+            node.nextNodeSide === "HOME"
+              ? { homeTeamName: winner }
+              : { awayTeamName: winner },
+        })
+        advanced++
+      }
+    }
   }
 
-  return { finalized, seeded }
+  return { finalized, advanced, seeded }
 }
 
 export async function runBracketSync(season: number) {
@@ -420,51 +483,10 @@ export async function runBracketSync(season: number) {
 
   const events = await fetchTournamentEvents(season)
   const { upserted } = await upsertEventsToSportsGame(events, season)
-  const { updated } = await matchEventsToGames(tournament.id)
-  const { finalized, seeded } = await scoreAndAdvanceFinals(
+  const { linked } = await matchEventsToNodes(tournament.id)
+  const { finalized, advanced, seeded } = await scoreAndAdvanceFinals(
     tournament.id
   )
-
-  if (updated > 0) {
-    try {
-      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000)
-      const newlyFinalized = await (prisma as any).marchMadnessGame.findMany({
-        where: {
-          tournamentId: tournament.id,
-          winnerId: { not: null },
-          date: { gte: fiveMinAgo },
-        },
-        select: {
-          team1: true,
-          team2: true,
-          winnerId: true,
-          team1Seed: true,
-          team2Seed: true,
-          round: true,
-          region: true,
-        },
-        orderBy: { date: 'desc' },
-        take: 10,
-      })
-
-      if (newlyFinalized.length > 0) {
-        const results = newlyFinalized.map((g: any) => ({
-          team1: g.team1,
-          team2: g.team2,
-          winnerId: g.winnerId,
-          team1Seed: g.team1Seed,
-          team2Seed: g.team2Seed,
-          round: g.round,
-          region: g.region,
-        }))
-
-        const chimmy = await triggerChimmyForAllLeagues(results)
-        console.log(`[Chimmy] Posted storylines to ${chimmy.leaguesNotified} leagues`)
-      }
-    } catch (err) {
-      console.error('[Chimmy] Failed to post storylines:', err)
-    }
-  }
 
   return {
     ok: true as const,
@@ -472,8 +494,9 @@ export async function runBracketSync(season: number) {
     tournamentId: tournament.id,
     fetched: events.length,
     upserted,
-    updated,
+    linked,
     finalized,
+    advanced,
     seeded,
   }
 }

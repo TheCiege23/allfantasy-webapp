@@ -247,7 +247,7 @@ export default function AdminTools() {
     { name: "Legacy Profile", tool: "LegacyProfile", endpoint: "/api/legacy/profile", status: "Active" },
     { name: "AI Career Analysis", tool: "AICareerAnalysis", endpoint: "/api/legacy/ai/run", status: "Active" },
     { name: "Trade Analyzer", tool: "TradeAnalyzer", endpoint: "/api/trade-evaluator", status: "Active" },
-    { name: "Trade Finder", tool: "TradeFinder", endpoint: "/api/trade-finder", status: "Active" },
+    { name: "Trade Finder", tool: "TradeFinder", endpoint: "/api/legacy/trade-finder", status: "Active" },
     { name: "Player Finder", tool: "PlayerFinder", endpoint: "/api/legacy/player-finder", status: "Active" },
     { name: "Waiver AI", tool: "WaiverAI", endpoint: "/api/legacy/waiver/analyze", status: "Active" },
     { name: "League Rankings", tool: "LeagueRankings", endpoint: "/api/legacy/rankings/analyze", status: "Active" },
@@ -256,9 +256,6 @@ export default function AdminTools() {
     { name: "AI Coach / Chat", tool: "AICoach", endpoint: "/api/legacy/ai-coach", status: "Active" },
     { name: "Share Generator", tool: "ShareGenerator", endpoint: "/api/legacy/share", status: "Active" },
     { name: "Playoff Backfill", tool: "PlayoffBackfill", endpoint: "/api/legacy/backfill/playoffs", status: "Active" },
-    { name: "Season Strategy", tool: "SeasonStrategy", endpoint: "/api/legacy/season-strategy", status: "Active" },
-    { name: "Mock Draft Simulator", tool: "MockDraft", endpoint: "/api/mock-draft/simulate", status: "Active" },
-    { name: "Dynasty Outlook", tool: "DynastyOutlook", endpoint: "/api/dynasty-outlook", status: "Active" },
   ];
 
   return (

@@ -60,11 +60,10 @@ model QuestionnaireResponse {
 }
 
 model SportsDataCache {
-  key       String   @id
-  value     Json
-  expiresAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  key        String   @id
+  data       Json
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
 
   @@index([expiresAt])
 }
@@ -2099,15 +2098,7 @@ model AppUser {
   leagueAuths          LeagueAuth[]
   sleeperLeagues       SleeperLeague[]
   mockDrafts           MockDraft[]
-  pushSubscriptions    PushSubscription[]
-  chatMessages         MadnessChatMessage[]
-  chatFlags            ChatMessageFlag[]   @relation("ChatFlagReporter")
-  chatReactions        MadnessChatReaction[]
-  chatReadReceipts     ChatReadReceipt[]
-  sentDMs              PrivateChatMessage[] @relation("DMSender")
-  receivedDMs          PrivateChatMessage[] @relation("DMReceiver")
   activeLeagueId       String?
-  aiStrategyReports    AIStrategyReport[]
 
   @@map("app_users")
 }
@@ -2161,41 +2152,38 @@ model BracketTournament {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  games     MarchMadnessGame[]
+  nodes     BracketNode[]
   leagues   BracketLeague[]
 
   @@unique([sport, season])
 }
 
-model MarchMadnessGame {
-  id           String    @id @default(uuid())
-  tournamentId String
-  round        Int
-  gameNumber   Int
-  region       String?
-  team1        String
-  team2        String
-  team1Seed    Int?
-  team2Seed    Int?
-  winnerId     String?
-  date         DateTime?
-  venue        String?
+model BracketNode {
+  id            String   @id @default(uuid())
+  tournamentId  String
+  round         Int
+  region        String?
+  slot          String
 
-  tournament   BracketTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  picks        MarchMadnessPick[]
+  seedHome      Int?
+  seedAway      Int?
 
-  @@unique([tournamentId, round, gameNumber])
-  @@index([tournamentId, round])
-}
+  homeTeamName  String?
+  awayTeamName  String?
 
-model MarchMadnessResult {
-  id        String   @id @default(uuid())
-  gameId    String
-  winner    String
-  round     Int
-  createdAt DateTime @default(now())
+  sportsGameId  String?  @unique
 
-  @@index([gameId])
+  nextNodeId    String?
+  nextNodeSide  String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tournament    BracketTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  picks         BracketPick[]
+
+  @@unique([tournamentId, slot])
+  @@index([tournamentId, round, region])
 }
 
 model BracketLeague {
@@ -2216,8 +2204,6 @@ model BracketLeague {
 
   members      BracketLeagueMember[]
   entries      BracketEntry[]
-  chatMessages MadnessChatMessage[]
-  chatReadReceipts ChatReadReceipt[]
 
   @@index([tournamentId])
   @@index([ownerId])
@@ -2238,136 +2224,35 @@ model BracketLeagueMember {
 }
 
 model BracketEntry {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   leagueId     String
   userId       String
   name         String
-  isFinalized  Boolean   @default(false)
-  finalizedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   league       BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user         AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  picks        MarchMadnessPick[]
-  shares       MarchMadnessShare[]
+  picks        BracketPick[]
 
   @@index([leagueId])
   @@index([userId])
 }
 
-model MarchMadnessPick {
+model BracketPick {
   id             String    @id @default(uuid())
-  bracketId      String
-  gameId         String
-  winnerTeam     String
+  entryId        String
+  nodeId         String
+  pickedTeamName String?
   lockedAt       DateTime?
   points         Int       @default(0)
   isCorrect      Boolean?
 
-  bracket   BracketEntry       @relation(fields: [bracketId], references: [id], onDelete: Cascade)
-  game      MarchMadnessGame   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  entry     BracketEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  node      BracketNode  @relation(fields: [nodeId], references: [id], onDelete: Cascade)
 
-  @@unique([bracketId, gameId])
-  @@index([gameId])
-}
-
-model MarchMadnessShare {
-  id        String   @id @default(uuid())
-  bracketId String
-  imageUrl  String?
-  createdAt DateTime @default(now())
-
-  bracket BracketEntry @relation(fields: [bracketId], references: [id], onDelete: Cascade)
-
-  @@index([bracketId])
-  @@map("march_madness_shares")
-}
-
-model MadnessChatMessage {
-  id           String   @id @default(uuid())
-  leagueId     String
-  userId       String
-  message      String
-  audioUrl     String?
-  animationUrl String?
-  isPinned     Boolean  @default(false)
-  createdAt    DateTime @default(now())
-
-  league    BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  user      AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  flags     ChatMessageFlag[]
-  reactions MadnessChatReaction[]
-
-  @@index([leagueId, createdAt])
-  @@index([userId])
-  @@map("madness_chat_messages")
-}
-
-model ChatMessageFlag {
-  id           String    @id @default(uuid())
-  messageId    String
-  reportedById String
-  reason       String
-  status       String    @default("pending")
-  adminNotes   String?
-  createdAt    DateTime  @default(now())
-  reviewedAt   DateTime?
-
-  message    MadnessChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  reportedBy AppUser            @relation("ChatFlagReporter", fields: [reportedById], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
-  @@index([reportedById])
-  @@index([status])
-  @@map("chat_message_flags")
-}
-
-model MadnessChatReaction {
-  id        String   @id @default(uuid())
-  messageId String
-  userId    String
-  emoji     String
-  createdAt DateTime @default(now())
-
-  message MadnessChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user    AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId, emoji])
-  @@index([messageId])
-  @@map("madness_chat_reactions")
-}
-
-model ChatReadReceipt {
-  id            String   @id @default(uuid())
-  leagueId      String
-  userId        String
-  lastSeenMsgId String
-  lastSeenAt    DateTime @default(now())
-
-  league  BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  user    AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([leagueId, userId])
-  @@index([leagueId])
-  @@map("chat_read_receipts")
-}
-
-model PrivateChatMessage {
-  id         String   @id @default(uuid())
-  senderId   String
-  receiverId String
-  message    String
-  voiceUrl   String?
-  isRead     Boolean  @default(false)
-  createdAt  DateTime @default(now())
-
-  sender   AppUser @relation("DMSender", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver AppUser @relation("DMReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
-
-  @@index([senderId, receiverId, createdAt])
-  @@index([receiverId, isRead])
-  @@map("private_chat_messages")
+  @@unique([entryId, nodeId])
+  @@index([nodeId])
 }
 
 enum VerificationMethod {
@@ -2453,15 +2338,10 @@ model League {
   syncStatus       String?
   syncError        String?
 
-  isLegacy         Boolean   @default(false)
-
   rosters          Roster[]
   teams            LeagueTeam[]
   waiverPickups    WaiverPickup[]
   mockDrafts       MockDraft[]
-  historicalSeasons HistoricalSeason[]
-  managers         LeagueManager[]
-  trades           Trade[]
   user             AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
   legacyLeague     LegacyLeague? @relation(fields: [legacyLeagueId], references: [id])
   legacyLeagueId   String?   @unique
@@ -2474,7 +2354,6 @@ model League {
   @@index([userId, isDynasty])
   @@index([sport, season])
   @@index([status])
-  @@index([isLegacy])
   @@map("leagues")
 }
 
@@ -2482,67 +2361,6 @@ enum LeagueSport {
   NFL
   NBA
   MLB
-}
-
-model HistoricalSeason {
-  id          String   @id @default(uuid())
-  leagueId    String
-  season      Int
-  champion    String?
-  winnerId    String?
-  standings   Json?
-  metadata    Json?
-
-  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-
-  @@unique([leagueId, season])
-  @@index([leagueId])
-  @@map("historical_seasons")
-}
-
-model LeagueManager {
-  id            String   @id @default(uuid())
-  leagueId      String
-  sleeperUserId String
-  displayName   String
-  avatar        String?
-  wins          Int      @default(0)
-  losses        Int      @default(0)
-  ties          Int      @default(0)
-  seasons       Int      @default(1)
-
-  league        League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([leagueId, sleeperUserId])
-  @@index([leagueId])
-  @@index([sleeperUserId])
-  @@map("league_managers")
-}
-
-model Trade {
-  id            String   @id @default(uuid())
-  leagueId      String
-  season        Int
-  week          Int?
-  team1Id       String
-  team2Id       String
-  team1Assets   Json
-  team2Assets   Json
-  status        String   @default("completed")
-  executedAt    DateTime?
-  metadata      Json?
-
-  league        League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@index([leagueId, season])
-  @@index([leagueId])
-  @@map("trades")
 }
 
 model Roster {
@@ -2725,37 +2543,4 @@ model MockDraft {
   @@index([leagueId])
   @@index([userId])
   @@map("mock_drafts")
-}
-
-model PushSubscription {
-  id        String   @id @default(uuid())
-  userId    String
-  endpoint  String   @unique
-  p256dh    String
-  auth      String
-  createdAt DateTime @default(now())
-
-  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("push_subscriptions")
-}
-
-model AIStrategyReport {
-  id        String   @id @default(uuid())
-  userId    String
-  leagueId  String
-  title     String?
-  content   Json
-  archetype String
-  score     Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([leagueId])
-  @@index([userId, leagueId])
-  @@map("ai_strategy_reports")
 }

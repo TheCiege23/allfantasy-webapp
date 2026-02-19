@@ -7,10 +7,6 @@ build/
 .pnp
 .pnp.js
 
-# test
-test-results/
-.cache/ms-playwright/
-
 # logs
 *.log
 npm-debug.log*

@@ -11,12 +11,39 @@ export async function GET(
   try {
     const { tournamentId } = params
 
-    const games = await (prisma as any).marchMadnessGame.findMany({
+    const nodes = await prisma.bracketNode.findMany({
       where: { tournamentId },
-      orderBy: [{ round: "asc" }, { gameNumber: "asc" }],
+      orderBy: [{ round: "asc" }, { region: "asc" }, { slot: "asc" }],
     })
 
-    return NextResponse.json({ games })
+    const gameIds = nodes
+      .map((n) => n.sportsGameId)
+      .filter(Boolean) as string[]
+
+    const games =
+      gameIds.length > 0
+        ? await prisma.sportsGame.findMany({
+            where: { id: { in: gameIds } },
+            select: {
+              id: true,
+              homeTeam: true,
+              awayTeam: true,
+              homeScore: true,
+              awayScore: true,
+              status: true,
+              startTime: true,
+            },
+          })
+        : []
+
+    const gameById = Object.fromEntries(games.map((g) => [g.id, g]))
+
+    return NextResponse.json({
+      nodes: nodes.map((n) => ({
+        ...n,
+        game: n.sportsGameId ? gameById[n.sportsGameId] ?? null : null,
+      })),
+    })
   } catch (err) {
     console.error("[bracket/tournament] Error:", err)
     return NextResponse.json(

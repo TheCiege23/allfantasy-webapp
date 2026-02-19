@@ -1345,28 +1345,21 @@ export default function LegacyTradeAnalyzerPage() {
   }
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-20 left-1/4 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl" />
         <div className="absolute top-1/3 right-1/4 h-96 w-96 rounded-full bg-purple-500/15 blur-3xl" />
       </div>
 
-      <div className="absolute top-5 right-5 pointer-events-none select-none z-0">
-        <img src="/af-shield-bg.png" alt="" className="w-12 h-12 opacity-[0.06]" draggable={false} />
-      </div>
-
       <div className="relative container mx-auto px-4 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/af-legacy?tab=trade"
-              className="inline-flex items-center gap-2 text-cyan-300 hover:text-cyan-200 transition text-sm"
-            >
-              <span>←</span>
-              <span>Back to Legacy Tools</span>
-            </Link>
-            <img src="/af-shield-bg.png" alt="" className="w-6 h-6 opacity-40 hidden sm:block" draggable={false} />
-          </div>
+          <Link
+            href="/af-legacy?tab=trade"
+            className="inline-flex items-center gap-2 text-cyan-300 hover:text-cyan-200 transition text-sm"
+          >
+            <span>←</span>
+            <span>Back to Legacy Tools</span>
+          </Link>
 
           <div className="flex flex-wrap gap-2">
             <Pill tone="cyan">Legacy Tool</Pill>
@@ -2543,10 +2536,6 @@ export default function LegacyTradeAnalyzerPage() {
 
           <div className="text-center text-xs text-white/40 py-4">
             In the main AllFantasy app, Trade Analyzer is available for AF Pro and AF Supreme.
-          </div>
-          <div className="flex items-center justify-center gap-3 py-4 opacity-15 pointer-events-none select-none">
-            <img src="/af-shield-bg.png" alt="" className="w-8 h-8" draggable={false} />
-            <img src="/allfantasy-hero.png" alt="" className="h-4" draggable={false} />
           </div>
         </div>
       </div>

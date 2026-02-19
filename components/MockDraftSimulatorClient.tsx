@@ -55,7 +55,7 @@ const POSITION_COLORS: Record<string, string> = {
 }
 
 export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueOption[] }) {
-  const { callAI, loading } = useAI<{ draftResults: DraftPick[]; updatedDraft?: DraftPick[]; tradeDescription?: string; tradedPicks?: any[] }>()
+  const { callAI, loading } = useAI<{ draftResults: DraftPick[] }>()
   const [selectedLeagueId, setSelectedLeagueId] = useState('')
   const [draftResults, setDraftResults] = useState<DraftPick[]>([])
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null)
@@ -341,11 +341,12 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       if (data?.updatedDraft) {
         setDraftResults(data.updatedDraft)
         setOnClockPick(null)
+        setRoundNeeds({})
         setTradeResult({
           direction,
           pickNumber,
-          tradeDescription: data?.tradeDescription,
-          tradedPicks: data?.tradedPicks,
+          tradeDescription: (data as any).tradeDescription,
+          tradedPicks: (data as any).tradedPicks,
         })
         toast.success(`${direction === 'up' ? 'Traded up' : 'Traded down'}! New picks reflected on the board.`)
       }

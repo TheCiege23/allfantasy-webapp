@@ -21,18 +21,32 @@ export default async function EntryBracketPage({
   if (entry.league.tournamentId !== params.tournamentId)
     return <div className="p-6 text-white/60">Wrong tournament.</div>
 
-  const games = await (prisma as any).marchMadnessGame.findMany({
+  const nodes = await prisma.bracketNode.findMany({
     where: { tournamentId: params.tournamentId },
-    orderBy: [{ round: "asc" }, { gameNumber: "asc" }],
+    orderBy: [{ round: "asc" }, { region: "asc" }, { slot: "asc" }],
   })
 
-  const picks = await (prisma as any).marchMadnessPick.findMany({
-    where: { bracketId: entry.id },
-    select: { gameId: true, winnerTeam: true },
+  const gameIds = nodes.map((n) => n.sportsGameId).filter(Boolean) as string[]
+  const games = gameIds.length > 0
+    ? await prisma.sportsGame.findMany({
+        where: { id: { in: gameIds } },
+        select: { id: true, homeTeam: true, awayTeam: true, homeScore: true, awayScore: true, status: true, startTime: true },
+      })
+    : []
+  const gameById = Object.fromEntries(games.map((g) => [g.id, g]))
+
+  const picks = await prisma.bracketPick.findMany({
+    where: { entryId: entry.id },
+    select: { nodeId: true, pickedTeamName: true },
   })
 
   const pickMap: Record<string, string | null> = {}
-  for (const p of picks) pickMap[p.gameId] = p.winnerTeam ?? null
+  for (const p of picks) pickMap[p.nodeId] = p.pickedTeamName ?? null
+
+  const nodesWithGame = nodes.map((n) => ({
+    ...n,
+    game: n.sportsGameId ? gameById[n.sportsGameId] ?? null : null,
+  }))
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
@@ -57,7 +71,7 @@ export default async function EntryBracketPage({
               tournamentId={params.tournamentId}
               leagueId={entry.leagueId}
               entryId={entry.id}
-              nodes={games as any}
+              nodes={nodesWithGame as any}
               initialPicks={pickMap}
             />
           </div>

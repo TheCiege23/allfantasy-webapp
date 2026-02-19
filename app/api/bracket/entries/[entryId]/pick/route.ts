@@ -13,14 +13,14 @@ export async function POST(
     if (!auth.ok) return auth.response
 
     const body = await req.json()
-    const { gameId, winnerTeam } = body as {
-      gameId: string
-      winnerTeam: string
+    const { nodeId, pickedTeamName } = body as {
+      nodeId: string
+      pickedTeamName: string
     }
 
-    if (!gameId || !winnerTeam) {
+    if (!nodeId || !pickedTeamName) {
       return NextResponse.json(
-        { error: "Missing gameId/winnerTeam" },
+        { error: "Missing nodeId/pickedTeamName" },
         { status: 400 }
       )
     }
@@ -50,16 +50,33 @@ export async function POST(
       )
     }
 
-    const game = await (prisma as any).marchMadnessGame.findUnique({
-      where: { id: gameId },
+    const node = await prisma.bracketNode.findUnique({
+      where: { id: nodeId },
     })
-    if (!game) {
-      return NextResponse.json({ error: "Game not found" }, { status: 404 })
+    if (!node) {
+      return NextResponse.json({ error: "Node not found" }, { status: 404 })
+    }
+
+    const game = node.sportsGameId
+      ? await prisma.sportsGame.findUnique({
+          where: { id: node.sportsGameId },
+        })
+      : null
+
+    const locked = game?.startTime
+      ? new Date(game.startTime) <= new Date()
+      : false
+
+    if (locked) {
+      return NextResponse.json(
+        { error: "Picks locked for this game" },
+        { status: 409 }
+      )
     }
 
     if (
-      winnerTeam !== game.team1 &&
-      winnerTeam !== game.team2
+      pickedTeamName !== node.homeTeamName &&
+      pickedTeamName !== node.awayTeamName
     ) {
       return NextResponse.json(
         { error: "Invalid team selection" },
@@ -67,12 +84,12 @@ export async function POST(
       )
     }
 
-    await (prisma as any).marchMadnessPick.upsert({
+    await prisma.bracketPick.upsert({
       where: {
-        bracketId_gameId: { bracketId: entry.id, gameId },
+        entryId_nodeId: { entryId: entry.id, nodeId },
       },
-      update: { winnerTeam },
-      create: { bracketId: entry.id, gameId, winnerTeam },
+      update: { pickedTeamName },
+      create: { entryId: entry.id, nodeId, pickedTeamName },
     })
 
     return NextResponse.json({ ok: true })

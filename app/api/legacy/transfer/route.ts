@@ -2,9 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
-import { getAllPlayers, getLeagueHistoryChain } from '@/lib/sleeper-client'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { getAllPlayers } from '@/lib/sleeper-client'
 
 const openai = new OpenAI()
 
@@ -32,10 +30,6 @@ interface SleeperUser {
   username: string
   display_name: string
   avatar?: string
-  metadata?: {
-    team_name?: string
-    [key: string]: unknown
-  }
 }
 
 interface SleeperRoster {
@@ -51,8 +45,6 @@ interface SleeperRoster {
     ties?: number
     fpts?: number
     fpts_decimal?: number
-    fpts_against?: number
-    fpts_against_decimal?: number
   }
 }
 
@@ -94,71 +86,14 @@ async function fetchSleeperData(url: string) {
 }
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "LegacyTransfer" })(async (req: NextRequest) => {
-  const session = await getServerSession(authOptions)
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const sessionUserId = session.user.id
-
-  const existingUser = await prisma.appUser.findUnique({ where: { id: sessionUserId } })
-  if (!existingUser) {
-    const fallbackEmail = session.user.email || `${sessionUserId}@session.recovery.allfantasy.ai`
-    const fallbackUsernameBase = (session.user.name || session.user.email || 'legacy_user')
-      .toLowerCase()
-      .replace(/[^a-z0-9_]/g, '_')
-      .slice(0, 32) || 'legacy_user'
-
-    const usernameTaken = await prisma.appUser.findUnique({ where: { username: fallbackUsernameBase } })
-    const fallbackUsername = usernameTaken ? `${fallbackUsernameBase}_${sessionUserId.slice(0, 6)}` : fallbackUsernameBase
-
-    await prisma.appUser.upsert({
-      where: { email: fallbackEmail },
-      update: {
-        displayName: session.user.name || undefined,
-      },
-      create: {
-        id: sessionUserId,
-        email: fallbackEmail,
-        username: fallbackUsername,
-        displayName: session.user.name || undefined,
-      },
-    })
-  }
-
   try {
-    const { leagueId, sleeperLeagueId: altId, sleeperUsername: inputUsername } = await req.json()
-    const rawId = leagueId || altId
+    const { leagueId } = await req.json()
     
-    if (!rawId || typeof rawId !== 'string') {
+    if (!leagueId || typeof leagueId !== 'string') {
       return NextResponse.json({ error: 'League ID is required' }, { status: 400 })
     }
 
-    const cleanId = rawId.trim()
-
-    if (inputUsername && typeof inputUsername === 'string') {
-      try {
-        const sleeperUserRes = await fetchSleeperData(`https://api.sleeper.app/v1/user/${inputUsername.trim()}`)
-        if (sleeperUserRes?.user_id) {
-          await prisma.userProfile.upsert({
-            where: { userId: sessionUserId },
-            update: {
-              sleeperUsername: sleeperUserRes.username || inputUsername.trim(),
-              sleeperUserId: sleeperUserRes.user_id,
-              sleeperLinkedAt: new Date(),
-            },
-            create: {
-              userId: sessionUserId,
-              sleeperUsername: sleeperUserRes.username || inputUsername.trim(),
-              sleeperUserId: sleeperUserRes.user_id,
-              sleeperLinkedAt: new Date(),
-            },
-          })
-        }
-      } catch (e) {
-        console.warn('[Transfer] Sleeper username link failed (non-critical):', e)
-      }
-    }
+    const cleanId = leagueId.trim()
     
     const league: SleeperLeague = await fetchSleeperData(`https://api.sleeper.app/v1/league/${cleanId}`)
     if (!league) {
@@ -177,40 +112,6 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
         const user = users.find(u => u.user_id === roster.owner_id)
         if (user) rosterToUser[roster.roster_id] = user
       })
-    }
-
-    if (!inputUsername && users && users.length > 0) {
-      try {
-        const existingProfile = await prisma.userProfile.findUnique({
-          where: { userId: sessionUserId },
-          select: { sleeperUsername: true, sleeperUserId: true },
-        })
-        if (!existingProfile?.sleeperUserId) {
-          const appUserRecord = await prisma.appUser.findUnique({ where: { id: sessionUserId }, select: { username: true, email: true, displayName: true } })
-          const matchCandidate = users.find(u =>
-            (appUserRecord?.username && u.username?.toLowerCase() === appUserRecord.username.toLowerCase()) ||
-            (appUserRecord?.displayName && u.display_name?.toLowerCase() === appUserRecord.displayName.toLowerCase())
-          )
-          if (matchCandidate) {
-            await prisma.userProfile.upsert({
-              where: { userId: sessionUserId },
-              update: {
-                sleeperUsername: matchCandidate.username,
-                sleeperUserId: matchCandidate.user_id,
-                sleeperLinkedAt: new Date(),
-              },
-              create: {
-                userId: sessionUserId,
-                sleeperUsername: matchCandidate.username,
-                sleeperUserId: matchCandidate.user_id,
-                sleeperLinkedAt: new Date(),
-              },
-            })
-          }
-        }
-      } catch (e) {
-        console.warn('[Transfer] Auto Sleeper identity detection failed (non-critical):', e)
-      }
     }
 
     let transactions: SleeperTransaction[] = []
@@ -249,12 +150,20 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
       }
     }
 
-    const historyChain = await getLeagueHistoryChain(cleanId, 4)
-    const previousSeasons = historyChain
-      .filter(h => h.leagueId !== cleanId)
-      .map(h => ({ season: h.season, champion: h.champion, leagueId: h.leagueId }))
+    let previousSeasons: { season: string; league: SleeperLeague }[] = []
+    let prevId = league.previous_league_id
+    while (prevId) {
+      const prevLeague = await fetchSleeperData(`https://api.sleeper.app/v1/league/${prevId}`)
+      if (prevLeague) {
+        previousSeasons.push({ season: prevLeague.season, league: prevLeague })
+        prevId = prevLeague.previous_league_id
+      } else {
+        break
+      }
+      if (previousSeasons.length >= 10) break
+    }
 
-    const playerMap: Record<string, { name: string; position: string; team: string; age?: number; yearsExp?: number; college?: string; status?: string }> = {}
+    const playerMap: Record<string, { name: string; position: string; team: string }> = {}
 
     const allRosteredIds = new Set<string>()
     rosters?.forEach(r => {
@@ -271,10 +180,6 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
             name: sp.full_name || `${sp.first_name || ''} ${sp.last_name || ''}`.trim(),
             position: sp.position || '',
             team: sp.team || '',
-            age: sp.age || undefined,
-            yearsExp: sp.years_exp || undefined,
-            college: sp.college || undefined,
-            status: sp.status || undefined,
           }
         }
       })
@@ -294,19 +199,16 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
 
     const managers = rosters?.map(roster => {
       const user = rosterToUser[roster.roster_id]
-      const teamName = user?.metadata?.team_name?.trim() || user?.display_name || user?.username || 'Unknown'
       return {
         rosterId: roster.roster_id,
         ownerId: roster.owner_id,
         username: user?.username || 'Unknown',
         displayName: user?.display_name || user?.username || 'Unknown',
-        teamName,
         avatar: user?.avatar ? `https://sleepercdn.com/avatars/thumbs/${user.avatar}` : null,
         wins: roster.settings?.wins || 0,
         losses: roster.settings?.losses || 0,
         ties: roster.settings?.ties || 0,
         pointsFor: ((roster.settings?.fpts || 0) + (roster.settings?.fpts_decimal || 0) / 100).toFixed(2),
-        pointsAgainst: ((roster.settings?.fpts_against || 0) + (roster.settings?.fpts_against_decimal || 0) / 100).toFixed(2),
         rosterSize: roster.players?.length || 0,
         starters: roster.starters || [],
         players: roster.players || [],
@@ -393,7 +295,6 @@ Example format:
         totalDraftPicks: draftPicks.length,
         totalMatchups: allMatchups.reduce((sum, w) => sum + w.matchups.length, 0),
         previousSeasons: previousSeasons.map(s => s.season),
-        champions: previousSeasons.filter(s => s.champion).map(s => ({ season: s.season, champion: s.champion })),
       },
       recentTrades: trades.slice(0, 5).map(t => {
         const rosterIds = t.roster_ids || []
@@ -455,287 +356,8 @@ Example format:
       storylines,
     }
 
-    const rec = league.scoring_settings?.rec || 0
-    let scoringType = 'standard'
-    if (rec === 1) scoringType = 'ppr'
-    else if (rec === 0.5) scoringType = 'half_ppr'
-    if (league.roster_positions?.includes('SUPER_FLEX')) scoringType += '_superflex'
-
-    const isDynasty = league.settings?.type === 2
-    const seasonNum = parseInt(league.season) || new Date().getFullYear()
-
-    const leagueSettings = {
-      ...league,
-      scoring_settings: league.scoring_settings || {},
-      roster_positions: league.roster_positions || [],
-      trade_deadline: (league as any).settings?.trade_deadline,
-      waiver_type: (league as any).settings?.waiver_type,
-      waiver_budget: (league as any).settings?.waiver_budget,
-      playoff_teams: league.settings?.playoff_teams,
-      num_teams: league.settings?.num_teams,
-    }
-
-    const dbLeague = await prisma.league.upsert({
-      where: {
-        userId_platform_platformLeagueId: {
-          userId: sessionUserId,
-          platform: 'sleeper',
-          platformLeagueId: cleanId,
-        },
-      },
-      update: {
-        name: league.name,
-        season: seasonNum,
-        isLegacy: true,
-        isDynasty,
-        scoring: scoringType,
-        leagueSize: league.total_rosters || managers.length,
-        starters: league.roster_positions || [],
-        settings: leagueSettings as any,
-        lastSyncedAt: new Date(),
-        syncStatus: 'success',
-        syncError: null,
-      },
-      create: {
-        userId: sessionUserId,
-        platform: 'sleeper',
-        platformLeagueId: cleanId,
-        name: league.name,
-        season: seasonNum,
-        isLegacy: true,
-        isDynasty,
-        scoring: scoringType,
-        leagueSize: league.total_rosters || managers.length,
-        starters: league.roster_positions || [],
-        settings: leagueSettings as any,
-        lastSyncedAt: new Date(),
-        syncStatus: 'success',
-      },
-    })
-
-    for (const mgr of managers) {
-      if (!mgr.ownerId) continue
-      await prisma.leagueManager.upsert({
-        where: {
-          leagueId_sleeperUserId: {
-            leagueId: dbLeague.id,
-            sleeperUserId: mgr.ownerId,
-          },
-        },
-        update: {
-          displayName: mgr.displayName,
-          avatar: mgr.avatar,
-          wins: mgr.wins,
-          losses: mgr.losses,
-          ties: mgr.ties,
-        },
-        create: {
-          leagueId: dbLeague.id,
-          sleeperUserId: mgr.ownerId,
-          displayName: mgr.displayName,
-          avatar: mgr.avatar,
-          wins: mgr.wins,
-          losses: mgr.losses,
-          ties: mgr.ties,
-        },
-      })
-    }
-
-    for (const mgr of managers) {
-      const externalId = String(mgr.rosterId)
-      const pointsForNum = parseFloat(mgr.pointsFor) || 0
-      const pointsAgainstNum = parseFloat(mgr.pointsAgainst) || 0
-      await prisma.leagueTeam.upsert({
-        where: {
-          leagueId_externalId: {
-            leagueId: dbLeague.id,
-            externalId,
-          },
-        },
-        update: {
-          ownerName: mgr.displayName,
-          teamName: mgr.teamName,
-          avatarUrl: mgr.avatar,
-          wins: mgr.wins,
-          losses: mgr.losses,
-          ties: mgr.ties,
-          pointsFor: pointsForNum,
-          pointsAgainst: pointsAgainstNum,
-        },
-        create: {
-          leagueId: dbLeague.id,
-          externalId,
-          ownerName: mgr.displayName,
-          teamName: mgr.teamName,
-          avatarUrl: mgr.avatar,
-          wins: mgr.wins,
-          losses: mgr.losses,
-          ties: mgr.ties,
-          pointsFor: pointsForNum,
-          pointsAgainst: pointsAgainstNum,
-        },
-      })
-    }
-
-    if (rosters && rosters.length > 0) {
-      for (const roster of rosters) {
-        const ownerId = roster.owner_id || `unowned_${roster.roster_id}`
-        const playerList = (roster.players || []).map((pid: string) => {
-          const p = playerMap[pid]
-          return {
-            playerId: pid,
-            name: p?.name || pid,
-            position: p?.position || '',
-            team: p?.team || '',
-            age: p?.age || null,
-            yearsExp: p?.yearsExp || null,
-            college: p?.college || null,
-            status: p?.status || null,
-            isStarter: roster.starters?.includes(pid) || false,
-            isReserve: roster.reserve?.includes(pid) || false,
-            isTaxi: roster.taxi?.includes(pid) || false,
-          }
-        })
-
-        await prisma.roster.upsert({
-          where: {
-            leagueId_platformUserId: {
-              leagueId: dbLeague.id,
-              platformUserId: ownerId,
-            },
-          },
-          update: {
-            playerData: playerList,
-          },
-          create: {
-            leagueId: dbLeague.id,
-            platformUserId: ownerId,
-            playerData: playerList,
-          },
-        })
-      }
-    }
-
-    for (const mgr of managers) {
-      for (const matchupWeek of allMatchups) {
-        const mgrMatchup = matchupWeek.matchups.find(m => m.roster_id === mgr.rosterId)
-        if (mgrMatchup && mgrMatchup.points > 0) {
-          const teamRecord = await prisma.leagueTeam.findUnique({
-            where: {
-              leagueId_externalId: {
-                leagueId: dbLeague.id,
-                externalId: String(mgr.rosterId),
-              },
-            },
-          })
-          if (teamRecord) {
-            await prisma.teamPerformance.upsert({
-              where: {
-                teamId_season_week: {
-                  teamId: teamRecord.id,
-                  season: seasonNum,
-                  week: matchupWeek.week,
-                },
-              },
-              update: { points: mgrMatchup.points },
-              create: {
-                teamId: teamRecord.id,
-                season: seasonNum,
-                week: matchupWeek.week,
-                points: mgrMatchup.points,
-              },
-            })
-          }
-        }
-      }
-    }
-
-    await prisma.historicalSeason.upsert({
-      where: {
-        leagueId_season: {
-          leagueId: dbLeague.id,
-          season: seasonNum,
-        },
-      },
-      update: {
-        standings: managers.map(m => ({
-          rosterId: m.rosterId,
-          name: m.displayName,
-          wins: m.wins,
-          losses: m.losses,
-          ties: m.ties,
-          pointsFor: m.pointsFor,
-        })),
-        metadata: { matchupWeeks: allMatchups.length, draftType: draftInfo.type },
-      },
-      create: {
-        leagueId: dbLeague.id,
-        season: seasonNum,
-        standings: managers.map(m => ({
-          rosterId: m.rosterId,
-          name: m.displayName,
-          wins: m.wins,
-          losses: m.losses,
-          ties: m.ties,
-          pointsFor: m.pointsFor,
-        })),
-        metadata: { matchupWeeks: allMatchups.length, draftType: draftInfo.type },
-      },
-    })
-
-    for (const past of previousSeasons) {
-      const prevSeasonNum = parseInt(past.season) || 0
-      if (prevSeasonNum === 0) continue
-      await prisma.historicalSeason.upsert({
-        where: {
-          leagueId_season: {
-            leagueId: dbLeague.id,
-            season: prevSeasonNum,
-          },
-        },
-        update: {
-          champion: past.champion || undefined,
-          metadata: { originalLeagueId: past.leagueId },
-        },
-        create: {
-          leagueId: dbLeague.id,
-          season: prevSeasonNum,
-          champion: past.champion,
-          metadata: { originalLeagueId: past.leagueId },
-        },
-      })
-    }
-
-    for (const trade of trades.slice(0, 50)) {
-      const rosterIds = trade.roster_ids || []
-      if (rosterIds.length < 2) continue
-      const tradeWeek = allMatchups.length || 1
-      await prisma.trade.upsert({
-        where: { id: trade.transaction_id },
-        update: {
-          team1Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[0])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
-          team2Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[1])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
-          executedAt: trade.created ? new Date(trade.created) : null,
-        },
-        create: {
-          id: trade.transaction_id,
-          leagueId: dbLeague.id,
-          season: seasonNum,
-          week: tradeWeek,
-          team1Id: String(rosterIds[0]),
-          team2Id: String(rosterIds[1]),
-          team1Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[0])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
-          team2Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[1])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
-          status: 'completed',
-          executedAt: trade.created ? new Date(trade.created) : null,
-          metadata: { draftPicks: trade.draft_picks || [] },
-        },
-      })
-    }
-
     return NextResponse.json({
       success: true,
-      leagueId: dbLeague.id,
       preview: transferPreview,
       message: `Found "${league.name}" with ${managers.length} managers and ${previousSeasons.length + 1} seasons of history.`
     })

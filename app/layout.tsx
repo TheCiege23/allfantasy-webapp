@@ -3,7 +3,6 @@ import { Inter } from 'next/font/google';
 import Script from 'next/script';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
-import SessionProvider from '@/components/providers/SessionProvider';
 import './globals.css';
 
 const inter = Inter({
@@ -50,12 +49,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
       <head>
-        <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#22d3ee" />
-        <link rel="apple-touch-icon" href="/icon-192.png" />
-        <Script id="sw-register" strategy="afterInteractive">
-          {`if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js'); }`}
-        </Script>
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17768764414"
           strategy="afterInteractive"
@@ -85,12 +78,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </Script>
       </head>
       <body className={`${inter.variable} bg-[#0a0a0f] text-white antialiased min-h-screen`}>
-        <SessionProvider>
-          <ThemeProvider>
-            {children}
-            <Toaster position="top-center" richColors closeButton />
-          </ThemeProvider>
-        </SessionProvider>
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-center" richColors closeButton />
+        </ThemeProvider>
       </body>
     </html>
   );

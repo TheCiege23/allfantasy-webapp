@@ -34,7 +34,7 @@ export async function generateMetadata({ params }: { params: { shareId: string }
     include: { league: { select: { name: true } } },
   })
   if (!draft) return { title: 'Draft Not Found - AllFantasy' }
-  const picks = (draft.results as unknown) as DraftPick[]
+  const picks = draft.results as DraftPick[]
   const userPicks = picks.filter(p => p.isUser)
   return {
     title: `${draft.league.name} Mock Draft - AllFantasy`,
@@ -53,7 +53,7 @@ export default async function SharedDraftPage({ params }: { params: { shareId: s
 
   if (!draft) notFound()
 
-  const picks = Array.isArray(draft.results) ? (draft.results as unknown as DraftPick[]) : []
+  const picks = Array.isArray(draft.results) ? (draft.results as DraftPick[]) : []
   if (picks.length === 0) notFound()
   const totalRounds = Math.max(...picks.map(p => p.round), 1)
   const userPicks = picks.filter(p => p.isUser)

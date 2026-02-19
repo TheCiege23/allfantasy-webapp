@@ -30,8 +30,8 @@ export async function getLiveADP(
   const dbCacheKey = `adp-multi-${type}-${new Date().toISOString().slice(0, 10)}`;
   try {
     const cached = await prisma.sportsDataCache.findUnique({ where: { key: dbCacheKey } });
-    if (cached && cached.expiresAt && new Date(cached.expiresAt) > new Date()) {
-      const data = cached.value as unknown as ADPEntry[];
+    if (cached && new Date(cached.expiresAt) > new Date()) {
+      const data = cached.data as ADPEntry[];
       adpCache = { data, ts: Date.now(), type };
       return data.slice(0, limit);
     }
@@ -108,9 +108,9 @@ export async function getLiveADP(
 
   try {
     const ktcCache = await prisma.sportsDataCache.findUnique({ where: { key: 'ktc-dynasty-rankings' } });
-    if (ktcCache?.value && Array.isArray(ktcCache.value)) {
+    if (ktcCache?.data && Array.isArray(ktcCache.data)) {
       const existingNames = new Set(entries.map(e => e.name.toLowerCase()));
-      for (const p of ktcCache.value as any[]) {
+      for (const p of ktcCache.data as any[]) {
         if (p.name && !existingNames.has(p.name.toLowerCase())) {
           entries.push({
             name: p.name,
@@ -170,8 +170,8 @@ export async function getLiveADP(
   try {
     await prisma.sportsDataCache.upsert({
       where: { key: dbCacheKey },
-      update: { value: entries as any, expiresAt: new Date(Date.now() + DB_CACHE_TTL) },
-      create: { key: dbCacheKey, value: entries as any, expiresAt: new Date(Date.now() + DB_CACHE_TTL) },
+      update: { data: entries as any, expiresAt: new Date(Date.now() + DB_CACHE_TTL) },
+      create: { key: dbCacheKey, data: entries as any, expiresAt: new Date(Date.now() + DB_CACHE_TTL) },
     });
   } catch {}
 

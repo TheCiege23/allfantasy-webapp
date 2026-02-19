@@ -14,8 +14,8 @@ export default async function LeagueDetailPage({
 }: {
   params: { leagueId: string }
 }) {
-  const { userId, profile } = await requireVerifiedSession()
-  const user = { id: userId, email: (profile as any)?.email || '' }
+  const { userId, email } = await requireVerifiedSession()
+  const user = { id: userId, email }
 
   const league = await (prisma as any).bracketLeague.findUnique({
     where: { id: params.leagueId },
@@ -47,12 +47,12 @@ export default async function LeagueDetailPage({
   let topStandings: { entryId: string; entryName: string; ownerName: string; points: number }[] = []
 
   if (entryIds.length > 0) {
-    const sums = await (prisma as any).marchMadnessPick.groupBy({
-      by: ["bracketId"],
-      where: { bracketId: { in: entryIds } },
+    const sums = await (prisma as any).bracketPick.groupBy({
+      by: ["entryId"],
+      where: { entryId: { in: entryIds } },
       _sum: { points: true },
     })
-    const scoreBy = new Map(sums.map((s: any) => [s.bracketId, s._sum.points ?? 0]))
+    const scoreBy = new Map(sums.map((s: any) => [s.entryId, s._sum.points ?? 0]))
 
     topStandings = league.entries
       .map((e: any) => ({
@@ -66,16 +66,13 @@ export default async function LeagueDetailPage({
   }
 
   const pickCount = entryIds.length > 0
-    ? await (prisma as any).marchMadnessPick.count({
-        where: { bracketId: { in: entryIds }, winnerTeam: { not: null } },
+    ? await (prisma as any).bracketPick.count({
+        where: { entryId: { in: entryIds }, pickedTeamName: { not: null } },
       })
     : 0
 
   return (
-    <div className="relative min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
-      <div className="absolute top-5 right-5 pointer-events-none select-none z-0">
-        <img src="/af-shield-bg.png" alt="" className="w-10 h-10 opacity-[0.06]" draggable={false} />
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
       <div className="p-6 max-w-3xl mx-auto space-y-6">
         <Link
           href="/brackets"
@@ -227,10 +224,6 @@ export default async function LeagueDetailPage({
         {isDev && (
           <DevTestPanel season={league.tournament.season} />
         )}
-        <div className="flex items-center justify-center gap-3 py-4 opacity-15 pointer-events-none select-none">
-          <img src="/af-shield-bg.png" alt="" className="w-7 h-7" draggable={false} />
-          <img src="/allfantasy-hero.png" alt="" className="h-3.5" draggable={false} />
-        </div>
       </div>
     </div>
   )

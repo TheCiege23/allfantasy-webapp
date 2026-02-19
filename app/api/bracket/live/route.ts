@@ -20,23 +20,66 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Tournament not found" }, { status: 404 })
     }
 
-    const games = await (prisma as any).marchMadnessGame.findMany({
+    const nodes = await prisma.bracketNode.findMany({
       where: { tournamentId },
-      orderBy: [{ round: "asc" }, { gameNumber: "asc" }],
+      orderBy: [{ round: "asc" }, { slot: "asc" }],
     })
 
-    const bracketNodes = games.map((game: any) => {
+    const linkedGameIds = nodes
+      .map((n) => n.sportsGameId)
+      .filter((id): id is string => id !== null)
+
+    const games = linkedGameIds.length > 0
+      ? await prisma.sportsGame.findMany({
+          where: { id: { in: linkedGameIds } },
+          select: {
+            id: true,
+            homeTeam: true,
+            awayTeam: true,
+            homeScore: true,
+            awayScore: true,
+            status: true,
+            startTime: true,
+            venue: true,
+            fetchedAt: true,
+          },
+        })
+      : []
+
+    const gameMap = new Map(games.map((g) => [g.id, g]))
+
+    const bracketNodes = nodes.map((node) => {
+      const game = node.sportsGameId ? gameMap.get(node.sportsGameId) : null
       return {
-        id: game.id,
-        gameNumber: game.gameNumber,
-        round: game.round,
-        team1Seed: game.team1Seed,
-        team2Seed: game.team2Seed,
-        team1: game.team1,
-        team2: game.team2,
-        date: game.date,
-        venue: game.venue,
-        winner: game.winnerId ?? null,
+        id: node.id,
+        slot: node.slot,
+        round: node.round,
+        region: node.region,
+        seedHome: node.seedHome,
+        seedAway: node.seedAway,
+        homeTeamName: node.homeTeamName,
+        awayTeamName: node.awayTeamName,
+        nextNodeId: node.nextNodeId,
+        nextNodeSide: node.nextNodeSide,
+        liveGame: game
+          ? {
+              homeScore: game.homeScore,
+              awayScore: game.awayScore,
+              status: game.status,
+              startTime: game.startTime,
+              venue: game.venue,
+              fetchedAt: game.fetchedAt,
+            }
+          : null,
+        winner:
+          game?.status === "final" &&
+          game.homeScore != null &&
+          game.awayScore != null &&
+          game.homeScore !== game.awayScore
+            ? game.homeScore > game.awayScore
+              ? node.homeTeamName
+              : node.awayTeamName
+            : null,
       }
     })
 
@@ -77,6 +120,10 @@ export async function GET(request: NextRequest) {
       standings.sort((a, b) => b.totalPoints - a.totalPoints)
     }
 
+    const hasLiveGames = bracketNodes.some(
+      (n) => n.liveGame?.status === "in_progress"
+    )
+
     return NextResponse.json(
       {
         tournament: {
@@ -87,6 +134,8 @@ export async function GET(request: NextRequest) {
         },
         nodes: bracketNodes,
         standings,
+        hasLiveGames,
+        pollIntervalMs: hasLiveGames ? 10000 : 60000,
       },
       {
         headers: {

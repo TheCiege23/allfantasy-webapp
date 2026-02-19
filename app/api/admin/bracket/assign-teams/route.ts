@@ -6,10 +6,9 @@ import { isAuthorizedRequest, adminUnauthorized } from "@/lib/adminAuth"
 export const dynamic = "force-dynamic"
 
 type TeamAssignment = {
-  round: number
-  gameNumber: number
-  team1?: string | null
-  team2?: string | null
+  slot: string
+  homeTeamName?: string | null
+  awayTeamName?: string | null
 }
 
 export const POST = withApiUsage({
@@ -38,38 +37,38 @@ export const POST = withApiUsage({
       return NextResponse.json({ error: `No tournament found for ncaam ${season}` }, { status: 404 })
     }
 
-    const games = await (prisma as any).marchMadnessGame.findMany({
+    const validSlots = new Set<string>()
+    const nodes = await prisma.bracketNode.findMany({
       where: { tournamentId: tournament.id },
-      select: { gameNumber: true, round: true },
+      select: { slot: true },
     })
-    const validGames = new Set(games.map((g: any) => `${g.round}-${g.gameNumber}`))
+    for (const n of nodes) validSlots.add(n.slot)
 
     const errors: string[] = []
     const updates = []
 
     for (const t of teams) {
-      if (t.round == null || t.gameNumber == null) {
-        errors.push("Entry missing round or gameNumber field")
+      if (!t.slot) {
+        errors.push("Entry missing slot field")
         continue
       }
-      const key = `${t.round}-${t.gameNumber}`
-      if (!validGames.has(key)) {
-        errors.push(`Unknown game: round=${t.round} gameNumber=${t.gameNumber}`)
+      if (!validSlots.has(t.slot)) {
+        errors.push(`Unknown slot: ${t.slot}`)
         continue
       }
 
       const data: Record<string, string | null> = {}
-      if (t.team1 !== undefined) data.team1 = t.team1 ?? null
-      if (t.team2 !== undefined) data.team2 = t.team2 ?? null
+      if (t.homeTeamName !== undefined) data.homeTeamName = t.homeTeamName ?? null
+      if (t.awayTeamName !== undefined) data.awayTeamName = t.awayTeamName ?? null
 
       if (Object.keys(data).length === 0) {
-        errors.push(`round=${t.round} gameNumber=${t.gameNumber}: no team names provided`)
+        errors.push(`${t.slot}: no team names provided`)
         continue
       }
 
       updates.push(
-        (prisma as any).marchMadnessGame.updateMany({
-          where: { tournamentId: tournament.id, round: t.round, gameNumber: t.gameNumber },
+        prisma.bracketNode.updateMany({
+          where: { tournamentId: tournament.id, slot: t.slot },
           data,
         })
       )

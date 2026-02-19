@@ -19,7 +19,6 @@ export interface SleeperLeague {
   settings: Record<string, unknown>;
   draft_id: string;
   previous_league_id: string | null;
-  avatar: string | null;
 }
 
 export async function getLeagueHistory(leagueId: string, userIdentifier?: string): Promise<SleeperLeague[]> {
@@ -356,84 +355,4 @@ export async function getAllLeagueTrades(
   }
   
   return allTrades.sort((a, b) => b.created - a.created);
-}
-
-export interface LeagueSeasonHistory {
-  season: string;
-  leagueId: string;
-  name: string;
-  champion: string | null;
-}
-
-export async function getLeagueHistoryChain(
-  leagueId: string,
-  maxDepth: number = 3
-): Promise<LeagueSeasonHistory[]> {
-  const history: LeagueSeasonHistory[] = [];
-  let currentId: string | null = leagueId;
-  let depth = 0;
-
-  while (currentId && depth < maxDepth) {
-    const league = await getLeagueInfo(currentId);
-    if (!league) break;
-
-    history.push({
-      season: league.season,
-      leagueId: currentId,
-      name: league.name,
-      champion: await inferChampion(currentId, league.season),
-    });
-
-    currentId = league.previous_league_id || null;
-    depth++;
-  }
-
-  return history.reverse();
-}
-
-async function inferChampion(
-  leagueId: string,
-  season: string
-): Promise<string | null> {
-  try {
-    const bracket = await getPlayoffBracket(leagueId);
-    if (bracket.length > 0) {
-      const finalRound = Math.max(...bracket.map((m) => m.r));
-      const championship = bracket.find((m) => m.r === finalRound && m.m === 1);
-      if (championship?.w) {
-        const rosters = await getLeagueRosters(leagueId);
-        const users = await getLeagueUsers(leagueId);
-        const winningRoster = rosters.find(
-          (r) => r.roster_id === championship.w
-        );
-        if (winningRoster?.owner_id) {
-          const winner = users.find(
-            (u) => u.user_id === winningRoster.owner_id
-          );
-          return winner?.display_name || winner?.username || null;
-        }
-      }
-    }
-  } catch {}
-
-  try {
-    const finalWeek = parseInt(season) >= 2021 ? 18 : 17;
-    const matchups = await getLeagueMatchups(leagueId, finalWeek);
-    if (matchups.length > 0) {
-      const topScorer = matchups.reduce((best, m) =>
-        m.points > best.points ? m : best
-      );
-      const rosters = await getLeagueRosters(leagueId);
-      const users = await getLeagueUsers(leagueId);
-      const roster = rosters.find(
-        (r) => r.roster_id === topScorer.roster_id
-      );
-      if (roster?.owner_id) {
-        const user = users.find((u) => u.user_id === roster.owner_id);
-        return user?.display_name || user?.username || null;
-      }
-    }
-  } catch {}
-
-  return null;
 }

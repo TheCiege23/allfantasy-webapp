@@ -160,8 +160,8 @@ export async function POST(req: NextRequest) {
       const draftOrderCache = await prisma.sportsDataCache.findFirst({
         where: { key: `draft-order-${league.platformLeagueId}` },
       })
-      if (draftOrderCache?.value && typeof draftOrderCache.value === 'object') {
-        const orderMap = draftOrderCache.value as Record<string, number>
+      if (draftOrderCache?.data && typeof draftOrderCache.data === 'object') {
+        const orderMap = draftOrderCache.data as Record<string, number>
         const entries = Object.entries(orderMap).sort(([, a], [, b]) => a - b)
         if (entries.length > 0) {
           draftOrderContext = `\n\nReal draft order from Sleeper (roster_id → slot): ${entries.map(([rid, slot]) => `${rid}→#${slot}`).join(', ')}`

@@ -11,19 +11,19 @@ function requireDevSecret(req: Request) {
   return provided === secret
 }
 
-function seededScore(gameId: string, side: "home" | "away"): number {
+function seededScore(nodeId: string, side: "home" | "away"): number {
   let hash = 0
-  const key = `${gameId}-${side}`
+  const key = `${nodeId}-${side}`
   for (let i = 0; i < key.length; i++) {
     hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0
   }
   return 60 + Math.abs(hash % 30)
 }
 
-function seededWinner(gameId: string): boolean {
+function seededWinner(nodeId: string): boolean {
   let hash = 0
-  for (let i = 0; i < gameId.length; i++) {
-    hash = ((hash << 5) - hash + gameId.charCodeAt(i)) | 0
+  for (let i = 0; i < nodeId.length; i++) {
+    hash = ((hash << 5) - hash + nodeId.charCodeAt(i)) | 0
   }
   return (Math.abs(hash) % 2) === 0
 }
@@ -45,7 +45,7 @@ interface RoundResult {
   roundName: string
   gamesSimulated: number
   results: string[]
-  scoring: { finalized: number; seeded: number }
+  scoring: { finalized: number; advanced: number; seeded: number }
 }
 
 const ROUND_NAMES: Record<number, string> = {
@@ -63,37 +63,65 @@ async function simulateRound(
   round: number,
   season: number
 ): Promise<RoundResult | null> {
-  const games = await (prisma as any).marchMadnessGame.findMany({
+  const nodes = await (prisma as any).bracketNode.findMany({
     where: {
       tournamentId,
       round,
-      team1: { not: null },
-      team2: { not: null },
+      homeTeamName: { not: null },
+      awayTeamName: { not: null },
     },
-    orderBy: { gameNumber: "asc" },
+    orderBy: { slot: "asc" },
   })
 
-  if (games.length === 0) return null
+  if (nodes.length === 0) return null
 
   const results: string[] = []
 
-  for (const g of games) {
-    if (!g.team1 || !g.team2) continue
+  for (const n of nodes) {
+    if (!n.homeTeamName || !n.awayTeamName) continue
 
-    const team1Wins = seededWinner(g.id)
-    const winScore = seededScore(g.id, "home")
-    const loseScore = Math.max(40, winScore - 5 - (seededScore(g.id, "away") % 15))
-    const team1Score = team1Wins ? winScore : loseScore
-    const team2Score = team1Wins ? loseScore : winScore
+    const homeWins = seededWinner(n.id)
+    const winScore = seededScore(n.id, "home")
+    const loseScore = Math.max(40, winScore - 5 - (seededScore(n.id, "away") % 15))
+    const homeScore = homeWins ? winScore : loseScore
+    const awayScore = homeWins ? loseScore : winScore
 
-    const winner = team1Wins ? g.team1 : g.team2
+    if (n.sportsGameId) {
+      await prisma.sportsGame.update({
+        where: { id: n.sportsGameId },
+        data: {
+          homeScore,
+          awayScore,
+          status: "final",
+          startTime: new Date(Date.now() - 120_000),
+          fetchedAt: new Date(),
+        },
+      })
+    } else {
+      const game = await prisma.sportsGame.create({
+        data: {
+          sport: "ncaam",
+          externalId: `dev-sim-${n.id}`,
+          source: "dev-simulate",
+          homeTeam: n.homeTeamName,
+          awayTeam: n.awayTeamName,
+          homeScore,
+          awayScore,
+          status: "final",
+          startTime: new Date(Date.now() - 120_000),
+          fetchedAt: new Date(),
+          expiresAt: new Date(Date.now() + 86_400_000),
+          season,
+        },
+      })
+      await (prisma as any).bracketNode.update({
+        where: { id: n.id },
+        data: { sportsGameId: game.id },
+      })
+    }
 
-    await (prisma as any).marchMadnessGame.update({
-      where: { id: g.id },
-      data: { winnerId: winner },
-    })
-
-    results.push(`${g.team1} ${team1Score}-${team2Score} ${g.team2} → ${winner}`)
+    const winner = homeWins ? n.homeTeamName : n.awayTeamName
+    results.push(`${n.homeTeamName} ${homeScore}-${awayScore} ${n.awayTeamName} → ${winner}`)
   }
 
   const scoring = await scoreAndAdvanceFinals(tournamentId)
@@ -110,12 +138,12 @@ async function simulateRound(
 async function runDbAssertions(tournamentId: string, isFullMode: boolean) {
   const assertions: { name: string; pass: boolean; detail: string }[] = []
 
-  const picksScored = await (prisma as any).marchMadnessPick.findMany({
+  const picksScored = await (prisma as any).bracketPick.findMany({
     where: {
-      game: { tournamentId },
+      node: { tournamentId },
       isCorrect: { not: null },
     },
-    select: { points: true, isCorrect: true, gameId: true, bracketId: true },
+    select: { points: true, isCorrect: true, nodeId: true, entryId: true },
   })
 
   const correctPicks = picksScored.filter((p: any) => p.isCorrect === true)
@@ -133,13 +161,13 @@ async function runDbAssertions(tournamentId: string, isFullMode: boolean) {
     detail: `${incorrectPicks.length} incorrect picks checked`,
   })
 
-  const gameRounds = await (prisma as any).marchMadnessGame.findMany({
+  const nodeRounds = await (prisma as any).bracketNode.findMany({
     where: { tournamentId },
     select: { id: true, round: true },
   })
-  const roundByGame = new Map(gameRounds.map((g: any) => [g.id, g.round]))
+  const roundByNode = new Map(nodeRounds.map((n: any) => [n.id, n.round]))
   const pointsMismatch = correctPicks.filter((p: any) => {
-    const round = roundByGame.get(p.gameId)
+    const round = roundByNode.get(p.nodeId)
     return round !== undefined && p.points !== pointsForRound(round as number)
   })
   assertions.push({
@@ -169,7 +197,7 @@ async function runDbAssertions(tournamentId: string, isFullMode: boolean) {
   if (leaderboard.length > 0) {
     const picksByEntry = new Map<string, number>()
     for (const p of picksScored) {
-      picksByEntry.set(p.bracketId, (picksByEntry.get(p.bracketId) ?? 0) + p.points)
+      picksByEntry.set(p.entryId, (picksByEntry.get(p.entryId) ?? 0) + p.points)
     }
     const mismatches = leaderboard.filter((e: any) => {
       const dbSum = picksByEntry.get(e.entryId) ?? 0
@@ -190,13 +218,18 @@ async function runDbAssertions(tournamentId: string, isFullMode: boolean) {
     })
   }
 
-  const championGame = await (prisma as any).marchMadnessGame.findFirst({
+  const championNode = await (prisma as any).bracketNode.findFirst({
     where: { tournamentId, round: 6 },
+    include: { sportsGame: true },
   })
 
   let champion: string | null = null
-  if (championGame?.winnerId) {
-    champion = championGame.winnerId
+  if (championNode?.sportsGame?.status === "final") {
+    const hs = championNode.sportsGame.homeScore ?? 0
+    const as_ = championNode.sportsGame.awayScore ?? 0
+    champion = hs > as_
+      ? championNode.homeTeamName
+      : championNode.awayTeamName
   }
 
   if (isFullMode) {
@@ -205,45 +238,45 @@ async function runDbAssertions(tournamentId: string, isFullMode: boolean) {
       pass: champion !== null,
       detail: champion
         ? `Champion: ${champion}`
-        : "No champion determined — championship game may not have both teams or a winner",
+        : "No champion determined — championship node may not have both teams or final score",
     })
   }
 
-  const gamesWithTeams = await (prisma as any).marchMadnessGame.findMany({
+  const advancedNodes = await (prisma as any).bracketNode.findMany({
     where: {
       tournamentId,
       round: { gte: 2 },
       OR: [
-        { team1: { not: null } },
-        { team2: { not: null } },
+        { homeTeamName: { not: null } },
+        { awayTeamName: { not: null } },
       ],
     },
-    select: { round: true, team1: true, team2: true },
+    select: { round: true, homeTeamName: true, awayTeamName: true },
   })
 
-  const teamsByRound: Record<string, number> = {}
-  for (const g of gamesWithTeams) {
-    const key = ROUND_NAMES[g.round] ?? `Round ${g.round}`
-    const filled = (g.team1 ? 1 : 0) + (g.team2 ? 1 : 0)
-    teamsByRound[key] = (teamsByRound[key] ?? 0) + filled
+  const advancedByRound: Record<string, number> = {}
+  for (const n of advancedNodes) {
+    const key = ROUND_NAMES[n.round] ?? `Round ${n.round}`
+    const filled = (n.homeTeamName ? 1 : 0) + (n.awayTeamName ? 1 : 0)
+    advancedByRound[key] = (advancedByRound[key] ?? 0) + filled
   }
 
   assertions.push({
-    name: "Games in later rounds have teams assigned",
-    pass: Object.keys(teamsByRound).length > 0,
-    detail: JSON.stringify(teamsByRound),
+    name: "Advancement fills later rounds",
+    pass: Object.keys(advancedByRound).length > 0,
+    detail: JSON.stringify(advancedByRound),
   })
 
-  const idempotencyBefore = await (prisma as any).marchMadnessPick.aggregate({
-    where: { game: { tournamentId }, isCorrect: { not: null } },
+  const idempotencyBefore = await (prisma as any).bracketPick.aggregate({
+    where: { node: { tournamentId }, isCorrect: { not: null } },
     _sum: { points: true },
     _count: true,
   })
 
   await scoreAndAdvanceFinals(tournamentId)
 
-  const idempotencyAfter = await (prisma as any).marchMadnessPick.aggregate({
-    where: { game: { tournamentId }, isCorrect: { not: null } },
+  const idempotencyAfter = await (prisma as any).bracketPick.aggregate({
+    where: { node: { tournamentId }, isCorrect: { not: null } },
     _sum: { points: true },
     _count: true,
   })
@@ -306,7 +339,7 @@ export async function POST(req: Request) {
       tournament: tournament.name,
       rounds: roundResults,
       skippedRounds: skippedRounds.length > 0
-        ? skippedRounds.map((r) => `${ROUND_NAMES[r] ?? `Round ${r}`} — no games with both teams`)
+        ? skippedRounds.map((r) => `${ROUND_NAMES[r] ?? `Round ${r}`} — no nodes with both teams`)
         : [],
       totalGamesSimulated: roundResults.reduce((s, r) => s + r.gamesSimulated, 0),
       champion: dbCheck.champion,
@@ -323,7 +356,7 @@ export async function POST(req: Request) {
 
   if (!result) {
     return NextResponse.json(
-      { error: `No games with teams assigned for round ${roundToSimulate}. Make sure bracket is seeded.` },
+      { error: `No nodes with teams assigned for round ${roundToSimulate}. Make sure bracket is seeded.` },
       { status: 404 }
     )
   }
@@ -338,6 +371,6 @@ export async function POST(req: Request) {
     leaderboard: dbCheck.leaderboard,
     dbAssertions: dbCheck.assertions,
     allAssertionsPass: dbCheck.assertions.every((a) => a.pass),
-    nextStep: "Refresh your bracket page to see updated scores, picks scored, and winners.",
+    nextStep: "Refresh your bracket page to see updated scores, picks scored, and winners advanced.",
   })
 }

@@ -27,9 +27,6 @@ User access to protected features is controlled by a three-tier gating system (A
 **Dashboard (`/dashboard`):**
 The post-login dashboard serves as an AI Overview, displaying user data, league information, bracket entries, a setup checklist, and recommended actions.
 
-**Legacy Hub (`/af-legacy`):**
-The Legacy Hub is the central authenticated hub embedding full feature routes in-tab via iframe. Rankings (`/rankings`) and Dynasty Trade Analyzer (`/dynasty-trade-analyzer`) are rendered in-tab rather than as launcher cards. The standalone routes still function independently (rankings has refresh + dynasty outlook actions; trade analyzer mounts `DynastyTradeForm`). Transfer FK recovery guard is active in the backend `POST /api/legacy/transfer` route.
-
 **UI/UX Decisions:**
 The platform features a mobile-first design with a persistent Bottom Tab Bar, contextual AI Bottom Sheets, Universal AI Badges, and tabbed navigation. A universal theme system (Dark, Light, AF Legacy modes) is managed by `ThemeProvider`.
 
@@ -51,55 +48,6 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 
 **League Sync System:**
 A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage and a shared sync core.
-
-**Sleeper Transfer Pipeline (Feb 2026):**
-When a user enters their Sleeper username in the Legacy Hub transfer flow:
-1. Sleeper username/userId is saved to `UserProfile` (links Sleeper identity to user account)
-2. All user leagues are discovered via Sleeper API
-3. For each selected league, the transfer API (`/api/legacy/transfer`) pulls and persists:
-   - `League` record with scoring_settings, roster_positions (starters), league settings (trade deadline, waiver type/budget, playoff teams)
-   - `LeagueManager` records for each league member
-   - `LeagueTeam` records with Sleeper team names (from user metadata.team_name), wins/losses/ties, pointsFor/pointsAgainst
-   - `Roster` records with enriched player data: name, position, team, age, yearsExp, college, status, isStarter/isReserve/isTaxi
-   - `TeamPerformance` weekly point records from matchup data
-   - `HistoricalSeason` records including previous season standings and champions
-   - `Trade` records from completed transactions with player names and draft pick details
-   - AI-generated storylines for the league
-4. Auto-detection: If Sleeper username not provided, attempts to match user's AllFantasy username/displayName to Sleeper league members
-5. Strategy API finds the user's own roster by matching `platformUserId` to `userProfile.sleeperUserId`
-6. AI prompts include league context: scoring format (PPR/SF/TEP/IDP), lineup slots, league size, and season
-
-## Launch Week Status (Feb 2026)
-**Feature Freeze: ACTIVE** - Legacy Hub is frozen for launch. Only bugfixes accepted.
-- Release commit: `e623d85` (checkpoint before hardening)
-- Smoke test suite: 29 Playwright tests (CI-required gate)
-- Golden path tests cover: auth redirects, rankings, trade analyzer, strategy, share, API auth guards
-- Verification matrix: A (Legacy Hub tabs), B (direct route fallbacks), C (critical backend guards)
-- Observability: 5xx alerting on `/api/legacy/transfer`, `/api/trade-finder`, `/api/strategy/generate`
-- Redirect loop detection active via Next.js middleware on /login (logs + cookie-based counting)
-- Preflight script: `npm run preflight` validates all env vars, DB connection, migrations, auth config
-- CI: `.github/workflows/smoke-tests.yml` runs Playwright as required merge gate with HTML report artifact
-- Rollback: Use Replit checkpoints to restore to last known-good state. Current checkpoint commit: `e623d85`
-
-### Go-Live Checklist Status
-| # | Task | Status |
-|---|------|--------|
-| 1 | Env sanity (NEXTAUTH_URL, secret, DB, AI keys) | PASS - 0 failures, 4 warnings (table casing) |
-| 2 | Auth flow for protected routes | PASS - 7 routes verified redirect to /login |
-| 3 | Legacy Hub visual check | PASS - redirects to login when unauthenticated (expected) |
-| 4 | Feature parity (rankings refresh, trade analyzer) | PASS - Refresh AI Analysis button + Power Rankings heading confirmed |
-| 5 | Legacy transfer FK guard | PASS - returns 401 unauthenticated, FK recovery guard in code |
-| 6 | API guardrail check | PASS - all protected APIs return 401/403/400, never 500 |
-| 7 | CI gate (Playwright required) | PASS - `.github/workflows/smoke-tests.yml` configured |
-| 8 | Deploy canary | PENDING - requires production deploy |
-| 9 | 24h observability | READY - alerting module active, admin endpoint at `/api/admin/observability` |
-| 10 | Full rollout | PENDING - after 24h observe period |
-
-### Fast Triage Map
-- **White/washed cards on Legacy Hub**: Check route is rendering current token overrides on hub container
-- **Trade analyzer in Legacy tab shows login/error**: Auth-protected route in iframe; verify session cookie domain/proxy setup and auth env vars
-- **User sees "sample/no data" on rankings**: Rankings can render with userId=null; ensure signed-in + synced leagues
-- **Transfer throws FK/user errors**: Confirm fallback user creation path executes (lines 98-121 of transfer/route.ts) and DB constraints healthy
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.
