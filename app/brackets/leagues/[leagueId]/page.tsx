@@ -66,6 +66,12 @@ export default async function LeagueDetailPage({
       .slice(0, 5)
   }
 
+  const rules = (league.scoringRules || {}) as any
+  const entriesPerUserFree = Number(rules.entriesPerUserFree ?? 2)
+  const maxEntriesPerUser = Number(rules.maxEntriesPerUser ?? 10)
+  const isPaidLeague = Boolean(rules.isPaidLeague)
+  const paymentConfirmedAt = rules.commissionerPaymentConfirmedAt as string | null
+
   const pickCount = entryIds.length > 0
     ? await (prisma as any).bracketPick.count({
         where: { entryId: { in: entryIds }, pickedTeamName: { not: null } },
@@ -104,7 +110,7 @@ export default async function LeagueDetailPage({
 
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{league.members.length}</div>
+            <div className="text-lg font-bold">{league.members.length}/{league.maxManagers}</div>
             <div className="text-xs text-gray-500">Members</div>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
@@ -116,6 +122,32 @@ export default async function LeagueDetailPage({
             <div className="text-xs text-gray-500">Picks Made</div>
           </div>
         </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+            <div className="text-lg font-bold">{entriesPerUserFree}</div>
+            <div className="text-xs text-gray-500">Free Entries / User</div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+            <div className="text-lg font-bold">{maxEntriesPerUser}</div>
+            <div className="text-xs text-gray-500">Max Entries / User</div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+            <div className="text-lg font-bold">{league.maxManagers}</div>
+            <div className="text-xs text-gray-500">League Capacity</div>
+          </div>
+        </div>
+
+        {isPaidLeague && (
+          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-2">
+            <div className="text-sm font-semibold text-emerald-300">Paid League (FanCred)</div>
+            <div className="text-xs text-gray-300">Commissioner must confirm payment to unlock paid extra entries.</div>
+            <div className="text-xs text-gray-400">
+              Status: {paymentConfirmedAt ? `Confirmed at ${new Date(paymentConfirmedAt).toLocaleString()}` : "Pending confirmation"}
+            </div>
+            {league.ownerId === user.id && !paymentConfirmedAt && <ConfirmPaymentButton leagueId={league.id} />}
+          </div>
+        )}
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
@@ -158,19 +190,6 @@ export default async function LeagueDetailPage({
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {league.scoringRules?.isPaidLeague && league.ownerId === user?.id && !league.scoringRules?.commissionerPaymentConfirmedAt && (
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-amber-300">
-              <Shield className="h-4 w-4" />
-              Paid League — Payment Required
-            </div>
-            <p className="text-sm text-gray-400">
-              Entry fee: {league.scoringRules.fancredEntryFee ?? 0} FanCred per entry. Confirm payment to activate your league.
-            </p>
-            <ConfirmPaymentButton leagueId={league.id} />
           </div>
         )}
 
@@ -218,7 +237,7 @@ export default async function LeagueDetailPage({
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
             <Users className="h-4 w-4" />
-            Members ({league.members.length})
+            Members ({league.members.length}/{league.maxManagers})
           </div>
           <div className="space-y-2">
             {league.members.map((m: any) => (
