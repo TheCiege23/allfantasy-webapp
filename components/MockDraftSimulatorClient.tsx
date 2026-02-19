@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Play, RefreshCw, Download, Trophy, RotateCcw, Users, Loader2, Share2 } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 
 interface LeagueOption {
   id: string
@@ -95,48 +97,32 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     return acc
   }, {} as Record<string, number>)
 
-  const exportToPDF = () => {
-    if (draftResults.length === 0) return
-    const totalRds = Math.max(...draftResults.map(p => p.round))
+  const exportToPDF = async () => {
+    const element = document.querySelector('.draft-board') as HTMLElement
+    if (!element) return
     const leagueName = selectedLeague?.name || 'Mock Draft'
-    let html = `<html><head><title>${leagueName} - Mock Draft Results</title>
-<style>
-  body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #e5e5e5; padding: 40px; }
-  h1 { text-align: center; background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  h2 { color: #22d3ee; font-size: 14px; margin-top: 32px; font-family: monospace; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-  th { text-align: left; font-size: 11px; color: #9ca3af; padding: 6px 8px; border-bottom: 1px solid #333; }
-  td { padding: 6px 8px; font-size: 12px; border-bottom: 1px solid #1f1f1f; }
-  .user-row { background: rgba(34,211,238,0.08); }
-  .pos { font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
-  .QB { color: #f87171; } .RB { color: #22d3ee; } .WR { color: #4ade80; } .TE { color: #a855f7; } .K { color: #fbbf24; } .DEF { color: #94a3b8; }
-  .summary { display: flex; gap: 12px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
-  .summary span { background: #1a1a2e; padding: 6px 14px; border-radius: 8px; font-size: 12px; }
-  @media print { body { background: white; color: black; } td, th { border-color: #ddd; } .user-row { background: #f0f9ff; } }
-</style></head><body>
-<h1>${leagueName} Mock Draft</h1>
-<p style="text-align:center;color:#9ca3af;font-size:13px;">${new Date().toLocaleDateString()} • ${draftResults.length} picks • ${totalRds} rounds</p>
-<div class="summary">`
-    Object.entries(positionCounts).sort().forEach(([pos, count]) => {
-      html += `<span class="${pos}">${pos}: ${count}</span>`
-    })
-    html += `</div>`
-    for (let r = 1; r <= totalRds; r++) {
-      const picks = draftResults.filter(p => p.round === r)
-      html += `<h2>ROUND ${r}</h2><table><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Manager</th><th>Conf</th></tr>`
-      picks.forEach(p => {
-        html += `<tr class="${p.isUser ? 'user-row' : ''}"><td>${p.overall}</td><td><b>${p.playerName}</b></td><td><span class="pos ${p.position}">${p.position}</span></td><td>${p.team}</td><td>${p.manager}</td><td>${p.confidence}%</td></tr>`
+
+    toast.info('Generating PDF...')
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        backgroundColor: '#0a0a0a',
+        useCORS: true,
+        logging: false,
       })
-      html += `</table>`
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [canvas.width, canvas.height],
+      })
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height)
+      pdf.save(`AllFantasy-Mock-Draft-${leagueName.replace(/\s+/g, '-')}.pdf`)
+      toast.success('PDF downloaded!')
+    } catch (err) {
+      console.error('[pdf-export]', err)
+      toast.error('Failed to generate PDF')
     }
-    html += `</body></html>`
-    const w = window.open('', '_blank')
-    if (w) {
-      w.document.write(html)
-      w.document.close()
-      setTimeout(() => w.print(), 500)
-    }
-    toast.success('PDF export ready — use your browser\'s print dialog to save')
   }
 
   const generateShareLink = async () => {
@@ -290,7 +276,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             </div>
           </div>
 
-          <div className="bg-black/80 border border-cyan-900/50 rounded-3xl p-4 sm:p-8">
+          <div className="draft-board bg-black/80 border border-cyan-900/50 rounded-3xl p-4 sm:p-8">
             <h2 className="text-2xl font-bold mb-8 text-center bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
               Mock Draft Board
             </h2>
