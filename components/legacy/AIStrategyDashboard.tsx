@@ -625,7 +625,107 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             </TabsList>
 
             <div className="bg-[#1a1238]/60 backdrop-blur-md border border-cyan-900/40 rounded-2xl p-6 mb-8 mt-6 shadow-[0_0_30px_-10px_#00f5d4]">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+              <div className="mb-6">
+                <label className="block text-sm text-gray-400 mb-3">Quick Presets</label>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    variant={filters.preset === 'contender' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilters({
+                      ...filters,
+                      preset: 'contender',
+                      valueDelta: 'strong win',
+                      archetypeFit: 'excellent',
+                      riskLevel: 'low',
+                      includePicks: true,
+                      minAge: 23,
+                      maxAge: 30,
+                      avoidByeWeek: true,
+                    })}
+                    className="bg-emerald-900/50 hover:bg-emerald-800/70"
+                  >
+                    Contender Push
+                  </Button>
+
+                  <Button
+                    variant={filters.preset === 'rebuild' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilters({
+                      ...filters,
+                      preset: 'rebuild',
+                      valueDelta: 'all',
+                      archetypeFit: 'good',
+                      riskLevel: 'all',
+                      includePicks: true,
+                      minAge: 20,
+                      maxAge: 26,
+                      avoidByeWeek: false,
+                    })}
+                    className="bg-rose-900/50 hover:bg-rose-800/70"
+                  >
+                    Rebuild Accumulate
+                  </Button>
+
+                  <Button
+                    variant={filters.preset === 'balanced' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilters({
+                      ...filters,
+                      preset: 'balanced',
+                      valueDelta: 'fair',
+                      archetypeFit: 'neutral',
+                      riskLevel: 'medium',
+                      includePicks: true,
+                      minAge: 22,
+                      maxAge: 32,
+                      avoidByeWeek: false,
+                    })}
+                    className="bg-amber-900/50 hover:bg-amber-800/70"
+                  >
+                    Balanced Mid-Season
+                  </Button>
+
+                  <Button
+                    variant={filters.preset === 'youth' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilters({
+                      ...filters,
+                      preset: 'youth',
+                      valueDelta: 'all',
+                      archetypeFit: 'good',
+                      riskLevel: 'all',
+                      includePicks: true,
+                      minAge: 20,
+                      maxAge: 25,
+                      avoidByeWeek: false,
+                    })}
+                    className="bg-purple-900/50 hover:bg-purple-800/70"
+                  >
+                    Youth Infusion
+                  </Button>
+
+                  <Button
+                    variant={filters.preset === 'veteran' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilters({
+                      ...filters,
+                      preset: 'veteran',
+                      valueDelta: 'strong win',
+                      archetypeFit: 'excellent',
+                      riskLevel: 'low',
+                      includePicks: false,
+                      minAge: 26,
+                      maxAge: 35,
+                      avoidByeWeek: true,
+                    })}
+                    className="bg-cyan-900/50 hover:bg-cyan-800/70"
+                  >
+                    Veteran Win-Now
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Position</label>
                   <div className="flex flex-wrap gap-2">
@@ -688,7 +788,34 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   </select>
                 </div>
 
-                <div className="flex flex-col justify-end gap-3">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Player Age Range</label>
+                  <div className="flex gap-4 items-center">
+                    <input
+                      type="range"
+                      min="20"
+                      max="40"
+                      step="1"
+                      value={filters.minAge}
+                      onChange={e => setFilters(prev => ({ ...prev, minAge: Number(e.target.value) }))}
+                      className="w-1/2 accent-cyan-500"
+                    />
+                    <span className="text-sm text-cyan-300">
+                      {filters.minAge} – {filters.maxAge}
+                    </span>
+                    <input
+                      type="range"
+                      min="20"
+                      max="40"
+                      step="1"
+                      value={filters.maxAge}
+                      onChange={e => setFilters(prev => ({ ...prev, maxAge: Number(e.target.value) }))}
+                      className="w-1/2 accent-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-end gap-3">
                   <Button
                     variant={filters.includePicks ? 'default' : 'outline'}
                     size="sm"
@@ -696,79 +823,54 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   >
                     {filters.includePicks ? 'Include Picks \u2713' : 'Exclude Picks'}
                   </Button>
-
-                  <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setFilters({
-                        position: 'all',
-                        valueDelta: 'all',
-                        archetypeFit: 'all',
-                        riskLevel: 'all',
-                        includePicks: true,
-                        minAge: 21,
-                        maxAge: 35,
-                        avoidByeWeek: false,
-                        preset: 'none',
-                      })}
-                      className="border-red-600/50 text-red-300 hover:bg-red-950/40"
-                    >
-                      Reset
-                    </Button>
-
-                    {(() => {
-                      const count = [
-                        filters.position !== 'all',
-                        filters.valueDelta !== 'all',
-                        filters.archetypeFit !== 'all',
-                        filters.riskLevel !== 'all',
-                        !filters.includePicks,
-                        filters.minAge !== 21,
-                        filters.maxAge !== 35,
-                        filters.avoidByeWeek,
-                      ].filter(Boolean).length;
-
-                      return count > 0 ? (
-                        <Badge className="bg-amber-600/80 px-3 py-1">
-                          {count} active
-                        </Badge>
-                      ) : null;
-                    })()}
-                  </div>
+                  <Button
+                    variant={filters.avoidByeWeek ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilters(prev => ({ ...prev, avoidByeWeek: !prev.avoidByeWeek }))}
+                    className={filters.avoidByeWeek ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                  >
+                    {filters.avoidByeWeek ? 'Avoid Bye Week \u2713' : 'Ignore Bye Week'}
+                  </Button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-cyan-900/30">
-                <div className="flex items-center gap-3">
-                  <label className="text-sm text-gray-400">Age Range:</label>
-                  <input
-                    type="number"
-                    min={18}
-                    max={filters.maxAge}
-                    value={filters.minAge}
-                    onChange={e => setFilters(prev => ({ ...prev, minAge: Number(e.target.value) }))}
-                    className="w-16 bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-2 py-1.5 text-white text-center text-sm"
-                  />
-                  <span className="text-gray-500">–</span>
-                  <input
-                    type="number"
-                    min={filters.minAge}
-                    max={45}
-                    value={filters.maxAge}
-                    onChange={e => setFilters(prev => ({ ...prev, maxAge: Number(e.target.value) }))}
-                    className="w-16 bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-2 py-1.5 text-white text-center text-sm"
-                  />
-                </div>
-
+              <div className="mt-6 flex items-center justify-between">
                 <Button
-                  variant={filters.avoidByeWeek ? 'default' : 'outline'}
+                  variant="outline"
                   size="sm"
-                  onClick={() => setFilters(prev => ({ ...prev, avoidByeWeek: !prev.avoidByeWeek }))}
-                  className={filters.avoidByeWeek ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                  onClick={() => setFilters({
+                    position: 'all',
+                    valueDelta: 'all',
+                    archetypeFit: 'all',
+                    riskLevel: 'all',
+                    includePicks: true,
+                    minAge: 21,
+                    maxAge: 35,
+                    avoidByeWeek: false,
+                    preset: 'none',
+                  })}
+                  className="border-red-600/50 text-red-300 hover:bg-red-950/40"
                 >
-                  {filters.avoidByeWeek ? 'Avoiding Bye Conflicts \u2713' : 'Bye Week Filter'}
+                  Reset All Filters
                 </Button>
+
+                {(() => {
+                  const count = [
+                    filters.position !== 'all',
+                    filters.valueDelta !== 'all',
+                    filters.archetypeFit !== 'all',
+                    filters.riskLevel !== 'all',
+                    filters.minAge !== 21 || filters.maxAge !== 35,
+                    filters.avoidByeWeek,
+                    !filters.includePicks,
+                  ].filter(Boolean).length;
+
+                  return count > 0 ? (
+                    <Badge className="bg-amber-600/80 px-4 py-1.5 text-sm">
+                      {count} active filter{count !== 1 ? 's' : ''}
+                    </Badge>
+                  ) : null;
+                })()}
               </div>
             </div>
 
