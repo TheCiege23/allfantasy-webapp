@@ -2102,6 +2102,7 @@ model AppUser {
   chatMessages         MadnessChatMessage[]
   chatFlags            ChatMessageFlag[]   @relation("ChatFlagReporter")
   chatReactions        MadnessChatReaction[]
+  chatReadReceipts     ChatReadReceipt[]
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2212,6 +2213,7 @@ model BracketLeague {
   members      BracketLeagueMember[]
   entries      BracketEntry[]
   chatMessages MadnessChatMessage[]
+  chatReadReceipts ChatReadReceipt[]
 
   @@index([tournamentId])
   @@index([ownerId])
@@ -2328,6 +2330,21 @@ model MadnessChatReaction {
   @@unique([messageId, userId, emoji])
   @@index([messageId])
   @@map("madness_chat_reactions")
+}
+
+model ChatReadReceipt {
+  id            String   @id @default(uuid())
+  leagueId      String
+  userId        String
+  lastSeenMsgId String
+  lastSeenAt    DateTime @default(now())
+
+  league  BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user    AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, userId])
+  @@index([leagueId])
+  @@map("chat_read_receipts")
 }
 
 enum VerificationMethod {

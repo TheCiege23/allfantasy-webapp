@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin, Search } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 const EMOJI_MAP: Record<string, string> = {
@@ -60,6 +60,7 @@ type ChatMessage = {
   createdAt: string
   isPinned?: boolean
   reactions?: Reaction[]
+  seenBy?: string[]
   user: {
     id: string
     username: string
@@ -140,6 +141,17 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [open, messages.length])
+
+  useEffect(() => {
+    if (!open || messages.length === 0) return
+    const lastMsg = messages[messages.length - 1]
+    if (!lastMsg) return
+    fetch('/api/madness/seen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leagueId, messageId: lastMsg.id }),
+    }).catch(() => {})
+  }, [open, messages.length, leagueId])
 
   const sendTypingPing = useCallback(async () => {
     const now = Date.now()
@@ -334,6 +346,25 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                     </span>
                   </div>
                   <p className="text-sm text-gray-200 mt-0.5 break-words">{msg.message}</p>
+
+                  {isOwn && (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {(msg.seenBy?.length ?? 0) > 0 ? (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-cyan-400" title={`Seen by ${msg.seenBy!.join(', ')}`}>
+                          <CheckCheck className="h-3 w-3" />
+                          <span>
+                            {msg.seenBy!.length <= 2
+                              ? msg.seenBy!.join(', ')
+                              : `${msg.seenBy![0]} +${msg.seenBy!.length - 1}`}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center text-[10px] text-gray-500" title="Sent">
+                          <Check className="h-3 w-3" />
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {grouped.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
