@@ -156,6 +156,14 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
   const [waiverFilter, setWaiverFilter] = useState('all');
   const [waiverPriority, setWaiverPriority] = useState('immediate');
+  const [filters, setFilters] = useState({
+    position: 'all',
+    valueDelta: 'all',
+    archetypeFit: 'all',
+    riskLevel: 'all',
+    includePicks: true,
+    preset: 'none',
+  });
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
