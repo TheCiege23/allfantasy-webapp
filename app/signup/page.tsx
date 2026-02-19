@@ -36,6 +36,7 @@ export default function SignupPage() {
   const [sleeperResult, setSleeperResult] = useState<SleeperResult | null>(null)
   const [sleeperLooking, setSleeperLooking] = useState(false)
   const [ageConfirmed, setAgeConfirmed] = useState(false)
+  const [verificationMethod, setVerificationMethod] = useState<"EMAIL" | "PHONE">("EMAIL")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState(false)
@@ -72,7 +73,7 @@ export default function SignupPage() {
           phone: phone.trim() || undefined,
           sleeperUsername: sleeperResult?.found ? sleeperResult.username : undefined,
           ageConfirmed,
-          verificationMethod: "EMAIL",
+          verificationMethod,
         }),
       })
 
@@ -96,7 +97,7 @@ export default function SignupPage() {
         return
       }
 
-      router.push("/verify")
+      router.push("/dashboard")
     } catch {
       setError("Something went wrong. Please try again.")
     }
@@ -285,6 +286,28 @@ export default function SignupPage() {
               Sleeper user not found. Check the username and try again.
             </div>
           )}
+        </div>
+
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
+          <div className="text-sm font-medium text-white/80">Verification method</div>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <button
+              type="button"
+              onClick={() => setVerificationMethod("EMAIL")}
+              className={`rounded-lg border px-3 py-2 ${verificationMethod === "EMAIL" ? "border-cyan-400 bg-cyan-500/10 text-cyan-200" : "border-white/10 bg-black/20 text-white/70"}`}
+            >
+              Email
+            </button>
+            <button
+              type="button"
+              onClick={() => setVerificationMethod("PHONE")}
+              className={`rounded-lg border px-3 py-2 ${verificationMethod === "PHONE" ? "border-cyan-400 bg-cyan-500/10 text-cyan-200" : "border-white/10 bg-black/20 text-white/70"}`}
+            >
+              Phone
+            </button>
+          </div>
+          <p className="text-xs text-white/40">Use /verify after signup to complete email or phone verification.</p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
