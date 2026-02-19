@@ -2193,6 +2193,9 @@ model BracketLeague {
   name         String
   joinCode     String   @unique
   isPrivate    Boolean  @default(true)
+  maxManagers  Int      @default(100)
+  deadline     DateTime?
+  scoringRules Json?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
