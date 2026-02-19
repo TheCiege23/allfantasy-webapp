@@ -6,9 +6,17 @@ import bcrypt from "bcryptjs"
 function customPrismaAdapter() {
   return {
     async createUser(data: { email: string; emailVerified: Date | null; name?: string | null; image?: string | null }) {
+      const usernameBase = (data.email.split('@')[0] || 'user')
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_')
+        .slice(0, 32) || 'user'
+      const existing = await prisma.appUser.findUnique({ where: { username: usernameBase } })
+      const username = existing ? `${usernameBase}_${Date.now().toString(36)}` : usernameBase
+
       const user = await prisma.appUser.create({
         data: {
           email: data.email,
+          username,
           emailVerified: data.emailVerified,
           displayName: data.name,
           avatarUrl: data.image,
