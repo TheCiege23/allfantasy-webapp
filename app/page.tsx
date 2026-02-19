@@ -87,7 +87,7 @@ function HomeContent() {
             src="/af-logo-bg.png"
             alt=""
             aria-hidden="true"
-            className="w-[600px] h-[600px] md:w-[800px] md:h-[800px] object-contain opacity-[0.06] select-none"
+            className="w-[90vw] h-[90vh] max-w-none object-contain opacity-[0.09] select-none"
             draggable={false}
           />
         </div>
