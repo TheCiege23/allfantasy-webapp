@@ -86,8 +86,7 @@ function HomeContent() {
           <img
             src="/allfantasy-hero.png"
             alt=""
-            className="absolute inset-0 w-full h-full object-cover opacity-30"
-            style={{ mixBlendMode: 'lighten' }}
+            className="absolute inset-0 w-full h-full object-cover opacity-20 dark:opacity-30 dark:mix-blend-lighten mix-blend-multiply invert dark:invert-0"
           />
           <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, var(--bg) 0%, transparent 30%, transparent 70%, var(--bg) 100%)' }} />
         </div>
