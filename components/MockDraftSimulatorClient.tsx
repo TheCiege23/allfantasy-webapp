@@ -465,8 +465,11 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                                 : 'bg-gray-950 border border-gray-800 hover:border-purple-500/60'
                           }`}
                           onClick={() => {
-                            if (pick.isUser) setOnClockPick(onClockPick === pick.overall ? null : pick.overall)
-                            openComparison(pick)
+                            if (pick.isUser && !pick.playerName) {
+                              setOnClockPick(onClockPick === pick.overall ? null : pick.overall)
+                            } else if (pick.playerName) {
+                              openComparison(pick)
+                            }
                           }}
                         >
                           {onClockPick === pick.overall && pick.isUser && (
