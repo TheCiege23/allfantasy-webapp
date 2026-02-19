@@ -188,6 +188,48 @@ export type TradeHistoryStats = z.infer<typeof TradeHistoryStatsSchema>
 export type MissingDataFlags = z.infer<typeof MissingDataFlagsSchema>
 export type DataQuality = z.infer<typeof DataQualitySchema>
 
+export const LEAGUE_DECISION_CONTEXT_VERSION = '1.0.0' as const
+
+const LeagueTeamSnapshotSchema = TeamSnapshotSchema.extend({
+  rosterId: z.number().int(),
+  userId: z.string(),
+  record: z.object({
+    wins: z.number().int(),
+    losses: z.number().int(),
+    ties: z.number().int().optional(),
+  }).strict().nullable(),
+  pointsFor: z.number(),
+  avatar: z.string().nullable().optional(),
+  tradeCount: z.number().int(),
+})
+
+export const LeagueDecisionContextSchema = z.object({
+  version: z.literal(LEAGUE_DECISION_CONTEXT_VERSION),
+  assembledAt: z.string(),
+  contextId: z.string(),
+
+  leagueConfig: LeagueConfigSchema,
+
+  teams: z.array(LeagueTeamSnapshotSchema),
+
+  tradeHistoryStats: TradeHistoryStatsSchema,
+
+  missingData: MissingDataFlagsSchema,
+  dataQuality: DataQualitySchema,
+
+  dataSources: z.object({
+    valuationFetchedAt: z.string(),
+    adpFetchedAt: z.string().nullable(),
+    injuryFetchedAt: z.string().nullable(),
+    analyticsFetchedAt: z.string().nullable(),
+    rostersFetchedAt: z.string().nullable(),
+    tradeHistoryFetchedAt: z.string().nullable(),
+  }).strict(),
+})
+
+export type LeagueDecisionContext = z.infer<typeof LeagueDecisionContextSchema>
+export type LeagueTeamSnapshot = z.infer<typeof LeagueTeamSnapshotSchema>
+
 export function classifyAgeBucket(age: number | null, position: string): PlayerRiskMarker['ageBucket'] {
   if (age == null) return 'unknown'
 

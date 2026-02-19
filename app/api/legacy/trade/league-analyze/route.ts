@@ -14,6 +14,7 @@ import { writeSnapshot } from '@/lib/trade-engine/snapshot-store'
 import { getCalibratedWeights } from '@/lib/trade-engine/accept-calibration'
 import { autoLogDecision } from '@/lib/decision-log'
 import { computeConfidenceRisk, getHistoricalHitRate } from '@/lib/analytics/confidence-risk-engine'
+import { buildLeagueDecisionContext, leagueContextToIntelligence } from '@/lib/trade-engine/league-context-assembler'
 
 type Sport = 'nfl' | 'nba'
 type RosterSlot = 'Starter' | 'Bench' | 'IR' | 'Taxi'
@@ -583,66 +584,28 @@ ${recentTrades}`
       console.error('Failed to fetch pre-analysis cache:', e)
     }
 
-    // 6e) Run deterministic trade engine (plus AI assist for narrative only)
+    // 6e) Run deterministic trade engine via unified LeagueDecisionContext
     let deterministicTrades: ReturnType<typeof runTradeEngine> | null = null
     let assetsByRosterId: any = null
     let managerProfiles: any = null
+    let unifiedLeagueCtx: any = null
 
     try {
-      const leagueAverage =
-        (managerRosters.reduce((sum, r) => sum + (r.pointsFor || 0), 0) / Math.max(1, managerRosters.length)) || 0
+      unifiedLeagueCtx = await buildLeagueDecisionContext({ leagueId, username: sleeperUsername })
+      const { intelligence: unifiedIntelligence } = leagueContextToIntelligence(unifiedLeagueCtx)
 
-      assetsByRosterId = convertSleeperToAssets({
-        rosters: [userRoster, ...managerRosters].map(r => ({
-          rosterId: r.rosterId,
-          players: r.players.map(p => ({
-            id: p.id,
-            name: p.name,
-            pos: p.pos,
-            team: p.team,
-            slot: p.slot,
-            isIdp: p.isIdp,
-            age: p.age,
-          })),
-        })),
-        fantasyCalcValues: fantasyCalcValueMap,
-        leagueSettings: { isSF, isTEP },
-      })
+      assetsByRosterId = unifiedIntelligence.assetsByRosterId
+      managerProfiles = unifiedIntelligence.managerProfiles
+
+      if (cachedTendencies) {
+        unifiedIntelligence.managerTendencies = cachedTendencies
+      }
 
       await applyOtbTagsToAssetsByRosterId({ leagueId, assetsByRosterId })
 
-      managerProfiles = Object.fromEntries(
-        [userRoster, ...managerRosters].map(r => [
-          r.rosterId,
-          {
-            rosterId: r.rosterId,
-            userId: r.userId,
-            displayName: r.displayName,
-            isChampion: false,
-            contenderTier:
-              (r.pointsFor || 0) > leagueAverage * 1.1
-                ? ('contender' as const)
-                : (r.pointsFor || 0) < leagueAverage * 0.9
-                ? ('rebuild' as const)
-                : ('middle' as const),
-            needs: [] as string[],
-            surplus: [] as string[],
-            tradeAggression: 'medium' as const,
-            isUser: r.rosterId === userRoster.rosterId,
-          },
-        ])
-      )
-
-      const intelligence: LeagueIntelligence = {
-        assetsByRosterId,
-        managerProfiles,
-        managerTendencies: cachedTendencies,
-        leagueSettings: { isSF, isTEP, tepBonus, numTeams, rosterPositions },
-      }
-
       const calWeights = await getCalibratedWeights()
-      deterministicTrades = runTradeEngine(userRoster.rosterId, intelligence, undefined, calWeights)
-      console.log(`[TradeEngine] Generated ${deterministicTrades.validTrades.length} deterministic trade candidates`)
+      deterministicTrades = runTradeEngine(userRoster.rosterId, unifiedIntelligence, undefined, calWeights)
+      console.log(`[TradeEngine] Generated ${deterministicTrades.validTrades.length} deterministic trade candidates (unified context: ${unifiedLeagueCtx.contextId})`)
 
       deterministicTrades = await runAssistOrchestrator(deterministicTrades, {
         userRosterId: userRoster.rosterId,
@@ -865,6 +828,7 @@ Return JSON array of TradeSuggestion objects. Skip managers with no trade fit. F
       tradeSuggestions,
       managerCount: managerRosters.length + 1,
       ...(parseWarning ? { warning: parseWarning } : {}),
+      ...(unifiedLeagueCtx ? { contextId: unifiedLeagueCtx.contextId } : {}),
     }
 
     writeSnapshot({
