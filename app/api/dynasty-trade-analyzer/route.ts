@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client';
+import { runDualBrainTradeAnalysis } from '@/lib/trade-engine/dual-brain-trade-analyzer';
 import { getPlayerADP, getLiveADP, formatADPForPrompt } from '@/lib/adp-data';
 
 export async function POST(req: Request) {
@@ -93,30 +93,19 @@ Output JSON only:
 }`;
 
   try {
-    const result = await openaiChatJson({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
+    const consensus = await runDualBrainTradeAnalysis({
+      systemPrompt,
+      userPrompt,
       temperature: 0.45,
       maxTokens: 1500,
     });
 
-    if (!result.ok) {
-      console.error('[dynasty-trade-analyzer] AI error:', result.details);
-      return NextResponse.json(
-        { error: 'Analysis failed' },
-        { status: 500 },
-      );
-    }
-
-    const analysis = parseJsonContentFromChatCompletion(result.json);
-    if (!analysis || typeof analysis !== 'object') {
-      console.error('[dynasty-trade-analyzer] Invalid JSON payload from model');
+    if (!consensus) {
+      console.error('[dynasty-trade-analyzer] Dual-brain returned no consensus');
       return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ analysis });
+    return NextResponse.json({ analysis: consensus });
   } catch (err) {
     console.error('[dynasty-trade-analyzer] Error:', err);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
