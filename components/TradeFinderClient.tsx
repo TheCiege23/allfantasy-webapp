@@ -368,7 +368,31 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                     <p className="text-xs text-gray-300 italic">&ldquo;{trade.negotiation.dmMessages[0].message}&rdquo;</p>
                   </div>
                 )}
-                {trade.status === 'accepted' || trade.status === 'rejected' || trade.status === 'countered' ? (
+                {trade.status === 'countered' && trade.counterOffer && (
+                  <div className="mt-4 p-4 rounded-lg bg-yellow-950/40 border border-yellow-700/50">
+                    <p className="font-medium text-yellow-300 mb-2">Counter from {trade.partner}:</p>
+                    {trade.counterOffer.youGiveAdjusted && (
+                      <p className="text-sm text-gray-200">They want: <span className="text-yellow-200 font-medium">{trade.counterOffer.youGiveAdjusted}</span></p>
+                    )}
+                    {trade.counterOffer.youWantAdded && (
+                      <p className="text-sm text-gray-300 mt-1">Plus they ask for: <span className="text-yellow-200/80">{trade.counterOffer.youWantAdded}</span></p>
+                    )}
+                    {trade.counterOffer.reason && (
+                      <p className="text-xs text-gray-400 mt-2 italic">&ldquo;{trade.counterOffer.reason}&rdquo;</p>
+                    )}
+                    {trade.counterOffer.factors?.length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {trade.counterOffer.factors.slice(0, 3).map((f: string, fi: number) => (
+                          <li key={fi} className="text-xs text-gray-400 flex gap-1.5">
+                            <span className="text-yellow-500/70">&#8226;</span>
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+                {trade.status === 'accepted' || trade.status === 'rejected' || (trade.status === 'countered' && !trade.counterOffer) ? (
                   <div className={cn(
                     'mt-4 p-3 rounded-lg text-sm font-medium',
                     trade.status === 'accepted' ? 'bg-green-950/50 text-green-300' :
@@ -377,7 +401,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                   )}>
                     {trade.outcome}
                   </div>
-                ) : (
+                ) : trade.status !== 'countered' && (
                   <>
                     <div className="flex justify-end gap-3 mt-4">
                       <Button
