@@ -81,6 +81,12 @@ export default function DynastyTradeForm() {
     }
   }
 
+  const pickFormatHint = (val: string) => {
+    if (val.length > 3 && !/^\d{4}\s*(1st|2nd|3rd|4th|5th)/i.test(val)) {
+      toast.warning('Format tip: "2026 1st" or "2027 2nd mid"', { id: 'pick-format' });
+    }
+  };
+
   function addPickAsset(side: 'a' | 'b', name: string) {
     if (!name.trim()) return;
     const asset: TradeAsset = { id: `${Date.now()}-${Math.random()}`, name: name.trim(), type: 'pick' };
@@ -196,7 +202,7 @@ export default function DynastyTradeForm() {
               <Input
                 placeholder="Draft pick (e.g. 2026 1st early)"
                 value={teamAPickInput}
-                onChange={(e) => setTeamAPickInput(e.target.value)}
+                onChange={(e) => { setTeamAPickInput(e.target.value); pickFormatHint(e.target.value); }}
                 onKeyDown={(e) => e.key === 'Enter' && addPickAsset('a', teamAPickInput)}
                 className="border-amber-600/30 bg-gray-900 focus:border-amber-500"
               />
@@ -236,7 +242,7 @@ export default function DynastyTradeForm() {
               <Input
                 placeholder="Draft pick (e.g. 2026 2nd mid)"
                 value={teamBPickInput}
-                onChange={(e) => setTeamBPickInput(e.target.value)}
+                onChange={(e) => { setTeamBPickInput(e.target.value); pickFormatHint(e.target.value); }}
                 onKeyDown={(e) => e.key === 'Enter' && addPickAsset('b', teamBPickInput)}
                 className="border-amber-600/30 bg-gray-900 focus:border-amber-500"
               />
