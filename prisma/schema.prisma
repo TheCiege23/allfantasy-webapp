@@ -2099,6 +2099,7 @@ model AppUser {
   sleeperLeagues       SleeperLeague[]
   mockDrafts           MockDraft[]
   pushSubscriptions    PushSubscription[]
+  chatMessages         MadnessChatMessage[]
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2208,6 +2209,7 @@ model BracketLeague {
 
   members      BracketLeagueMember[]
   entries      BracketEntry[]
+  chatMessages MadnessChatMessage[]
 
   @@index([tournamentId])
   @@index([ownerId])
@@ -2272,6 +2274,21 @@ model MarchMadnessShare {
 
   @@index([bracketId])
   @@map("march_madness_shares")
+}
+
+model MadnessChatMessage {
+  id        String   @id @default(uuid())
+  leagueId  String
+  userId    String
+  message   String
+  createdAt DateTime @default(now())
+
+  league BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user   AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId, createdAt])
+  @@index([userId])
+  @@map("madness_chat_messages")
 }
 
 enum VerificationMethod {
