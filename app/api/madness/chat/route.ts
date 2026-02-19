@@ -37,6 +37,9 @@ export async function GET(req: NextRequest) {
       user: {
         select: { id: true, username: true, displayName: true, avatarUrl: true },
       },
+      reactions: {
+        select: { emoji: true, userId: true },
+      },
     },
   });
 

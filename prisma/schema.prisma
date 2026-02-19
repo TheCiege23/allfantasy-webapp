@@ -2101,6 +2101,7 @@ model AppUser {
   pushSubscriptions    PushSubscription[]
   chatMessages         MadnessChatMessage[]
   chatFlags            ChatMessageFlag[]   @relation("ChatFlagReporter")
+  chatReactions        MadnessChatReaction[]
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2285,9 +2286,10 @@ model MadnessChatMessage {
   isPinned  Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  league BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  user   AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  flags  ChatMessageFlag[]
+  league    BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user      AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flags     ChatMessageFlag[]
+  reactions MadnessChatReaction[]
 
   @@index([leagueId, createdAt])
   @@index([userId])
@@ -2311,6 +2313,21 @@ model ChatMessageFlag {
   @@index([reportedById])
   @@index([status])
   @@map("chat_message_flags")
+}
+
+model MadnessChatReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message MadnessChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    AppUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("madness_chat_reactions")
 }
 
 enum VerificationMethod {
