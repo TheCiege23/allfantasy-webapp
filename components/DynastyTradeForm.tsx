@@ -285,12 +285,9 @@ export default function DynastyTradeForm() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          teamAName,
-          teamBName,
-          teamAAssets,
-          teamBAssets,
-          leagueContext,
-          analysis: result,
+          sideA: teamAAssets,
+          sideB: teamBAssets,
+          analysis: { ...result, teamAName, teamBName, leagueContext },
         }),
       });
       if (!res.ok) throw new Error('Failed');

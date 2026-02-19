@@ -428,23 +428,19 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
   const { sport, dataType, identifier, season, forceRefresh } = request;
   const cacheKey = identifier || 'all';
 
+  const key = `${sport}:${dataType}:${cacheKey}`;
+
   if (!forceRefresh) {
-    const cached = await prisma.sportsDataCache.findUnique({
-      where: {
-        sport_dataType_identifier: {
-          sport,
-          dataType,
-          identifier: cacheKey,
-        },
-      },
+    const cached = await (prisma.sportsDataCache as any).findUnique({
+      where: { key },
     });
 
     if (cached && cached.expiresAt > new Date()) {
       return {
         data: cached.data,
-        source: cached.source,
+        source: 'cache',
         cached: true,
-        fetchedAt: cached.fetchedAt,
+        fetchedAt: cached.createdAt,
       };
     }
 
@@ -452,9 +448,9 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
       refreshInBackground(sport, dataType, identifier, season);
       return {
         data: cached.data,
-        source: cached.source,
+        source: 'cache',
         cached: true,
-        fetchedAt: cached.fetchedAt,
+        fetchedAt: cached.createdAt,
       };
     }
   }
@@ -484,26 +480,15 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
   const freshnessMs = FRESHNESS_RULES[dataType];
   const expiresAt = new Date(Date.now() + freshnessMs);
 
-  await prisma.sportsDataCache.upsert({
-    where: {
-      sport_dataType_identifier: {
-        sport,
-        dataType,
-        identifier: cacheKey,
-      },
-    },
+  await (prisma.sportsDataCache as any).upsert({
+    where: { key },
     update: {
       data: fetchedData as object,
-      source: usedSource,
-      fetchedAt: new Date(),
       expiresAt,
     },
     create: {
-      sport,
-      dataType,
-      identifier: cacheKey,
+      key,
       data: fetchedData as object,
-      source: usedSource,
       expiresAt,
     },
   });
@@ -518,6 +503,7 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
 
 async function refreshInBackground(sport: Sport, dataType: DataType, identifier?: string, season?: string) {
   const cacheKey = identifier || 'all';
+  const key = `${sport}:${dataType}:${cacheKey}`;
   const sources = API_PRIORITY[sport];
 
   for (const source of sources) {
@@ -526,26 +512,15 @@ async function refreshInBackground(sport: Sport, dataType: DataType, identifier?
       const freshnessMs = FRESHNESS_RULES[dataType];
       const expiresAt = new Date(Date.now() + freshnessMs);
 
-      await prisma.sportsDataCache.upsert({
-        where: {
-          sport_dataType_identifier: {
-            sport,
-            dataType,
-            identifier: cacheKey,
-          },
-        },
+      await (prisma.sportsDataCache as any).upsert({
+        where: { key },
         update: {
           data: data as object,
-          source,
-          fetchedAt: new Date(),
           expiresAt,
         },
         create: {
-          sport,
-          dataType,
-          identifier: cacheKey,
+          key,
           data: data as object,
-          source,
           expiresAt,
         },
       });

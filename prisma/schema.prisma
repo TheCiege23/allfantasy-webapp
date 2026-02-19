@@ -60,19 +60,11 @@ model QuestionnaireResponse {
 }
 
 model SportsDataCache {
-  id         String   @id @default(uuid())
-  sport      String
-  dataType   String
-  identifier String
+  key        String   @id
   data       Json
-  source     String
-  fetchedAt  DateTime @default(now())
   expiresAt  DateTime
   createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
 
-  @@unique([sport, dataType, identifier])
-  @@index([sport, dataType])
   @@index([expiresAt])
 }
 
@@ -1973,18 +1965,14 @@ model TradeOutcomeTraining {
 }
 
 model TradeShare {
-  id          String   @id @default(cuid())
-  userId      String
-  teamAName   String   @default("Team A")
-  teamBName   String   @default("Team B")
-  teamAAssets Json
-  teamBAssets Json
-  leagueContext String @default("12-team SF PPR dynasty")
+  id          String   @id @default(uuid())
   analysis    Json
+  sideA       Json
+  sideB       Json
   createdAt   DateTime @default(now())
+  expiresAt   DateTime
 
-  @@index([userId])
-  @@index([createdAt])
+  @@index([expiresAt])
 }
 
 model EngineSnapshot {
@@ -2334,7 +2322,7 @@ model League {
   season           Int?
   leagueSize       Int?
   scoring          String?
-  isDynasty        Boolean?
+  isDynasty        Boolean  @default(false)
   rosterSize       Int?
   starters         Json?
   status           String?
@@ -2356,6 +2344,7 @@ model League {
 
   @@unique([userId, platform, platformLeagueId])
   @@index([userId])
+  @@index([userId, isDynasty])
   @@index([sport, season])
   @@index([status])
   @@map("leagues")

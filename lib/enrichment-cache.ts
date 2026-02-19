@@ -30,27 +30,19 @@ export async function readCache<T = unknown>(
   tier: CacheTier,
   params: Record<string, unknown>
 ): Promise<{ data: T; fetchedAt: string } | null> {
-  const identifier = buildCacheKey(tier, params);
+  const key = buildCacheKey(tier, params);
   try {
-    const row = await prisma.sportsDataCache.findUnique({
-      where: {
-        sport_dataType_identifier: {
-          sport: 'NFL',
-          dataType: tier,
-          identifier,
-        },
-      },
-    });
+    const row = await (prisma.sportsDataCache as any).findUnique({ where: { key } });
 
     if (!row) return null;
     if (row.expiresAt < new Date()) {
-      prisma.sportsDataCache.delete({ where: { id: row.id } }).catch(() => {});
+      (prisma.sportsDataCache as any).delete({ where: { key } }).catch(() => {});
       return null;
     }
 
     return {
       data: row.data as T,
-      fetchedAt: row.fetchedAt.toISOString(),
+      fetchedAt: row.createdAt.toISOString(),
     };
   } catch (err) {
     console.warn(`[EnrichmentCache] Read failed for ${tier}:`, err);
@@ -63,35 +55,22 @@ export async function writeCache(
   tier: CacheTier,
   params: Record<string, unknown>,
   data: unknown,
-  source: string = 'enrichment'
+  _source: string = 'enrichment'
 ): Promise<void> {
-  const identifier = buildCacheKey(tier, params);
+  const key = buildCacheKey(tier, params);
   const ttlMs = TTL_MINUTES[tier] * 60 * 1000;
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + ttlMs);
+  const expiresAt = new Date(Date.now() + ttlMs);
 
   try {
-    await prisma.sportsDataCache.upsert({
-      where: {
-        sport_dataType_identifier: {
-          sport: 'NFL',
-          dataType: tier,
-          identifier,
-        },
-      },
+    await (prisma.sportsDataCache as any).upsert({
+      where: { key },
       update: {
         data: data as any,
-        source,
-        fetchedAt: now,
         expiresAt,
       },
       create: {
-        sport: 'NFL',
-        dataType: tier,
-        identifier,
+        key,
         data: data as any,
-        source,
-        fetchedAt: now,
         expiresAt,
       },
     });

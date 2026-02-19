@@ -19,6 +19,9 @@ interface TradeAnalysis {
   vetoRisk?: string;
   agingConcerns?: string[];
   recommendations?: string[];
+  teamAName?: string;
+  teamBName?: string;
+  leagueContext?: string;
 }
 
 export default async function TradeSharePage({ params }: { params: { id: string } }) {
@@ -28,9 +31,13 @@ export default async function TradeSharePage({ params }: { params: { id: string 
 
   if (!share) notFound();
 
+  if (share.expiresAt && new Date(share.expiresAt) < new Date()) notFound();
+
   const analysis = share.analysis as TradeAnalysis;
-  const teamAAssets = (share.teamAAssets || []) as TradeAsset[];
-  const teamBAssets = (share.teamBAssets || []) as TradeAsset[];
+  const sideA = (share.sideA || []) as TradeAsset[];
+  const sideB = (share.sideB || []) as TradeAsset[];
+  const teamAName = analysis.teamAName || 'Team A';
+  const teamBName = analysis.teamBName || 'Team B';
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#0f0f1a] py-16">
@@ -40,7 +47,7 @@ export default async function TradeSharePage({ params }: { params: { id: string 
             AllFantasy Trade Analysis
           </h1>
           <p className="text-gray-400 text-sm">
-            {share.leagueContext} &middot; {new Date(share.createdAt).toLocaleDateString()}
+            {analysis.leagueContext || 'Dynasty Trade'} &middot; {new Date(share.createdAt).toLocaleDateString()}
           </p>
         </div>
 
@@ -50,12 +57,12 @@ export default async function TradeSharePage({ params }: { params: { id: string 
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <div className="h-3 w-3 rounded-full bg-cyan-400" />
-                  {share.teamAName} gives
+                  {teamAName} gives
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {teamAAssets.map((asset: TradeAsset) => (
+                  {sideA.map((asset: TradeAsset) => (
                     <Badge
                       key={asset.id}
                       variant="outline"
@@ -68,7 +75,7 @@ export default async function TradeSharePage({ params }: { params: { id: string 
                       {asset.type === 'pick' && '📋 '}{asset.name}
                     </Badge>
                   ))}
-                  {teamAAssets.length === 0 && <span className="text-sm text-gray-500 italic">No assets</span>}
+                  {sideA.length === 0 && <span className="text-sm text-gray-500 italic">No assets</span>}
                 </div>
               </CardContent>
             </Card>
@@ -77,12 +84,12 @@ export default async function TradeSharePage({ params }: { params: { id: string 
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <div className="h-3 w-3 rounded-full bg-purple-400" />
-                  {share.teamBName} gives
+                  {teamBName} gives
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {teamBAssets.map((asset: TradeAsset) => (
+                  {sideB.map((asset: TradeAsset) => (
                     <Badge
                       key={asset.id}
                       variant="outline"
@@ -95,7 +102,7 @@ export default async function TradeSharePage({ params }: { params: { id: string 
                       {asset.type === 'pick' && '📋 '}{asset.name}
                     </Badge>
                   ))}
-                  {teamBAssets.length === 0 && <span className="text-sm text-gray-500 italic">No assets</span>}
+                  {sideB.length === 0 && <span className="text-sm text-gray-500 italic">No assets</span>}
                 </div>
               </CardContent>
             </Card>

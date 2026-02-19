@@ -11,11 +11,8 @@ const assetSchema = z.object({
 });
 
 const shareSchema = z.object({
-  teamAName: z.string().max(100).default('Team A'),
-  teamBName: z.string().max(100).default('Team B'),
-  teamAAssets: z.array(assetSchema).max(20),
-  teamBAssets: z.array(assetSchema).max(20),
-  leagueContext: z.string().max(500).default('12-team SF PPR dynasty'),
+  sideA: z.array(assetSchema).max(20),
+  sideB: z.array(assetSchema).max(20),
   analysis: z.object({
     winner: z.string(),
     valueDelta: z.string(),
@@ -25,8 +22,13 @@ const shareSchema = z.object({
     vetoRisk: z.string().optional(),
     agingConcerns: z.array(z.string()).optional(),
     recommendations: z.array(z.string()).optional(),
+    teamAName: z.string().optional(),
+    teamBName: z.string().optional(),
+    leagueContext: z.string().optional(),
   }),
 });
+
+const SHARE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 export async function POST(req: Request) {
   const session = (await getServerSession(authOptions as any)) as {
@@ -52,13 +54,10 @@ export async function POST(req: Request) {
   try {
     const share = await (prisma as any).tradeShare.create({
       data: {
-        userId: session.user.id,
-        teamAName: parsed.data.teamAName,
-        teamBName: parsed.data.teamBName,
-        teamAAssets: parsed.data.teamAAssets,
-        teamBAssets: parsed.data.teamBAssets,
-        leagueContext: parsed.data.leagueContext,
+        sideA: parsed.data.sideA,
+        sideB: parsed.data.sideB,
         analysis: parsed.data.analysis,
+        expiresAt: new Date(Date.now() + SHARE_TTL_MS),
       },
     });
 

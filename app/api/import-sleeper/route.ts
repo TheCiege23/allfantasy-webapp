@@ -24,15 +24,9 @@ const sportMap: Record<string, LeagueSport> = {
 
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 
-async function cachedSleeperFetch(url: string, cacheKey: { dataType: string; identifier: string; sport: string }) {
+async function cachedSleeperFetch(url: string, cacheKey: string) {
   const cached = await (prisma as any).sportsDataCache.findUnique({
-    where: {
-      sport_dataType_identifier: {
-        sport: cacheKey.sport,
-        dataType: cacheKey.dataType,
-        identifier: cacheKey.identifier,
-      },
-    },
+    where: { key: cacheKey },
   });
 
   if (cached && new Date(cached.expiresAt) > new Date()) {
@@ -44,25 +38,14 @@ async function cachedSleeperFetch(url: string, cacheKey: { dataType: string; ide
   const data = await res.json();
 
   await (prisma as any).sportsDataCache.upsert({
-    where: {
-      sport_dataType_identifier: {
-        sport: cacheKey.sport,
-        dataType: cacheKey.dataType,
-        identifier: cacheKey.identifier,
-      },
-    },
+    where: { key: cacheKey },
     update: {
       data,
-      fetchedAt: new Date(),
       expiresAt: new Date(Date.now() + CACHE_TTL_MS),
     },
     create: {
-      sport: cacheKey.sport,
-      dataType: cacheKey.dataType,
-      identifier: cacheKey.identifier,
+      key: cacheKey,
       data,
-      source: 'sleeper',
-      fetchedAt: new Date(),
       expiresAt: new Date(Date.now() + CACHE_TTL_MS),
     },
   });
@@ -96,6 +79,7 @@ async function processLeague(
       season,
       sport: sportLabel,
       scoring: l.scoring_settings?.rec === 1 ? 'ppr' : l.scoring_settings?.rec === 0.5 ? 'half-ppr' : 'standard',
+      isDynasty: l.settings?.type === 2,
       starters: l.roster_positions ?? null,
       rosterSize: l.roster_positions?.length ?? null,
       settings: l.settings ?? null,
@@ -111,6 +95,7 @@ async function processLeague(
       leagueSize: l.total_rosters ?? null,
       status: l.status || 'active',
       scoring: l.scoring_settings?.rec === 1 ? 'ppr' : l.scoring_settings?.rec === 0.5 ? 'half-ppr' : 'standard',
+      isDynasty: l.settings?.type === 2,
       starters: l.roster_positions ?? null,
       rosterSize: l.roster_positions?.length ?? null,
       settings: l.settings ?? null,
@@ -118,25 +103,14 @@ async function processLeague(
   });
 
   await (prisma as any).sportsDataCache.upsert({
-    where: {
-      sport_dataType_identifier: {
-        sport,
-        dataType: 'sleeper_league',
-        identifier: platformLeagueId,
-      },
-    },
+    where: { key: `sleeper:league:${platformLeagueId}` },
     update: {
       data: l,
-      fetchedAt: new Date(),
       expiresAt: new Date(Date.now() + CACHE_TTL_MS),
     },
     create: {
-      sport,
-      dataType: 'sleeper_league',
-      identifier: platformLeagueId,
+      key: `sleeper:league:${platformLeagueId}`,
       data: l,
-      source: 'sleeper',
-      fetchedAt: new Date(),
       expiresAt: new Date(Date.now() + CACHE_TTL_MS),
     },
   });
@@ -144,11 +118,11 @@ async function processLeague(
   const [users, rosters] = await Promise.all([
     cachedSleeperFetch(
       `https://api.sleeper.app/v1/league/${platformLeagueId}/users`,
-      { sport, dataType: 'sleeper_league_users', identifier: platformLeagueId }
+      `sleeper:users:${platformLeagueId}`
     ),
     cachedSleeperFetch(
       `https://api.sleeper.app/v1/league/${platformLeagueId}/rosters`,
-      { sport, dataType: 'sleeper_league_rosters', identifier: platformLeagueId }
+      `sleeper:rosters:${platformLeagueId}`
     ),
   ]);
 
@@ -219,7 +193,7 @@ async function processLeague(
         try {
           const matchups = await cachedSleeperFetch(
             `https://api.sleeper.app/v1/league/${platformLeagueId}/matchups/${week}`,
-            { sport, dataType: `sleeper_matchup_w${week}`, identifier: platformLeagueId }
+            `sleeper:matchup:${platformLeagueId}:w${week}`
           );
           if (!Array.isArray(matchups)) return;
 
@@ -282,7 +256,7 @@ export async function POST(req: Request) {
 
     const leaguesData = await cachedSleeperFetch(
       `https://api.sleeper.app/v1/user/${sleeperUserId}/leagues/${sport}/${season}`,
-      { sport, dataType: 'sleeper_user_leagues', identifier: `${sleeperUserId}_${season}` }
+      `sleeper:user_leagues:${sleeperUserId}:${season}`
     );
 
     if (!Array.isArray(leaguesData) || leaguesData.length === 0) {
