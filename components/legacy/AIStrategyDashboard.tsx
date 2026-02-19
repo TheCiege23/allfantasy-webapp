@@ -832,12 +832,25 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                               );
                             }
                             const [, rank, player, rationale] = match;
+
+                            const playerPos = player.match(/\((QB|RB|WR|TE)/i)?.[1]?.toLowerCase() || '';
+                            const matchesFilter = waiverFilter === 'all' || playerPos === waiverFilter;
+
+                            const rationaleLC = rationale.toLowerCase();
+                            const priorityMatch =
+                              waiverPriority === 'immediate' ? rationaleLC.includes('need') || rationaleLC.includes('starter') || rationaleLC.includes('start') || rationaleLC.includes('immediate') :
+                              waiverPriority === 'value' ? rationaleLC.includes('value') || rationaleLC.includes('undervalued') || rationaleLC.includes('bargain') || rationaleLC.includes('cheap') :
+                              waiverPriority === 'upside' ? rationaleLC.includes('upside') || rationaleLC.includes('rookie') || rationaleLC.includes('young') || rationaleLC.includes('breakout') || rationaleLC.includes('potential') :
+                              true;
+
+                            if (!matchesFilter || !priorityMatch) return null;
+
                             return (
                               <motion.div
                                 key={i}
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: i * 0.1 }}
+                                transition={{ delay: i * 0.08 }}
                                 className="p-5 rounded-xl bg-[#1a1238]/80 border border-purple-900/40 hover:border-purple-600/60 transition-colors group"
                               >
                                 <div className="flex justify-between items-start">
