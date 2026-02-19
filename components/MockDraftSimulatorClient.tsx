@@ -67,7 +67,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [roundNeeds, setRoundNeeds] = useState<Record<number, any>>({})
   const [loadingNeeds, setLoadingNeeds] = useState<Record<number, boolean>>({})
   const [adpData, setAdpData] = useState<ADPPlayer[]>([])
-  const [showBestAvailable, setShowBestAvailable] = useState(false)
+  const [bestAvailableTop, setBestAvailableTop] = useState<ADPPlayer[]>([])
   const [expandedNeedsRounds, setExpandedNeedsRounds] = useState<Set<number>>(new Set())
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
@@ -83,14 +83,6 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
     return map
   }, [adpData, normalizeName])
-
-  const bestAvailable = useMemo(() => {
-    if (adpData.length === 0 || draftResults.length === 0) return []
-    const drafted = new Set(draftResults.map(p => normalizeName(p.playerName)))
-    return adpData
-      .filter(p => !drafted.has(normalizeName(p.name)))
-      .slice(0, 20)
-  }, [adpData, draftResults, normalizeName])
 
   const perRoundRosters = useMemo(() => {
     if (draftResults.length === 0) return {}
@@ -139,6 +131,16 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
     fetchADP()
   }, [draftResults, adpData.length, selectedLeagueId])
+
+  useEffect(() => {
+    if (draftResults.length === 0 || adpData.length === 0) {
+      setBestAvailableTop([])
+      return
+    }
+    const draftedNames = new Set(draftResults.map(p => normalizeName(p.playerName)))
+    const remaining = adpData.filter(p => !draftedNames.has(normalizeName(p.name))).slice(0, 3)
+    setBestAvailableTop(remaining)
+  }, [draftResults, adpData, normalizeName])
 
   const startMockDraft = async () => {
     if (!selectedLeagueId) return toast.error('Select a league first')
@@ -340,46 +342,62 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">Live Mock Draft Board</h2>
             <div className="flex gap-3 flex-wrap">
-              <Button
-                onClick={() => setShowBestAvailable(!showBestAvailable)}
-                variant={showBestAvailable ? 'default' : 'outline'}
-                size="sm"
-                className={showBestAvailable ? 'bg-emerald-600 hover:bg-emerald-700' : ''}
-              >
-                <Star className="mr-2 h-4 w-4" /> Best Available
-              </Button>
               <Button onClick={exportPDF} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> PDF</Button>
               <Button onClick={copyShareLink} size="sm"><Link className="mr-2 h-4 w-4" /> Share</Button>
               <Button onClick={updateWeekly} variant="outline" size="sm" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
-              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}); setShowBestAvailable(false); setExpandedNeedsRounds(new Set()) }} variant="outline" size="sm" className="border-gray-600">
+              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}); setBestAvailableTop([]); setExpandedNeedsRounds(new Set()) }} variant="outline" size="sm" className="border-gray-600">
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
             </div>
           </div>
 
-          {showBestAvailable && bestAvailable.length > 0 && (
-            <div className="mb-8 bg-gradient-to-r from-emerald-950/30 to-black border border-emerald-500/30 rounded-2xl p-5">
-              <h3 className="text-sm font-bold text-emerald-400 mb-3 flex items-center gap-2">
-                <Star className="h-4 w-4" /> Best Available Players (by ADP)
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                {bestAvailable.map((p, idx) => (
-                  <div key={p.name} className={`flex items-center gap-2 p-2 rounded-lg text-xs ${idx === 0 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-gray-950/60'}`}>
-                    <span className="text-gray-600 font-mono w-5 shrink-0">{idx + 1}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-medium truncate">{p.name}</div>
-                      <div className="flex items-center gap-1">
-                        <Badge className={`${POSITION_COLORS[p.position] || ''} border text-[9px] px-1 py-0`}>{p.position}</Badge>
-                        <span className="text-gray-500">{p.team}</span>
-                        <span className="text-gray-600 ml-auto">ADP {p.adp.toFixed(1)}</span>
+          <AnimatePresence>
+            {bestAvailableTop.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="bg-gradient-to-r from-purple-950/80 to-black/80 border border-purple-500/40 rounded-2xl p-6 mb-8"
+              >
+                <h3 className="text-lg font-bold text-purple-300 mb-4 flex items-center gap-2">
+                  <Star className="h-4 w-4" />
+                  <span>Best Available Right Now</span>
+                  <span className="text-xs bg-purple-600/50 px-3 py-1 rounded-full">Live</span>
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {bestAvailableTop.map((player, i) => {
+                    const posColor = player.position === 'QB' ? 'text-red-400' : player.position === 'RB' ? 'text-cyan-400' : player.position === 'WR' ? 'text-green-400' : 'text-purple-400'
+                    return (
+                      <div key={player.name} className={`flex items-center gap-4 bg-black/50 p-4 rounded-xl border ${i === 0 ? 'border-yellow-500/40 ring-1 ring-yellow-500/20' : 'border-gray-800/50'}`}>
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shrink-0 ${i === 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-gray-800 text-gray-400'}`}>
+                          {i === 0 ? <Star className="h-6 w-6" /> : `#${i + 1}`}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold truncate">{player.name}</p>
+                          <p className="text-sm text-gray-400">
+                            <span className={posColor}>{player.position}</span>
+                            {' '}&middot;{' '}{player.team || 'FA'}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1">
+                            <span className="text-xs text-cyan-400">ADP: {player.adp?.toFixed(1) || 'N/A'}</span>
+                            {player.value != null && (
+                              <span className="text-xs text-emerald-400">Value: {player.value.toFixed(0)}</span>
+                            )}
+                            {player.adpTrend != null && player.adpTrend !== 0 && (
+                              <span className={`text-[10px] flex items-center gap-0.5 ${player.adpTrend < 0 ? 'text-emerald-500' : 'text-red-400'}`}>
+                                {player.adpTrend < 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                {player.adpTrend < 0 ? 'Rising' : 'Falling'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    {idx === 0 && <Star className="h-3 w-3 text-yellow-500 shrink-0" />}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+                    )
+                  })}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <div className="space-y-12">
             {Array.from({ length: Math.max(...draftResults.map(p => p.round)) }).map((_, round) => {
