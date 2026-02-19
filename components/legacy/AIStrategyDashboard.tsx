@@ -29,6 +29,8 @@ import {
   Trophy,
   Shield,
   RefreshCw,
+  Mic,
+  MicOff,
 } from 'lucide-react';
 import TeamArchetypeBadge from './TeamArchetypeBadge';
 import LoadReportModal from './LoadReportModal';
@@ -145,6 +147,10 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [chatLoading, setChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  const [isListening, setIsListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const recognitionRef = useRef<any>(null);
+
   useEffect(() => {
     if (selectedLeagueId) {
       fetch(`/api/strategy/reports?leagueId=${selectedLeagueId}`)
@@ -157,6 +163,48 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
+
+  useEffect(() => {
+    if (!('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      return;
+    }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    recognitionRef.current = new SR();
+    recognitionRef.current.continuous = false;
+    recognitionRef.current.interimResults = true;
+    recognitionRef.current.lang = 'en-US';
+
+    recognitionRef.current.onresult = (event: any) => {
+      const current = Array.from(event.results)
+        .map((result: any) => result[0])
+        .map((result: any) => result.transcript)
+        .join('');
+      setTranscript(current);
+      setChatInput(current);
+    };
+
+    recognitionRef.current.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current.onerror = () => {
+      setIsListening(false);
+    };
+
+    return () => {
+      recognitionRef.current?.abort();
+    };
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+    } else {
+      setTranscript('');
+      recognitionRef.current?.start();
+    }
+    setIsListening(!isListening);
+  };
 
   const handleGenerate = async () => {
     if (!selectedLeagueId) {
@@ -817,6 +865,14 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               disabled={!selectedLeagueId}
               className="flex-1 bg-[#1a1238] border border-cyan-800/50 rounded-xl px-5 py-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 disabled:opacity-50"
             />
+            <Button
+              type="button"
+              onClick={toggleListening}
+              disabled={!selectedLeagueId}
+              className={`px-4 transition-all duration-300 ${isListening ? 'bg-red-600 hover:bg-red-700 animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'bg-[#1a1238] hover:bg-purple-900/50 border border-cyan-800/50'}`}
+            >
+              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5 text-cyan-400" />}
+            </Button>
             <Button
               type="submit"
               disabled={chatLoading || !chatInput.trim() || !selectedLeagueId}
