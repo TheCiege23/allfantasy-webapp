@@ -149,6 +149,17 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
     toast.error(`Offer rejected by ${trade.partner}`);
   };
 
+  const simulateCounter = (trade: any, index: number) => {
+    const newSuggestions = [...suggestions];
+    newSuggestions[index] = {
+      ...trade,
+      status: 'countered',
+      outcome: `${trade.partner} is interested but wants more. They counter-offered: swap ${trade.youGive || 'your piece'} + a future pick for ${trade.youGet || 'their piece'} + a prospect.`,
+    };
+    setSuggestions(newSuggestions);
+    toast.info(`${trade.partner} sent a counter offer!`, { description: 'Review the updated terms' });
+  };
+
   return (
     <div className="space-y-10">
       <div className="flex rounded-xl overflow-hidden border border-purple-900/50 mb-2">
@@ -260,6 +271,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
               'backdrop-blur-sm transition-all',
               trade.status === 'accepted' ? 'border-green-500/60 bg-green-950/20' :
               trade.status === 'rejected' ? 'border-red-500/40 bg-red-950/10 opacity-60' :
+              trade.status === 'countered' ? 'border-yellow-500/50 bg-yellow-950/15' :
               'border-purple-900/40 bg-black/50 hover:border-purple-500/60'
             )}>
               <CardHeader>
@@ -317,10 +329,12 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                     <p className="text-xs text-gray-300 italic">&ldquo;{trade.negotiation.dmMessages[0].message}&rdquo;</p>
                   </div>
                 )}
-                {trade.status === 'accepted' || trade.status === 'rejected' ? (
+                {trade.status === 'accepted' || trade.status === 'rejected' || trade.status === 'countered' ? (
                   <div className={cn(
                     'mt-4 p-3 rounded-lg text-sm font-medium',
-                    trade.status === 'accepted' ? 'bg-green-950/50 text-green-300' : 'bg-red-950/50 text-red-300'
+                    trade.status === 'accepted' ? 'bg-green-950/50 text-green-300' :
+                    trade.status === 'countered' ? 'bg-yellow-950/50 text-yellow-300' :
+                    'bg-red-950/50 text-red-300'
                   )}>
                     {trade.outcome}
                   </div>
@@ -344,14 +358,22 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                         onClick={() => simulateReject(trade, i)}
                         className="flex-1 border-red-500/50 text-red-400 hover:bg-red-950/40"
                       >
-                        Reject Offer
+                        Reject
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => simulateCounter(trade, i)}
+                        className="flex-1 border-yellow-500/50 text-yellow-400 hover:bg-yellow-950/40"
+                      >
+                        Counter Offer
                       </Button>
                       <Button
                         size="sm"
                         onClick={() => simulateAccept(trade, i)}
                         className="flex-1 bg-green-600 hover:bg-green-700"
                       >
-                        Accept (Mock)
+                        Accept
                       </Button>
                     </div>
                   </>
