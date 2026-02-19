@@ -19,6 +19,7 @@ function serializeLeague(league: any) {
     leagueSize: league.leagueSize,
     teams: (league.teams || []).map((t: any, i: number) => ({
       id: t.id,
+      externalId: t.externalId || t.id,
       teamName: t.teamName,
       ownerName: t.ownerName,
       pointsFor: t.pointsFor,

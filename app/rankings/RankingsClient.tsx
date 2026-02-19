@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { Trophy, TrendingUp, TrendingDown, Minus, Users, RefreshCw } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Trophy, TrendingUp, TrendingDown, Minus, Users, RefreshCw, Crown, ShieldAlert, Target, Calendar, Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ interface PerformancePoint {
 
 interface TeamData {
   id: string;
+  externalId: string;
   teamName: string;
   ownerName: string;
   pointsFor: number;
@@ -73,14 +74,14 @@ const mockLeague: LeagueData = {
   scoring: "ppr",
   leagueSize: 12,
   teams: [
-    { id: "m1", teamName: "Gridiron Gods", ownerName: "Cjabar", pointsFor: 1428.6, pointsAgainst: 1180.2, wins: 6, losses: 1, ties: 0, currentRank: 1, aiPowerScore: 92, projectedWins: 10.2, strengthNotes: "Elite RB depth", riskNotes: "QB injury prone", avatarUrl: null, performances: generateMockPerfs(140, 'up') },
-    { id: "m2", teamName: "Sleeper Agents", ownerName: "commissioner", pointsFor: 1389.2, pointsAgainst: 1210.5, wins: 5, losses: 2, ties: 0, currentRank: 2, aiPowerScore: 87, projectedWins: 9.1, strengthNotes: "WR corps on fire", riskNotes: "Bye week hell", avatarUrl: null, performances: generateMockPerfs(135, 'steady') },
-    { id: "m3", teamName: "Touchdown Tyrants", ownerName: "ballerNJ", pointsFor: 1351.8, pointsAgainst: 1260.1, wins: 5, losses: 2, ties: 0, currentRank: 3, aiPowerScore: 84, projectedWins: 8.7, strengthNotes: "Streaming defense wins", riskNotes: "Low bench upside", avatarUrl: null, performances: generateMockPerfs(130, 'up') },
-    { id: "m4", teamName: "Jersey Jokers", ownerName: "you", pointsFor: 1297.4, pointsAgainst: 1290.0, wins: 4, losses: 3, ties: 0, currentRank: 4, aiPowerScore: 79, projectedWins: 7.5, strengthNotes: "Balanced roster", riskNotes: "Aging stars", avatarUrl: null, performances: generateMockPerfs(125, 'steady') },
-    { id: "m5", teamName: "Draft Day Divas", ownerName: "queenB", pointsFor: 1265.1, pointsAgainst: 1275.0, wins: 3, losses: 4, ties: 0, currentRank: 5, aiPowerScore: 76, projectedWins: 6.8, strengthNotes: "TE advantage", riskNotes: "Thin at WR", avatarUrl: null, performances: generateMockPerfs(120, 'down') },
-    { id: "m6", teamName: "Waiver Warriors", ownerName: "pickupKing", pointsFor: 1242.7, pointsAgainst: 1310.2, wins: 3, losses: 4, ties: 0, currentRank: 6, aiPowerScore: 73, projectedWins: 6.2, strengthNotes: "Waiver wire gold", riskNotes: "No true WR1", avatarUrl: null, performances: generateMockPerfs(115, 'steady') },
-    { id: "m7", teamName: "Dynasty Demons", ownerName: "longGame", pointsFor: 1198.3, pointsAgainst: 1340.0, wins: 2, losses: 5, ties: 0, currentRank: 7, aiPowerScore: 70, projectedWins: 5.1, strengthNotes: "Young core", riskNotes: "Not contending yet", avatarUrl: null, performances: generateMockPerfs(110, 'up') },
-    { id: "m8", teamName: "Punt City", ownerName: "tankCommander", pointsFor: 1156.9, pointsAgainst: 1380.5, wins: 1, losses: 6, ties: 0, currentRank: 8, aiPowerScore: 65, projectedWins: 3.8, strengthNotes: "2026 draft capital", riskNotes: "Worst roster now", avatarUrl: null, performances: generateMockPerfs(100, 'down') },
+    { id: "m1", externalId: "m1", teamName: "Gridiron Gods", ownerName: "Cjabar", pointsFor: 1428.6, pointsAgainst: 1180.2, wins: 6, losses: 1, ties: 0, currentRank: 1, aiPowerScore: 92, projectedWins: 10.2, strengthNotes: "Elite RB depth", riskNotes: "QB injury prone", avatarUrl: null, performances: generateMockPerfs(140, 'up') },
+    { id: "m2", externalId: "m2", teamName: "Sleeper Agents", ownerName: "commissioner", pointsFor: 1389.2, pointsAgainst: 1210.5, wins: 5, losses: 2, ties: 0, currentRank: 2, aiPowerScore: 87, projectedWins: 9.1, strengthNotes: "WR corps on fire", riskNotes: "Bye week hell", avatarUrl: null, performances: generateMockPerfs(135, 'steady') },
+    { id: "m3", externalId: "m3", teamName: "Touchdown Tyrants", ownerName: "ballerNJ", pointsFor: 1351.8, pointsAgainst: 1260.1, wins: 5, losses: 2, ties: 0, currentRank: 3, aiPowerScore: 84, projectedWins: 8.7, strengthNotes: "Streaming defense wins", riskNotes: "Low bench upside", avatarUrl: null, performances: generateMockPerfs(130, 'up') },
+    { id: "m4", externalId: "m4", teamName: "Jersey Jokers", ownerName: "you", pointsFor: 1297.4, pointsAgainst: 1290.0, wins: 4, losses: 3, ties: 0, currentRank: 4, aiPowerScore: 79, projectedWins: 7.5, strengthNotes: "Balanced roster", riskNotes: "Aging stars", avatarUrl: null, performances: generateMockPerfs(125, 'steady') },
+    { id: "m5", externalId: "m5", teamName: "Draft Day Divas", ownerName: "queenB", pointsFor: 1265.1, pointsAgainst: 1275.0, wins: 3, losses: 4, ties: 0, currentRank: 5, aiPowerScore: 76, projectedWins: 6.8, strengthNotes: "TE advantage", riskNotes: "Thin at WR", avatarUrl: null, performances: generateMockPerfs(120, 'down') },
+    { id: "m6", externalId: "m6", teamName: "Waiver Warriors", ownerName: "pickupKing", pointsFor: 1242.7, pointsAgainst: 1310.2, wins: 3, losses: 4, ties: 0, currentRank: 6, aiPowerScore: 73, projectedWins: 6.2, strengthNotes: "Waiver wire gold", riskNotes: "No true WR1", avatarUrl: null, performances: generateMockPerfs(115, 'steady') },
+    { id: "m7", externalId: "m7", teamName: "Dynasty Demons", ownerName: "longGame", pointsFor: 1198.3, pointsAgainst: 1340.0, wins: 2, losses: 5, ties: 0, currentRank: 7, aiPowerScore: 70, projectedWins: 5.1, strengthNotes: "Young core", riskNotes: "Not contending yet", avatarUrl: null, performances: generateMockPerfs(110, 'up') },
+    { id: "m8", externalId: "m8", teamName: "Punt City", ownerName: "tankCommander", pointsFor: 1156.9, pointsAgainst: 1380.5, wins: 1, losses: 6, ties: 0, currentRank: 8, aiPowerScore: 65, projectedWins: 3.8, strengthNotes: "2026 draft capital", riskNotes: "Worst roster now", avatarUrl: null, performances: generateMockPerfs(100, 'down') },
   ],
 };
 
@@ -100,6 +101,9 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
   const allLeagues = hasRealData ? leagues : [mockLeague];
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [dynastyLoading, setDynastyLoading] = useState(false);
+  const [dynastyData, setDynastyData] = useState<any>(null);
+  const [dynastyTeamId, setDynastyTeamId] = useState<string | null>(null);
 
   const league = allLeagues[selectedIdx] || allLeagues[0];
   const displayTeams = league.teams;
@@ -111,6 +115,30 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
   const headerSub = hasRealData
     ? `Season ${league.season ?? ""} \u2022 ${league.sport}${league.scoring ? ` \u2022 ${league.scoring.toUpperCase()}` : ""}${league.leagueSize ? ` \u2022 ${league.leagueSize}-team` : ""}`
     : "Mock data \u2013 connect Sleeper to see real leagues";
+
+  async function handleDynastyOutlook(teamExternalId?: string) {
+    if (!hasRealData) return;
+    setDynastyLoading(true);
+    setDynastyTeamId(teamExternalId || null);
+    try {
+      const res = await fetch('/api/dynasty-outlook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leagueId: league.id,
+          ...(teamExternalId ? { teamId: teamExternalId } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDynastyData(data.analysis);
+      }
+    } catch (err) {
+      console.error('Dynasty outlook error:', err);
+    } finally {
+      setDynastyLoading(false);
+    }
+  }
 
   async function handleRefresh() {
     if (!hasRealData || refreshing) return;
@@ -370,6 +398,194 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
             </motion.div>
           ))}
         </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.7 }}
+          className="mt-12"
+        >
+          <Card className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
+            <CardHeader>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-3 text-2xl">
+                    <Crown className="h-6 w-6 text-yellow-400" />
+                    Dynasty Outlook
+                  </CardTitle>
+                  <CardDescription>
+                    AI-powered long-term projections, aging analysis, and dynasty asset evaluation
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={() => handleDynastyOutlook()}
+                    disabled={!hasRealData || dynastyLoading}
+                    variant="outline"
+                    className="border-yellow-600/40 text-yellow-400 hover:bg-yellow-950/30"
+                  >
+                    {dynastyLoading && !dynastyTeamId ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing...</>
+                    ) : (
+                      <>League Overview</>
+                    )}
+                  </Button>
+                  {hasRealData && (
+                    <Select
+                      value=""
+                      onValueChange={(val) => handleDynastyOutlook(val)}
+                    >
+                      <SelectTrigger className="w-[200px] border-yellow-600/40 bg-gray-900 text-white">
+                        <SelectValue placeholder="Analyze a team..." />
+                      </SelectTrigger>
+                      <SelectContent className="border-yellow-900/50 bg-gray-900">
+                        {displayTeams.map((t) => (
+                          <SelectItem key={t.externalId} value={t.externalId}>
+                            {t.teamName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <AnimatePresence mode="wait">
+                {dynastyLoading && (
+                  <motion.div
+                    key="loading"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center justify-center py-16 text-gray-400"
+                  >
+                    <Loader2 className="mb-4 h-8 w-8 animate-spin text-yellow-400" />
+                    <p>Running dynasty analysis...</p>
+                    <p className="text-sm text-gray-500">Evaluating rosters, aging curves, and long-term value</p>
+                  </motion.div>
+                )}
+                {!dynastyLoading && !dynastyData && (
+                  <motion.div
+                    key="empty"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col items-center justify-center py-16 text-gray-500"
+                  >
+                    <Crown className="mb-4 h-12 w-12 opacity-30" />
+                    <p>Select a team or run a league overview to see dynasty projections</p>
+                  </motion.div>
+                )}
+                {!dynastyLoading && dynastyData && (
+                  <motion.div
+                    key="results"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="space-y-6"
+                  >
+                    <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
+                      <h4 className="mb-2 text-sm font-semibold uppercase tracking-wider text-cyan-400">Overall Outlook</h4>
+                      <p className="text-gray-200">{dynastyData.overallOutlook}</p>
+                      {dynastyData.contenderOrRebuilder && (
+                        <Badge className={`mt-2 border-transparent ${
+                          dynastyData.contenderOrRebuilder === 'contender'
+                            ? 'bg-green-600/80 text-green-100'
+                            : dynastyData.contenderOrRebuilder === 'rebuilder'
+                              ? 'bg-red-600/80 text-red-100'
+                              : 'bg-yellow-600/80 text-yellow-100'
+                        }`}>
+                          {dynastyData.contenderOrRebuilder === 'contender' ? 'Contender' : dynastyData.contenderOrRebuilder === 'rebuilder' ? 'Rebuilder' : 'Fringe'}
+                        </Badge>
+                      )}
+                      {dynastyData.confidence != null && (
+                        <span className="ml-3 text-sm text-gray-500">Confidence: {dynastyData.confidence}%</span>
+                      )}
+                    </div>
+
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="rounded-lg border border-green-900/30 bg-gray-900/60 p-4">
+                        <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-green-400">
+                          <Target className="h-4 w-4" /> Top Dynasty Assets
+                        </h4>
+                        <div className="space-y-3">
+                          {(dynastyData.topAssets || []).map((asset: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2">
+                              <Badge variant="outline" className={`mt-0.5 shrink-0 text-xs ${
+                                asset.dynastyTier === 'elite' ? 'border-yellow-500 text-yellow-400'
+                                  : asset.dynastyTier === 'strong' ? 'border-green-500 text-green-400'
+                                    : asset.dynastyTier === 'rising' ? 'border-cyan-500 text-cyan-400'
+                                      : 'border-gray-500 text-gray-400'
+                              }`}>
+                                {asset.dynastyTier || 'hold'}
+                              </Badge>
+                              <div>
+                                <span className="font-medium text-white">{asset.name}</span>
+                                <p className="text-sm text-gray-400">{asset.reason}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border border-red-900/30 bg-gray-900/60 p-4">
+                        <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-red-400">
+                          <ShieldAlert className="h-4 w-4" /> Biggest Risks
+                        </h4>
+                        <div className="space-y-3">
+                          {(dynastyData.biggestRisks || []).map((risk: any, i: number) => (
+                            <div key={i} className="flex items-start gap-2">
+                              <Badge variant="outline" className={`mt-0.5 shrink-0 text-xs ${
+                                risk.severity === 'critical' ? 'border-red-500 text-red-400'
+                                  : risk.severity === 'moderate' ? 'border-yellow-500 text-yellow-400'
+                                    : 'border-gray-500 text-gray-400'
+                              }`}>
+                                {risk.severity || 'minor'}
+                              </Badge>
+                              <div>
+                                <span className="font-medium text-white">{risk.name}</span>
+                                <p className="text-sm text-gray-400">{risk.reason}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {dynastyData.projectedRankNext3Years && (
+                      <div className="rounded-lg border border-purple-900/30 bg-gray-900/60 p-4">
+                        <h4 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-purple-400">
+                          <Calendar className="h-4 w-4" /> 3-Year Projection
+                        </h4>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          {(['year1', 'year2', 'year3'] as const).map((yr, i) => {
+                            const proj = dynastyData.projectedRankNext3Years[yr];
+                            if (!proj) return null;
+                            return (
+                              <div key={yr} className="text-center">
+                                <div className="mb-1 text-xs text-gray-500">Year {i + 1}</div>
+                                <div className="text-3xl font-bold text-white">#{proj.rank}</div>
+                                <p className="mt-1 text-xs text-gray-400">{proj.reasoning}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {dynastyData.keyRecommendation && (
+                      <div className="rounded-lg border border-cyan-900/30 bg-gradient-to-r from-cyan-950/40 to-purple-950/40 p-4">
+                        <h4 className="mb-1 text-sm font-semibold uppercase tracking-wider text-cyan-400">Key Recommendation</h4>
+                        <p className="text-gray-200">{dynastyData.keyRecommendation}</p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </CardContent>
+          </Card>
+        </motion.div>
       </div>
     </div>
   );
