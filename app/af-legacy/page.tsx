@@ -38,6 +38,7 @@ import type { LeagueRecord } from "@/lib/legacy/overview-scoring"
 import DecisionGuardianModal from "@/components/DecisionGuardianModal"
 import type { GuardianEvaluationData } from "@/components/DecisionGuardianModal"
 import AcceptanceMeter from "@/components/AcceptanceMeter"
+import { useAI } from "@/hooks/useAI"
 import type { AcceptanceModelData } from "@/components/AcceptanceMeter"
 import BottomTabBar from "@/components/mobile/BottomTabBar"
 import type { MainTab } from "@/components/mobile/BottomTabBar"
@@ -865,6 +866,7 @@ function AFLegacyContent() {
   const [leagues, setLeagues] = useState<LeagueHistory[]>([])
   const [seasonBreakdown, setSeasonBreakdown] = useState<any[]>([])
   const [aiReport, setAiReport] = useState<AIReport | null>(null)
+  const { callAI: callLegacyAI, loading: legacyPreviewLoading } = useAI<{ report: any }>()
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [mobileMainTab, setMobileMainTab] = useState<MainTab>('home')
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
@@ -2934,12 +2936,20 @@ function AFLegacyContent() {
     }
   }
 
+  const handlePreview = async () => {
+    const { data, error } = await callLegacyAI('/api/legacy/ai-report', {}, {
+      successMessage: 'Legacy snapshot generated!',
+    })
+    if (data?.report) {
+      setAiReport(data.report)
+    }
+  }
+
   useEffect(() => {
     if (importStatus === 'complete') {
-      // Check if existing AI report is missing key fields (old format)
       const needsRefresh = !aiReport || aiReport.consistency_score == null || aiReport.consistency_score === undefined
       if (needsRefresh) {
-        loadAIReport(true) // Force refresh to get new format with consistency_score
+        loadAIReport(true)
       }
     }
   }, [importStatus]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -5342,6 +5352,21 @@ function AFLegacyContent() {
                       </p>
                     </div>
                   </div>
+                </div>
+
+                {/* Preview Legacy Snapshot Button */}
+                <div className="mt-6 flex justify-center lg:col-span-2">
+                  <button
+                    onClick={handlePreview}
+                    disabled={legacyPreviewLoading}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 via-purple-600 to-pink-600 hover:from-cyan-600 hover:via-purple-700 hover:to-pink-700 text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-purple-500/20"
+                  >
+                    {legacyPreviewLoading ? (
+                      <><span className="animate-spin">⚙️</span> Generating Snapshot...</>
+                    ) : (
+                      <><Sparkles className="w-4 h-4" /> Preview Legacy Snapshot</>
+                    )}
+                  </button>
                 </div>
 
                 {/* Footer line */}
