@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link } from 'lucide-react'
+import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
@@ -52,6 +52,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [isSimulating, setIsSimulating] = useState(false)
   const [customRounds, setCustomRounds] = useState(18)
   const [customScoring, setCustomScoring] = useState('default')
+  const [onClockPick, setOnClockPick] = useState<number | null>(null)
+  const [tradeResult, setTradeResult] = useState<any>(null)
+  const [isTrading, setIsTrading] = useState(false)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -111,6 +114,39 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       console.error('[pdf-export]', err)
       toast.error('Failed to generate PDF')
     }
+  }
+
+  const simulateTrade = async (direction: 'up' | 'down', pickNumber: number) => {
+    if (draftResults.length === 0) return
+    setIsTrading(true)
+    setTradeResult(null)
+    try {
+      const userTeam = draftResults.find(p => p.isUser)?.manager || 'User'
+      const payload: any = {
+        direction,
+        pickNumber,
+        leagueFormat: `${selectedLeague?.scoring || 'PPR'} ${selectedLeague?.isDynasty ? 'Dynasty' : 'Redraft'}`,
+      }
+      if (currentDraftId) {
+        payload.draftId = currentDraftId
+      } else {
+        payload.draftResults = draftResults
+        payload.userTeam = userTeam
+      }
+      const res = await fetch('/api/mock-draft/trade-sim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Trade simulation failed')
+      setTradeResult({ ...data, direction, pickNumber })
+      toast.success(`Trade ${direction} scenario generated!`)
+    } catch (err: any) {
+      console.error('[trade-sim]', err)
+      toast.error(err.message || 'Failed to simulate trade')
+    }
+    setIsTrading(false)
   }
 
   const copyShareLink = async () => {
@@ -228,12 +264,20 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                           initial={{ opacity: 0, y: 30, scale: 0.9 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           transition={{ delay: (round * 12 + i) * 0.35, type: 'spring', stiffness: 180 }}
-                          className={`rounded-2xl p-5 group transition-all ${
-                            pick.isUser
-                              ? 'bg-cyan-950/30 border-2 border-cyan-500/40 hover:border-cyan-400/60'
-                              : 'bg-gray-950 border border-gray-800 hover:border-purple-500/60'
+                          className={`rounded-2xl p-5 group transition-all relative ${
+                            onClockPick === pick.overall && pick.isUser
+                              ? 'border-2 border-yellow-500/70 bg-gradient-to-br from-yellow-950/30 to-black animate-pulse'
+                              : pick.isUser
+                                ? 'bg-cyan-950/30 border-2 border-cyan-500/40 hover:border-cyan-400/60'
+                                : 'bg-gray-950 border border-gray-800 hover:border-purple-500/60'
                           }`}
+                          onClick={() => pick.isUser && setOnClockPick(onClockPick === pick.overall ? null : pick.overall)}
                         >
+                          {onClockPick === pick.overall && pick.isUser && (
+                            <div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[9px] px-2 py-0.5 rounded-full font-bold">
+                              ON THE CLOCK
+                            </div>
+                          )}
                           <div className="flex items-center gap-3 mb-3">
                             <div className="w-9 h-9 rounded-full overflow-hidden border border-gray-700">
                               <img
@@ -262,6 +306,31 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                           {pick.notes && (
                             <p className="text-[10px] text-gray-600 mt-2 line-clamp-2">{pick.notes}</p>
                           )}
+
+                          {onClockPick === pick.overall && pick.isUser && (
+                            <div className="flex gap-2 mt-4 justify-center">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); simulateTrade('up', pick.overall) }}
+                                disabled={isTrading}
+                                className="border-green-500/50 text-green-400 hover:bg-green-950/40 text-xs"
+                              >
+                                {isTrading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ArrowUp className="mr-1 h-3 w-3" />}
+                                Trade Up
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); simulateTrade('down', pick.overall) }}
+                                disabled={isTrading}
+                                className="border-red-500/50 text-red-400 hover:bg-red-950/40 text-xs"
+                              >
+                                {isTrading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ArrowDown className="mr-1 h-3 w-3" />}
+                                Trade Down
+                              </Button>
+                            </div>
+                          )}
                         </motion.div>
                       ))}
                     </AnimatePresence>
@@ -271,6 +340,97 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             })}
           </div>
         </div>
+      )}
+
+      {tradeResult && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-black/90 border border-yellow-500/40 rounded-2xl p-6 relative"
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setTradeResult(null)}
+            className="absolute top-3 right-3 text-gray-400 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            {tradeResult.direction === 'up' ? (
+              <><ArrowUp className="h-5 w-5 text-green-400" /> Trade Up Scenario</>
+            ) : (
+              <><ArrowDown className="h-5 w-5 text-red-400" /> Trade Down Scenario</>
+            )}
+            <span className="text-xs text-gray-500 font-normal ml-2">Pick #{tradeResult.pickNumber}</span>
+          </h3>
+
+          {tradeResult.tradePackage && (
+            <div className="grid md:grid-cols-2 gap-6 mb-6">
+              <div className="bg-red-950/20 border border-red-500/20 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-red-400 mb-3">You Give</h4>
+                <div className="space-y-2">
+                  {tradeResult.tradePackage.userGives?.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span className="text-gray-300">{item.description}</span>
+                      <span className="text-red-400 font-mono">-{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="bg-green-950/20 border border-green-500/20 rounded-xl p-4">
+                <h4 className="text-sm font-semibold text-green-400 mb-3">You Get</h4>
+                <div className="space-y-2">
+                  {tradeResult.tradePackage.userGets?.map((item: any, idx: number) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span className="text-gray-300">{item.description}</span>
+                      <span className="text-green-400 font-mono">+{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="text-center bg-gray-950 rounded-xl p-3">
+              <div className="text-xs text-gray-500 mb-1">Fairness</div>
+              <div className={`text-lg font-bold ${
+                (tradeResult.fairnessScore || 0) >= 70 ? 'text-green-400' :
+                (tradeResult.fairnessScore || 0) >= 50 ? 'text-yellow-400' : 'text-red-400'
+              }`}>{tradeResult.fairnessScore || 0}%</div>
+            </div>
+            <div className="text-center bg-gray-950 rounded-xl p-3">
+              <div className="text-xs text-gray-500 mb-1">Likelihood</div>
+              <div className={`text-lg font-bold ${
+                (tradeResult.likelihood || 0) >= 60 ? 'text-green-400' :
+                (tradeResult.likelihood || 0) >= 40 ? 'text-yellow-400' : 'text-red-400'
+              }`}>{tradeResult.likelihood || 0}%</div>
+            </div>
+            <div className="text-center bg-gray-950 rounded-xl p-3">
+              <div className="text-xs text-gray-500 mb-1">Target Player</div>
+              <div className="text-sm font-bold text-purple-400 truncate">{tradeResult.playerTarget || 'N/A'}</div>
+            </div>
+          </div>
+
+          {tradeResult.analysis && (
+            <p className="text-sm text-gray-400 bg-gray-950 rounded-xl p-4 mb-4">{tradeResult.analysis}</p>
+          )}
+
+          {tradeResult.alternateScenarios?.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-300 mb-2">Alternative Scenarios</h4>
+              <div className="space-y-2">
+                {tradeResult.alternateScenarios.map((alt: any, idx: number) => (
+                  <div key={idx} className="flex justify-between text-xs bg-gray-950/50 rounded-lg p-3">
+                    <span className="text-gray-400">{alt.description}</span>
+                    <span className="text-cyan-400 font-mono shrink-0 ml-2">{alt.cost}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.div>
       )}
 
       {!isSimulating && !loading && draftResults.length === 0 && selectedLeagueId && (
