@@ -866,6 +866,15 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                         {team.badges.slice(0, 3).map(b => (
                           <span key={b.id} className="text-xs shrink-0" title={b.label}>{BADGE_ICONS[b.icon] || b.icon}</span>
                         ))}
+                        <span className={cx(
+                          'text-[8px] px-1.5 py-0.5 rounded-full font-bold shrink-0',
+                          team.composite > 90 ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black' :
+                          team.composite > 80 ? 'bg-orange-500/80 text-white' :
+                          team.composite > 65 ? 'bg-sky-500/60 text-white' :
+                          'bg-red-500/80 text-white',
+                        )}>
+                          {team.composite > 90 ? 'Contender' : team.composite > 80 ? 'Frisky' : team.composite > 65 ? 'Mid-Pack' : 'Rebuilding'}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[10px] text-white/35">{team.record.wins}-{team.record.losses}{team.record.ties > 0 ? `-${team.record.ties}` : ''}</span>
@@ -933,6 +942,15 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                       {team.badges.slice(0, 2).map(b => (
                         <span key={b.id} className="text-xs shrink-0" title={b.label}>{BADGE_ICONS[b.icon] || b.icon}</span>
                       ))}
+                      <span className={cx(
+                        'text-[8px] px-1.5 py-0.5 rounded-full font-bold shrink-0',
+                        team.composite > 90 ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black' :
+                        team.composite > 80 ? 'bg-orange-500/80 text-white' :
+                        team.composite > 65 ? 'bg-sky-500/60 text-white' :
+                        'bg-red-500/80 text-white',
+                      )}>
+                        {team.composite > 90 ? 'Contender' : team.composite > 80 ? 'Frisky' : team.composite > 65 ? 'Mid-Pack' : 'Rebuilding'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-[10px] text-white/35">{team.record.wins}-{team.record.losses}{team.record.ties > 0 ? `-${team.record.ties}` : ''}</span>
