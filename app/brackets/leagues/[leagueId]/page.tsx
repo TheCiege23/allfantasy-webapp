@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { Trophy, Users, BarChart3, Shield } from "lucide-react"
 import CopyJoinCode from "./CopyJoinCode"
 import CreateEntryButton from "./CreateEntryButton"
+import ConfirmPaymentButton from "./ConfirmPaymentButton"
 import DevTestPanel from "./DevTestPanel"
 import { requireVerifiedSession } from "@/lib/require-verified"
 
@@ -157,6 +158,19 @@ export default async function LeagueDetailPage({
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {league.scoringRules?.isPaidLeague && league.ownerId === user?.id && !league.scoringRules?.commissionerPaymentConfirmedAt && (
+          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-amber-300">
+              <Shield className="h-4 w-4" />
+              Paid League — Payment Required
+            </div>
+            <p className="text-sm text-gray-400">
+              Entry fee: {league.scoringRules.fancredEntryFee ?? 0} FanCred per entry. Confirm payment to activate your league.
+            </p>
+            <ConfirmPaymentButton leagueId={league.id} />
           </div>
         )}
 
