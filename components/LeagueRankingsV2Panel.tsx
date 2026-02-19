@@ -766,7 +766,7 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
           'linear-gradient(to right, #84cc16, #a3e635)',
         ]
         return totalPoints > 0 ? (
-          <div className="mb-6 bg-black/60 border border-cyan-900/50 rounded-2xl p-6">
+          <div className="mb-6 glass-card rounded-2xl p-6">
             <h3 className="text-sm font-medium mb-4 flex items-center gap-2 text-white/80">
               League Power Breakdown <span className="text-[10px] text-cyan-400 font-normal">(by total points scored)</span>
             </h3>
@@ -867,11 +867,11 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                           <span key={b.id} className="text-xs shrink-0" title={b.label}>{BADGE_ICONS[b.icon] || b.icon}</span>
                         ))}
                         <span className={cx(
-                          'text-[8px] px-1.5 py-0.5 rounded-full font-bold shrink-0',
-                          team.composite > 90 ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black' :
-                          team.composite > 80 ? 'bg-orange-500/80 text-white' :
-                          team.composite > 65 ? 'bg-sky-500/60 text-white' :
-                          'bg-red-500/80 text-white',
+                          'text-[8px] px-1.5 py-0.5 rounded-full shrink-0',
+                          team.composite > 90 ? 'tier-contender' :
+                          team.composite > 80 ? 'tier-frisky' :
+                          team.composite > 65 ? 'tier-midpack' :
+                          'tier-rebuild',
                         )}>
                           {team.composite > 90 ? 'Contender' : team.composite > 80 ? 'Frisky' : team.composite > 65 ? 'Mid-Pack' : 'Rebuilding'}
                         </span>
@@ -943,11 +943,11 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                         <span key={b.id} className="text-xs shrink-0" title={b.label}>{BADGE_ICONS[b.icon] || b.icon}</span>
                       ))}
                       <span className={cx(
-                        'text-[8px] px-1.5 py-0.5 rounded-full font-bold shrink-0',
-                        team.composite > 90 ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-black' :
-                        team.composite > 80 ? 'bg-orange-500/80 text-white' :
-                        team.composite > 65 ? 'bg-sky-500/60 text-white' :
-                        'bg-red-500/80 text-white',
+                        'text-[8px] px-1.5 py-0.5 rounded-full shrink-0',
+                        team.composite > 90 ? 'tier-contender' :
+                        team.composite > 80 ? 'tier-frisky' :
+                        team.composite > 65 ? 'tier-midpack' :
+                        'tier-rebuild',
                       )}>
                         {team.composite > 90 ? 'Contender' : team.composite > 80 ? 'Frisky' : team.composite > 65 ? 'Mid-Pack' : 'Rebuilding'}
                       </span>

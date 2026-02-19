@@ -45,6 +45,11 @@
   --badge-text-emerald: #065f46;
   --badge-text-red: #991b1b;
   --on-accent-bg: #000000;
+
+  --neon-cyan: #22d3ee;
+  --neon-purple: #c026d3;
+  --neon-pink: #ec4899;
+  --glass: rgba(15, 23, 42, 0.75);
 }
 
 html[data-mode="dark"] {
@@ -382,4 +387,54 @@ html[data-mode="light"] .via-white\/10 { --tw-gradient-stops: var(--tw-gradient-
   opacity: 0.02;
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+}
+
+.glass-card {
+  background: var(--glass);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.glass-card:hover {
+  border-color: rgba(34, 211, 238, 0.35);
+}
+
+.neon-glow {
+  box-shadow: 0 0 25px rgba(34, 211, 238, 0.5);
+}
+
+.neon-glow-purple {
+  box-shadow: 0 0 25px rgba(192, 38, 211, 0.5);
+}
+
+.neon-glow-pink {
+  box-shadow: 0 0 25px rgba(236, 72, 153, 0.5);
+}
+
+.neon-glow-subtle {
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.25);
+}
+
+@layer utilities {
+  .tier-contender {
+    @apply bg-gradient-to-r from-amber-400 to-yellow-400 text-black font-bold;
+  }
+  .tier-frisky {
+    @apply bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold;
+  }
+  .tier-midpack {
+    @apply bg-gradient-to-r from-sky-500 to-blue-500 text-white font-bold;
+  }
+  .tier-rebuild {
+    @apply bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold;
+  }
+}
+
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 15px rgba(34, 211, 238, 0.3); }
+  50% { box-shadow: 0 0 35px rgba(34, 211, 238, 0.6); }
+}
+.animate-neon-pulse {
+  animation: neon-pulse 3s ease-in-out infinite;
 }
