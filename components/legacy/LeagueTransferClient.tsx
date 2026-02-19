@@ -34,8 +34,15 @@ type TransferredLeague = {
 type PreviewData = {
   league: any
   managers: any[]
-  stats: { totalSeasons: number; totalTrades: number; totalDraftPicks: number; previousSeasons: string[] }
+  stats: { totalSeasons: number; totalTrades: number; totalDraftPicks: number; previousSeasons: string[]; champions?: { season: string; champion: string }[] }
   storylines: { title: string; description: string; type: string }[]
+}
+
+type PreviewHistory = {
+  seasons: string
+  managers: number
+  trades: string
+  history: { year: string; champ: string; emoji: string }[]
 }
 
 export default function LeagueTransferClient({ userId }: { userId: string }) {
@@ -51,7 +58,46 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
   const [transferProgress, setTransferProgress] = useState(0)
   const [expandedLeague, setExpandedLeague] = useState<string | null>(null)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
+  const [previewHistory, setPreviewHistory] = useState<PreviewHistory | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [currentTransferName, setCurrentTransferName] = useState('')
+
+  const selectedLeague = selectedLeagues.size === 1 ? Array.from(selectedLeagues)[0] : null
+
+  useEffect(() => {
+    if (!selectedLeague) {
+      setPreviewHistory(null)
+      return
+    }
+
+    let cancelled = false
+    const fetchPreview = async () => {
+      setPreviewLoading(true)
+      try {
+        const res = await fetch(`/api/legacy/preview?sleeperLeagueId=${selectedLeague}`)
+        if (!res.ok) throw new Error('Preview failed')
+        const data = await res.json()
+        if (cancelled) return
+        setPreviewHistory({
+          seasons: data.history?.length ? String(data.history.length) : 'Unknown',
+          managers: data.managersCount || 0,
+          trades: 'N/A in preview',
+          history: data.history?.map((h: any) => ({
+            year: h.season,
+            champ: h.champion || 'Unknown',
+            emoji: h.champion ? '\uD83C\uDFC6' : '\uD83D\uDD25',
+          })) || [],
+        })
+      } catch {
+        if (!cancelled) setPreviewHistory(null)
+      } finally {
+        if (!cancelled) setPreviewLoading(false)
+      }
+    }
+
+    fetchPreview()
+    return () => { cancelled = true }
+  }, [selectedLeague])
 
   async function fetchSleeperLeagues() {
     if (!sleeperUsername.trim()) {
@@ -134,14 +180,12 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
         const res = await fetch('/api/legacy/transfer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            leagueId: league.league_id,
-          }),
+          body: JSON.stringify({ sleeperLeagueId: league.league_id }),
         })
 
         if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error || `Failed to sync ${league.name}`)
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || `Server error (${res.status})`)
         }
 
         const data = await res.json()
@@ -159,7 +203,25 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
           scoringType: getScoringLabel(league),
           preview: data.preview,
         })
+
+        if (selected.length === 1) {
+          confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } })
+          setTimeout(() => {
+            router.push(`/leagues/${data.leagueId}?welcome=legacy`)
+          }, 2500)
+        }
       } catch (err: any) {
+        let msg = 'Migration failed. Please try again.'
+        if (err.message?.includes('already claimed')) {
+          msg = 'This league has already been migrated by another user.'
+        } else if (err.message?.includes('not found')) {
+          msg = 'Sleeper league not found or inaccessible.'
+        } else if (err.message?.includes('rate limit')) {
+          msg = 'Sleeper API rate limit reached. Wait a minute and retry.'
+        } else if (err.message) {
+          msg = err.message
+        }
+
         results.push({
           id: league.league_id,
           name: league.name + ' (failed)',
@@ -168,6 +230,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
           isDynasty: false,
           scoringType: getScoringLabel(league),
         })
+        console.error(`Transfer failed for ${league.name}:`, msg)
       }
 
       setTransferProgress(Math.round(((i + 1) / selected.length) * 100))
@@ -176,10 +239,12 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
     setTransferResults(results)
     setStep('complete')
 
-    confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
-    setTimeout(() => {
-      confetti({ particleCount: 80, spread: 100, origin: { y: 0.5 } })
-    }, 500)
+    if (selected.length > 1) {
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } })
+      setTimeout(() => {
+        confetti({ particleCount: 80, spread: 100, origin: { y: 0.5 } })
+      }, 500)
+    }
   }
 
   const selectedLeagueData = leagues.find(l => selectedLeagues.has(l.league_id))
@@ -466,7 +531,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                   <motion.button
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
-                    onClick={() => { setStep('connect'); setLeagues([]); setSelectedLeagues(new Set()); setTransferResults([]); setPreviewData(null) }}
+                    onClick={() => { setStep('connect'); setLeagues([]); setSelectedLeagues(new Set()); setTransferResults([]); setPreviewData(null); setPreviewHistory(null) }}
                     className="px-6 py-3 bg-white/10 border border-white/20 rounded-xl font-semibold hover:bg-white/15 transition-colors"
                   >
                     Transfer More
@@ -554,8 +619,8 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                     <div className="text-xs text-gray-400 uppercase tracking-wider">Selected for Transfer</div>
 
                     <div className="grid grid-cols-2 gap-2 mt-3">
-                      <StatBox icon={<Users className="w-3.5 h-3.5 text-cyan-400" />} label="Teams" value={String(selectedLeagueData.total_rosters)} />
-                      <StatBox icon={<Trophy className="w-3.5 h-3.5 text-amber-400" />} label="Season" value={selectedLeagueData.season} />
+                      <StatBox icon={<Users className="w-3.5 h-3.5 text-cyan-400" />} label={previewHistory ? 'Managers' : 'Teams'} value={previewHistory ? String(previewHistory.managers) : String(selectedLeagueData.total_rosters)} />
+                      <StatBox icon={<Trophy className="w-3.5 h-3.5 text-amber-400" />} label="Seasons" value={previewHistory ? previewHistory.seasons : selectedLeagueData.season} />
                     </div>
 
                     <div className="mt-4 space-y-2">
@@ -571,10 +636,34 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                       </div>
                     </div>
 
-                    <div className="mt-6 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 rounded-xl p-3 text-center">
-                      <Zap className="w-5 h-5 text-yellow-400 mx-auto mb-1" />
-                      <div className="text-xs text-gray-300">Ready to transfer with full history</div>
-                    </div>
+                    {previewLoading && (
+                      <div className="flex items-center justify-center gap-2 py-3">
+                        <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
+                        <span className="text-xs text-gray-400">Loading history...</span>
+                      </div>
+                    )}
+
+                    {previewHistory && previewHistory.history.length > 0 && (
+                      <div className="mt-3">
+                        <div className="text-xs text-gray-400 uppercase tracking-wider mb-2">Championship History</div>
+                        <div className="space-y-1.5">
+                          {previewHistory.history.map((h, i) => (
+                            <div key={i} className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+                              <span className="text-sm">{h.emoji}</span>
+                              <span className="text-xs text-gray-400 w-10">{h.year}</span>
+                              <span className="text-sm text-white truncate flex-1">{h.champ}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {!previewLoading && (
+                      <div className="mt-4 bg-gradient-to-r from-cyan-500/10 to-purple-500/10 border border-cyan-500/20 rounded-xl p-3 text-center">
+                        <Zap className="w-5 h-5 text-yellow-400 mx-auto mb-1" />
+                        <div className="text-xs text-gray-300">Ready to transfer with full history</div>
+                      </div>
+                    )}
                   </motion.div>
                 ) : (
                   <div className="mt-8 flex flex-col items-center justify-center h-[400px] text-center">
