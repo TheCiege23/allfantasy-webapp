@@ -8,6 +8,10 @@ import { ArrowLeft, Loader2, Trophy } from "lucide-react"
 export default function NewBracketLeaguePage() {
   const [name, setName] = useState("")
   const [season, setSeason] = useState(new Date().getFullYear())
+  const [maxManagers, setMaxManagers] = useState(100)
+  const [isPaidLeague, setIsPaidLeague] = useState(false)
+  const [fancredEntryFee, setFancredEntryFee] = useState(0)
+  const [fancredPaymentReference, setFancredPaymentReference] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
@@ -22,7 +26,15 @@ export default function NewBracketLeaguePage() {
       const res = await fetch("/api/bracket/leagues", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), season, sport: "ncaam" }),
+        body: JSON.stringify({
+          name: name.trim(),
+          season,
+          sport: "ncaam",
+          maxManagers,
+          isPaidLeague,
+          fancredEntryFee,
+          fancredPaymentReference,
+        }),
       })
 
       const data = await res.json()
@@ -100,6 +112,56 @@ export default function NewBracketLeaguePage() {
               disabled={loading}
             />
           </div>
+
+          <div>
+            <label className="text-sm text-white/70">Max managers (up to 1,000)</label>
+            <input
+              className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
+              type="number"
+              min={2}
+              max={1000}
+              value={maxManagers}
+              onChange={(e) => setMaxManagers(Math.min(1000, Math.max(2, Number(e.target.value) || 2)))}
+              disabled={loading}
+            />
+          </div>
+
+          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm">
+            <span className="text-white/80">Paid league via FanCred</span>
+            <input
+              type="checkbox"
+              checked={isPaidLeague}
+              onChange={(e) => setIsPaidLeague(e.target.checked)}
+              disabled={loading}
+            />
+          </label>
+
+          {isPaidLeague && (
+            <>
+              <div>
+                <label className="text-sm text-white/70">FanCred entry fee (USD)</label>
+                <input
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={fancredEntryFee}
+                  onChange={(e) => setFancredEntryFee(Math.max(0, Number(e.target.value) || 0))}
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="text-sm text-white/70">FanCred payment reference (optional)</label>
+                <input
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
+                  value={fancredPaymentReference}
+                  onChange={(e) => setFancredPaymentReference(e.target.value)}
+                  disabled={loading}
+                  placeholder="e.g. FC-2026-LEAGUE-001"
+                />
+              </div>
+            </>
+          )}
 
           <button
             type="submit"
