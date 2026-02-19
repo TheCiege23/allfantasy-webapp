@@ -71,6 +71,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [dismissedProposals, setDismissedProposals] = useState<Set<number>>(new Set())
   const [comparisonOpen, setComparisonOpen] = useState(false)
   const [comparePlayer, setComparePlayer] = useState<any>(null)
+  const [selectedFilter, setSelectedFilter] = useState('All')
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -193,6 +194,13 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
     return { letter, color, title, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 3), valueAdded }
   }, [adpMap, normalizeName])
+
+  const filteredBestAvailable = useMemo(() => {
+    const draftedNames = new Set(draftResults.map(p => normalizeName(p.playerName)))
+    const available = adpData.filter(p => !draftedNames.has(normalizeName(p.name)))
+    if (selectedFilter === 'All') return available.slice(0, 25)
+    return available.filter(p => p.position === selectedFilter).slice(0, 25)
+  }, [draftResults, adpData, selectedFilter, normalizeName])
 
   const openComparison = useCallback((pick: any) => {
     const bap = adpData.find(p => !draftResults.some(d => d.playerName === p.name))
@@ -915,6 +923,55 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           </motion.div>
         )}
       </AnimatePresence>
+
+      {draftResults.length > 0 && adpData.length > 0 && (
+        <div className="fixed top-24 right-8 w-80 bg-black/80 border border-cyan-900/50 rounded-2xl p-6 shadow-2xl shadow-cyan-950/50 z-20 hidden lg:block">
+          <h3 className="text-lg font-bold text-cyan-300 mb-4 flex items-center gap-2">
+            Best Available
+            <span className="text-xs bg-cyan-900/50 px-2 py-1 rounded-full">Live</span>
+          </h3>
+
+          <div className="flex gap-2 mb-4 flex-wrap">
+            {['All', 'QB', 'RB', 'WR', 'TE'].map(pos => (
+              <Button
+                key={pos}
+                variant={selectedFilter === pos ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedFilter(pos)}
+                className="text-xs h-7 px-2.5"
+              >
+                {pos}
+              </Button>
+            ))}
+          </div>
+
+          <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
+            <AnimatePresence>
+              {filteredBestAvailable.map((player, i) => (
+                <motion.div
+                  key={player.name}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  className="flex items-center gap-4 bg-gray-950/50 p-3 rounded-xl hover:bg-gray-900/70 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{player.name}</p>
+                    <p className="text-xs text-gray-400">{player.position} &middot; {player.team || 'FA'}</p>
+                  </div>
+                  <div className="text-right text-xs shrink-0">
+                    <div className="text-cyan-400">ADP {player.adp?.toFixed(1) || 'N/A'}</div>
+                    {player.value && <div className="text-purple-400">Value ${player.value}</div>}
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {filteredBestAvailable.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">No players available</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <Dialog open={comparisonOpen} onOpenChange={setComparisonOpen}>
         <DialogContent className="bg-black/90 border-purple-900/50 text-white max-w-3xl">
