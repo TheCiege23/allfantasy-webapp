@@ -231,13 +231,74 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
           </div>
         </div>
 
+        {displayTeams.length > 0 && (() => {
+          const totalPoints = displayTeams.reduce((sum, t) => sum + (t.pointsFor || 0), 0);
+          const barColors = [
+            'linear-gradient(90deg, #a855f7, #c084fc)',
+            'linear-gradient(90deg, #ec4899, #f472b6)',
+            'linear-gradient(90deg, #f97316, #fb923c)',
+            'linear-gradient(90deg, #06b6d4, #22d3ee)',
+            'linear-gradient(90deg, #10b981, #34d399)',
+            'linear-gradient(90deg, #eab308, #facc15)',
+            'linear-gradient(90deg, #6366f1, #818cf8)',
+            'linear-gradient(90deg, #ef4444, #f87171)',
+            'linear-gradient(90deg, #8b5cf6, #a78bfa)',
+            'linear-gradient(90deg, #14b8a6, #2dd4bf)',
+            'linear-gradient(90deg, #f59e0b, #fbbf24)',
+            'linear-gradient(90deg, #3b82f6, #60a5fa)',
+            'linear-gradient(90deg, #d946ef, #e879f9)',
+            'linear-gradient(90deg, #84cc16, #a3e635)',
+          ];
+          return totalPoints > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="mb-8 glass-card rounded-3xl p-6 sm:p-8"
+            >
+              <h3 className="text-base sm:text-xl mb-4 sm:mb-6 flex items-center gap-3 text-white/80">
+                League Power Breakdown <span className="text-xs text-cyan-400">(by total points scored)</span>
+              </h3>
+              <div className="h-7 sm:h-8 bg-gray-900 rounded-2xl overflow-hidden flex shadow-inner">
+                {displayTeams.map((team, i) => {
+                  const pct = (team.pointsFor / totalPoints) * 100;
+                  return pct > 0 ? (
+                    <motion.div
+                      key={team.id}
+                      initial={{ width: 0 }}
+                      animate={{ width: `${pct}%` }}
+                      transition={{ delay: 0.3 + i * 0.08, duration: 0.6, ease: 'easeOut' }}
+                      className="h-full flex items-center justify-center text-[10px] sm:text-xs font-mono text-white/90 relative group cursor-default transition-all hover:brightness-125"
+                      style={{ background: barColors[i % barColors.length] }}
+                      title={`${team.teamName} — ${team.pointsFor.toFixed(1)} pts (${pct.toFixed(1)}%)`}
+                    >
+                      {pct > 4 && <span className="group-hover:scale-125 transition-transform">#{i + 1}</span>}
+                    </motion.div>
+                  ) : null;
+                })}
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 sm:mt-4">
+                {displayTeams.slice(0, 8).map((team, i) => (
+                  <div key={team.id} className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-white/50">
+                    <span
+                      className="w-2.5 h-2.5 rounded-sm"
+                      style={{ background: barColors[i % barColors.length].replace('linear-gradient(90deg, ', '').split(',')[0] }}
+                    />
+                    <span>{team.teamName}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ) : null;
+        })()}
+
         <motion.div
           key={league.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
         >
-          <Card className="border-cyan-900/30 bg-black/40 backdrop-blur-sm">
+          <Card className="glass-card border-cyan-900/30">
             <CardHeader className="pb-4">
               <CardTitle className="flex items-center gap-3 text-2xl">
                 <Users className="h-6 w-6 text-cyan-400" />
@@ -287,7 +348,18 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
                           </TableCell>
                           <TableCell>
                             <div>
-                              <div className="font-medium">{team.teamName}</div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{team.teamName}</span>
+                                <span className={cn(
+                                  'text-[8px] px-1.5 py-0.5 rounded-full shrink-0 hidden sm:inline-block',
+                                  score !== null && score > 90 ? 'tier-contender' :
+                                  score !== null && score > 80 ? 'tier-frisky' :
+                                  score !== null && score > 65 ? 'tier-midpack' :
+                                  'tier-rebuild',
+                                )}>
+                                  {score !== null && score > 90 ? 'Contender' : score !== null && score > 80 ? 'Frisky' : score !== null && score > 65 ? 'Mid-Pack' : 'Rebuilding'}
+                                </span>
+                              </div>
                               <div className="text-xs text-slate-500">{team.ownerName}</div>
                             </div>
                           </TableCell>
@@ -372,11 +444,22 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 + 0.1 * i }}
             >
-              <Card className="border-purple-900/30 bg-black/40 backdrop-blur-sm h-full">
+              <Card className="glass-card h-full">
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
                     <span>{team.teamName}</span>
-                    <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-transparent">#{i + 1}</Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={cn(
+                        'border-transparent px-3 py-1 text-[10px]',
+                        (team.aiPowerScore ?? 0) > 90 ? 'tier-contender' :
+                        (team.aiPowerScore ?? 0) > 80 ? 'tier-frisky' :
+                        (team.aiPowerScore ?? 0) > 65 ? 'tier-midpack' :
+                        'tier-rebuild',
+                      )}>
+                        {(team.aiPowerScore ?? 0) > 90 ? 'CONTENDER' : (team.aiPowerScore ?? 0) > 80 ? 'FRISKY' : (team.aiPowerScore ?? 0) > 65 ? 'MID-PACK' : 'REBUILDING'}
+                      </Badge>
+                      <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-transparent">#{i + 1}</Badge>
+                    </div>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -586,6 +669,43 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
             </CardContent>
           </Card>
         </motion.div>
+
+        {displayTeams.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.9 }}
+            className="mt-10 flex justify-center gap-6 sm:gap-10 text-center"
+          >
+            <div>
+              <div className="text-3xl sm:text-4xl font-bold text-amber-400">
+                {displayTeams.filter(t => (t.aiPowerScore ?? 0) > 90).length}
+              </div>
+              <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Contenders</div>
+            </div>
+            <div className="w-px bg-gray-800" />
+            <div>
+              <div className="text-3xl sm:text-4xl font-bold text-orange-400">
+                {displayTeams.filter(t => { const s = t.aiPowerScore ?? 0; return s > 80 && s <= 90; }).length}
+              </div>
+              <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Frisky</div>
+            </div>
+            <div className="w-px bg-gray-800" />
+            <div>
+              <div className="text-3xl sm:text-4xl font-bold text-sky-400">
+                {displayTeams.filter(t => { const s = t.aiPowerScore ?? 0; return s > 65 && s <= 80; }).length}
+              </div>
+              <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Mid-Pack</div>
+            </div>
+            <div className="w-px bg-gray-800" />
+            <div>
+              <div className="text-3xl sm:text-4xl font-bold text-red-400">
+                {displayTeams.filter(t => (t.aiPowerScore ?? 0) <= 65).length}
+              </div>
+              <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Rebuilding</div>
+            </div>
+          </motion.div>
+        )}
       </div>
     </div>
   );
