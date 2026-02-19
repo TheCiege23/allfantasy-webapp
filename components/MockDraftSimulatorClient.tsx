@@ -208,51 +208,26 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
-    const leagueName = selectedLeague?.name || 'Mock Draft'
-    toast.info('Generating image...')
-    try {
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        backgroundColor: '#0a0a0a',
-        useCORS: true,
-        logging: false,
-      })
-      const link = document.createElement('a')
-      link.download = `AllFantasy-Mock-Draft-${leagueName.replace(/\s+/g, '-')}.png`
-      link.href = canvas.toDataURL('image/png')
-      link.click()
-      toast.success('Image exported!')
-    } catch (err) {
-      console.error('[image-export]', err)
-      toast.error('Failed to generate image')
-    }
+    const canvas = await html2canvas(element, { scale: 2, backgroundColor: '#0a0a0f' })
+    const link = document.createElement('a')
+    link.download = `AllFantasy-Mock-Draft-${new Date().toISOString().slice(0, 10)}.png`
+    link.href = canvas.toDataURL('image/png')
+    link.click()
+    toast.success('Draft board exported as image!')
   }
 
   const exportPDF = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
-    const leagueName = selectedLeague?.name || 'Mock Draft'
-    toast.info('Generating PDF...')
-    try {
-      const canvas = await html2canvas(element, {
-        scale: 2,
-        backgroundColor: '#0a0a0a',
-        useCORS: true,
-        logging: false,
-      })
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [canvas.width, canvas.height],
-      })
-      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height)
-      pdf.save(`AllFantasy-Mock-Draft-${leagueName.replace(/\s+/g, '-')}.pdf`)
-      toast.success('PDF exported!')
-    } catch (err) {
-      console.error('[pdf-export]', err)
-      toast.error('Failed to generate PDF')
-    }
+    const canvas = await html2canvas(element, { scale: 2 })
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'px',
+      format: [canvas.width, canvas.height],
+    })
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height)
+    pdf.save(`AllFantasy-Mock-Draft-${new Date().toISOString().slice(0, 10)}.pdf`)
+    toast.success('Draft board exported as PDF!')
   }
 
 
