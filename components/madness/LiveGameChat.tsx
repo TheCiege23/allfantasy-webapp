@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 const EMOJI_MAP: Record<string, string> = {
@@ -91,6 +91,13 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
   const [lastSent, setLastSent] = useState(0)
   const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const [mutedUsers, setMutedUsers] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const stored = localStorage.getItem(`chat-muted-${leagueId}`)
+      return stored ? new Set(JSON.parse(stored)) : new Set()
+    } catch { return new Set() }
+  })
   const [emojiSearch, setEmojiSearch] = useState('')
   const filteredEmojis = useMemo(() => {
     const q = emojiSearch.toLowerCase().trim()
@@ -276,6 +283,26 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
     } catch {}
   }
 
+  const muteUser = (userId: string, username: string) => {
+    setMutedUsers(prev => {
+      const next = new Set(prev)
+      if (next.has(userId)) {
+        next.delete(userId)
+        toast.success(`Unmuted ${username}`)
+      } else {
+        next.add(userId)
+        toast.success(`Muted ${username} — their messages are now hidden`)
+      }
+      try { localStorage.setItem(`chat-muted-${leagueId}`, JSON.stringify([...next])) } catch {}
+      return next
+    })
+  }
+
+  const visibleMessages = useMemo(
+    () => messages.filter(m => !mutedUsers.has(m.user.id)),
+    [messages, mutedUsers]
+  )
+
   if (!open) {
     return (
       <button
@@ -318,11 +345,27 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
         )
       })()}
 
+      {mutedUsers.size > 0 && (
+        <div className="px-4 py-1.5 bg-orange-950/30 border-b border-orange-800/20 flex items-center justify-between">
+          <span className="text-[10px] text-orange-300">{mutedUsers.size} user{mutedUsers.size > 1 ? 's' : ''} muted</span>
+          <button
+            onClick={() => {
+              setMutedUsers(new Set())
+              try { localStorage.removeItem(`chat-muted-${leagueId}`) } catch {}
+              toast.success('All users unmuted')
+            }}
+            className="text-[10px] text-orange-400 hover:text-orange-300 underline"
+          >
+            Unmute all
+          </button>
+        </div>
+      )}
+
       <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.length === 0 && (
+        {visibleMessages.length === 0 && (
           <p className="text-gray-500 text-sm text-center mt-8">No messages yet. Say something!</p>
         )}
-        {messages.map(msg => {
+        {visibleMessages.map(msg => {
           const grouped = groupReactions(msg.reactions || [], currentUserId)
           const isOwn = msg.user.id === currentUserId
           const displayName = msg.user.displayName || msg.user.username
@@ -435,6 +478,17 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                       className={`h-7 w-7 transition-colors ${msg.isPinned ? 'text-amber-400 hover:text-amber-300' : 'text-gray-400 hover:text-amber-400'}`}
                     >
                       <Pin className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {!isOwn && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => muteUser(msg.user.id, displayName)}
+                      className={`h-7 w-7 transition-colors ${mutedUsers.has(msg.user.id) ? 'text-orange-400 hover:text-orange-300' : 'text-gray-400 hover:text-orange-400'}`}
+                      title={mutedUsers.has(msg.user.id) ? `Unmute ${displayName}` : `Mute ${displayName}`}
+                    >
+                      {mutedUsers.has(msg.user.id) ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
                     </Button>
                   )}
                   {!isOwn && !flaggedIds.has(msg.id) && (
