@@ -19,6 +19,7 @@ export interface SleeperLeague {
   settings: Record<string, unknown>;
   draft_id: string;
   previous_league_id: string | null;
+  avatar: string | null;
 }
 
 export async function getLeagueHistory(leagueId: string, userIdentifier?: string): Promise<SleeperLeague[]> {

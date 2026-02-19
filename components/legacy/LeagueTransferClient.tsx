@@ -79,14 +79,15 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
         if (!res.ok) throw new Error('Preview failed')
         const data = await res.json()
         if (cancelled) return
+        const p = data.preview
         setPreviewHistory({
-          seasons: data.history?.length ? String(data.history.length) : 'Unknown',
-          managers: data.managersCount || 0,
-          trades: 'N/A in preview',
-          history: data.history?.map((h: any) => ({
+          seasons: p?.seasonsCount ? String(p.seasonsCount) : 'Unknown',
+          managers: p?.managersCount || 0,
+          trades: p?.tradesCount || 'N/A in preview',
+          history: p?.history?.map((h: any) => ({
             year: h.season,
             champ: h.champion || 'Unknown',
-            emoji: h.champion ? '\uD83C\uDFC6' : '\uD83D\uDD25',
+            emoji: h.emoji || '\uD83C\uDFC6',
           })) || [],
         })
       } catch {
