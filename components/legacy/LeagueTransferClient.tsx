@@ -76,22 +76,27 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
       setPreviewLoading(true)
       try {
         const res = await fetch(`/api/legacy/preview?sleeperLeagueId=${selectedLeague}`)
-        if (!res.ok) throw new Error('Preview failed')
-        const data = await res.json()
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.error || 'Preview failed')
+        }
+        const { preview } = await res.json()
         if (cancelled) return
-        const p = data.preview
         setPreviewHistory({
-          seasons: p?.seasonsCount ? String(p.seasonsCount) : 'Unknown',
-          managers: p?.managersCount || 0,
-          trades: p?.tradesCount || 'N/A in preview',
-          history: p?.history?.map((h: any) => ({
+          seasons: preview?.seasonsCount ? String(preview.seasonsCount) : 'Unknown',
+          managers: preview?.managersCount || 0,
+          trades: preview?.tradesCount || 'N/A in preview',
+          history: preview?.history?.map((h: any) => ({
             year: h.season,
             champ: h.champion || 'Unknown',
             emoji: h.emoji || '\uD83C\uDFC6',
           })) || [],
         })
-      } catch {
-        if (!cancelled) setPreviewHistory(null)
+      } catch (err: any) {
+        if (!cancelled) {
+          setPreviewHistory(null)
+          setStatus(`Preview error: ${err.message}`)
+        }
       } finally {
         if (!cancelled) setPreviewLoading(false)
       }
