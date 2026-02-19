@@ -49,6 +49,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#22d3ee" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17768764414"
           strategy="afterInteractive"
