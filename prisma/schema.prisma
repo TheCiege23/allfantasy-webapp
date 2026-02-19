@@ -2179,6 +2179,16 @@ model MarchMadnessGame {
   @@index([tournamentId, round])
 }
 
+model MarchMadnessResult {
+  id        String   @id @default(uuid())
+  gameId    String
+  winner    String
+  round     Int
+  createdAt DateTime @default(now())
+
+  @@index([gameId])
+}
+
 model BracketLeague {
   id           String   @id @default(uuid())
   tournamentId String
