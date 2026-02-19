@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -179,7 +179,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             <h2 className="text-2xl font-bold mb-8 text-center bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">
               Mock Draft Board
             </h2>
-            <div className="space-y-8">
+            <div className="space-y-10">
               {Array.from({ length: totalRounds }).map((_, roundIdx) => {
                 const roundPicks = draftResults.filter(p => p.round === roundIdx + 1)
                 if (roundPicks.length === 0) return null
@@ -192,49 +192,70 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                       className="text-cyan-400 text-sm font-mono mb-3 pl-4 hover:text-cyan-300 transition-colors flex items-center gap-2"
                     >
                       ROUND {roundIdx + 1}
+                      {roundIdx === 0 && (
+                        <span className="text-xs bg-purple-600/50 px-2 py-1 rounded-full text-purple-200">First Round</span>
+                      )}
                       <span className="text-xs text-gray-600">({roundPicks.length} picks)</span>
                     </button>
                     {isExpanded && (
                       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                        {roundPicks.map((pick, i) => (
-                          <motion.div
-                            key={`${pick.round}-${pick.pick}`}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: i * 0.03 }}
-                            className={`rounded-xl p-3 sm:p-4 transition-all group ${
-                              pick.isUser
-                                ? 'bg-cyan-950/30 border-2 border-cyan-500/40 hover:border-cyan-400/60'
-                                : 'bg-gray-950 border border-gray-800 hover:border-purple-500/50'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] text-gray-500 font-mono">#{pick.overall}</span>
-                              <Badge className={`${POSITION_COLORS[pick.position] || ''} border text-[9px] px-1.5 py-0`}>
-                                {pick.position}
-                              </Badge>
-                            </div>
-                            <div className="font-bold text-sm sm:text-base text-white group-hover:text-purple-400 transition-colors truncate">
-                              {pick.playerName}
-                            </div>
-                            <div className="text-xs text-gray-500 truncate">{pick.team}</div>
-                            <div className="mt-2 flex items-center justify-between">
-                              <span className={`text-[10px] truncate ${pick.isUser ? 'text-cyan-400 font-semibold' : 'text-gray-600'}`}>
-                                {pick.manager}
-                              </span>
-                              <span className={`text-[10px] font-mono ${
-                                pick.confidence >= 80 ? 'text-green-400' :
-                                pick.confidence >= 60 ? 'text-cyan-400' :
-                                'text-amber-400'
-                              }`}>
-                                {pick.confidence}%
-                              </span>
-                            </div>
-                            {pick.notes && (
-                              <p className="text-[9px] text-gray-600 mt-1 truncate">{pick.notes}</p>
-                            )}
-                          </motion.div>
-                        ))}
+                        <AnimatePresence>
+                          {roundPicks.map((pick, i) => (
+                            <motion.div
+                              key={pick.overall}
+                              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{
+                                duration: 0.5,
+                                delay: i * 0.05,
+                                type: 'spring',
+                                stiffness: 200,
+                                damping: 15,
+                              }}
+                              className={`rounded-xl p-3 sm:p-4 transition-all group relative overflow-hidden ${
+                                pick.overall === 1
+                                  ? 'border-2 border-yellow-500/70 bg-gradient-to-br from-yellow-950/50 to-black'
+                                  : pick.isUser
+                                    ? 'bg-cyan-950/30 border-2 border-cyan-500/40 hover:border-cyan-400/60'
+                                    : 'bg-gray-950 border border-gray-800 hover:border-purple-500/50'
+                              }`}
+                            >
+                              {pick.overall === 1 && (
+                                <div className="absolute -top-0.5 -right-0.5 bg-yellow-500 text-black text-[9px] px-2 py-0.5 rounded-bl-xl font-bold tracking-wide">
+                                  #1 PICK
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] text-gray-500 font-mono">Pick {pick.overall}</span>
+                                <Badge className={`${POSITION_COLORS[pick.position] || ''} border text-[9px] px-1.5 py-0`}>
+                                  {pick.position}
+                                </Badge>
+                              </div>
+                              <div className="font-bold text-sm sm:text-base text-white group-hover:text-purple-400 transition-colors truncate">
+                                {pick.playerName}
+                              </div>
+                              <div className="text-xs text-gray-500 truncate">{pick.position} &middot; {pick.team}</div>
+                              <div className="mt-2 flex items-center gap-1 text-xs">
+                                <span className={`truncate ${pick.isUser ? 'text-cyan-400 font-semibold' : 'text-gray-600'}`}>
+                                  {pick.manager}
+                                </span>
+                                {pick.confidence && (
+                                  <span className={`font-mono shrink-0 ${
+                                    pick.confidence >= 80 ? 'text-green-400' :
+                                    pick.confidence >= 60 ? 'text-cyan-400' :
+                                    'text-amber-400'
+                                  }`}>
+                                    &middot; {pick.confidence}%
+                                  </span>
+                                )}
+                              </div>
+                              {pick.notes && (
+                                <p className="text-[9px] text-gray-600 mt-1 truncate">{pick.notes}</p>
+                              )}
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
                       </div>
                     )}
                   </div>
