@@ -2097,6 +2097,7 @@ model AppUser {
   leagues              League[]
   leagueAuths          LeagueAuth[]
   sleeperLeagues       SleeperLeague[]
+  mockDrafts           MockDraft[]
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2337,6 +2338,7 @@ model League {
   rosters          Roster[]
   teams            LeagueTeam[]
   waiverPickups    WaiverPickup[]
+  mockDrafts       MockDraft[]
   user             AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
   legacyLeague     LegacyLeague? @relation(fields: [legacyLeagueId], references: [id])
   legacyLeagueId   String?   @unique
@@ -2503,4 +2505,20 @@ model SleeperRoster {
   @@index([leagueId])
   @@index([ownerId])
   @@map("sleeper_rosters")
+}
+
+model MockDraft {
+  id        String   @id @default(uuid())
+  leagueId  String
+  league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  userId    String
+  user      AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rounds    Int      @default(15)
+  results   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leagueId])
+  @@index([userId])
+  @@map("mock_drafts")
 }
