@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette, ArrowDown } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
@@ -196,6 +196,8 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
       return stored ? new Set(JSON.parse(stored)) : new Set()
     } catch { return new Set() }
   })
+  const [chatSearch, setChatSearch] = useState('')
+  const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [emojiSearch, setEmojiSearch] = useState('')
   const filteredEmojis = useMemo(() => {
     const q = emojiSearch.toLowerCase().trim()
@@ -246,6 +248,21 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [open, messages.length])
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !open) return
+    const handleScroll = () => {
+      const isNearBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 100
+      setShowScrollBtn(!isNearBottom)
+    }
+    el.addEventListener('scroll', handleScroll)
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [open])
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' })
+  }, [])
 
   useEffect(() => {
     if (!open || messages.length === 0) return
@@ -396,10 +413,12 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
     })
   }
 
-  const visibleMessages = useMemo(
-    () => messages.filter(m => !mutedUsers.has(m.user.id)),
-    [messages, mutedUsers]
-  )
+  const visibleMessages = useMemo(() => {
+    let filtered = messages.filter(m => !mutedUsers.has(m.user.id))
+    const q = chatSearch.toLowerCase().trim()
+    if (q) filtered = filtered.filter(m => m.message.toLowerCase().includes(q))
+    return filtered
+  }, [messages, mutedUsers, chatSearch])
 
   if (!open) {
     return (
@@ -469,10 +488,32 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
-        {visibleMessages.length === 0 && (
+      <div className={`px-3 py-2 border-b ${t.border}`}>
+        <div className="relative">
+          <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 ${t.timestamp}`} />
+          <Input
+            placeholder="Search messages..."
+            value={chatSearch}
+            onChange={e => setChatSearch(e.target.value)}
+            className={`pl-9 h-8 text-sm ${t.inputBg} ${t.inputBorder} ${t.inputText}`}
+          />
+          {chatSearch && (
+            <button
+              onClick={() => setChatSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4 relative">
+        {visibleMessages.length === 0 && chatSearch ? (
+          <p className={`${t.emptyText} text-sm text-center mt-8`}>No messages match &ldquo;{chatSearch}&rdquo;</p>
+        ) : visibleMessages.length === 0 ? (
           <p className={`${t.emptyText} text-sm text-center mt-8`}>No messages yet. Say something!</p>
-        )}
+        ) : null}
         {visibleMessages.map(msg => {
           const grouped = groupReactions(msg.reactions || [], currentUserId)
           const isOwn = msg.user.id === currentUserId
@@ -618,6 +659,16 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
           )
         })}
         <div ref={bottomRef} />
+
+        {showScrollBtn && (
+          <Button
+            onClick={() => scrollToBottom(true)}
+            className={`sticky bottom-2 left-1/2 -translate-x-1/2 ${t.sendBtn} rounded-full h-8 w-8 p-0 shadow-lg z-10`}
+            size="icon"
+          >
+            <ArrowDown className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {typingUsers.length > 0 && (
