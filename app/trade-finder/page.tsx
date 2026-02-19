@@ -11,10 +11,18 @@ export default async function TradeFinderPage() {
 
   if (!session?.user?.id) redirect('/login');
 
-  const leagues = await (prisma as any).league.findMany({
-    where: { userId: session.user.id },
-    select: { id: true, name: true, sport: true, season: true, platformLeagueId: true, platform: true, isDynasty: true },
-  });
+  const [leagues, userProfile] = await Promise.all([
+    (prisma as any).league.findMany({
+      where: { userId: session.user.id },
+      select: { id: true, name: true, sport: true, season: true, platformLeagueId: true, platform: true, isDynasty: true },
+    }),
+    (prisma as any).userProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { sleeperUserId: true },
+    }),
+  ]);
+
+  const sleeperUserId = userProfile?.sleeperUserId || null;
 
   if (leagues.length === 0) {
     return (
@@ -37,7 +45,7 @@ export default async function TradeFinderPage() {
         </h1>
         <p className="text-center text-gray-300 mb-12">AI-powered trade suggestions tailored to your strategy</p>
 
-        <TradeFinderClient initialLeagues={leagues} />
+        <TradeFinderClient initialLeagues={leagues} sleeperUserId={sleeperUserId} />
       </div>
     </div>
   );

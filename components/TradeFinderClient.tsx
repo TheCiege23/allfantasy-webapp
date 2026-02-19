@@ -11,7 +11,7 @@ import PartnerMatchView from '@/components/PartnerMatchView';
 
 type League = { id: string; name: string; sport: string; season: number; platformLeagueId: string; platform: string; isDynasty: boolean };
 
-export default function TradeFinderClient({ initialLeagues }: { initialLeagues: League[] }) {
+export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { initialLeagues: League[]; sleeperUserId?: string | null }) {
   const { callAI, loading, error } = useAI<{ recommendations?: any[]; suggestions?: any[]; candidates?: any[]; success?: boolean; meta?: any }>();
   const [leagueId, setLeagueId] = useState(initialLeagues[0]?.id || '');
   const [strategy, setStrategy] = useState<'win-now' | 'rebuild' | 'balanced'>('balanced');
@@ -77,7 +77,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
 
     const result = await callAI('/api/trade-finder', {
       league_id: selectedLeague.platformLeagueId,
-      user_roster_id: 1,
+      ...(sleeperUserId ? { sleeper_user_id: sleeperUserId } : { user_roster_id: 1 }),
       objective: objectiveMap[strategy] || 'BALANCED',
       mode: 'FAST',
     });

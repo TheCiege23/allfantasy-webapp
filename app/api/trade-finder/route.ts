@@ -36,7 +36,8 @@ import { buildAssetIndex, makeSleeperPickId } from '@/lib/trade-finder/asset-ind
 
 const TradeFinderRequestSchema = z.object({
   league_id: z.string(),
-  user_roster_id: z.number(),
+  user_roster_id: z.number().optional(),
+  sleeper_user_id: z.string().optional(),
   objective: z.enum(['WIN_NOW', 'REBUILD', 'BALANCED']).default('BALANCED'),
   mode: z.enum(['FAST', 'DEEP']).default('FAST'),
   preferredTone: z.enum(['FRIENDLY', 'CONFIDENT', 'CASUAL', 'DATA_BACKED', 'SHORT']).optional(),
@@ -284,6 +285,17 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
       return NextResponse.json({ error: 'League not found or has no rosters' }, { status: 404 })
     }
 
+    let resolvedRosterId: number | undefined = data.user_roster_id
+    if (!resolvedRosterId && data.sleeper_user_id) {
+      const matchedRoster = sleeperRosters.find((r: any) => r.owner_id === data.sleeper_user_id)
+      if (matchedRoster) {
+        resolvedRosterId = matchedRoster.roster_id
+      }
+    }
+    if (!resolvedRosterId) {
+      return NextResponse.json({ error: 'Could not determine your roster. Please link your Sleeper account in Settings.' }, { status: 400 })
+    }
+
     const rosterSlots = parseSleeperRosterPositions(sleeperLeague.roster_positions)
     const isSF = rosterSlots.superflex
 
@@ -304,7 +316,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
         league: sleeperLeague,
         rosters: sleeperRosters,
         tradedPicks: sleeperTradedPicks as any,
-        userRosterId: data.user_roster_id,
+        userRosterId: resolvedRosterId,
         isSuperFlex: isSF,
       }),
       buildPricedAssetsByRoster(sleeperRosters, allPlayers, fcPlayers, isSF),
@@ -312,7 +324,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
 
     addPickAssets(pricedAssets, sleeperTradedPicks as any, sleeperRosters, sleeperLeague.total_rosters || 12)
 
-    const userTeamId = String(data.user_roster_id)
+    const userTeamId = String(resolvedRosterId)
 
     const generatorOutput = generateTradeCandidates({
       userTeamId,
@@ -625,7 +637,8 @@ export const GET = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFin
       method: 'POST',
       body: {
         league_id: 'string (Sleeper league ID)',
-        user_roster_id: 'number (your roster ID in the league)',
+        user_roster_id: 'number (optional — your roster ID in the league)',
+        sleeper_user_id: 'string (optional — your Sleeper user ID, used to auto-resolve roster)',
         objective: 'WIN_NOW | REBUILD | BALANCED (default: BALANCED)',
         mode: 'FAST | DEEP (default: FAST)',
       },
