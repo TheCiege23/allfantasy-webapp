@@ -180,7 +180,7 @@ Return a "picks" array with exactly ${picksToRedraft.length} entries, one per sl
     try {
       const adpType = league?.isDynasty ? 'dynasty' : 'redraft'
       const fallbackEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 300)
-      adpFallbackPool = fallbackEntries.map(e => ({ name: e.name, position: e.position, team: e.team }))
+      adpFallbackPool = fallbackEntries.map(e => ({ name: e.name, position: e.position, team: e.team ?? undefined }))
     } catch {}
 
     const usedPlayers = new Set(lockedPlayerNames)
