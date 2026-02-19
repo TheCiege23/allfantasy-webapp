@@ -5,7 +5,17 @@ import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
-import { Check, Lock } from 'lucide-react'
+import { Check, Lock, Trophy } from 'lucide-react'
+
+interface LeaderboardEntry {
+  bracketId: string
+  bracketName: string
+  ownerName: string
+  score: number
+  correct: number
+  total: number
+  rank: number
+}
 
 interface Game {
   id: string
@@ -31,13 +41,15 @@ export default function BracketEntry() {
   const [userBracketsCount, setUserBracketsCount] = useState(0)
   const [games, setGames] = useState<Game[]>([])
   const [leagueName, setLeagueName] = useState('')
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
       fetch(`/api/madness/leagues/${id}`).then(res => res.json()),
       fetch('/api/madness/games').then(res => res.json()),
-    ]).then(([leagueData, gamesData]) => {
+      fetch(`/api/madness/leagues/${id}/leaderboard`).then(res => res.json()),
+    ]).then(([leagueData, gamesData, lbData]) => {
       if (!leagueData.error) {
         setDeadlinePassed(leagueData.deadline ? new Date() > new Date(leagueData.deadline) : false)
         setDeadline(leagueData.deadline)
@@ -46,6 +58,9 @@ export default function BracketEntry() {
       }
       if (Array.isArray(gamesData)) {
         setGames(gamesData)
+      }
+      if (Array.isArray(lbData)) {
+        setLeaderboard(lbData)
       }
       setLoading(false)
     })
@@ -212,6 +227,49 @@ export default function BracketEntry() {
               {Object.keys(picks).length} / {round1Games.length} picks made
             </p>
           </div>
+
+          {leaderboard.length > 0 && (
+            <div className="mt-12">
+              <h2 className="text-3xl font-bold mb-6 text-center flex items-center justify-center gap-3">
+                <Trophy className="h-7 w-7 text-yellow-400" />
+                Live Leaderboard
+              </h2>
+              <div className="grid gap-3 max-w-2xl mx-auto">
+                {leaderboard.map(entry => (
+                  <div
+                    key={entry.bracketId}
+                    className={`flex items-center justify-between p-4 rounded-xl border transition-colors ${
+                      entry.rank === 1
+                        ? 'bg-yellow-500/10 border-yellow-500/30'
+                        : entry.rank === 2
+                        ? 'bg-gray-400/10 border-gray-400/30'
+                        : entry.rank === 3
+                        ? 'bg-orange-500/10 border-orange-500/30'
+                        : 'bg-black/50 border-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`text-lg font-bold w-8 text-center ${
+                        entry.rank === 1 ? 'text-yellow-400' :
+                        entry.rank === 2 ? 'text-gray-300' :
+                        entry.rank === 3 ? 'text-orange-400' : 'text-gray-500'
+                      }`}>
+                        #{entry.rank}
+                      </span>
+                      <div>
+                        <div className="font-semibold text-white">{entry.bracketName}</div>
+                        <div className="text-xs text-gray-500">{entry.ownerName}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-cyan-400 font-bold text-lg">{entry.score} pts</div>
+                      <div className="text-xs text-gray-500">{entry.correct}/{entry.total} correct</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
