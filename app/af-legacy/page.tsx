@@ -30,6 +30,7 @@ import EtsyShop from "@/components/EtsyShop"
 import ExploitMyLeague from "@/components/ExploitMyLeague"
 import { DraftGradesSection } from "@/components/rankings/DraftGradesSection"
 import { HallOfFameSection } from "@/components/rankings/HallOfFameSection"
+import MigrationProof from "@/components/MigrationProof"
 import OverviewLanes from "@/app/af-legacy/components/OverviewLanes"
 import OverviewReportCard from "@/app/af-legacy/components/OverviewReportCard"
 import OverviewInsights from "@/app/af-legacy/components/OverviewInsights"
@@ -15358,6 +15359,13 @@ function AFLegacyContent() {
                         </p>
                       )}
                     </div>
+
+                    {/* Migration Proof: Before → After Split Screen */}
+                    {transferPreview && (
+                      <div className="mb-8">
+                        <MigrationProof preview={transferPreview} />
+                      </div>
+                    )}
 
                     {/* Transfer Preview Results - Enhanced Phone Mockup */}
                     {transferPreview && (
