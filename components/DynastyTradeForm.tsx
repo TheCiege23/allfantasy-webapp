@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +48,28 @@ export default function DynastyTradeForm() {
   const [teamBPickInput, setTeamBPickInput] = useState('');
   const [leagueContext, setLeagueContext] = useState('12-team SF PPR dynasty');
   const [result, setResult] = useState<TradeResult | null>(null);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('dynastyTrade');
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.teamAName) setTeamAName(data.teamAName);
+        if (data.teamBName) setTeamBName(data.teamBName);
+        if (data.teamAAssets) setTeamAAssets(data.teamAAssets);
+        if (data.teamBAssets) setTeamBAssets(data.teamBAssets);
+        if (data.leagueContext) setLeagueContext(data.leagueContext);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('dynastyTrade', JSON.stringify({
+        teamAName, teamBName, teamAAssets, teamBAssets, leagueContext,
+      }));
+    } catch {}
+  }, [teamAName, teamBName, teamAAssets, teamBAssets, leagueContext]);
 
   function addPlayerAsset(side: 'a' | 'b', player: Player | null) {
     if (!player) return;
