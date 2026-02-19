@@ -123,13 +123,10 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   }, [])
 
   const openComparison = useCallback((pick: any) => {
-    const draftedBefore = draftResults
-      .filter(d => d.overall <= pick.overall)
-      .map(d => normalizeName(d.playerName))
-    const bap = adpData.find(p => !draftedBefore.includes(normalizeName(p.name)))
-    setComparePlayer({ drafted: pick, bap: bap || null })
+    const bap = adpData.find(p => !draftResults.some(d => d.playerName === p.name))
+    setComparePlayer({ drafted: pick, bap })
     setComparisonOpen(true)
-  }, [draftResults, adpData, normalizeName])
+  }, [draftResults, adpData])
 
   useEffect(() => {
     if (!selectedLeagueId || !selectedLeague) return
