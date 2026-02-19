@@ -20,7 +20,7 @@ export default async function TournamentPage({
 
   if (!t) notFound()
 
-  const nodeCount = await (prisma as any).bracketNode.count({
+  const nodeCount = await (prisma as any).marchMadnessGame.count({
     where: { tournamentId: t.id },
   })
 

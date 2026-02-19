@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma"
 import { withApiUsage } from "@/lib/telemetry/usage"
 import {
   generateNcaamBracketStructure,
-  type BracketNodeSeedSpec,
+  type GameSpec,
   type FirstFourMapping,
   type FinalFourMapping,
   type RegionKey,
@@ -12,24 +12,15 @@ import {
 
 export const dynamic = "force-dynamic"
 
-function validateNodes(nodes: BracketNodeSeedSpec[]): string[] {
+function validateGames(games: GameSpec[]): string[] {
   const errors: string[] = []
-  const allSlots = new Set(nodes.map((n) => n.slot))
-
-  const slotCounts = new Map<string, number>()
-  for (const n of nodes) {
-    slotCounts.set(n.slot, (slotCounts.get(n.slot) || 0) + 1)
+  const gameNumbers = new Map<number, number>()
+  for (const g of games) {
+    gameNumbers.set(g.gameNumber, (gameNumbers.get(g.gameNumber) || 0) + 1)
   }
-  for (const [slot, count] of slotCounts) {
-    if (count > 1) errors.push(`Duplicate slot: ${slot}`)
+  for (const [num, count] of gameNumbers) {
+    if (count > 1) errors.push(`Duplicate gameNumber: ${num}`)
   }
-
-  for (const n of nodes) {
-    if (n.nextSlot && !allSlots.has(n.nextSlot)) {
-      errors.push(`${n.slot} references missing nextSlot: ${n.nextSlot}`)
-    }
-  }
-
   return errors
 }
 
@@ -117,7 +108,7 @@ export const POST = withApiUsage({
       finalFour: finalFour ?? undefined,
     })
 
-    const validationErrors = validateNodes(structure.nodes)
+    const validationErrors = validateGames(structure.games)
     if (validationErrors.length > 0) {
       return NextResponse.json({ error: "Bracket structure validation failed", details: validationErrors }, { status: 500 })
     }
@@ -131,47 +122,27 @@ export const POST = withApiUsage({
     })
 
     await prisma.$transaction(
-      structure.nodes.map((n) =>
-        prisma.bracketNode.create({
+      structure.games.map((g) =>
+        (prisma as any).marchMadnessGame.create({
           data: {
             tournamentId: tournament.id,
-            round: n.round,
-            region: n.region,
-            slot: n.slot,
-            seedHome: n.seedHome ?? null,
-            seedAway: n.seedAway ?? null,
-            nextNodeSide: n.nextSide ?? null,
+            round: g.round,
+            gameNumber: g.gameNumber,
+            team1Seed: g.team1Seed ?? null,
+            team2Seed: g.team2Seed ?? null,
           },
         })
       )
     )
 
-    const createdNodes = await prisma.bracketNode.findMany({
+    const createdGames = await (prisma as any).marchMadnessGame.findMany({
       where: { tournamentId: tournament.id },
-      select: { id: true, slot: true },
+      select: { id: true, gameNumber: true },
     })
-    const slotToId = new Map(createdNodes.map((n) => [n.slot, n.id]))
-
-    const updates = structure.nodes
-      .filter((n) => n.nextSlot)
-      .map((n) => {
-        const nodeId = slotToId.get(n.slot)
-        const nextId = slotToId.get(n.nextSlot!)
-        if (!nodeId || !nextId) return null
-        return prisma.bracketNode.update({
-          where: { id: nodeId },
-          data: { nextNodeId: nextId },
-        })
-      })
-      .filter(Boolean)
-
-    if (updates.length > 0) {
-      await prisma.$transaction(updates as any)
-    }
 
     const roundCounts: Record<number, number> = {}
-    for (const n of structure.nodes) {
-      roundCounts[n.round] = (roundCounts[n.round] || 0) + 1
+    for (const g of structure.games) {
+      roundCounts[g.round] = (roundCounts[g.round] || 0) + 1
     }
 
     const summary = {
@@ -179,7 +150,7 @@ export const POST = withApiUsage({
       name: tournament.name,
       season: tournament.season,
       sport: tournament.sport,
-      totalNodes: createdNodes.length,
+      totalGames: createdGames.length,
       byRound: {
         firstFour: roundCounts[0] || 0,
         roundOf64: roundCounts[1] || 0,

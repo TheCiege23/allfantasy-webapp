@@ -47,12 +47,12 @@ export default async function LeagueDetailPage({
   let topStandings: { entryId: string; entryName: string; ownerName: string; points: number }[] = []
 
   if (entryIds.length > 0) {
-    const sums = await (prisma as any).bracketPick.groupBy({
-      by: ["entryId"],
-      where: { entryId: { in: entryIds } },
+    const sums = await (prisma as any).marchMadnessPick.groupBy({
+      by: ["bracketId"],
+      where: { bracketId: { in: entryIds } },
       _sum: { points: true },
     })
-    const scoreBy = new Map(sums.map((s: any) => [s.entryId, s._sum.points ?? 0]))
+    const scoreBy = new Map(sums.map((s: any) => [s.bracketId, s._sum.points ?? 0]))
 
     topStandings = league.entries
       .map((e: any) => ({
@@ -66,8 +66,8 @@ export default async function LeagueDetailPage({
   }
 
   const pickCount = entryIds.length > 0
-    ? await (prisma as any).bracketPick.count({
-        where: { entryId: { in: entryIds }, pickedTeamName: { not: null } },
+    ? await (prisma as any).marchMadnessPick.count({
+        where: { bracketId: { in: entryIds }, winnerTeam: { not: null } },
       })
     : 0
 

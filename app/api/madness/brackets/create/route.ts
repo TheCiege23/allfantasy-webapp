@@ -40,11 +40,11 @@ export async function POST(req: Request) {
     },
   })
 
-  await (prisma as any).bracketPick.createMany({
-    data: Object.entries(picks).map(([nodeId, winnerTeam]) => ({
-      entryId: bracket.id,
-      nodeId,
-      pickedTeamName: winnerTeam as string,
+  await (prisma as any).marchMadnessPick.createMany({
+    data: Object.entries(picks).map(([gameId, winnerTeam]) => ({
+      bracketId: bracket.id,
+      gameId,
+      winnerTeam: winnerTeam as string,
     })),
   })
 

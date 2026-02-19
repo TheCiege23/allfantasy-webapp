@@ -20,14 +20,14 @@ export async function GET(
       },
     })
 
-    const sums = await prisma.bracketPick.groupBy({
-      by: ["entryId"],
-      where: { entryId: { in: entries.map((e) => e.id) } },
+    const sums = await (prisma as any).marchMadnessPick.groupBy({
+      by: ["bracketId"],
+      where: { bracketId: { in: entries.map((e) => e.id) } },
       _sum: { points: true },
     })
 
     const scoreByEntry = new Map(
-      sums.map((s) => [s.entryId, s._sum.points ?? 0])
+      sums.map((s: any) => [s.bracketId, s._sum.points ?? 0])
     )
 
     const standings = entries
