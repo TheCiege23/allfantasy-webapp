@@ -14,8 +14,8 @@ export default async function LeagueDetailPage({
 }: {
   params: { leagueId: string }
 }) {
-  const { userId, email } = await requireVerifiedSession()
-  const user = { id: userId, email }
+  const { userId, profile } = await requireVerifiedSession()
+  const user = { id: userId, email: (profile as any)?.email || '' }
 
   const league = await (prisma as any).bracketLeague.findUnique({
     where: { id: params.leagueId },
