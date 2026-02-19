@@ -32,6 +32,10 @@ function serializeLeague(league: any) {
       strengthNotes: t.strengthNotes,
       riskNotes: t.riskNotes,
       avatarUrl: t.avatarUrl,
+      performances: (t.performances || []).map((p: any) => ({
+        week: p.week,
+        points: p.points,
+      })),
     })),
   };
 }
@@ -53,6 +57,12 @@ export default async function RankingsPage() {
           { aiPowerScore: { sort: "desc", nulls: "last" } },
           { pointsFor: "desc" },
         ],
+        include: {
+          performances: {
+            orderBy: { week: "asc" },
+            select: { week: true, points: true },
+          },
+        },
       },
     },
   });

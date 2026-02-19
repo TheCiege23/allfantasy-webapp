@@ -2,12 +2,19 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Trophy, TrendingUp, Users, ChevronDown } from "lucide-react";
+import { Trophy, TrendingUp, TrendingDown, Minus, Users, ChevronDown, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { LineChart, Line } from "recharts";
+import { toast } from "sonner";
+
+interface PerformancePoint {
+  week: number;
+  points: number;
+}
 
 interface TeamData {
   id: string;
@@ -24,6 +31,7 @@ interface TeamData {
   strengthNotes: string | null;
   riskNotes: string | null;
   avatarUrl: string | null;
+  performances: PerformancePoint[];
 }
 
 interface LeagueData {
@@ -36,6 +44,26 @@ interface LeagueData {
   teams: TeamData[];
 }
 
+function generateMockPerfs(base: number, trend: 'up' | 'down' | 'steady'): PerformancePoint[] {
+  return Array.from({ length: 7 }, (_, i) => ({
+    week: i + 1,
+    points: base + (trend === 'up' ? i * 8 : trend === 'down' ? -i * 6 : 0) + (Math.random() * 20 - 10),
+  }));
+}
+
+function getTrend(perfs: PerformancePoint[]): 'up' | 'down' | 'steady' {
+  if (perfs.length < 3) return 'steady';
+  const recent = perfs.slice(-3);
+  const earlier = perfs.slice(-6, -3);
+  if (earlier.length === 0) return 'steady';
+  const recentAvg = recent.reduce((s, p) => s + p.points, 0) / recent.length;
+  const earlierAvg = earlier.reduce((s, p) => s + p.points, 0) / earlier.length;
+  const diff = recentAvg - earlierAvg;
+  if (diff > 5) return 'up';
+  if (diff < -5) return 'down';
+  return 'steady';
+}
+
 const mockLeague: LeagueData = {
   id: "mock",
   name: "Sample Dynasty League",
@@ -44,14 +72,14 @@ const mockLeague: LeagueData = {
   scoring: "ppr",
   leagueSize: 12,
   teams: [
-    { id: "m1", teamName: "Gridiron Gods", ownerName: "Cjabar", pointsFor: 1428.6, pointsAgainst: 1180.2, wins: 6, losses: 1, ties: 0, currentRank: 1, aiPowerScore: 92, projectedWins: 10.2, strengthNotes: "Elite RB depth", riskNotes: "QB injury prone", avatarUrl: null },
-    { id: "m2", teamName: "Sleeper Agents", ownerName: "commissioner", pointsFor: 1389.2, pointsAgainst: 1210.5, wins: 5, losses: 2, ties: 0, currentRank: 2, aiPowerScore: 87, projectedWins: 9.1, strengthNotes: "WR corps on fire", riskNotes: "Bye week hell", avatarUrl: null },
-    { id: "m3", teamName: "Touchdown Tyrants", ownerName: "ballerNJ", pointsFor: 1351.8, pointsAgainst: 1260.1, wins: 5, losses: 2, ties: 0, currentRank: 3, aiPowerScore: 84, projectedWins: 8.7, strengthNotes: "Streaming defense wins", riskNotes: "Low bench upside", avatarUrl: null },
-    { id: "m4", teamName: "Jersey Jokers", ownerName: "you", pointsFor: 1297.4, pointsAgainst: 1290.0, wins: 4, losses: 3, ties: 0, currentRank: 4, aiPowerScore: 79, projectedWins: 7.5, strengthNotes: "Balanced roster", riskNotes: "Aging stars", avatarUrl: null },
-    { id: "m5", teamName: "Draft Day Divas", ownerName: "queenB", pointsFor: 1265.1, pointsAgainst: 1275.0, wins: 3, losses: 4, ties: 0, currentRank: 5, aiPowerScore: 76, projectedWins: 6.8, strengthNotes: "TE advantage", riskNotes: "Thin at WR", avatarUrl: null },
-    { id: "m6", teamName: "Waiver Warriors", ownerName: "pickupKing", pointsFor: 1242.7, pointsAgainst: 1310.2, wins: 3, losses: 4, ties: 0, currentRank: 6, aiPowerScore: 73, projectedWins: 6.2, strengthNotes: "Waiver wire gold", riskNotes: "No true WR1", avatarUrl: null },
-    { id: "m7", teamName: "Dynasty Demons", ownerName: "longGame", pointsFor: 1198.3, pointsAgainst: 1340.0, wins: 2, losses: 5, ties: 0, currentRank: 7, aiPowerScore: 70, projectedWins: 5.1, strengthNotes: "Young core", riskNotes: "Not contending yet", avatarUrl: null },
-    { id: "m8", teamName: "Punt City", ownerName: "tankCommander", pointsFor: 1156.9, pointsAgainst: 1380.5, wins: 1, losses: 6, ties: 0, currentRank: 8, aiPowerScore: 65, projectedWins: 3.8, strengthNotes: "2026 draft capital", riskNotes: "Worst roster now", avatarUrl: null },
+    { id: "m1", teamName: "Gridiron Gods", ownerName: "Cjabar", pointsFor: 1428.6, pointsAgainst: 1180.2, wins: 6, losses: 1, ties: 0, currentRank: 1, aiPowerScore: 92, projectedWins: 10.2, strengthNotes: "Elite RB depth", riskNotes: "QB injury prone", avatarUrl: null, performances: generateMockPerfs(140, 'up') },
+    { id: "m2", teamName: "Sleeper Agents", ownerName: "commissioner", pointsFor: 1389.2, pointsAgainst: 1210.5, wins: 5, losses: 2, ties: 0, currentRank: 2, aiPowerScore: 87, projectedWins: 9.1, strengthNotes: "WR corps on fire", riskNotes: "Bye week hell", avatarUrl: null, performances: generateMockPerfs(135, 'steady') },
+    { id: "m3", teamName: "Touchdown Tyrants", ownerName: "ballerNJ", pointsFor: 1351.8, pointsAgainst: 1260.1, wins: 5, losses: 2, ties: 0, currentRank: 3, aiPowerScore: 84, projectedWins: 8.7, strengthNotes: "Streaming defense wins", riskNotes: "Low bench upside", avatarUrl: null, performances: generateMockPerfs(130, 'up') },
+    { id: "m4", teamName: "Jersey Jokers", ownerName: "you", pointsFor: 1297.4, pointsAgainst: 1290.0, wins: 4, losses: 3, ties: 0, currentRank: 4, aiPowerScore: 79, projectedWins: 7.5, strengthNotes: "Balanced roster", riskNotes: "Aging stars", avatarUrl: null, performances: generateMockPerfs(125, 'steady') },
+    { id: "m5", teamName: "Draft Day Divas", ownerName: "queenB", pointsFor: 1265.1, pointsAgainst: 1275.0, wins: 3, losses: 4, ties: 0, currentRank: 5, aiPowerScore: 76, projectedWins: 6.8, strengthNotes: "TE advantage", riskNotes: "Thin at WR", avatarUrl: null, performances: generateMockPerfs(120, 'down') },
+    { id: "m6", teamName: "Waiver Warriors", ownerName: "pickupKing", pointsFor: 1242.7, pointsAgainst: 1310.2, wins: 3, losses: 4, ties: 0, currentRank: 6, aiPowerScore: 73, projectedWins: 6.2, strengthNotes: "Waiver wire gold", riskNotes: "No true WR1", avatarUrl: null, performances: generateMockPerfs(115, 'steady') },
+    { id: "m7", teamName: "Dynasty Demons", ownerName: "longGame", pointsFor: 1198.3, pointsAgainst: 1340.0, wins: 2, losses: 5, ties: 0, currentRank: 7, aiPowerScore: 70, projectedWins: 5.1, strengthNotes: "Young core", riskNotes: "Not contending yet", avatarUrl: null, performances: generateMockPerfs(110, 'up') },
+    { id: "m8", teamName: "Punt City", ownerName: "tankCommander", pointsFor: 1156.9, pointsAgainst: 1380.5, wins: 1, losses: 6, ties: 0, currentRank: 8, aiPowerScore: 65, projectedWins: 3.8, strengthNotes: "2026 draft capital", riskNotes: "Worst roster now", avatarUrl: null, performances: generateMockPerfs(100, 'down') },
   ],
 };
 
@@ -87,13 +115,21 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
     if (!hasRealData || refreshing) return;
     setRefreshing(true);
     try {
-      await fetch("/api/rankings", {
+      const res = await fetch("/api/rankings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leagueId: league.id }),
       });
-      window.location.reload();
+      if (res.ok) {
+        toast.success("AI rankings refreshed! Reloading...");
+        setTimeout(() => window.location.reload(), 800);
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Failed to refresh rankings");
+        setRefreshing(false);
+      }
     } catch {
+      toast.error("Something went wrong. Please try again.");
       setRefreshing(false);
     }
   }
@@ -159,7 +195,11 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
               disabled={!hasRealData || refreshing}
               className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 disabled:opacity-50"
             >
-              {refreshing ? "Refreshing\u2026" : "Refresh AI Analysis"}
+              {refreshing ? (
+                <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Refreshing…</>
+              ) : (
+                <><RefreshCw className="mr-2 h-4 w-4" /> Refresh AI Analysis</>
+              )}
             </Button>
           </div>
         </div>
@@ -190,9 +230,9 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
                       <TableHead className="text-center">Record</TableHead>
                       <TableHead className="text-right">Points</TableHead>
                       <TableHead className="hidden md:table-cell text-center">AI Score</TableHead>
+                      <TableHead className="hidden md:table-cell text-center w-28">Trend</TableHead>
                       <TableHead className="hidden lg:table-cell">Strength</TableHead>
                       <TableHead className="hidden lg:table-cell">Risk</TableHead>
-                      <TableHead className="w-32"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -248,6 +288,34 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
                               {score !== null ? score.toFixed(0) : "\u2014"}
                             </span>
                           </TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            <div className="flex items-center gap-2">
+                              {team.performances.length > 1 ? (
+                                <LineChart width={80} height={36} data={team.performances}>
+                                  <Line
+                                    type="natural"
+                                    dataKey="points"
+                                    stroke={
+                                      getTrend(team.performances) === 'up' ? '#22d3ee' :
+                                      getTrend(team.performances) === 'down' ? '#f87171' :
+                                      '#a78bfa'
+                                    }
+                                    strokeWidth={2.5}
+                                    dot={false}
+                                  />
+                                </LineChart>
+                              ) : (
+                                <span className="text-xs text-gray-600">No data</span>
+                              )}
+                              {team.performances.length >= 3 && (
+                                <span className="flex-shrink-0">
+                                  {getTrend(team.performances) === 'up' && <TrendingUp className="h-4 w-4 text-cyan-400" />}
+                                  {getTrend(team.performances) === 'down' && <TrendingDown className="h-4 w-4 text-red-400" />}
+                                  {getTrend(team.performances) === 'steady' && <Minus className="h-4 w-4 text-purple-400" />}
+                                </span>
+                              )}
+                            </div>
+                          </TableCell>
                           <TableCell className="hidden lg:table-cell">
                             <Badge variant="outline" className="border-green-600/40 bg-green-950/30 text-green-300">
                               {team.strengthNotes || "N/A"}
@@ -257,11 +325,6 @@ export default function RankingsClient({ leagues, isSignedIn }: RankingsClientPr
                             <Badge variant="outline" className="border-orange-600/40 bg-orange-950/30 text-orange-300">
                               {team.riskNotes || "N/A"}
                             </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm" className="text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/40">
-                              Details
-                            </Button>
                           </TableCell>
                         </motion.tr>
                       );
