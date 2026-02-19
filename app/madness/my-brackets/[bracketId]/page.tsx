@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import BracketTree from "@/components/madness/BracketTree"
+import ShareBracketButton from "@/components/madness/ShareBracketButton"
 import Link from "next/link"
 
 export default async function BracketViewPage({ params }: { params: { bracketId: string } }) {
@@ -64,9 +65,12 @@ export default async function BracketViewPage({ params }: { params: { bracketId:
     <div className="min-h-screen bg-[#0a0a0f] py-12">
       <div className="container mx-auto px-4">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
-            {bracket.name}
-          </h1>
+          <div className="flex items-center justify-center gap-4">
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">
+              {bracket.name}
+            </h1>
+            <ShareBracketButton bracketId={bracket.id} />
+          </div>
           {bracket.league && (
             <Link
               href={`/madness/leagues/${bracket.league.id}/leaderboard`}
