@@ -8,6 +8,14 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown } from 'lucide-react';
+import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
+
+type Player = {
+  id: string;
+  name: string;
+  position: string;
+  team: string | null;
+};
 
 interface TradeAsset {
   id: string;
@@ -34,8 +42,6 @@ export default function DynastyTradeForm() {
   const [teamBName, setTeamBName] = useState('Team B');
   const [teamAAssets, setTeamAAssets] = useState<TradeAsset[]>([]);
   const [teamBAssets, setTeamBAssets] = useState<TradeAsset[]>([]);
-  const [teamAInput, setTeamAInput] = useState('');
-  const [teamBInput, setTeamBInput] = useState('');
   const [teamAPickInput, setTeamAPickInput] = useState('');
   const [teamBPickInput, setTeamBPickInput] = useState('');
   const [leagueFormat, setLeagueFormat] = useState<'dynasty' | 'keeper'>('dynasty');
@@ -43,15 +49,25 @@ export default function DynastyTradeForm() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TradeResult | null>(null);
 
-  function addAsset(side: 'a' | 'b', name: string, type: 'player' | 'pick') {
-    if (!name.trim()) return;
-    const asset: TradeAsset = { id: `${Date.now()}-${Math.random()}`, name: name.trim(), type };
+  function addPlayerAsset(side: 'a' | 'b', player: Player | null) {
+    if (!player) return;
+    const asset: TradeAsset = { id: player.id, name: `${player.name} (${player.position})`, type: 'player' };
     if (side === 'a') {
       setTeamAAssets(prev => [...prev, asset]);
-      type === 'player' ? setTeamAInput('') : setTeamAPickInput('');
     } else {
       setTeamBAssets(prev => [...prev, asset]);
-      type === 'player' ? setTeamBInput('') : setTeamBPickInput('');
+    }
+  }
+
+  function addPickAsset(side: 'a' | 'b', name: string) {
+    if (!name.trim()) return;
+    const asset: TradeAsset = { id: `${Date.now()}-${Math.random()}`, name: name.trim(), type: 'pick' };
+    if (side === 'a') {
+      setTeamAAssets(prev => [...prev, asset]);
+      setTeamAPickInput('');
+    } else {
+      setTeamBAssets(prev => [...prev, asset]);
+      setTeamBPickInput('');
     }
   }
 
@@ -185,35 +201,23 @@ export default function DynastyTradeForm() {
           </CardHeader>
           <CardContent className="space-y-4">
             <AssetList side="a" assets={teamAAssets} />
-            <div className="flex gap-2">
-              <Input
-                placeholder="Player name"
-                value={teamAInput}
-                onChange={(e) => setTeamAInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addAsset('a', teamAInput, 'player')}
-                className="border-cyan-600/30 bg-gray-900 focus:border-cyan-500"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => addAsset('a', teamAInput, 'player')}
-                className="border-cyan-600/40 text-cyan-400 shrink-0"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            <PlayerAutocomplete
+              value={null}
+              onChange={(player) => addPlayerAsset('a', player)}
+              placeholder="Search players to add..."
+            />
             <div className="flex gap-2">
               <Input
                 placeholder="Draft pick (e.g. 2026 1st early)"
                 value={teamAPickInput}
                 onChange={(e) => setTeamAPickInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addAsset('a', teamAPickInput, 'pick')}
+                onKeyDown={(e) => e.key === 'Enter' && addPickAsset('a', teamAPickInput)}
                 className="border-amber-600/30 bg-gray-900 focus:border-amber-500"
               />
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => addAsset('a', teamAPickInput, 'pick')}
+                onClick={() => addPickAsset('a', teamAPickInput)}
                 className="border-amber-600/40 text-amber-400 shrink-0"
               >
                 <Plus className="h-4 w-4" />
@@ -237,35 +241,23 @@ export default function DynastyTradeForm() {
           </CardHeader>
           <CardContent className="space-y-4">
             <AssetList side="b" assets={teamBAssets} />
-            <div className="flex gap-2">
-              <Input
-                placeholder="Player name"
-                value={teamBInput}
-                onChange={(e) => setTeamBInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addAsset('b', teamBInput, 'player')}
-                className="border-purple-600/30 bg-gray-900 focus:border-purple-500"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => addAsset('b', teamBInput, 'player')}
-                className="border-purple-600/40 text-purple-400 shrink-0"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            <PlayerAutocomplete
+              value={null}
+              onChange={(player) => addPlayerAsset('b', player)}
+              placeholder="Search players to add..."
+            />
             <div className="flex gap-2">
               <Input
                 placeholder="Draft pick (e.g. 2026 2nd mid)"
                 value={teamBPickInput}
                 onChange={(e) => setTeamBPickInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addAsset('b', teamBPickInput, 'pick')}
+                onKeyDown={(e) => e.key === 'Enter' && addPickAsset('b', teamBPickInput)}
                 className="border-amber-600/30 bg-gray-900 focus:border-amber-500"
               />
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => addAsset('b', teamBPickInput, 'pick')}
+                onClick={() => addPickAsset('b', teamBPickInput)}
                 className="border-amber-600/40 text-amber-400 shrink-0"
               >
                 <Plus className="h-4 w-4" />
