@@ -608,14 +608,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                   </div>
                   <p className="text-sm text-purple-100 break-words leading-relaxed">{msg.message}</p>
                   {msg.animationUrl && (
-                    <div className="mt-3 rounded-lg overflow-hidden border border-purple-500/20">
-                      <img
-                        src={msg.animationUrl}
-                        alt="Chimmy celebration animation"
-                        className="w-full max-w-sm rounded-lg"
-                        loading="lazy"
-                      />
-                    </div>
+                    <img src={msg.animationUrl} alt="AI Animation" className="mt-2 rounded-xl max-w-full" loading="lazy" />
                   )}
                 </div>
               </div>
