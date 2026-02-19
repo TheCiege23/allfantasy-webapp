@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { sideA, sideB, leagueContext } = await req.json();
+  const { sideA, sideB, leagueContext, counterFromPartner } = await req.json();
 
   if (!sideA || !sideB) {
     return NextResponse.json(
@@ -42,9 +42,39 @@ export async function POST(req: Request) {
     console.warn('[dynasty-trade-analyzer] ADP fetch failed, continuing without:', err);
   }
 
-  const systemPrompt = `You are a top dynasty fantasy football analyst. You must return ONLY valid JSON. Never hallucinate player stats or values — if uncertain, say so. Use realistic dynasty valuation logic grounded in age curves, positional scarcity, draft capital value, and long-term production windows. When ADP data is provided, use it as the primary source for player values.`;
+  const systemPrompt = counterFromPartner
+    ? `You are a dynasty fantasy football team manager who just received a trade offer. You must return ONLY valid JSON. You are interested in the deal but want slightly better terms. Use realistic dynasty valuation logic grounded in age curves, positional scarcity, draft capital value, and long-term production windows. When ADP data is provided, use it as the primary source for player values. Be reasonable — your counter should be close to fair, not a fleece.`
+    : `You are a top dynasty fantasy football analyst. You must return ONLY valid JSON. Never hallucinate player stats or values — if uncertain, say so. Use realistic dynasty valuation logic grounded in age curves, positional scarcity, draft capital value, and long-term production windows. When ADP data is provided, use it as the primary source for player values.`;
 
-  const userPrompt = `Evaluate this trade in a dynasty context (${leagueContext || 'standard SF PPR'}).
+  let promptRole = 'Evaluate this trade as a neutral analyst.';
+  if (counterFromPartner) {
+    promptRole = `You are the partner team countering the user's offer. Suggest a realistic counter that improves your side slightly while still being acceptable.`;
+  }
+
+  const userPrompt = counterFromPartner
+    ? `${promptRole}
+
+Trade proposed to you:
+User offers: ${sideA}
+You would give: ${sideB}${adpContext}
+
+Suggest a counter-offer — what do you ask for instead to make the deal work for you?
+
+Output JSON only:
+{
+  "winner": "Team A" | "Team B" | "Even" | "Slight edge to Team A" | "Slight edge to Team B",
+  "valueDelta": "short explanation of value gap you see in the original offer",
+  "factors": ["array of 3-5 reasons why you want a better deal"],
+  "confidence": number 0-100,
+  "dynastyVerdict": "1-2 sentence take on the trade from your perspective",
+  "youGiveAdjusted": "what you would give instead (realistic counter)",
+  "youWantAdded": "what extra piece you want from the user (e.g. a future pick, a prospect)",
+  "reason": "1-2 sentence explanation of why this counter is fair",
+  "recommendations": ["1-2 suggestions for how the user could sweeten the deal"]
+}`
+    : `${promptRole}
+
+Evaluate this trade in a dynasty context (${leagueContext || 'standard SF PPR'}).
 
 Trade:
 Team A receives: ${sideA}

@@ -166,7 +166,9 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
           ...trade,
           status: 'countered',
           counterOffer: data.analysis,
-          outcome: `Counter from ${trade.partner}: They want ${data.analysis.valueDelta || 'more value'}. ${data.analysis.recommendations?.[0] || ''}`,
+          outcome: data.analysis.youGiveAdjusted
+            ? `Counter from ${trade.partner}: "${data.analysis.reason || 'I need a bit more.'}" They'd give ${data.analysis.youGiveAdjusted} and want you to add ${data.analysis.youWantAdded || 'a future pick'}.`
+            : `Counter from ${trade.partner}: ${data.analysis.valueDelta || 'They want more value'}. ${data.analysis.recommendations?.[0] || ''}`,
         };
         setSuggestions(newSuggestions);
         toast.info(`Counter received from ${trade.partner}`, {
