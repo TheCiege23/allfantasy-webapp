@@ -1,9 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowRightLeft, Plus, Minus } from 'lucide-react';
+import { ArrowRightLeft, Plus, Minus, Copy, ExternalLink } from 'lucide-react';
 
 type CounterSuggestion = {
   description: string;
@@ -14,13 +15,43 @@ type CounterSuggestion = {
 
 interface CounterSuggestionCardProps {
   suggestion: CounterSuggestion;
-  onPropose?: () => void;
+  leagueId: string;
+  originalGive: any[];
+  originalGet: any[];
 }
 
 export default function CounterSuggestionCard({
   suggestion,
-  onPropose,
+  leagueId,
+  originalGive,
+  originalGet,
 }: CounterSuggestionCardProps) {
+  const [copied, setCopied] = useState(false);
+
+  const copySummary = () => {
+    const newGive = [...originalGive.map(p => p.name), ...suggestion.giveAdd].join(', ');
+    const newGet = originalGet
+      .filter(p => !suggestion.getRemove.includes(p.name))
+      .map(p => p.name)
+      .join(', ');
+
+    const text =
+      `AllFantasy Counter Proposal:\n\n` +
+      `Original: Give ${originalGive.map(p => p.name).join(', ')} → Get ${originalGet.map(p => p.name).join(', ')}\n\n` +
+      `Counter: ${suggestion.description}\n` +
+      `New Give: ${newGive}\n` +
+      `New Get: ${newGet}\n\n` +
+      `Est. delta: ${suggestion.estimatedDelta}`;
+
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const openInSleeper = () => {
+    window.open(`https://sleeper.app/leagues/${leagueId}`, '_blank');
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -77,14 +108,24 @@ export default function CounterSuggestionCard({
           </div>
         </CardContent>
 
-        <CardFooter className="pt-2">
+        <CardFooter className="flex gap-3 pt-2">
           <Button
             variant="outline"
             size="sm"
-            className="w-full border-cyan-600 text-cyan-300 hover:bg-cyan-950/50 hover:text-cyan-200"
-            onClick={onPropose}
+            className="flex-1 border-cyan-600 text-cyan-300 hover:bg-cyan-950/50 hover:text-cyan-200"
+            onClick={openInSleeper}
           >
-            Propose this Counter in Sleeper
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Open in Sleeper
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="flex-1"
+            onClick={copySummary}
+          >
+            <Copy className="mr-2 h-4 w-4" />
+            {copied ? 'Copied!' : 'Copy Summary'}
           </Button>
         </CardFooter>
       </Card>
