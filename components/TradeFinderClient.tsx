@@ -18,6 +18,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [tab, setTab] = useState<'find' | 'partner'>('find');
+  const [counterLoading, setCounterLoading] = useState<number | null>(null);
 
   const selectedLeague = initialLeagues.find(l => l.id === leagueId);
 
@@ -149,15 +150,51 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
     toast.error(`Offer rejected by ${trade.partner}`);
   };
 
-  const simulateCounter = (trade: any, index: number) => {
-    const newSuggestions = [...suggestions];
-    newSuggestions[index] = {
-      ...trade,
-      status: 'countered',
-      outcome: `${trade.partner} is interested but wants more. They counter-offered: swap ${trade.youGive || 'your piece'} + a future pick for ${trade.youGet || 'their piece'} + a prospect.`,
-    };
-    setSuggestions(newSuggestions);
-    toast.info(`${trade.partner} sent a counter offer!`, { description: 'Review the updated terms' });
+  const simulateCounter = async (trade: any, index: number) => {
+    setCounterLoading(index);
+    try {
+      const { data } = await callAI('/api/dynasty-trade-analyzer', {
+        sideA: trade.youGive,
+        sideB: trade.youGet,
+        leagueContext: 'Counter-offer simulation from partner perspective',
+        counterFromPartner: true,
+      });
+
+      if (data?.analysis) {
+        const newSuggestions = [...suggestions];
+        newSuggestions[index] = {
+          ...trade,
+          status: 'countered',
+          counterOffer: data.analysis,
+          outcome: `Counter from ${trade.partner}: They want ${data.analysis.valueDelta || 'more value'}. ${data.analysis.recommendations?.[0] || ''}`,
+        };
+        setSuggestions(newSuggestions);
+        toast.info(`Counter received from ${trade.partner}`, {
+          description: data.analysis.dynastyVerdict || 'They adjusted the deal slightly.',
+          duration: 8000,
+        });
+      } else {
+        const newSuggestions = [...suggestions];
+        newSuggestions[index] = {
+          ...trade,
+          status: 'countered',
+          outcome: `${trade.partner} is interested but wants more. They counter-offered: swap ${trade.youGive || 'your piece'} + a future pick for ${trade.youGet || 'their piece'} + a prospect.`,
+        };
+        setSuggestions(newSuggestions);
+        toast.info(`${trade.partner} sent a counter offer!`, { description: 'Review the updated terms' });
+      }
+    } catch {
+      const newSuggestions = [...suggestions];
+      newSuggestions[index] = {
+        ...trade,
+        status: 'countered',
+        outcome: `${trade.partner} is interested but wants more. They counter-offered: swap ${trade.youGive || 'your piece'} + a future pick for ${trade.youGet || 'their piece'} + a prospect.`,
+      };
+      setSuggestions(newSuggestions);
+      toast.info(`${trade.partner} sent a counter offer!`, { description: 'Review the updated terms' });
+    } finally {
+      setCounterLoading(null);
+    }
   };
 
   return (
@@ -364,9 +401,10 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                         variant="outline"
                         size="sm"
                         onClick={() => simulateCounter(trade, i)}
-                        className="flex-1 border-yellow-500/50 text-yellow-400 hover:bg-yellow-950/40"
+                        disabled={counterLoading === i}
+                        className="flex-1 border-yellow-500/50 text-yellow-400 hover:bg-yellow-950/40 disabled:opacity-50"
                       >
-                        Counter Offer
+                        {counterLoading === i ? 'Analyzing...' : 'Counter Offer'}
                       </Button>
                       <Button
                         size="sm"
