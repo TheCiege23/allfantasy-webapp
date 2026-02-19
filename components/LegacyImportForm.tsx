@@ -19,21 +19,34 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
   const [endSeason, setEndSeason] = useState(2025);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ season: number; status: string; leagueName?: string }[]>([]);
+  const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   const seasonRange = Array.from(
     { length: endSeason - startSeason + 1 },
     (_, i) => startSeason + i
   );
 
-  const handleImport = async () => {
+  const validate = () => {
+    const newErrors: typeof errors = {};
+
     if (platform === 'sleeper' && !sleeperUsername.trim()) {
-      toast.error('Please enter your Sleeper username');
-      return;
+      newErrors.sleeperUsername = 'Sleeper Username is required';
     }
-    if (platform === 'espn' && !espnLeagueId.trim()) {
-      toast.error('Please enter your ESPN League ID');
-      return;
+    if (platform === 'espn') {
+      if (!espnLeagueId.trim()) newErrors.espnLeagueId = 'ESPN League ID is required';
     }
+    if (startSeason > endSeason) {
+      newErrors.seasonRange = 'Start season must be before end season';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleImport = async () => {
+    setFormError(null);
+    if (!validate()) return;
 
     setLoading(true);
     setResults([]);
@@ -43,7 +56,8 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
       if (platform === 'sleeper') {
         const userRes = await fetch(`https://api.sleeper.app/v1/user/${sleeperUsername.trim()}`);
         if (!userRes.ok) {
-          toast.error('Sleeper username not found. Please check and try again.');
+          setFormError('Sleeper username not found. Please check and try again.');
+          toast.error('Sleeper username not found.');
           setLoading(false);
           return;
         }
@@ -69,6 +83,14 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
                 leagueName: `${data.imported} league${data.imported !== 1 ? 's' : ''}`,
               });
             } else {
+              if (res.status === 429) {
+                setFormError('Rate limit reached - please wait a minute and try again');
+                break;
+              }
+              if (res.status === 401) {
+                setFormError('Session expired - please log in again');
+                break;
+              }
               importResults.push({ season, status: data.error || 'Failed' });
             }
           } catch {
@@ -98,6 +120,14 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
                 leagueName: data.leagueName || 'Imported',
               });
             } else {
+              if (res.status === 429) {
+                setFormError('Rate limit reached - please wait a minute and try again');
+                break;
+              }
+              if (res.status === 401) {
+                setFormError('Session expired - please log in again');
+                break;
+              }
               importResults.push({ season, status: data.error || 'Failed' });
             }
           } catch {
@@ -129,7 +159,7 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
       <div className="flex gap-4 justify-center">
         <Button
           variant={platform === 'sleeper' ? 'default' : 'outline'}
-          onClick={() => setPlatform('sleeper')}
+          onClick={() => { setPlatform('sleeper'); setErrors({}); setFormError(null); }}
           className={platform === 'sleeper'
             ? 'flex-1 max-w-[200px] bg-cyan-600 hover:bg-cyan-700'
             : 'flex-1 max-w-[200px] border-cyan-600/40 text-cyan-400 hover:bg-cyan-950/40'
@@ -139,7 +169,7 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
         </Button>
         <Button
           variant={platform === 'espn' ? 'default' : 'outline'}
-          onClick={() => setPlatform('espn')}
+          onClick={() => { setPlatform('espn'); setErrors({}); setFormError(null); }}
           className={platform === 'espn'
             ? 'flex-1 max-w-[200px] bg-red-600 hover:bg-red-700'
             : 'flex-1 max-w-[200px] border-red-600/40 text-red-400 hover:bg-red-950/40'
@@ -167,10 +197,11 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
                 id="sleeper-username"
                 placeholder="e.g. cjabar"
                 value={sleeperUsername}
-                onChange={(e) => setSleeperUsername(e.target.value)}
+                onChange={(e) => { setSleeperUsername(e.target.value); setErrors(prev => { const n = { ...prev }; delete n.sleeperUsername; return n; }); }}
                 disabled={loading}
-                className="border-cyan-600/40 bg-gray-900 focus:border-cyan-500"
+                className={`bg-gray-900 focus:border-cyan-500 ${errors.sleeperUsername ? 'border-red-500' : 'border-cyan-600/40'}`}
               />
+              {errors.sleeperUsername && <p className="text-red-400 text-sm mt-1">{errors.sleeperUsername}</p>}
             </div>
           ) : (
             <>
@@ -180,10 +211,11 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
                   id="espn-league-id"
                   placeholder="e.g. 12345678 (from your league URL)"
                   value={espnLeagueId}
-                  onChange={(e) => setEspnLeagueId(e.target.value)}
+                  onChange={(e) => { setEspnLeagueId(e.target.value); setErrors(prev => { const n = { ...prev }; delete n.espnLeagueId; return n; }); }}
                   disabled={loading}
-                  className="border-red-600/40 bg-gray-900 focus:border-red-500"
+                  className={`bg-gray-900 focus:border-red-500 ${errors.espnLeagueId ? 'border-red-500' : 'border-red-600/40'}`}
                 />
+                {errors.espnLeagueId && <p className="text-red-400 text-sm mt-1">{errors.espnLeagueId}</p>}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -248,6 +280,16 @@ export default function LegacyImportForm({ userId }: { userId: string }) {
           <p className="text-sm text-gray-500">
             Importing {seasonRange.length} season{seasonRange.length !== 1 ? 's' : ''}: {startSeason} — {endSeason}
           </p>
+
+          {errors.seasonRange && (
+            <p className="text-red-400 text-sm">{errors.seasonRange}</p>
+          )}
+
+          {formError && (
+            <div className="bg-red-950/50 border border-red-500/50 text-red-300 p-4 rounded-lg">
+              {formError}
+            </div>
+          )}
 
           <Button
             onClick={handleImport}
