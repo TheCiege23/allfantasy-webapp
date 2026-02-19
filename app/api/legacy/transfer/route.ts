@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 import { getAllPlayers } from '@/lib/sleeper-client'
+import { computeRivalryWeek, type RivalryWeekData } from '@/lib/rivalry-engine'
 
 const openai = new OpenAI()
 
@@ -270,6 +271,61 @@ Example format:
       ]
     }
 
+    const rivalryWeek = computeRivalryWeek(allMatchups, trades, managers)
+
+    let rivalryNarratives: { rivalryOfTheWeek?: string; revengeGame?: string; tradeTension?: string } = {}
+    try {
+      const rivalryParts: string[] = []
+      if (rivalryWeek.rivalryOfTheWeek) {
+        const r = rivalryWeek.rivalryOfTheWeek
+        rivalryParts.push(`RIVALRY OF THE WEEK: ${r.team1.displayName} (${r.team1.wins}-${r.team1.losses}) vs ${r.team2.displayName} (${r.team2.wins}-${r.team2.losses}). H2H record: ${r.h2hRecord.wins1}-${r.h2hRecord.wins2}. Trade friction: ${r.tradeFriction} trades between them. Rivalry score: ${r.totalScore}. ${r.streakHolder ? `${r.streakHolder.rosterId === r.team1.rosterId ? r.team1.displayName : r.team2.displayName} on a ${r.streakHolder.streak}-game streak.` : ''}`)
+      }
+      if (rivalryWeek.revengeGame) {
+        const r = rivalryWeek.revengeGame
+        const loser = r.recentLoser === r.team1.rosterId ? r.team1 : r.team2
+        const winner = r.recentLoser === r.team1.rosterId ? r.team2 : r.team1
+        rivalryParts.push(`REVENGE GAME: ${loser.displayName} lost to ${winner.displayName} in Week ${r.lastMatchup?.week || '?'} and is seeking revenge. ${r.streakHolder ? `${winner.displayName} has won ${r.streakHolder.streak} straight.` : ''}`)
+      }
+      if (rivalryWeek.tradeTensionIndex) {
+        const t = rivalryWeek.tradeTensionIndex
+        rivalryParts.push(`TRADE TENSION: ${t.pair.team1.displayName} and ${t.pair.team2.displayName} have completed ${t.tradeCount} trades between them. Tension score: ${t.tensionScore}/100.`)
+      }
+
+      if (rivalryParts.length > 0) {
+        const narrativePrompt = `You are a fantasy sports hype narrator. Write short, punchy narrative cards for these league rivalries.
+
+League: "${league.name}" (${leagueType})
+
+${rivalryParts.join('\n\n')}
+
+For each card present, write a 1-2 sentence narrative that's dramatic, specific to the managers involved, and builds excitement. Reference actual records and stats when possible.
+
+Return JSON: {"rivalryOfTheWeek": "...", "revengeGame": "...", "tradeTension": "..."}
+Only include keys for cards that have data above. Keep each narrative under 50 words.`
+
+        const narrativeCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: narrativePrompt }],
+          response_format: { type: 'json_object' },
+          max_tokens: 400,
+        })
+
+        const narrativeContent = narrativeCompletion.choices[0]?.message?.content
+        if (narrativeContent) {
+          const parsed = JSON.parse(narrativeContent)
+          if (parsed && typeof parsed === 'object') {
+            rivalryNarratives = {
+              rivalryOfTheWeek: typeof parsed.rivalryOfTheWeek === 'string' ? parsed.rivalryOfTheWeek : undefined,
+              revengeGame: typeof parsed.revengeGame === 'string' ? parsed.revengeGame : undefined,
+              tradeTension: typeof parsed.tradeTension === 'string' ? parsed.tradeTension : undefined,
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Rivalry narrative generation error:', err)
+    }
+
     const transferPreview = {
       league: {
         id: league.league_id,
@@ -354,6 +410,8 @@ Example format:
       playerMap,
       draftInfo,
       storylines,
+      rivalryWeek,
+      rivalryNarratives,
     }
 
     return NextResponse.json({
