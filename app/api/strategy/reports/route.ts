@@ -10,35 +10,34 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const leagueId = req.nextUrl.searchParams.get('leagueId')
+  const { searchParams } = new URL(req.url)
+  const leagueId = searchParams.get('leagueId')
 
-  const where: any = { userId }
-  if (leagueId) {
-    where.leagueId = leagueId
+  if (!leagueId) {
+    return NextResponse.json({ error: 'Missing leagueId' }, { status: 400 })
   }
 
   try {
     const reports = await prisma.aIStrategyReport.findMany({
-      where,
+      where: {
+        userId,
+        leagueId,
+      },
       orderBy: { createdAt: 'desc' },
-      take: 20,
+      take: 10,
       select: {
         id: true,
         title: true,
+        createdAt: true,
         archetype: true,
         score: true,
-        leagueId: true,
-        createdAt: true,
         content: true,
       },
     })
 
-    return NextResponse.json({ reports })
-  } catch (error: any) {
-    console.error('[Strategy Reports] Error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch reports' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: true, reports })
+  } catch (error) {
+    console.error('Fetch reports error:', error)
+    return NextResponse.json({ error: 'Failed to load reports' }, { status: 500 })
   }
 }
