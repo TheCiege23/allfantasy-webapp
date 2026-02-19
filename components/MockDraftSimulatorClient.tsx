@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Play, RefreshCw, Download, Trophy, RotateCcw, Users, Loader2 } from 'lucide-react'
+import { Play, RefreshCw, Download, Trophy, RotateCcw, Users, Loader2, Share2 } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 
@@ -94,6 +94,70 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     acc[p.position] = (acc[p.position] || 0) + 1
     return acc
   }, {} as Record<string, number>)
+
+  const exportToPDF = () => {
+    if (draftResults.length === 0) return
+    const totalRds = Math.max(...draftResults.map(p => p.round))
+    const leagueName = selectedLeague?.name || 'Mock Draft'
+    let html = `<html><head><title>${leagueName} - Mock Draft Results</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #e5e5e5; padding: 40px; }
+  h1 { text-align: center; background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  h2 { color: #22d3ee; font-size: 14px; margin-top: 32px; font-family: monospace; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+  th { text-align: left; font-size: 11px; color: #9ca3af; padding: 6px 8px; border-bottom: 1px solid #333; }
+  td { padding: 6px 8px; font-size: 12px; border-bottom: 1px solid #1f1f1f; }
+  .user-row { background: rgba(34,211,238,0.08); }
+  .pos { font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+  .QB { color: #f87171; } .RB { color: #22d3ee; } .WR { color: #4ade80; } .TE { color: #a855f7; } .K { color: #fbbf24; } .DEF { color: #94a3b8; }
+  .summary { display: flex; gap: 12px; justify-content: center; margin: 20px 0; flex-wrap: wrap; }
+  .summary span { background: #1a1a2e; padding: 6px 14px; border-radius: 8px; font-size: 12px; }
+  @media print { body { background: white; color: black; } td, th { border-color: #ddd; } .user-row { background: #f0f9ff; } }
+</style></head><body>
+<h1>${leagueName} Mock Draft</h1>
+<p style="text-align:center;color:#9ca3af;font-size:13px;">${new Date().toLocaleDateString()} • ${draftResults.length} picks • ${totalRds} rounds</p>
+<div class="summary">`
+    Object.entries(positionCounts).sort().forEach(([pos, count]) => {
+      html += `<span class="${pos}">${pos}: ${count}</span>`
+    })
+    html += `</div>`
+    for (let r = 1; r <= totalRds; r++) {
+      const picks = draftResults.filter(p => p.round === r)
+      html += `<h2>ROUND ${r}</h2><table><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Manager</th><th>Conf</th></tr>`
+      picks.forEach(p => {
+        html += `<tr class="${p.isUser ? 'user-row' : ''}"><td>${p.overall}</td><td><b>${p.playerName}</b></td><td><span class="pos ${p.position}">${p.position}</span></td><td>${p.team}</td><td>${p.manager}</td><td>${p.confidence}%</td></tr>`
+      })
+      html += `</table>`
+    }
+    html += `</body></html>`
+    const w = window.open('', '_blank')
+    if (w) {
+      w.document.write(html)
+      w.document.close()
+      setTimeout(() => w.print(), 500)
+    }
+    toast.success('PDF export ready — use your browser\'s print dialog to save')
+  }
+
+  const generateShareLink = async () => {
+    if (draftResults.length === 0) return
+    const leagueName = selectedLeague?.name || 'Mock Draft'
+    const totalRds = Math.max(...draftResults.map(p => p.round))
+    const summary = userPicks.map(p => `R${p.round}.${p.pick} ${p.playerName} (${p.position})`).join('\n')
+    const text = `🏈 ${leagueName} Mock Draft\n${draftResults.length} picks • ${totalRds} rounds\n\nMy Picks:\n${summary}\n\nSimulated on AllFantasy`
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${leagueName} Mock Draft`, text })
+        toast.success('Shared successfully!')
+      } catch {
+        await navigator.clipboard.writeText(text)
+        toast.success('Draft results copied to clipboard!')
+      }
+    } else {
+      await navigator.clipboard.writeText(text)
+      toast.success('Draft results copied to clipboard!')
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -321,6 +385,15 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 )
               })}
             </div>
+          </div>
+
+          <div className="flex gap-4 justify-center mt-8">
+            <Button onClick={exportToPDF} variant="outline" className="gap-2 border-gray-700 hover:border-cyan-600">
+              <Download className="h-4 w-4" /> Export PDF
+            </Button>
+            <Button onClick={generateShareLink} className="gap-2 bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-700 hover:to-purple-700">
+              <Share2 className="h-4 w-4" /> Share Link
+            </Button>
           </div>
         </>
       )}
