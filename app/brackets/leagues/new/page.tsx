@@ -47,7 +47,10 @@ export default function NewBracketLeaguePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+    <div className="relative min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+      <div className="absolute top-5 right-5 pointer-events-none select-none z-0">
+        <img src="/af-shield-bg.png" alt="" className="w-10 h-10 opacity-[0.06]" draggable={false} />
+      </div>
       <div className="p-6 max-w-xl mx-auto space-y-4">
         <Link
           href="/brackets"

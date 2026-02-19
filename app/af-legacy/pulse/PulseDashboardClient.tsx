@@ -95,7 +95,10 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0a051f] to-[#0f0a24] p-6 md:p-10">
+    <div className="relative min-h-screen bg-gradient-to-b from-[#0a051f] to-[#0f0a24] p-6 md:p-10">
+      <div className="absolute top-5 right-5 pointer-events-none select-none z-0">
+        <img src="/af-shield-bg.png" alt="" className="w-12 h-12 opacity-[0.06]" draggable={false} />
+      </div>
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -496,6 +499,10 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
           <p className="text-lg">Could not load pulse data</p>
         </div>
       )}
+      <div className="flex items-center justify-center gap-3 py-6 opacity-15 pointer-events-none select-none">
+        <img src="/af-shield-bg.png" alt="" className="w-8 h-8" draggable={false} />
+        <img src="/allfantasy-hero.png" alt="" className="h-4" draggable={false} />
+      </div>
     </div>
   );
 }

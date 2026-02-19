@@ -11,6 +11,7 @@ import {
   tabContentVariants,
 } from '@/components/motion/variants'
 import { useState } from 'react'
+import { AFBrandingFooter } from '@/components/branding/AFWatermark'
 
 interface LegacyHubClientProps {
   userId: string
@@ -24,10 +25,17 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
       initial="hidden"
       animate="visible"
       variants={staggerContainer}
-      className="min-h-screen bg-gradient-to-b from-[#0a051f] via-[#0a051f] to-[#0f0a24] text-white px-4 py-8 md:px-8 lg:px-12"
+      className="relative min-h-screen bg-gradient-to-b from-[#0a051f] via-[#0a051f] to-[#0f0a24] text-white px-4 py-8 md:px-8 lg:px-12"
     >
+      <div className="absolute top-6 right-6 pointer-events-none select-none z-0">
+        <img src="/af-shield-bg.png" alt="" className="w-14 h-14 opacity-[0.07]" draggable={false} />
+      </div>
       <div className="max-w-7xl mx-auto">
         <motion.div variants={staggerContainer} className="mb-10 text-center md:text-left">
+          <motion.div variants={fadeInUp} className="flex items-center gap-3 justify-center md:justify-start mb-2">
+            <img src="/af-shield-bg.png" alt="" className="w-10 h-10 opacity-60" draggable={false} />
+            <img src="/allfantasy-hero.png" alt="AllFantasy" className="h-5 opacity-40" draggable={false} />
+          </motion.div>
           <motion.h1
             variants={fadeInUp}
             className="text-4xl md:text-6xl font-bold tracking-tight bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent"
@@ -155,6 +163,7 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
         >
           Secure · Powered by Sleeper API · Your data stays yours
         </motion.div>
+        <AFBrandingFooter />
       </div>
     </motion.div>
   )

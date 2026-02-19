@@ -72,7 +72,10 @@ export default async function LeagueDetailPage({
     : 0
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+    <div className="relative min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+      <div className="absolute top-5 right-5 pointer-events-none select-none z-0">
+        <img src="/af-shield-bg.png" alt="" className="w-10 h-10 opacity-[0.06]" draggable={false} />
+      </div>
       <div className="p-6 max-w-3xl mx-auto space-y-6">
         <Link
           href="/brackets"
@@ -224,6 +227,10 @@ export default async function LeagueDetailPage({
         {isDev && (
           <DevTestPanel season={league.tournament.season} />
         )}
+        <div className="flex items-center justify-center gap-3 py-4 opacity-15 pointer-events-none select-none">
+          <img src="/af-shield-bg.png" alt="" className="w-7 h-7" draggable={false} />
+          <img src="/allfantasy-hero.png" alt="" className="h-3.5" draggable={false} />
+        </div>
       </div>
     </div>
   )

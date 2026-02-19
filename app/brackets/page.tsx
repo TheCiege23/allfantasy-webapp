@@ -19,10 +19,17 @@ export default async function BracketsHomePage() {
   const user = session?.user as SessionUser | undefined
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+    <div className="relative min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
+      <div className="absolute top-5 right-5 pointer-events-none select-none z-0">
+        <img src="/af-shield-bg.png" alt="" className="w-12 h-12 opacity-[0.06]" draggable={false} />
+      </div>
       <div className="p-6 max-w-5xl mx-auto space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
+            <div className="flex items-center gap-2 mb-1">
+              <img src="/af-shield-bg.png" alt="" className="w-7 h-7 opacity-50" draggable={false} />
+              <img src="/allfantasy-hero.png" alt="" className="h-3.5 opacity-30" draggable={false} />
+            </div>
             <h1 className="text-2xl font-semibold">NCAA Bracket Challenge</h1>
             <p className="text-sm text-gray-400 mt-1">
               Create a league, invite friends, and fill out your bracket.
@@ -114,6 +121,10 @@ export default async function BracketsHomePage() {
             Signed in as {user.name || "User"}
           </div>
         )}
+        <div className="flex items-center justify-center gap-3 py-4 opacity-15 pointer-events-none select-none">
+          <img src="/af-shield-bg.png" alt="" className="w-7 h-7" draggable={false} />
+          <img src="/allfantasy-hero.png" alt="" className="h-3.5" draggable={false} />
+        </div>
       </div>
     </div>
   )
