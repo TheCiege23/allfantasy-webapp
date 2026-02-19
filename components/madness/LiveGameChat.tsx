@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette, ArrowDown, Mail } from 'lucide-react'
-import DirectMessages from './DirectMessages'
+import { useRouter } from 'next/navigation'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
@@ -199,7 +199,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   })
   const [chatSearch, setChatSearch] = useState('')
   const [showScrollBtn, setShowScrollBtn] = useState(false)
-  const [dmTarget, setDmTarget] = useState<{ id: string; name: string } | null>(null)
+  const dmRouter = useRouter()
   const [emojiSearch, setEmojiSearch] = useState('')
   const filteredEmojis = useMemo(() => {
     const q = emojiSearch.toLowerCase().trim()
@@ -439,7 +439,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   }
 
   return (
-    <div className={`fixed bottom-0 right-0 w-96 h-[30rem] border rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80 relative ${t.container}`}>
+    <div className={`fixed bottom-0 right-0 w-96 h-[30rem] border rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80 ${t.container}`}>
       <div className={`${t.header} p-4 flex items-center justify-between`}>
         <span className={`${t.headerText} font-medium text-sm`}>Live League Chat</span>
         <div className="flex items-center gap-2">
@@ -455,7 +455,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
             </SelectContent>
           </Select>
           <button
-            onClick={() => setDmTarget({ id: '', name: '' })}
+            onClick={() => dmRouter.push('/madness/dm')}
             className="text-white/70 hover:text-white transition-colors"
             title="Direct Messages"
           >
@@ -543,7 +543,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                       <span className={`font-medium text-sm ${t.nameOwn}`}>{displayName}</span>
                     ) : (
                       <button
-                        onClick={() => setDmTarget({ id: msg.user.id, name: displayName })}
+                        onClick={() => dmRouter.push(`/madness/dm/${msg.user.id}`)}
                         className={`font-medium text-sm ${t.nameOther} hover:underline cursor-pointer inline-flex items-center gap-1`}
                         title={`Message ${displayName}`}
                       >
@@ -725,17 +725,6 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
         </Button>
       </div>
 
-      {dmTarget && (
-        <div className="absolute inset-0 z-50 rounded-xl overflow-hidden">
-          <DirectMessages
-            userId={currentUserId}
-            theme={chatTheme}
-            initialPartnerId={dmTarget.id}
-            initialPartnerName={dmTarget.name}
-            onClose={() => setDmTarget(null)}
-          />
-        </div>
-      )}
     </div>
   )
 }

@@ -12,7 +12,7 @@ export default async function PrivateChatPage({ params }: { params: { userId: st
   } | null
 
   if (!session?.user?.id) {
-    redirect('/login?callbackUrl=/private-chat/' + params.userId)
+    redirect('/login?callbackUrl=/madness/dm/' + params.userId)
   }
 
   if (session.user.id === params.userId) {
