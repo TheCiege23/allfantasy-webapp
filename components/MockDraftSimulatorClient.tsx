@@ -222,21 +222,17 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     link.download = `AllFantasy-Mock-Draft-${new Date().toISOString().slice(0, 10)}.png`
     link.href = canvas.toDataURL('image/png')
     link.click()
-    toast.success('Draft board exported as image!')
+    toast.success('Draft board saved as image!')
   }
 
   const exportPDF = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
     const canvas = await html2canvas(element, { scale: 2 })
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'px',
-      format: [canvas.width, canvas.height],
-    })
-    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height)
+    const pdf = new jsPDF('landscape')
+    pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 10, 10, 280, 190)
     pdf.save(`AllFantasy-Mock-Draft-${new Date().toISOString().slice(0, 10)}.pdf`)
-    toast.success('Draft board exported as PDF!')
+    toast.success('Draft board saved as PDF!')
   }
 
 
