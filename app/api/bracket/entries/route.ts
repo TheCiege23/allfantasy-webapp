@@ -31,18 +31,48 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 })
   }
 
-  const existing = await (prisma as any).bracketEntry.findFirst({
-    where: { leagueId, userId: auth.userId },
-    select: { id: true, league: { select: { tournamentId: true } } },
-  }).catch(() => null)
+  const league = await (prisma as any).bracketLeague.findUnique({
+    where: { id: leagueId },
+    select: {
+      tournamentId: true,
+      scoringRules: true,
+      ownerId: true,
+    },
+  })
 
-  if (existing) {
-    return NextResponse.json({
-      ok: true,
-      entryId: existing.id,
-      tournamentId: existing.league.tournamentId,
-      alreadyExists: true,
-    })
+  if (!league) {
+    return NextResponse.json({ error: "LEAGUE_NOT_FOUND" }, { status: 404 })
+  }
+
+  const rules = (league.scoringRules || {}) as any
+  const entriesPerUserFree = Number(rules.entriesPerUserFree ?? 2)
+  const maxEntriesPerUser = Number(rules.maxEntriesPerUser ?? 10)
+  const isPaidLeague = Boolean(rules.isPaidLeague)
+  const commissionerPaymentConfirmedAt = rules.commissionerPaymentConfirmedAt
+
+  const count = await (prisma as any).bracketEntry.count({
+    where: { leagueId, userId: auth.userId },
+  })
+
+  if (count >= maxEntriesPerUser) {
+    return NextResponse.json(
+      {
+        error: "ENTRY_LIMIT_REACHED",
+        message: `You have reached the maximum of ${maxEntriesPerUser} entries in this league.`,
+      },
+      { status: 409 }
+    )
+  }
+
+  const needsPayment = count >= entriesPerUserFree
+  if (needsPayment && (!isPaidLeague || !commissionerPaymentConfirmedAt)) {
+    return NextResponse.json(
+      {
+        error: "PAYMENT_REQUIRED_FOR_EXTRA_ENTRIES",
+        message: "This league allows 2 free entries. Additional entries require commissioner-confirmed FanCred payment.",
+      },
+      { status: 402 }
+    )
   }
 
   const entry = await (prisma as any).bracketEntry.create({
@@ -51,12 +81,14 @@ export async function POST(req: Request) {
       userId: auth.userId,
       name,
     },
-    select: { id: true, league: { select: { tournamentId: true } } },
+    select: { id: true },
   })
 
   return NextResponse.json({
     ok: true,
     entryId: entry.id,
-    tournamentId: entry.league.tournamentId,
+    tournamentId: league.tournamentId,
+    entryCountForUser: count + 1,
+    freeEntriesRemaining: Math.max(0, entriesPerUserFree - (count + 1)),
   })
 }
