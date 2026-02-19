@@ -20,9 +20,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { leagueId } = body
+  const { leagueId, section = 'full' } = body
   if (!leagueId) {
     return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
+  }
+
+  const validSections = ['full', 'weekly', 'roster', 'waiver', 'longterm']
+  if (!validSections.includes(section)) {
+    return NextResponse.json({ error: 'Invalid section' }, { status: 400 })
   }
 
   try {
@@ -59,23 +64,10 @@ export async function POST(req: NextRequest) {
       .map(p => `${p.playerId} (${p.position}, age ${p.age ?? '?'})`)
       .join(', ')
 
-    const prompt = `You are AllFantasy's elite dynasty fantasy football strategist.
-
-Team Data:
-- Archetype: ${teamData.archetype} (Score: ${teamData.score}/100)
-- Explanation: ${teamData.explanation}
-- Positional Needs: ${teamData.positionalNeeds}
-- Future Draft Capital: ${futurePicksCount} picks
-- Roster: ${rosterSummary}
-
-Rolling Insights:
-${insightsText}
-
-Generate a comprehensive 2026-2028 dynasty strategy report. Be brutally honest and actionable.
-
-Output **strict JSON only** with this structure:
-
-{
+    const sectionPrompts: Record<string, { instruction: string; schema: string; maxTokens: number }> = {
+      full: {
+        instruction: 'Generate a comprehensive 2026-2028 dynasty strategy report. Be brutally honest and actionable.',
+        schema: `{
   "archetype": "${teamData.archetype}",
   "archetypeScore": ${teamData.score},
   "archetypeExplanation": "${teamData.explanation}",
@@ -121,14 +113,57 @@ Output **strict JSON only** with this structure:
   "rosterMoves": "Specific roster construction recommendations, cuts, IR stashes",
   "waiverTargets": "Top waiver wire targets with reasoning for this team archetype",
   "longTermPlan": "3-year dynasty blueprint: what to do in 2026, 2027, 2028"
-}
+}`,
+        maxTokens: 3000,
+      },
+      weekly: {
+        instruction: "Generate this week's brief: key matchups, start/sit advice, injury notes, and trade windows opening this week. Be specific to players on the roster.",
+        schema: `{ "weeklyBrief": "Detailed multi-paragraph weekly game plan with lineup decisions, matchup advantages, injury concerns, and time-sensitive trade windows" }`,
+        maxTokens: 1500,
+      },
+      roster: {
+        instruction: 'Suggest 3-5 immediate roster moves (trades, drops, adds) based on team archetype and positional needs. Include specific player names and reasoning.',
+        schema: `{ "rosterMoves": "Detailed multi-paragraph roster construction plan with specific moves, IR stash candidates, practice squad targets, and cut candidates with reasoning" }`,
+        maxTokens: 1500,
+      },
+      waiver: {
+        instruction: 'Identify top 5-10 waiver wire targets this week, ranked by dynasty value and fit for this specific team archetype. Include FAAB bid suggestions.',
+        schema: `{ "waiverTargets": "Ranked list of waiver targets with player names, positions, ownership %, dynasty value reasoning, and recommended FAAB bids for this archetype" }`,
+        maxTokens: 1500,
+      },
+      longterm: {
+        instruction: 'Outline the 2026-2028 dynasty plan: rebuild timeline, pick strategy, aging curve management, and key decision points for each year.',
+        schema: `{ "longTermPlan": "Comprehensive multi-paragraph 3-year dynasty blueprint covering 2026 priorities, 2027 projections, 2028 outlook, draft capital strategy, aging curve management, and key pivot points" }`,
+        maxTokens: 1500,
+      },
+    }
+
+    const sectionConfig = sectionPrompts[section] || sectionPrompts.full
+
+    const prompt = `You are AllFantasy's elite dynasty fantasy football strategist.
+
+Team Data:
+- Archetype: ${teamData.archetype} (Score: ${teamData.score}/100)
+- Explanation: ${teamData.explanation}
+- Positional Needs: ${teamData.positionalNeeds}
+- Future Draft Capital: ${futurePicksCount} picks
+- Roster: ${rosterSummary}
+
+Rolling Insights:
+${insightsText}
+
+${sectionConfig.instruction}
+
+Output **strict JSON only** with this structure:
+
+${sectionConfig.schema}
 
 Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`
 
     const result = await openaiChatJson({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
-      maxTokens: 3000,
+      maxTokens: sectionConfig.maxTokens,
     })
 
     if (!result.ok) {
@@ -152,12 +187,20 @@ Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`
       )
     }
 
+    const sectionTitles: Record<string, string> = {
+      full: `${teamData.archetype} — ${strategy.winWindow || 'Dynasty'} Strategy`,
+      weekly: `Weekly Brief — ${new Date().toLocaleDateString()}`,
+      roster: `Roster Moves — ${teamData.archetype}`,
+      waiver: `Waiver Targets — ${teamData.archetype}`,
+      longterm: `Long-Term Plan — ${teamData.archetype}`,
+    }
+
     try {
       await prisma.aIStrategyReport.create({
         data: {
           userId,
           leagueId,
-          title: `${teamData.archetype} — ${strategy.winWindow || 'Dynasty'} Strategy`,
+          title: sectionTitles[section] || sectionTitles.full,
           content: strategy,
           archetype: teamData.archetype,
           score: teamData.score,
@@ -167,7 +210,7 @@ Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`
       console.warn('[Strategy Generate] Report save failed (non-critical):', e)
     }
 
-    return NextResponse.json({ success: true, strategy })
+    return NextResponse.json({ success: true, strategy, section })
   } catch (error: any) {
     console.error('[Strategy Generate] Error:', error)
     return NextResponse.json(

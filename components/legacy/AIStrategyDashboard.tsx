@@ -103,9 +103,25 @@ function buildRadarData(profile?: RadarProfile) {
   ];
 }
 
+const PARTICLES = [
+  { size: 'w-2 h-2', color: 'bg-cyan-400', anim: 'animate-float-slow', top: 'top-[5%]', left: 'left-[8%]', delay: '0s' },
+  { size: 'w-3 h-3', color: 'bg-purple-400', anim: 'animate-float-medium', top: 'top-[12%]', left: 'right-[12%]', delay: '2s' },
+  { size: 'w-1.5 h-1.5', color: 'bg-amber-300', anim: 'animate-float-fast', top: 'bottom-[15%]', left: 'left-[33%]', delay: '4s' },
+  { size: 'w-2 h-2', color: 'bg-cyan-300', anim: 'animate-float-medium', top: 'top-[25%]', left: 'left-[55%]', delay: '1s' },
+  { size: 'w-1 h-1', color: 'bg-purple-300', anim: 'animate-float-slow', top: 'top-[45%]', left: 'right-[25%]', delay: '3s' },
+  { size: 'w-2.5 h-2.5', color: 'bg-amber-400', anim: 'animate-float-fast', top: 'top-[60%]', left: 'left-[15%]', delay: '5s' },
+  { size: 'w-1.5 h-1.5', color: 'bg-cyan-500', anim: 'animate-float-slow', top: 'top-[70%]', left: 'right-[40%]', delay: '1.5s' },
+  { size: 'w-2 h-2', color: 'bg-purple-500', anim: 'animate-float-medium', top: 'top-[80%]', left: 'left-[70%]', delay: '3.5s' },
+  { size: 'w-1 h-1', color: 'bg-amber-200', anim: 'animate-float-fast', top: 'top-[35%]', left: 'left-[85%]', delay: '2.5s' },
+  { size: 'w-3 h-3', color: 'bg-cyan-400/60', anim: 'animate-float-slow', top: 'top-[90%]', left: 'left-[45%]', delay: '0.5s' },
+  { size: 'w-1.5 h-1.5', color: 'bg-purple-400/60', anim: 'animate-float-medium', top: 'top-[18%]', left: 'left-[75%]', delay: '4.5s' },
+  { size: 'w-2 h-2', color: 'bg-amber-300/60', anim: 'animate-float-fast', top: 'top-[55%]', left: 'right-[8%]', delay: '1.2s' },
+];
+
 export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sectionLoading, setSectionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedLeagueId, setSelectedLeagueId] = useState<string>('');
   const [activeSubTab, setActiveSubTab] = useState('outlook');
@@ -156,6 +172,32 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
       setError(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSection = async (section: string) => {
+    if (!selectedLeagueId || sectionLoading) return;
+    setSectionLoading(section);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/strategy/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, section }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `${section} generation failed`);
+      }
+
+      const data = await res.json();
+      setStrategy(prev => prev ? { ...prev, ...data.strategy } : data.strategy);
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong');
+    } finally {
+      setSectionLoading(null);
     }
   };
 
@@ -258,7 +300,21 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const timelineEvents = strategy?.dynastyTimeline || [];
 
   return (
-    <div className="space-y-8">
+    <div className="relative min-h-screen overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-br from-[#0a051f] via-[#0f0a24] to-[#1a1238] animate-gradient-slow" />
+        <div className="absolute inset-0 opacity-30">
+          {PARTICLES.map((p, i) => (
+            <div
+              key={i}
+              className={`absolute ${p.size} ${p.color} rounded-full ${p.anim} ${p.top} ${p.left}`}
+              style={{ animationDelay: p.delay }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="relative z-10 space-y-8 p-4 md:p-8">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
         <input
           type="text"
@@ -548,7 +604,20 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                           {strategy.weeklyBrief}
                         </div>
                       ) : (
-                        <p className="text-gray-400 text-lg">Weekly briefing will appear here after generation.</p>
+                        <div className="text-center py-8">
+                          <p className="text-gray-400 text-lg mb-4">Get this week's matchup analysis, start/sit advice, and trade windows.</p>
+                          <Button
+                            onClick={() => loadSection('weekly')}
+                            disabled={sectionLoading === 'weekly'}
+                            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:brightness-110 text-white font-bold py-4 px-6 rounded-xl"
+                          >
+                            {sectionLoading === 'weekly' ? (
+                              <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generating...</>
+                            ) : (
+                              <><Sparkles className="mr-2 h-5 w-5" /> Generate Weekly Brief</>
+                            )}
+                          </Button>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -573,7 +642,20 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                           {strategy.rosterMoves}
                         </div>
                       ) : (
-                        <p className="text-gray-400 text-lg">Roster move recommendations will appear here.</p>
+                        <div className="text-center py-8">
+                          <p className="text-gray-400 text-lg mb-4">Get specific trade, drop, and add recommendations for your roster.</p>
+                          <Button
+                            onClick={() => loadSection('roster')}
+                            disabled={sectionLoading === 'roster'}
+                            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:brightness-110 text-white font-bold py-4 px-6 rounded-xl"
+                          >
+                            {sectionLoading === 'roster' ? (
+                              <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generating...</>
+                            ) : (
+                              <><Sparkles className="mr-2 h-5 w-5" /> Generate Roster Moves</>
+                            )}
+                          </Button>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -598,7 +680,20 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                           {strategy.waiverTargets}
                         </div>
                       ) : (
-                        <p className="text-gray-400 text-lg">Waiver wire targets will appear here.</p>
+                        <div className="text-center py-8">
+                          <p className="text-gray-400 text-lg mb-4">Find the best waiver wire pickups ranked by dynasty value and team fit.</p>
+                          <Button
+                            onClick={() => loadSection('waiver')}
+                            disabled={sectionLoading === 'waiver'}
+                            className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:brightness-110 text-white font-bold py-4 px-6 rounded-xl"
+                          >
+                            {sectionLoading === 'waiver' ? (
+                              <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generating...</>
+                            ) : (
+                              <><Sparkles className="mr-2 h-5 w-5" /> Generate Waiver Targets</>
+                            )}
+                          </Button>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -623,7 +718,20 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                           {strategy.longTermPlan}
                         </div>
                       ) : (
-                        <p className="text-gray-400 text-lg">Long-term dynasty plan will appear here.</p>
+                        <div className="text-center py-8">
+                          <p className="text-gray-400 text-lg mb-4">Get your 2026-2028 dynasty blueprint with rebuild timeline and pick strategy.</p>
+                          <Button
+                            onClick={() => loadSection('longterm')}
+                            disabled={sectionLoading === 'longterm'}
+                            className="bg-gradient-to-r from-amber-600 to-orange-600 hover:brightness-110 text-white font-bold py-4 px-6 rounded-xl"
+                          >
+                            {sectionLoading === 'longterm' ? (
+                              <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Generating...</>
+                            ) : (
+                              <><Sparkles className="mr-2 h-5 w-5" /> Generate Long-Term Plan</>
+                            )}
+                          </Button>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
@@ -728,6 +836,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
