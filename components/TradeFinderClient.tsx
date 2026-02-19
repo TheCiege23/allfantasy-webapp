@@ -127,6 +127,16 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
     window.open(deepLink, '_blank');
   };
 
+  const simulateAccept = (trade: any, index: number) => {
+    setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, status: 'accepted' } : s));
+    toast.success(`Trade accepted! You get ${trade.youGet}`, { duration: 4000 });
+  };
+
+  const simulateReject = (trade: any, index: number) => {
+    setSuggestions(prev => prev.map((s, i) => i === index ? { ...s, status: 'rejected' } : s));
+    toast.info(`Trade rejected. ${trade.partner} wasn't interested.`, { duration: 4000 });
+  };
+
   return (
     <div className="space-y-10">
       <div className="flex rounded-xl overflow-hidden border border-purple-900/50 mb-2">
@@ -234,7 +244,12 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
       ) : suggestions.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {suggestions.map((trade, i) => (
-            <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm hover:border-purple-500/60 transition-all">
+            <Card key={i} className={cn(
+              'backdrop-blur-sm transition-all',
+              trade.status === 'accepted' ? 'border-green-500/60 bg-green-950/20' :
+              trade.status === 'rejected' ? 'border-red-500/40 bg-red-950/10 opacity-60' :
+              'border-purple-900/40 bg-black/50 hover:border-purple-500/60'
+            )}>
               <CardHeader>
                 <CardTitle className="flex justify-between text-lg">
                   <span>Trade Idea #{i + 1}</span>
@@ -290,17 +305,46 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                     <p className="text-xs text-gray-300 italic">&ldquo;{trade.negotiation.dmMessages[0].message}&rdquo;</p>
                   </div>
                 )}
-                <div className="flex justify-end gap-3 mt-4">
-                  <Button
-                    size="sm"
-                    onClick={() => handlePropose(trade)}
-                    className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 gap-1.5"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Propose in Sleeper
-                  </Button>
-                  <Button size="sm" variant="outline" className="border-gray-700">Details</Button>
-                </div>
+                {trade.status === 'accepted' ? (
+                  <div className="text-center text-green-400 font-medium text-sm mt-4 pt-3 border-t border-green-800/40">
+                    Trade Accepted
+                  </div>
+                ) : trade.status === 'rejected' ? (
+                  <div className="text-center text-red-400 font-medium text-sm mt-4 pt-3 border-t border-red-800/40">
+                    Trade Rejected
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-end gap-3 mt-4">
+                      <Button
+                        size="sm"
+                        onClick={() => handlePropose(trade)}
+                        className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 gap-1.5"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Propose in Sleeper
+                      </Button>
+                      <Button size="sm" variant="outline" className="border-gray-700">Details</Button>
+                    </div>
+                    <div className="flex gap-3 mt-5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => simulateReject(trade, i)}
+                        className="flex-1 border-red-500/50 text-red-400 hover:bg-red-950/40"
+                      >
+                        Reject Offer
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => simulateAccept(trade, i)}
+                        className="flex-1 bg-green-600 hover:bg-green-700"
+                      >
+                        Accept (Mock)
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           ))}
