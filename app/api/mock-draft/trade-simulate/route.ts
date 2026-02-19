@@ -30,11 +30,11 @@ export async function POST(req: NextRequest) {
     })
 
     if (!draft || !Array.isArray(draft.results)) {
-      return NextResponse.json({ error: 'No existing draft found. Run a mock draft first.' }, { status: 404 })
+      return NextResponse.json({ error: 'No prior mock draft found. Run a mock draft first.' }, { status: 404 })
     }
 
-    const draftResults = (draft.results as any[]).map(p => ({ ...p }))
-    const userPickIdx = draftResults.findIndex((p: any) => p.overall === currentPick && p.isUser)
+    const originalDraft = (draft.results as any[]).map(p => ({ ...p }))
+    const userPickIdx = originalDraft.findIndex((p: any) => p.overall === currentPick && p.isUser)
     if (userPickIdx === -1) {
       return NextResponse.json({ error: 'That pick is not yours or does not exist' }, { status: 400 })
     }
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       where: { id: leagueId, userId: session.user.id },
     })
 
-    const candidates = draftResults
+    const candidates = originalDraft
       .map((p, idx) => ({ ...p, _idx: idx }))
       .filter((p: any) => {
         if (direction === 'up') {
@@ -62,67 +62,79 @@ export async function POST(req: NextRequest) {
 
     const tradePartner = candidates[0]
     const partnerIdx = tradePartner._idx
-    const userPick = draftResults[userPickIdx]
-
+    const userPick = originalDraft[userPickIdx]
     const userManager = userPick.manager
     const userAvatar = userPick.managerAvatar || null
     const partnerManager = tradePartner.manager
     const partnerAvatar = tradePartner.managerAvatar || null
 
-    draftResults[userPickIdx] = {
-      ...draftResults[userPickIdx],
-      manager: partnerManager,
-      managerAvatar: partnerAvatar,
-      isUser: false,
-    }
-    draftResults[partnerIdx] = {
-      ...draftResults[partnerIdx],
-      manager: userManager,
-      managerAvatar: userAvatar,
-      isUser: true,
+    const tradePoint = Math.min(userPick.overall, tradePartner.overall)
+    const lockedPicks = originalDraft.filter((p: any) => p.overall < tradePoint)
+    const picksToRedraft = originalDraft
+      .filter((p: any) => p.overall >= tradePoint)
+      .map(p => ({ ...p }))
+
+    for (const p of picksToRedraft) {
+      if (p.overall === currentPick) {
+        p.manager = partnerManager
+        p.managerAvatar = partnerAvatar
+        p.isUser = false
+      } else if (p.overall === tradePartner.overall) {
+        p.manager = userManager
+        p.managerAvatar = userAvatar
+        p.isUser = true
+      }
     }
 
-    const alreadyDrafted = new Set(
-      draftResults
-        .filter((_, idx) => idx !== userPickIdx && idx !== partnerIdx)
-        .map((p: any) => p.playerName?.toLowerCase())
-    )
+    const lockedPlayerNames = new Set(lockedPicks.map((p: any) => p.playerName?.toLowerCase()).filter(Boolean))
 
     let adpContext = ''
     try {
       const adpType = league?.isDynasty ? 'dynasty' : 'redraft'
-      const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 150)
+      const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
       if (adpEntries.length > 0) {
-        const available = adpEntries.filter(e => !alreadyDrafted.has(e.name.toLowerCase()))
+        const available = adpEntries.filter(e => !lockedPlayerNames.has(e.name.toLowerCase()))
         if (available.length > 0) {
-          adpContext = `\nAvailable players by ADP:\n${formatADPForPrompt(available, 40)}`
+          adpContext = `\nAvailable players by ADP (use this for realistic picks):\n${formatADPForPrompt(available, 60)}`
         }
       }
     } catch {}
 
-    const slot1 = draftResults[partnerIdx]
-    const slot2 = draftResults[userPickIdx]
     const leagueFormat = `${league?.scoring || 'PPR'} ${league?.isDynasty ? 'Dynasty' : 'Redraft'}`
 
-    const systemPrompt = `You are an expert fantasy football draft advisor. Given two draft slots that need new player selections after a trade, pick the most realistic player for each slot based on ADP data, positional need, and draft position.
+    const slotsToFill = picksToRedraft.map(p =>
+      `#${p.overall} R${p.round}P${p.pick} — ${p.manager}${p.isUser ? ' [USER]' : ''}`
+    ).join('\n')
 
-Return valid JSON:
+    const systemPrompt = `You are an expert fantasy football draft simulator. After a draft-day trade, you must re-run all picks from the trade point forward with realistic player selections based on ADP data, team needs, and draft position.
+
+Return valid JSON with this exact structure:
 {
-  "pick1": { "playerName": string, "position": string, "team": string, "confidence": number, "value": number, "notes": string },
-  "pick2": { "playerName": string, "position": string, "team": string, "confidence": number, "value": number, "notes": string }
-}`
+  "picks": [
+    { "overall": number, "playerName": string, "position": string, "team": string, "confidence": number, "value": number, "notes": string }
+  ]
+}
 
-    const userPrompt = `Two picks need new player selections after a trade in a ${leagueFormat} league:
+Rules:
+- Return one entry per slot in the "picks" array, matching the overall numbers provided
+- Use ADP data to ground selections — earlier picks get better players
+- No duplicate players — each player can only be drafted once
+- Do NOT include any player already locked in before the trade
+- The [USER] manager should get realistic best-available picks at their draft slots
+- Confidence range: 60-95`
 
-Slot 1: Overall pick #${slot1.overall} (Round ${slot1.round}, Pick ${slot1.pick}) — now drafted by "${slot1.manager}" ${slot1.isUser ? '[USER]' : ''}
-Slot 2: Overall pick #${slot2.overall} (Round ${slot2.round}, Pick ${slot2.pick}) — now drafted by "${slot2.manager}" ${slot2.isUser ? '[USER]' : ''}
+    const userPrompt = `A trade just happened in a ${leagueFormat} mock draft:
+"${userManager}" traded pick #${currentPick} to "${partnerManager}" for pick #${tradePartner.overall}.
+${direction === 'up' ? `${userManager} moved UP to get an earlier pick.` : `${userManager} moved DOWN, gaining value from a later pick position.`}
 
-Previously at these slots: ${tradePartner.playerName} (${tradePartner.position}) and ${userPick.playerName} (${userPick.position})
+Players already locked (drafted before pick #${tradePoint}, DO NOT reuse):
+${Array.from(lockedPlayerNames).join(', ') || 'None'}
 
-Players already drafted (DO NOT pick these): ${Array.from(alreadyDrafted).slice(0, 80).join(', ')}
+Re-draft these ${picksToRedraft.length} slots from pick #${tradePoint} forward:
+${slotsToFill}
 ${adpContext}
 
-Pick realistic players for each slot based on their draft position (ADP). The earlier pick should get a better player. Confidence range 60-95.`
+Return a "picks" array with exactly ${picksToRedraft.length} entries, one per slot above, using realistic ADP-based selections.`
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -132,7 +144,7 @@ Pick realistic players for each slot based on their draft position (ADP). The ea
       ],
       response_format: { type: 'json_object' },
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: 16000,
     })
 
     const content = completion.choices[0]?.message?.content
@@ -144,54 +156,95 @@ Pick realistic players for each slot based on their draft position (ADP). The ea
     try {
       parsed = JSON.parse(content)
     } catch {
-      console.error('[trade-simulate] Failed to parse:', content.slice(0, 300))
+      console.error('[trade-simulate] Failed to parse:', content.slice(0, 500))
       return NextResponse.json({ error: 'Invalid AI response' }, { status: 500 })
     }
 
-    if (parsed.pick1) {
-      draftResults[partnerIdx] = {
-        ...draftResults[partnerIdx],
-        playerName: parsed.pick1.playerName || draftResults[partnerIdx].playerName,
-        position: parsed.pick1.position || draftResults[partnerIdx].position,
-        team: parsed.pick1.team || draftResults[partnerIdx].team,
-        confidence: parsed.pick1.confidence || 75,
-        value: parsed.pick1.value || draftResults[partnerIdx].value,
-        notes: parsed.pick1.notes || '',
-      }
+    const aiPicks: any[] = parsed?.picks || []
+    const aiPickMap = new Map<number, any>()
+    for (const ap of aiPicks) {
+      if (ap.overall) aiPickMap.set(ap.overall, ap)
     }
-    if (parsed.pick2) {
-      draftResults[userPickIdx] = {
-        ...draftResults[userPickIdx],
-        playerName: parsed.pick2.playerName || draftResults[userPickIdx].playerName,
-        position: parsed.pick2.position || draftResults[userPickIdx].position,
-        team: parsed.pick2.team || draftResults[userPickIdx].team,
-        confidence: parsed.pick2.confidence || 75,
-        value: parsed.pick2.value || draftResults[userPickIdx].value,
-        notes: parsed.pick2.notes || '',
+
+    let adpFallbackPool: { name: string; position?: string; team?: string }[] = []
+    try {
+      const adpType = league?.isDynasty ? 'dynasty' : 'redraft'
+      const fallbackEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 300)
+      adpFallbackPool = fallbackEntries.map(e => ({ name: e.name, position: e.position, team: e.team }))
+    } catch {}
+
+    const usedPlayers = new Set(lockedPlayerNames)
+
+    for (const slot of picksToRedraft) {
+      const aiPick = aiPickMap.get(slot.overall)
+      if (aiPick && aiPick.playerName && !usedPlayers.has(aiPick.playerName.toLowerCase())) {
+        slot.playerName = aiPick.playerName
+        slot.position = aiPick.position || slot.position
+        slot.team = aiPick.team || slot.team
+        slot.confidence = aiPick.confidence || 75
+        slot.value = aiPick.value || slot.value
+        slot.notes = aiPick.notes || ''
+        usedPlayers.add(aiPick.playerName.toLowerCase())
+      } else {
+        const fallback = adpFallbackPool.find(f => !usedPlayers.has(f.name.toLowerCase()))
+        if (fallback) {
+          slot.playerName = fallback.name
+          slot.position = fallback.position || slot.position
+          slot.team = fallback.team || slot.team
+          slot.confidence = 65
+          slot.value = slot.value || 50
+          slot.notes = 'ADP fallback selection'
+          usedPlayers.add(fallback.name.toLowerCase())
+        } else {
+          usedPlayers.add(slot.playerName?.toLowerCase() || '')
+        }
       }
     }
 
-    const uniqueOveralls = new Set(draftResults.map((p: any) => p.overall))
-    if (uniqueOveralls.size !== draftResults.length) {
-      console.error('[trade-simulate] Duplicate overalls detected after swap')
+    const updatedDraft = [...lockedPicks, ...picksToRedraft]
+    updatedDraft.sort((a, b) => a.overall - b.overall)
+
+    const allPlayerNames = updatedDraft.map((p: any) => p.playerName?.toLowerCase()).filter(Boolean)
+    const uniquePlayers = new Set(allPlayerNames)
+    if (uniquePlayers.size < allPlayerNames.length) {
+      const seen = new Set<string>()
+      for (const slot of updatedDraft) {
+        const key = slot.playerName?.toLowerCase()
+        if (key && seen.has(key)) {
+          const fallback = adpFallbackPool.find(f => !seen.has(f.name.toLowerCase()) && !lockedPlayerNames.has(f.name.toLowerCase()))
+          if (fallback) {
+            slot.playerName = fallback.name
+            slot.position = fallback.position || slot.position
+            slot.team = fallback.team || slot.team
+            slot.notes = 'Dedup fallback'
+          }
+        }
+        if (slot.playerName) seen.add(slot.playerName.toLowerCase())
+      }
+    }
+
+    const uniqueOveralls = new Set(updatedDraft.map((p: any) => p.overall))
+    if (uniqueOveralls.size !== updatedDraft.length) {
+      console.error('[trade-simulate] Duplicate overalls detected')
+      return NextResponse.json({ error: 'Draft integrity error' }, { status: 500 })
+    }
+    if (updatedDraft.length !== originalDraft.length) {
+      console.error('[trade-simulate] Length mismatch:', updatedDraft.length, 'vs', originalDraft.length)
       return NextResponse.json({ error: 'Draft integrity error' }, { status: 500 })
     }
 
     try {
       await prisma.mockDraft.update({
         where: { id: draft.id },
-        data: { results: draftResults },
+        data: { results: updatedDraft },
       })
     } catch (saveErr) {
       console.error('[trade-simulate] Failed to save:', saveErr)
     }
 
-    const userNewPick = direction === 'up' ? tradePartner.overall : tradePartner.overall
-    const partnerNewPick = currentPick
-
     return NextResponse.json({
-      updatedDraft: draftResults,
-      tradeDescription: `${userManager} traded pick #${currentPick} to ${partnerManager} for pick #${tradePartner.overall}. Both slots have been re-drafted with new player selections.`,
+      updatedDraft,
+      tradeDescription: `${userManager} traded pick #${currentPick} to ${partnerManager} for pick #${tradePartner.overall}. All picks from #${tradePoint} onward have been re-simulated.`,
       tradedPicks: {
         userNewPick: tradePartner.overall,
         partnerNewPick: currentPick,
