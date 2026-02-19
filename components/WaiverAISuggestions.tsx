@@ -122,18 +122,20 @@ export default function WaiverAISuggestions() {
         </div>
       ) : suggestions.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {suggestions.map((s, i) => (
+          {[...suggestions].sort((a, b) => b.priority - a.priority).map((s, i) => (
             <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm hover:border-purple-500/60 transition-colors">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">
-                  {s.playerName} <span className="text-gray-400">({s.position} - {s.team})</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-gray-300 mb-4 text-sm">{s.reason}</p>
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-400">Priority</span>
-                  <span className="font-bold text-cyan-400">{s.priority}/10</span>
+              <CardContent className="pt-5">
+                <div className="flex justify-between items-start gap-3">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-white">
+                      {s.playerName} <span className="text-gray-400 text-sm font-normal">({s.position} - {s.team})</span>
+                    </h3>
+                    <p className="text-gray-300 mt-2 text-sm">{s.reason}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-2xl font-bold text-cyan-400">#{i + 1}</div>
+                    <div className="text-xs text-gray-500">Priority {s.priority}/10</div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
