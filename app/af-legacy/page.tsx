@@ -32,6 +32,7 @@ import { DraftGradesSection } from "@/components/rankings/DraftGradesSection"
 import { HallOfFameSection } from "@/components/rankings/HallOfFameSection"
 import MigrationProof from "@/components/MigrationProof"
 import RivalryWeekCards from "@/components/RivalryWeekCards"
+import AIFeaturesPanel from "@/components/AIFeaturesPanel"
 import OverviewLanes from "@/app/af-legacy/components/OverviewLanes"
 import OverviewReportCard from "@/app/af-legacy/components/OverviewReportCard"
 import OverviewInsights from "@/app/af-legacy/components/OverviewInsights"
@@ -15372,6 +15373,16 @@ function AFLegacyContent() {
                     {transferPreview?.rivalryWeek && (
                       <div className="mb-8">
                         <RivalryWeekCards data={transferPreview.rivalryWeek} narratives={transferPreview.rivalryNarratives} />
+                      </div>
+                    )}
+
+                    {/* AI Features Panel - The Closer */}
+                    {transferPreview && (
+                      <div className="mb-8">
+                        <AIFeaturesPanel
+                          leagueName={transferPreview.league?.name}
+                          onNavigate={(tabId) => setActiveTab(tabId as Tab)}
+                        />
                       </div>
                     )}
 
