@@ -328,18 +328,18 @@ export default function DynastyTradeForm() {
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-cyan-900/30 bg-black/40 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <div className="h-3 w-3 rounded-full bg-cyan-400" />
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card className="glass-card border-red-900/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg text-red-400">
+              <div className="h-3 w-3 rounded-full bg-red-400" />
               <Input
                 value={teamAName}
                 onChange={(e) => setTeamAName(e.target.value)}
-                className="border-none bg-transparent p-0 text-lg font-bold focus:ring-0 h-auto"
-                placeholder="Team A"
+                className="border-none bg-transparent p-0 text-lg font-bold focus:ring-0 h-auto text-red-400"
+                placeholder="You Give"
               />
-              <span className="text-sm text-gray-500 font-normal">gives</span>
+              <span className="text-sm text-gray-500 font-normal">(Outgoing)</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -370,17 +370,17 @@ export default function DynastyTradeForm() {
           </CardContent>
         </Card>
 
-        <Card className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <div className="h-3 w-3 rounded-full bg-purple-400" />
+        <Card className="glass-card border-green-900/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg text-green-400">
+              <div className="h-3 w-3 rounded-full bg-green-400" />
               <Input
                 value={teamBName}
                 onChange={(e) => setTeamBName(e.target.value)}
-                className="border-none bg-transparent p-0 text-lg font-bold focus:ring-0 h-auto"
-                placeholder="Team B"
+                className="border-none bg-transparent p-0 text-lg font-bold focus:ring-0 h-auto text-green-400"
+                placeholder="You Get"
               />
-              <span className="text-sm text-gray-500 font-normal">gives</span>
+              <span className="text-sm text-gray-500 font-normal">(Incoming)</span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -428,7 +428,7 @@ export default function DynastyTradeForm() {
       </div>
 
       {loading ? (
-        <Card className="border-pink-900/20 bg-black/30 backdrop-blur-sm">
+        <Card className="glass-card border-purple-900/30">
           <CardHeader>
             <Skeleton className="h-8 w-1/2 rounded" />
           </CardHeader>
@@ -453,25 +453,60 @@ export default function DynastyTradeForm() {
           </CardContent>
         </Card>
       ) : result ? (
-        <Card id="trade-result" className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
+        <Card id="trade-result" className="glass-card border-purple-900/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-3 text-2xl">
+            <CardTitle className="flex items-center gap-3 text-2xl text-center justify-center">
               <Crown className="h-6 w-6 text-yellow-400" />
-              Dynasty Trade Verdict
+              AI Trade Verdict
             </CardTitle>
-            <CardDescription>
-              Confidence: {result.confidence}%
-            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 to-cyan-950/40 p-6">
+            <div className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 to-cyan-950/40 p-8">
               <div className="text-center">
-                <p className="text-sm text-gray-400 mb-1">Winner</p>
-                <p className="text-3xl font-bold text-white mb-2">{result.winner}</p>
+                <p className="text-sm text-gray-400 mb-2 uppercase tracking-wider">Winner</p>
+                <p className="text-4xl font-bold text-white mb-4">{result.winner}</p>
                 {result.valueDelta && (
-                  <p className="text-gray-300 mt-2">{result.valueDelta}</p>
+                  <p className="text-lg text-gray-300">{result.valueDelta}</p>
                 )}
               </div>
+            </div>
+
+            <div className="flex justify-center gap-8 sm:gap-12 text-center py-2">
+              <div>
+                <div className={`text-4xl sm:text-5xl font-bold font-mono ${
+                  result.confidence >= 80 ? 'text-green-400' :
+                  result.confidence >= 60 ? 'text-cyan-400' :
+                  'text-amber-400'
+                }`}>
+                  {result.confidence}%
+                </div>
+                <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">AI Confidence</div>
+              </div>
+              {result.vetoRisk && (
+                <>
+                  <div className="w-px bg-gray-800" />
+                  <div>
+                    <div className={`text-4xl sm:text-5xl font-bold ${
+                      result.vetoRisk.toLowerCase().includes('low') ? 'text-green-400' :
+                      result.vetoRisk.toLowerCase().includes('high') ? 'text-red-400' :
+                      'text-amber-400'
+                    }`}>
+                      {result.vetoRisk.toLowerCase().includes('low') ? 'LOW' :
+                       result.vetoRisk.toLowerCase().includes('high') ? 'HIGH' : 'MED'}
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Veto Risk</div>
+                  </div>
+                </>
+              )}
+              {result.dynastyVerdict && (
+                <>
+                  <div className="w-px bg-gray-800" />
+                  <div className="max-w-[140px]">
+                    <div className="text-lg sm:text-xl font-bold text-purple-400">{result.dynastyVerdict}</div>
+                    <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Dynasty Verdict</div>
+                  </div>
+                </>
+              )}
             </div>
 
             {result.factors.length > 0 && (
