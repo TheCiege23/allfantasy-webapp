@@ -31,6 +31,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import TeamArchetypeBadge from './TeamArchetypeBadge';
+import LoadReportModal from './LoadReportModal';
 
 interface StrategyInsight {
   category: string;
@@ -363,6 +364,10 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               Export PDF
             </Button>
           )}
+          <LoadReportModal
+            reports={reportsHistory.filter(r => !(r.content as any)?.type)}
+            onLoad={loadHistoricalReport}
+          />
         </div>
       </div>
 
@@ -825,38 +830,6 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
         </CardContent>
       </Card>
 
-      {reportsHistory.length > 0 && (
-        <div>
-          <h3 className="text-xl font-semibold text-amber-300 mb-4 flex items-center gap-2">
-            <History className="h-5 w-5" /> Previous Strategy Reports
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {reportsHistory
-              .filter(r => !(r.content as any)?.type)
-              .map(r => (
-                <Card
-                  key={r.id}
-                  onClick={() => loadHistoricalReport(r)}
-                  className="bg-[#1a1238]/60 hover:bg-[#1a1238]/90 transition-all cursor-pointer border-white/5 hover:border-cyan-800/40 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] duration-500"
-                >
-                  <CardContent className="pt-6">
-                    <p className="font-medium text-white">{r.title}</p>
-                    {r.archetype && (
-                      <Badge variant="outline" className="mt-2 text-xs border-amber-800/40 text-amber-400">
-                        {r.archetype} ({r.score}/100)
-                      </Badge>
-                    )}
-                    <p className="text-sm text-gray-400 mt-2">
-                      {new Date(r.createdAt).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                      })}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-        </div>
-      )}
       </div>
     </div>
   );
