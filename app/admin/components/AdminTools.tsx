@@ -247,7 +247,7 @@ export default function AdminTools() {
     { name: "Legacy Profile", tool: "LegacyProfile", endpoint: "/api/legacy/profile", status: "Active" },
     { name: "AI Career Analysis", tool: "AICareerAnalysis", endpoint: "/api/legacy/ai/run", status: "Active" },
     { name: "Trade Analyzer", tool: "TradeAnalyzer", endpoint: "/api/trade-evaluator", status: "Active" },
-    { name: "Trade Finder", tool: "TradeFinder", endpoint: "/api/legacy/trade-finder", status: "Active" },
+    { name: "Trade Finder", tool: "TradeFinder", endpoint: "/api/trade-finder", status: "Active" },
     { name: "Player Finder", tool: "PlayerFinder", endpoint: "/api/legacy/player-finder", status: "Active" },
     { name: "Waiver AI", tool: "WaiverAI", endpoint: "/api/legacy/waiver/analyze", status: "Active" },
     { name: "League Rankings", tool: "LeagueRankings", endpoint: "/api/legacy/rankings/analyze", status: "Active" },
