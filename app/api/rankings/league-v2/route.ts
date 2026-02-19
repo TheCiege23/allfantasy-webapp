@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { computeLeagueRankingsV2 } from '@/lib/rankings-engine/league-rankings-v2'
 import { openaiChatText } from '@/lib/openai-client'
+import { getCompositeWeightConfig } from '@/lib/rankings-engine/composite-weights'
 
 export const GET = withApiUsage({ endpoint: "/api/rankings/league-v2", tool: "RankingsLeagueV2" })(async (request: NextRequest) => {
   const { searchParams } = new URL(request.url)
@@ -30,6 +31,76 @@ export const GET = withApiUsage({ endpoint: "/api/rankings/league-v2", tool: "Ra
   }
 })
 
+function computeModelConfidence(team: any, leagueContext: any): { score: number; rating: 'HIGH' | 'MEDIUM' | 'LEARNING'; factors: string[] } {
+  const factors: string[] = []
+  let score = 50
+
+  const week = leagueContext?.week ?? 0
+  if (week >= 10) {
+    score += 20
+    factors.push(`${week} weeks of data (strong sample)`)
+  } else if (week >= 5) {
+    score += 10
+    factors.push(`${week} weeks of data (moderate sample)`)
+  } else if (week >= 1) {
+    score += 3
+    factors.push(`${week} weeks of data (early season)`)
+  } else {
+    factors.push('Pre-season projection only')
+  }
+
+  const driverCount = team.explanation?.drivers?.length ?? 0
+  if (driverCount >= 3) {
+    score += 10
+    factors.push(`${driverCount} scoring drivers identified`)
+  } else if (driverCount >= 1) {
+    score += 5
+    factors.push(`${driverCount} scoring driver(s) identified`)
+  } else {
+    factors.push('No scoring drivers available')
+  }
+
+  const confFromExplanation = team.explanation?.confidence?.score
+  if (typeof confFromExplanation === 'number') {
+    score += Math.round(confFromExplanation * 15)
+    factors.push(`Engine confidence: ${Math.round(confFromExplanation * 100)}%`)
+  }
+
+  const hasPower = typeof team.powerScore === 'number' && team.powerScore > 0
+  const hasWin = typeof team.winScore === 'number'
+  const hasMarket = typeof team.marketValueScore === 'number' && team.marketValueScore > 0
+  const dimensionCount = [hasPower, hasWin, hasMarket].filter(Boolean).length
+  score += dimensionCount * 3
+
+  score = Math.max(10, Math.min(95, score))
+  const rating: 'HIGH' | 'MEDIUM' | 'LEARNING' = score >= 70 ? 'HIGH' : score >= 45 ? 'MEDIUM' : 'LEARNING'
+
+  return { score, rating, factors }
+}
+
+function computeDataFreshness(leagueContext: any, computedAt?: number): { grade: string; ageHours: number; sources: Record<string, string> } {
+  const now = Date.now()
+  const age = computedAt ? now - computedAt : 0
+  const ageHours = Math.round(age / (1000 * 60 * 60) * 10) / 10
+
+  let grade: string
+  if (ageHours <= 1) grade = 'fresh'
+  else if (ageHours <= 6) grade = 'recent'
+  else if (ageHours <= 24) grade = 'aging'
+  else if (ageHours <= 72) grade = 'stale'
+  else grade = 'expired'
+
+  const week = leagueContext?.week ?? 0
+  const sources: Record<string, string> = {
+    rankings: grade,
+    valuations: week > 0 ? (ageHours <= 24 ? 'fresh' : 'aging') : 'unavailable',
+    matchups: week >= 1 ? 'fresh' : 'unavailable',
+    injuries: ageHours <= 12 ? 'fresh' : ageHours <= 48 ? 'aging' : 'stale',
+  }
+
+  return { grade, ageHours, sources }
+}
+
 export const POST = withApiUsage({ endpoint: "/api/rankings/league-v2", tool: "RankingsLeagueV2" })(async (request: NextRequest) => {
   try {
     const body = await request.json()
@@ -37,6 +108,17 @@ export const POST = withApiUsage({ endpoint: "/api/rankings/league-v2", tool: "R
 
     if (!team || !leagueContext) {
       return NextResponse.json({ error: 'team and leagueContext required' }, { status: 400 })
+    }
+
+    const weightConfig = await getCompositeWeightConfig()
+    const confidence = computeModelConfidence(team, leagueContext)
+    const freshness = computeDataFreshness(leagueContext, leagueContext.computedAt)
+
+    const modelMeta = {
+      confidence,
+      dataFreshness: freshness,
+      weightVersion: weightConfig.version,
+      weightCalibratedAt: weightConfig.calibratedAt,
     }
 
     const explanationDrivers = team.explanation?.drivers || []
@@ -102,6 +184,7 @@ Format your response as JSON with this exact structure:
         ],
         challenge: 'Focus on improving your weakest scoring dimension this week.',
         tone: 'motivational',
+        modelMeta,
       })
     }
 
@@ -112,12 +195,14 @@ Format your response as JSON with this exact structure:
         bullets: parsed.bullets || [],
         challenge: parsed.challenge || '',
         tone: parsed.tone || 'motivational',
+        modelMeta,
       })
     } catch {
       return NextResponse.json({
         bullets: [result.text.slice(0, 200)],
         challenge: '',
         tone: 'motivational',
+        modelMeta,
       })
     }
   } catch (err: any) {

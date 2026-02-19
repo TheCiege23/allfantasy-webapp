@@ -3,6 +3,9 @@ import {
   getLeagueUsers,
   getLeagueInfo,
   getPlayoffBracket,
+  getLeagueDrafts,
+  getDraftPicks,
+  getAllPlayers,
   SleeperRoster,
   SleeperUser,
   SleeperPlayoffBracket,
@@ -12,6 +15,7 @@ import { prisma } from '../prisma'
 import { getWeekStatsFromCache } from './sleeper-matchup-cache'
 import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../idp-kicker-values'
 import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
+import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights, type CompositeWeightConfig } from './composite-weights'
 
 export interface Driver {
   id: string
@@ -201,6 +205,8 @@ export interface LeagueRankingsV2Output {
       nByPos: number
       label: 'Overpayer' | 'Learning'
     }>
+    weightVersion: string
+    weightCalibratedAt: string
   }
 }
 
@@ -728,6 +734,110 @@ function computePowerScore(
     : 0.80 * starterP + 0.20 * benchP
   const adjusted = rawWeighted * (0.85 + 0.30 * injuryPenalty)
   return Math.round(100 * clamp01(adjusted))
+}
+
+const INJURY_STATUS_SEVERITY: Record<string, number> = {
+  'Out': 0.90,
+  'IR': 1.00,
+  'Doubtful': 0.60,
+  'Questionable': 0.25,
+  'Probable': 0.05,
+  'Suspension': 0.80,
+  'PUP': 0.75,
+  'NFI': 0.75,
+  'COV': 0.70,
+  'NA': 0.00,
+  'Active': 0.00,
+}
+
+function computeRosterInjuryPenalty(
+  roster: SleeperRoster,
+  sleeperPlayers: Record<string, any> | null,
+  analyticsMap: Map<string, any> | undefined,
+  valueMap: Map<string, PlayerValueMap>,
+): number {
+  const starters = roster.starters || []
+  if (starters.length === 0) return 0.5
+
+  let totalWeight = 0
+  let healthyWeight = 0
+
+  for (const pid of starters) {
+    if (pid === '0') continue
+    const pVal = valueMap.get(pid)
+    const playerValue = pVal ? Math.max(pVal.value, pVal.redraftValue) : 1
+    const weight = Math.max(1, playerValue)
+    totalWeight += weight
+
+    let severity = 0
+
+    if (sleeperPlayers && sleeperPlayers[pid]) {
+      const sp = sleeperPlayers[pid]
+      const status = sp.injury_status || sp.status || 'Active'
+      severity = INJURY_STATUS_SEVERITY[status] ?? 0
+    }
+
+    if (analyticsMap && pVal?.name) {
+      const analytics = analyticsMap.get(pVal.name)
+      if (analytics?.injurySeverityScore != null && analytics.injurySeverityScore > severity) {
+        severity = Math.min(1, analytics.injurySeverityScore / 10)
+      }
+    }
+
+    healthyWeight += weight * (1 - severity)
+  }
+
+  if (totalWeight === 0) return 0.5
+  return clamp01(healthyWeight / totalWeight)
+}
+
+function computeDraftGainPercentile(
+  rosterId: number,
+  drafts: any[],
+  valueMap: Map<string, PlayerValueMap>,
+  isDynasty: boolean,
+  allRosterIds: number[],
+): number {
+  if (!drafts || drafts.length === 0) return 50
+
+  const latestDraft = drafts[0]
+  if (!latestDraft?.draft_id) return 50
+
+  const picks = latestDraft.picks || latestDraft.draft_order || null
+  if (!picks || !Array.isArray(picks)) return 50
+
+  const pickValues: { rosterId: number; currentValue: number; slotIndex: number }[] = []
+  for (let i = 0; i < picks.length; i++) {
+    const pick = picks[i]
+    const pickRosterId = pick.roster_id ?? pick.picked_by
+    const playerId = pick.player_id
+    if (!pickRosterId || !playerId) continue
+
+    const pVal = valueMap.get(playerId)
+    const currentValue = pVal ? (isDynasty ? pVal.value : pVal.redraftValue) : 0
+    pickValues.push({ rosterId: pickRosterId, currentValue, slotIndex: i })
+  }
+
+  if (pickValues.length === 0) return 50
+
+  const allCurrentValues = pickValues.map(p => p.currentValue)
+  const totalPicks = pickValues.length
+
+  const gainByRoster = new Map<number, number>()
+  for (const pv of pickValues) {
+    const expectedPercentile = 1 - pv.slotIndex / Math.max(1, totalPicks - 1)
+    const actualPercentile = robustPercentileRank(pv.currentValue, allCurrentValues)
+    const delta = actualPercentile - expectedPercentile
+
+    const prev = gainByRoster.get(pv.rosterId) || 0
+    gainByRoster.set(pv.rosterId, prev + delta)
+  }
+
+  if (gainByRoster.size === 0) return 50
+
+  const allGains = allRosterIds.map(rid => gainByRoster.get(rid) ?? 0)
+  const myGain = gainByRoster.get(rosterId) ?? 0
+  return Math.round(robustPercentileRank(myGain, allGains) * 100)
 }
 
 function computeLuckScore(luckDelta: number, allLuckDeltas: number[]): number {
@@ -1931,7 +2041,7 @@ export async function computeLeagueRankingsV2(
 
   const dbRosterRecords = await fetchRosterRecords(leagueId)
 
-  const [rosters, users, fcPlayers, ldiData, playoffBracket] = await Promise.all([
+  const [rosters, users, fcPlayers, ldiData, playoffBracket, sleeperPlayersRaw, leagueDrafts, weightConfig] = await Promise.all([
     getLeagueRosters(leagueId),
     getLeagueUsers(leagueId),
     fetchFantasyCalcValues({
@@ -1942,7 +2052,21 @@ export async function computeLeagueRankingsV2(
     }),
     fetchLdiForLeague(leagueId),
     phase === 'post_season' ? getPlayoffBracket(leagueId) : Promise.resolve([]),
+    getAllPlayers().catch(() => null),
+    getLeagueDrafts(leagueId).catch(() => []),
+    getCompositeWeightConfig(),
   ])
+
+  let draftWithPicks: any[] = []
+  if (leagueDrafts.length > 0) {
+    const latestDraft = leagueDrafts[0]
+    if (latestDraft?.draft_id) {
+      try {
+        const picks = await getDraftPicks(latestDraft.draft_id)
+        draftWithPicks = [{ ...latestDraft, picks }]
+      } catch { draftWithPicks = [] }
+    }
+  }
 
   if (rosters.length === 0) return null
 
@@ -2121,6 +2245,8 @@ export async function computeLeagueRankingsV2(
     })
   }
 
+  const allRosterIds = rosters.map(r => r.roster_id)
+
   for (const ti of teamIntermediates) {
     const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion, portfolioRaw } = ti
 
@@ -2131,7 +2257,7 @@ export async function computeLeagueRankingsV2(
 
     const starterP = robustPercentileRank(rosterValues.starterValue, allStarterValues)
     const benchP = robustPercentileRank(rosterValues.benchValue, allBenchValues)
-    const injuryPenalty = 0.5
+    const injuryPenalty = computeRosterInjuryPenalty(roster, sleeperPlayersRaw, analyticsMap, valueMap)
     const powerScore = computePowerScore(starterP, benchP, isDynasty, injuryPenalty)
 
     const luckScore = computeLuckScore(luckDelta, allLuckDeltas)
@@ -2146,7 +2272,7 @@ export async function computeLeagueRankingsV2(
       isDynasty,
     )
 
-    const draftGainP = 50
+    const draftGainP = computeDraftGainPercentile(roster.roster_id, draftWithPicks, valueMap, isDynasty, allRosterIds)
 
     const rosterPlayersForCapital = (roster.players || []).map((pid: string) => {
       const pVal = valueMap.get(pid) as any
@@ -2175,7 +2301,8 @@ export async function computeLeagueRankingsV2(
       allPortfolioYear5Values,
     )
 
-    const composite = computeComposite(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore)
+    const activeWeightProfile = resolveWeightProfile(weightConfig, phase, isDynasty)
+    const composite = computeCompositeFromWeights(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore, activeWeightProfile)
     const streak = computeStreak(weeklyPts, weeklyOppPts)
 
     const starterPer = robustPercentileRank(rosterValues.starterValue, allStarterValues)
@@ -2401,6 +2528,8 @@ export async function computeLeagueRankingsV2(
       ldiSampleTotal: ldiSampleCount,
       ldiTrend,
       proposalTargets,
+      weightVersion: weightConfig.version,
+      weightCalibratedAt: weightConfig.calibratedAt,
     },
   }
 }

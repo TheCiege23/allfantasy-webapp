@@ -261,6 +261,16 @@ export async function getLeagueDrafts(leagueId: string): Promise<any[]> {
   }
 }
 
+export async function getDraftPicks(draftId: string): Promise<any[]> {
+  try {
+    const response = await fetch(`${SLEEPER_API_BASE}/draft/${draftId}/picks`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
+
 export interface SleeperPlayer {
   player_id: string;
   first_name: string;
