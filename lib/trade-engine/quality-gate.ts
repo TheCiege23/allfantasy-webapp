@@ -1,4 +1,5 @@
 import type { TradeDecisionContextV1 } from './trade-decision-context'
+import { computeDataCoverageTier, type DataCoverageResult } from './trade-decision-context'
 import type { PeerReviewConsensus } from './trade-analysis-schema'
 import { buildDeterministicIntelligence, type DeterministicIntelligence } from './deterministic-intelligence'
 
@@ -26,6 +27,7 @@ export type QualityGateResult = {
   filteredWarnings: string[]
   deterministicIntelligence: DeterministicIntelligence
   conditionalRecommendation: ConditionalRecommendation
+  dataCoverage: DataCoverageResult
 }
 
 const CONFIDENCE_CEILING_BY_COVERAGE: [number, number][] = [
@@ -555,6 +557,12 @@ export function runQualityGate(
   const deterministic = buildDeterministicIntelligence(ctx)
   const allViolations: QualityViolation[] = []
 
+  const dataCoverage = computeDataCoverageTier(
+    ctx.dataQuality,
+    ctx.missingData,
+    ctx.sourceFreshness,
+  )
+
   const { violations: confidenceViolations, ceiling } = checkConfidenceVsCompleteness(deterministic.confidence, ctx)
   allViolations.push(...confidenceViolations)
 
@@ -632,6 +640,16 @@ export function runQualityGate(
     adjustedConfidence = Math.max(adjustedConfidence - 3, 10)
   }
 
+  adjustedConfidence += dataCoverage.confidenceAdjustment
+  if (dataCoverage.tier !== 'FULL') {
+    allViolations.push({
+      rule: 'coverage_tier_penalty',
+      severity: 'soft',
+      detail: `Data coverage is ${dataCoverage.tier} (score: ${dataCoverage.score}/100) — confidence adjusted by ${dataCoverage.confidenceAdjustment}`,
+      adjustment: `Coverage tier: ${dataCoverage.badge.label}`,
+    })
+  }
+
   let effectiveCeiling = ceiling
   if (injuryCeiling !== null) {
     effectiveCeiling = Math.min(effectiveCeiling, injuryCeiling)
@@ -699,5 +717,6 @@ export function runQualityGate(
     filteredWarnings,
     deterministicIntelligence: deterministic,
     conditionalRecommendation,
+    dataCoverage,
   }
 }

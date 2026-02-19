@@ -233,6 +233,121 @@ export type FreshnessGrade = z.infer<typeof FreshnessGradeEnum>
 export type SingleSourceFreshness = z.infer<typeof SingleSourceFreshnessSchema>
 export type SourceFreshness = z.infer<typeof SourceFreshnessSchema>
 
+export type DataCoverageTier = 'FULL' | 'PARTIAL' | 'MINIMAL'
+
+export interface DataCoverageResult {
+  tier: DataCoverageTier
+  score: number
+  confidenceAdjustment: number
+  badge: {
+    label: string
+    description: string
+    color: 'green' | 'yellow' | 'red'
+  }
+  dimensions: {
+    assetCoverage: { score: number; detail: string }
+    sourceFreshness: { score: number; detail: string }
+    dataCompleteness: { score: number; detail: string }
+  }
+}
+
+export function computeDataCoverageTier(
+  dataQuality: DataQuality,
+  missingData: MissingDataFlags,
+  sourceFreshness?: SourceFreshness,
+): DataCoverageResult {
+  const assetScore = Math.min(100, dataQuality.coveragePercent)
+
+  let freshnessScore = 50
+  if (sourceFreshness) {
+    freshnessScore = sourceFreshness.compositeScore
+  } else {
+    const staleFlags = [
+      missingData.injuryDataStale,
+      missingData.valuationDataStale,
+      missingData.adpDataStale,
+      missingData.analyticsDataStale,
+      missingData.tradeHistoryStale,
+    ]
+    const staleCount = staleFlags.filter(Boolean).length
+    freshnessScore = Math.max(0, 100 - staleCount * 20)
+  }
+
+  let completenessScore = 100
+  const missingAssets =
+    missingData.valuationsMissing.length +
+    missingData.adpMissing.length +
+    missingData.analyticsMissing.length
+  completenessScore -= Math.min(missingAssets * 5, 40)
+  if (missingData.competitorDataUnavailable) completenessScore -= 15
+  if (missingData.tradeHistoryInsufficient) completenessScore -= 10
+  completenessScore -= Math.min(missingData.managerTendenciesUnavailable.length * 5, 15)
+  if (!dataQuality.injuryDataAvailable) completenessScore -= 10
+  if (!dataQuality.analyticsAvailable) completenessScore -= 10
+  completenessScore = Math.max(0, completenessScore)
+
+  const compositeScore = Math.round(
+    assetScore * 0.40 +
+    freshnessScore * 0.35 +
+    completenessScore * 0.25
+  )
+
+  let tier: DataCoverageTier
+  let confidenceAdjustment: number
+  let badge: DataCoverageResult['badge']
+
+  if (compositeScore >= 70) {
+    tier = 'FULL'
+    confidenceAdjustment = 0
+    badge = {
+      label: 'Full Data',
+      description: 'All major data sources are available and current. Analysis is based on comprehensive information.',
+      color: 'green',
+    }
+  } else if (compositeScore >= 40) {
+    tier = 'PARTIAL'
+    confidenceAdjustment = -8
+    badge = {
+      label: 'Partial Data',
+      description: 'Some data sources are missing or outdated. Results should be verified before acting.',
+      color: 'yellow',
+    }
+  } else {
+    tier = 'MINIMAL'
+    confidenceAdjustment = -18
+    badge = {
+      label: 'Limited Data',
+      description: 'Significant data gaps exist. Treat this analysis as directional guidance only.',
+      color: 'red',
+    }
+  }
+
+  return {
+    tier,
+    score: compositeScore,
+    confidenceAdjustment,
+    badge,
+    dimensions: {
+      assetCoverage: {
+        score: assetScore,
+        detail: `${dataQuality.assetsCovered}/${dataQuality.assetsTotal} assets valued (${assetScore}%)`,
+      },
+      sourceFreshness: {
+        score: freshnessScore,
+        detail: sourceFreshness
+          ? `Composite freshness: ${sourceFreshness.compositeGrade} (${freshnessScore}/100)`
+          : `${[missingData.injuryDataStale, missingData.valuationDataStale, missingData.adpDataStale, missingData.analyticsDataStale, missingData.tradeHistoryStale].filter(Boolean).length} of 5 sources stale`,
+      },
+      dataCompleteness: {
+        score: completenessScore,
+        detail: missingAssets > 0
+          ? `${missingAssets} asset data points missing${missingData.competitorDataUnavailable ? ', no competitor data' : ''}`
+          : 'All data dimensions available',
+      },
+    },
+  }
+}
+
 const SOURCE_FRESHNESS_THRESHOLDS: Record<string, { aging: number; stale: number; expired: number }> = {
   rosters:      { aging: 1 * 60 * 60 * 1000, stale: 6 * 60 * 60 * 1000, expired: 24 * 60 * 60 * 1000 },
   valuations:   { aging: 24 * 60 * 60 * 1000, stale: 3 * 24 * 60 * 60 * 1000, expired: 7 * 24 * 60 * 60 * 1000 },

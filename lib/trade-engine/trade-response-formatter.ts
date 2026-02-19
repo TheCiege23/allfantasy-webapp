@@ -23,6 +23,20 @@ export type ValueVerdict = {
     staleSourceCount: number
     staleSources: string[]
   }
+  dataCoverage: {
+    tier: 'FULL' | 'PARTIAL' | 'MINIMAL'
+    score: number
+    badge: {
+      label: string
+      description: string
+      color: 'green' | 'yellow' | 'red'
+    }
+    dimensions: {
+      assetCoverage: { score: number; detail: string }
+      sourceFreshness: { score: number; detail: string }
+      dataCompleteness: { score: number; detail: string }
+    }
+  }
   recommendationType: ConditionalRecommendation
   disagreement: DisagreementBlock
 }
@@ -808,6 +822,12 @@ export function formatTradeResponse(
       dataFreshness: {
         staleSourceCount: staleSources.length,
         staleSources,
+      },
+      dataCoverage: {
+        tier: gate.dataCoverage.tier,
+        score: gate.dataCoverage.score,
+        badge: gate.dataCoverage.badge,
+        dimensions: gate.dataCoverage.dimensions,
       },
       recommendationType: gate.conditionalRecommendation,
       disagreement: consensus.disagreement,
