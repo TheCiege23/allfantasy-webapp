@@ -1,8 +1,133 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { runDualBrainTradeAnalysis } from '@/lib/trade-engine/dual-brain-trade-analyzer';
-import { getPlayerADP, getLiveADP, formatADPForPrompt } from '@/lib/adp-data';
+import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client';
+import { xaiChatJson, parseTextFromXaiChatCompletion } from '@/lib/xai-client';
+import { getPlayerADP, formatADPForPrompt } from '@/lib/adp-data';
+
+type AnalyzerMode = 'openai' | 'grok' | 'both';
+
+type TradeAnalysis = {
+  winner?: string;
+  valueDelta?: string;
+  factors?: string[];
+  confidence?: number;
+  dynastyVerdict?: string;
+  vetoRisk?: string;
+  agingConcerns?: string[];
+  recommendations?: string[];
+  youGiveAdjusted?: string;
+  youWantAdded?: string;
+  reason?: string;
+};
+
+function readMode(): AnalyzerMode {
+  const mode = String(process.env.TRADE_ANALYZER_MODE || 'openai').toLowerCase();
+  if (mode === 'grok' || mode === 'both' || mode === 'openai') return mode;
+  return 'openai';
+}
+
+function normalizeAnalysis(raw: unknown): TradeAnalysis | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const toStringList = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0) : undefined;
+
+  const normalized: TradeAnalysis = {
+    winner: typeof obj.winner === 'string' ? obj.winner : undefined,
+    valueDelta: typeof obj.valueDelta === 'string' ? obj.valueDelta : undefined,
+    factors: toStringList(obj.factors),
+    confidence:
+      typeof obj.confidence === 'number'
+        ? Math.max(0, Math.min(100, Math.round(obj.confidence)))
+        : undefined,
+    dynastyVerdict: typeof obj.dynastyVerdict === 'string' ? obj.dynastyVerdict : undefined,
+    vetoRisk: typeof obj.vetoRisk === 'string' ? obj.vetoRisk : undefined,
+    agingConcerns: toStringList(obj.agingConcerns),
+    recommendations: toStringList(obj.recommendations),
+    youGiveAdjusted: typeof obj.youGiveAdjusted === 'string' ? obj.youGiveAdjusted : undefined,
+    youWantAdded: typeof obj.youWantAdded === 'string' ? obj.youWantAdded : undefined,
+    reason: typeof obj.reason === 'string' ? obj.reason : undefined,
+  };
+
+  return normalized.winner || normalized.valueDelta || normalized.dynastyVerdict ? normalized : null;
+}
+
+function mergeAnalyses(openaiAnalysis: TradeAnalysis | null, grokAnalysis: TradeAnalysis | null): TradeAnalysis | null {
+  if (!openaiAnalysis && !grokAnalysis) return null;
+  if (openaiAnalysis && !grokAnalysis) return openaiAnalysis;
+  if (!openaiAnalysis && grokAnalysis) return grokAnalysis;
+
+  const oa = openaiAnalysis as TradeAnalysis;
+  const ga = grokAnalysis as TradeAnalysis;
+
+  const chooseWinner = () => {
+    if (oa.winner && ga.winner && oa.winner === ga.winner) return oa.winner;
+    const oaConf = oa.confidence ?? 50;
+    const gaConf = ga.confidence ?? 50;
+    return oaConf >= gaConf ? oa.winner || ga.winner : ga.winner || oa.winner;
+  };
+
+  const mergedFactors = Array.from(new Set([...(oa.factors || []), ...(ga.factors || [])])).slice(0, 7);
+  const mergedRecs = Array.from(new Set([...(oa.recommendations || []), ...(ga.recommendations || [])])).slice(0, 4);
+
+  return {
+    winner: chooseWinner(),
+    valueDelta: oa.valueDelta || ga.valueDelta,
+    factors: mergedFactors.length ? mergedFactors : undefined,
+    confidence: Math.round(((oa.confidence ?? 55) + (ga.confidence ?? 55)) / 2),
+    dynastyVerdict: oa.dynastyVerdict || ga.dynastyVerdict,
+    vetoRisk: oa.vetoRisk || ga.vetoRisk,
+    agingConcerns: Array.from(new Set([...(oa.agingConcerns || []), ...(ga.agingConcerns || [])])).slice(0, 5),
+    recommendations: mergedRecs.length ? mergedRecs : undefined,
+    youGiveAdjusted: oa.youGiveAdjusted || ga.youGiveAdjusted,
+    youWantAdded: oa.youWantAdded || ga.youWantAdded,
+    reason: oa.reason || ga.reason,
+  };
+}
+
+async function callOpenAI(systemPrompt: string, userPrompt: string) {
+  const result = await openaiChatJson({
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.45,
+    maxTokens: 1500,
+  });
+
+  if (!result.ok) {
+    return { ok: false as const, error: result.details };
+  }
+
+  const parsed = parseJsonContentFromChatCompletion(result.json);
+  return { ok: true as const, analysis: normalizeAnalysis(parsed) };
+}
+
+async function callGrok(systemPrompt: string, userPrompt: string) {
+  const result = await xaiChatJson({
+    messages: [
+      { role: 'system', content: `${systemPrompt}\nYou must return valid JSON only.` },
+      { role: 'user', content: userPrompt },
+    ],
+    temperature: 0.35,
+    maxTokens: 1500,
+    tools: [{ type: 'web_search' }],
+  });
+
+  if (!result.ok) {
+    return { ok: false as const, error: result.details };
+  }
+
+  const text = parseTextFromXaiChatCompletion(result.json);
+  if (!text) return { ok: true as const, analysis: null };
+
+  try {
+    return { ok: true as const, analysis: normalizeAnalysis(JSON.parse(text)) };
+  } catch {
+    return { ok: true as const, analysis: null };
+  }
+}
 
 export async function POST(req: Request) {
   const session = (await getServerSession(authOptions as any)) as {
@@ -93,19 +218,34 @@ Output JSON only:
 }`;
 
   try {
-    const consensus = await runDualBrainTradeAnalysis({
-      systemPrompt,
-      userPrompt,
-      temperature: 0.45,
-      maxTokens: 1500,
-    });
+    const mode = readMode();
 
-    if (!consensus) {
-      console.error('[dynasty-trade-analyzer] Dual-brain returned no consensus');
+    const [openAiRes, grokRes] = await Promise.all([
+      mode === 'grok' ? Promise.resolve(null) : callOpenAI(systemPrompt, userPrompt),
+      mode === 'openai' ? Promise.resolve(null) : callGrok(systemPrompt, userPrompt),
+    ]);
+
+    const analysis = mergeAnalyses(openAiRes?.analysis ?? null, grokRes?.analysis ?? null);
+
+    if (!analysis) {
+      console.error('[dynasty-trade-analyzer] All providers failed', {
+        mode,
+        openai: openAiRes && !openAiRes.ok ? openAiRes.error : undefined,
+        grok: grokRes && !grokRes.ok ? grokRes.error : undefined,
+      });
       return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
     }
 
-    return NextResponse.json({ analysis: consensus });
+    return NextResponse.json({
+      analysis,
+      meta: {
+        mode,
+        providerStatus: {
+          openai: openAiRes ? (openAiRes.ok && openAiRes.analysis ? 'ok' : 'failed') : 'skipped',
+          grok: grokRes ? (grokRes.ok && grokRes.analysis ? 'ok' : 'failed') : 'skipped',
+        },
+      },
+    });
   } catch (err) {
     console.error('[dynasty-trade-analyzer] Error:', err);
     return NextResponse.json({ error: 'Analysis failed' }, { status: 500 });
