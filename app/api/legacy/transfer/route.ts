@@ -93,6 +93,33 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const sessionUserId = session.user.id
+
+  const existingUser = await prisma.appUser.findUnique({ where: { id: sessionUserId } })
+  if (!existingUser) {
+    const fallbackEmail = session.user.email || `${sessionUserId}@session.recovery.allfantasy.ai`
+    const fallbackUsernameBase = (session.user.name || session.user.email || 'legacy_user')
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '_')
+      .slice(0, 32) || 'legacy_user'
+
+    const usernameTaken = await prisma.appUser.findUnique({ where: { username: fallbackUsernameBase } })
+    const fallbackUsername = usernameTaken ? `${fallbackUsernameBase}_${sessionUserId.slice(0, 6)}` : fallbackUsernameBase
+
+    await prisma.appUser.upsert({
+      where: { email: fallbackEmail },
+      update: {
+        displayName: session.user.name || undefined,
+      },
+      create: {
+        id: sessionUserId,
+        email: fallbackEmail,
+        username: fallbackUsername,
+        displayName: session.user.name || undefined,
+      },
+    })
+  }
+
   try {
     const { leagueId, sleeperLeagueId: altId } = await req.json()
     const rawId = leagueId || altId
@@ -369,7 +396,7 @@ Example format:
     const dbLeague = await prisma.league.upsert({
       where: {
         userId_platform_platformLeagueId: {
-          userId: session.user.id,
+          userId: sessionUserId,
           platform: 'sleeper',
           platformLeagueId: cleanId,
         },
@@ -387,7 +414,7 @@ Example format:
         syncError: null,
       },
       create: {
-        userId: session.user.id,
+        userId: sessionUserId,
         platform: 'sleeper',
         platformLeagueId: cleanId,
         name: league.name,
