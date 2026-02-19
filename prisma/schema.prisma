@@ -1373,17 +1373,18 @@ model LearnedWeights {
 }
 
 model RankingWeightsWeekly {
-  id           String   @id @default(cuid())
-  weekStart    DateTime
-  segmentKey   String   @db.VarChar(32)
-  priorJson    Json
-  learnedJson  Json
-  finalJson    Json
-  metricsJson  Json     @default("{}")
-  status       String   @db.VarChar(32)  // APPLIED | REJECTED | INSUFFICIENT_DATA | ROLLED_BACK
-  version      String   @db.VarChar(48)
-  nSamples     Int      @default(0)
-  createdAt    DateTime @default(now())
+  id                  String   @id @default(cuid())
+  weekStart           DateTime
+  segmentKey          String   @db.VarChar(32)
+  priorJson           Json
+  learnedJson         Json
+  finalJson           Json
+  metricsJson         Json     @default("{}")
+  compositeParamsJson Json?
+  status              String   @db.VarChar(32)  // APPLIED | REJECTED | INSUFFICIENT_DATA | ROLLED_BACK
+  version             String   @db.VarChar(48)
+  nSamples            Int      @default(0)
+  createdAt           DateTime @default(now())
 
   @@unique([segmentKey, weekStart])
   @@index([segmentKey, status])
@@ -2546,4 +2547,27 @@ model MockDraft {
   @@index([leagueId])
   @@index([userId])
   @@map("mock_drafts")
+}
+
+model RankingsBacktestResult {
+  id             String   @id @default(cuid())
+  leagueId       String
+  season         String   @db.VarChar(8)
+  weekEvaluated  Int
+  targetType     String   @db.VarChar(32)
+  horizonWeeks   Int      @default(3)
+  segmentKey     String   @db.VarChar(32)
+  nTeams         Int
+  brier          Float
+  ece            Float
+  ndcg           Float
+  spearman       Float
+  payloadJson    Json?
+  createdAt      DateTime @default(now())
+
+  @@unique([leagueId, season, weekEvaluated, targetType], name: "uniq_backtest_league_week_target")
+  @@index([leagueId, season])
+  @@index([segmentKey])
+  @@index([createdAt])
+  @@map("rankings_backtest_results")
 }
