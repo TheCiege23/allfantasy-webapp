@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown } from 'lucide-react';
+import { Skeleton } from '@/components/ui/legacy-ui';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
 import { useAI } from '@/hooks/useAI';
 
@@ -245,7 +246,32 @@ export default function DynastyTradeForm() {
         </Button>
       </div>
 
-      {result && (
+      {loading ? (
+        <Card className="border-pink-900/20 bg-black/30 backdrop-blur-sm">
+          <CardHeader>
+            <Skeleton className="h-8 w-1/2 rounded" />
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="rounded-xl border border-purple-500/20 bg-gradient-to-r from-purple-950/20 to-cyan-950/20 p-6">
+              <div className="flex flex-col items-center gap-3">
+                <Skeleton className="h-4 w-16 rounded" />
+                <Skeleton className="h-8 w-48 rounded" />
+                <Skeleton className="h-5 w-64 rounded" />
+              </div>
+            </div>
+            <div className="rounded-lg border border-cyan-900/20 bg-gray-900/40 p-4 space-y-3">
+              <Skeleton className="h-5 w-32 rounded" />
+              <Skeleton className="h-4 w-full rounded" />
+              <Skeleton className="h-4 w-full rounded" />
+              <Skeleton className="h-4 w-3/4 rounded" />
+            </div>
+            <div className="flex justify-between">
+              <Skeleton className="h-5 w-24 rounded" />
+              <Skeleton className="h-5 w-16 rounded" />
+            </div>
+          </CardContent>
+        </Card>
+      ) : result ? (
         <Card className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-3 text-2xl">
@@ -313,6 +339,10 @@ export default function DynastyTradeForm() {
             )}
           </CardContent>
         </Card>
+      ) : (
+        <div className="h-64 flex items-center justify-center border border-dashed border-gray-700 rounded-2xl text-gray-500">
+          Analysis will appear here after clicking "Analyze Trade"
+        </div>
       )}
     </div>
   );
