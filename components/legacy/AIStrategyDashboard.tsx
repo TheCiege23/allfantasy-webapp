@@ -693,6 +693,40 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   Balanced Mid-Season
                 </Button>
               </div>
+
+              <div className="flex items-center gap-4 mt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters({
+                    position: 'all',
+                    valueDelta: 'all',
+                    archetypeFit: 'all',
+                    riskLevel: 'all',
+                    includePicks: true,
+                    preset: 'none',
+                  })}
+                  className="border-red-600/50 text-red-300 hover:bg-red-950/40"
+                >
+                  Reset Filters
+                </Button>
+
+                {(() => {
+                  const activeCount = [
+                    filters.position !== 'all',
+                    filters.valueDelta !== 'all',
+                    filters.archetypeFit !== 'all',
+                    filters.riskLevel !== 'all',
+                    !filters.includePicks,
+                  ].filter(Boolean).length;
+
+                  return activeCount > 0 ? (
+                    <Badge className="bg-amber-600/80 text-white px-3 py-1 text-sm">
+                      {activeCount} {activeCount === 1 ? 'filter' : 'filters'} active
+                    </Badge>
+                  ) : null;
+                })()}
+              </div>
             </div>
 
             <AnimatePresence mode="wait">
