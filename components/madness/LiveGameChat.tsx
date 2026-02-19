@@ -4,8 +4,101 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2 } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin, Search, Check, CheckCheck, VolumeX, Volume2, Palette } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
+
+type ChatTheme = 'dark' | 'neon' | 'classic'
+
+const CHAT_THEMES: Record<ChatTheme, {
+  container: string
+  header: string
+  headerText: string
+  body: string
+  msgBg: string
+  msgText: string
+  nameOwn: string
+  nameOther: string
+  timestamp: string
+  avatarOwn: string
+  avatarOther: string
+  inputBg: string
+  inputBorder: string
+  inputText: string
+  sendBtn: string
+  border: string
+  typingDot: string
+  typingText: string
+  emptyText: string
+  seenText: string
+}> = {
+  dark: {
+    container: 'bg-black/95 border-cyan-900/50',
+    header: 'bg-gradient-to-r from-cyan-900 to-purple-900',
+    headerText: 'text-white',
+    body: '',
+    msgBg: '',
+    msgText: 'text-gray-200',
+    nameOwn: 'text-cyan-400',
+    nameOther: 'text-cyan-300',
+    timestamp: 'text-gray-500',
+    avatarOwn: 'bg-cyan-700 text-white',
+    avatarOther: 'bg-gray-700 text-gray-300',
+    inputBg: 'bg-gray-900',
+    inputBorder: 'border-gray-700',
+    inputText: 'text-white placeholder:text-gray-500',
+    sendBtn: 'bg-cyan-600 hover:bg-cyan-500',
+    border: 'border-gray-800',
+    typingDot: 'bg-cyan-400',
+    typingText: 'text-gray-400',
+    emptyText: 'text-gray-500',
+    seenText: 'text-cyan-400',
+  },
+  neon: {
+    container: 'bg-gray-950 border-green-500/40',
+    header: 'bg-gradient-to-r from-green-900 to-emerald-800',
+    headerText: 'text-green-300',
+    body: '',
+    msgBg: '',
+    msgText: 'text-green-100',
+    nameOwn: 'text-green-400',
+    nameOther: 'text-emerald-300',
+    timestamp: 'text-green-700',
+    avatarOwn: 'bg-green-600 text-white',
+    avatarOther: 'bg-emerald-900 text-green-300',
+    inputBg: 'bg-gray-900',
+    inputBorder: 'border-green-800',
+    inputText: 'text-green-100 placeholder:text-green-700',
+    sendBtn: 'bg-green-600 hover:bg-green-500',
+    border: 'border-green-900/50',
+    typingDot: 'bg-green-400',
+    typingText: 'text-green-500',
+    emptyText: 'text-green-700',
+    seenText: 'text-green-400',
+  },
+  classic: {
+    container: 'bg-gray-900 border-gray-600/50',
+    header: 'bg-gradient-to-r from-gray-700 to-gray-600',
+    headerText: 'text-gray-100',
+    body: '',
+    msgBg: '',
+    msgText: 'text-gray-200',
+    nameOwn: 'text-blue-400',
+    nameOther: 'text-gray-300',
+    timestamp: 'text-gray-500',
+    avatarOwn: 'bg-blue-700 text-white',
+    avatarOther: 'bg-gray-600 text-gray-200',
+    inputBg: 'bg-gray-800',
+    inputBorder: 'border-gray-600',
+    inputText: 'text-gray-100 placeholder:text-gray-500',
+    sendBtn: 'bg-blue-600 hover:bg-blue-500',
+    border: 'border-gray-700',
+    typingDot: 'bg-blue-400',
+    typingText: 'text-gray-400',
+    emptyText: 'text-gray-500',
+    seenText: 'text-blue-400',
+  },
+}
 
 const EMOJI_MAP: Record<string, string> = {
   '👍': 'thumbs up like',
@@ -91,6 +184,11 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
   const [lastSent, setLastSent] = useState(0)
   const [typingUsers, setTypingUsers] = useState<string[]>([])
+  const [chatTheme, setChatTheme] = useState<ChatTheme>(() => {
+    if (typeof window === 'undefined') return 'dark'
+    try { return (localStorage.getItem('chat-theme') as ChatTheme) || 'dark' } catch { return 'dark' }
+  })
+  const t = CHAT_THEMES[chatTheme]
   const [mutedUsers, setMutedUsers] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set()
     try {
@@ -320,11 +418,21 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
   }
 
   return (
-    <div className="fixed bottom-0 right-0 w-96 h-[30rem] bg-black/95 border border-cyan-900/50 rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80">
-      <div className="bg-gradient-to-r from-cyan-900 to-purple-900 p-4 flex items-center justify-between">
-        <span className="text-white font-medium text-sm">Live League Chat</span>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] text-white/50">Moderated</span>
+    <div className={`fixed bottom-0 right-0 w-96 h-[30rem] border rounded-tl-3xl overflow-hidden flex flex-col z-50 shadow-2xl shadow-black/80 ${t.container}`}>
+      <div className={`${t.header} p-4 flex items-center justify-between`}>
+        <span className={`${t.headerText} font-medium text-sm`}>Live League Chat</span>
+        <div className="flex items-center gap-2">
+          <Select value={chatTheme} onValueChange={(v: ChatTheme) => { setChatTheme(v); try { localStorage.setItem('chat-theme', v) } catch {} }}>
+            <SelectTrigger className="w-[5.5rem] h-6 text-[10px] bg-white/10 border-white/20 text-white/70 gap-1 px-2">
+              <Palette className="h-3 w-3 flex-shrink-0" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-950 border-gray-800">
+              <SelectItem value="dark" className="text-xs text-gray-200">Dark</SelectItem>
+              <SelectItem value="neon" className="text-xs text-green-300">Neon Glow</SelectItem>
+              <SelectItem value="classic" className="text-xs text-blue-300">Classic</SelectItem>
+            </SelectContent>
+          </Select>
           <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white transition-colors">
             <X className="h-4 w-4" />
           </button>
@@ -363,7 +471,7 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
 
       <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {visibleMessages.length === 0 && (
-          <p className="text-gray-500 text-sm text-center mt-8">No messages yet. Say something!</p>
+          <p className={`${t.emptyText} text-sm text-center mt-8`}>No messages yet. Say something!</p>
         )}
         {visibleMessages.map(msg => {
           const grouped = groupReactions(msg.reactions || [], currentUserId)
@@ -375,25 +483,25 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
             <div key={msg.id} className={`group ${msg.isPinned ? 'bg-amber-950/20 -mx-4 px-4 py-1 rounded-lg border-l-2 border-amber-500/50' : ''}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
-                  isOwn ? 'bg-cyan-700 text-white' : 'bg-gray-700 text-gray-300'
+                  isOwn ? t.avatarOwn : t.avatarOther
                 }`}>
                   {initial}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
-                    <span className={`font-medium text-sm ${isOwn ? 'text-cyan-400' : 'text-cyan-300'}`}>
+                    <span className={`font-medium text-sm ${isOwn ? t.nameOwn : t.nameOther}`}>
                       {displayName}
                     </span>
-                    <span className="text-[10px] text-gray-500">
+                    <span className={`text-[10px] ${t.timestamp}`}>
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-200 mt-0.5 break-words">{msg.message}</p>
+                  <p className={`text-sm mt-0.5 break-words ${t.msgText}`}>{msg.message}</p>
 
                   {isOwn && (
                     <div className="flex items-center gap-1 mt-0.5">
                       {(msg.seenBy?.length ?? 0) > 0 ? (
-                        <span className="inline-flex items-center gap-0.5 text-[10px] text-cyan-400" title={`Seen by ${msg.seenBy!.join(', ')}`}>
+                        <span className={`inline-flex items-center gap-0.5 text-[10px] ${t.seenText}`} title={`Seen by ${msg.seenBy!.join(', ')}`}>
                           <CheckCheck className="h-3 w-3" />
                           <span>
                             {msg.seenBy!.length <= 2
@@ -513,12 +621,12 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
       </div>
 
       {typingUsers.length > 0 && (
-        <div className="px-4 py-1.5 text-[11px] text-gray-400 border-t border-gray-800/50">
+        <div className={`px-4 py-1.5 text-[11px] ${t.typingText} border-t ${t.border}/50`}>
           <span className="inline-flex items-center gap-1">
             <span className="flex gap-0.5">
-              <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <span className={`w-1 h-1 ${t.typingDot} rounded-full animate-bounce`} style={{ animationDelay: '0ms' }} />
+              <span className={`w-1 h-1 ${t.typingDot} rounded-full animate-bounce`} style={{ animationDelay: '150ms' }} />
+              <span className={`w-1 h-1 ${t.typingDot} rounded-full animate-bounce`} style={{ animationDelay: '300ms' }} />
             </span>
             {typingUsers.length === 1
               ? `${typingUsers[0]} is typing...`
@@ -529,20 +637,20 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
         </div>
       )}
 
-      <div className="border-t border-gray-800 p-3 flex gap-2">
+      <div className={`border-t ${t.border} p-3 flex gap-2`}>
         <Input
           value={input}
           onChange={handleInputChange}
           placeholder="Type a message..."
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-          className="bg-gray-900 border-gray-700 text-white placeholder:text-gray-500"
+          className={`${t.inputBg} ${t.inputBorder} ${t.inputText}`}
           maxLength={1000}
         />
         <Button
           onClick={sendMessage}
           size="icon"
           disabled={sending || !input.trim()}
-          className="bg-cyan-600 hover:bg-cyan-500"
+          className={t.sendBtn}
         >
           <Send className="h-4 w-4" />
         </Button>
