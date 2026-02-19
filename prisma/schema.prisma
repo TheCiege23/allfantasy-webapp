@@ -2451,10 +2451,15 @@ model League {
   syncStatus       String?
   syncError        String?
 
+  isLegacy         Boolean   @default(false)
+
   rosters          Roster[]
   teams            LeagueTeam[]
   waiverPickups    WaiverPickup[]
   mockDrafts       MockDraft[]
+  historicalSeasons HistoricalSeason[]
+  managers         LeagueManager[]
+  trades           Trade[]
   user             AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
   legacyLeague     LegacyLeague? @relation(fields: [legacyLeagueId], references: [id])
   legacyLeagueId   String?   @unique
@@ -2467,6 +2472,7 @@ model League {
   @@index([userId, isDynasty])
   @@index([sport, season])
   @@index([status])
+  @@index([isLegacy])
   @@map("leagues")
 }
 
@@ -2474,6 +2480,67 @@ enum LeagueSport {
   NFL
   NBA
   MLB
+}
+
+model HistoricalSeason {
+  id          String   @id @default(uuid())
+  leagueId    String
+  season      Int
+  champion    String?
+  winnerId    String?
+  standings   Json?
+  metadata    Json?
+
+  league      League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@unique([leagueId, season])
+  @@index([leagueId])
+  @@map("historical_seasons")
+}
+
+model LeagueManager {
+  id            String   @id @default(uuid())
+  leagueId      String
+  sleeperUserId String
+  displayName   String
+  avatar        String?
+  wins          Int      @default(0)
+  losses        Int      @default(0)
+  ties          Int      @default(0)
+  seasons       Int      @default(1)
+
+  league        League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([leagueId, sleeperUserId])
+  @@index([leagueId])
+  @@index([sleeperUserId])
+  @@map("league_managers")
+}
+
+model Trade {
+  id            String   @id @default(uuid())
+  leagueId      String
+  season        Int
+  week          Int?
+  team1Id       String
+  team2Id       String
+  team1Assets   Json
+  team2Assets   Json
+  status        String   @default("completed")
+  executedAt    DateTime?
+  metadata      Json?
+
+  league        League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([leagueId, season])
+  @@index([leagueId])
+  @@map("trades")
 }
 
 model Roster {
