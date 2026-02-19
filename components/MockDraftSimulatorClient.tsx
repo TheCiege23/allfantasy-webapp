@@ -123,6 +123,58 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }, [])
 
+  const calculateTeamGrade = useCallback((manager: string, picks: DraftPick[]) => {
+    const teamPicks = picks.filter(p => p.manager === manager)
+    if (teamPicks.length === 0) return { letter: 'N/A', color: '#6b7280', title: 'No picks', strengths: [] as string[], weaknesses: [] as string[], valueAdded: '0' }
+
+    let totalValue = 0
+    let reachCount = 0
+    let stealCount = 0
+    const posCounts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
+    const strengths: string[] = []
+    const weaknesses: string[] = []
+
+    for (const pick of teamPicks) {
+      totalValue += pick.value || 0
+      if (posCounts[pick.position] !== undefined) posCounts[pick.position]++
+      const adp = adpMap.get(normalizeName(pick.playerName))
+      if (adp) {
+        const diff = adp.adp - pick.overall
+        if (diff > 10) stealCount++
+        if (diff < -10) reachCount++
+      }
+    }
+
+    const avgValue = totalValue / teamPicks.length
+
+    if (stealCount >= 3) strengths.push(`${stealCount} steals relative to ADP`)
+    if (posCounts.RB >= 4) strengths.push('Deep RB room')
+    if (posCounts.WR >= 5) strengths.push('Loaded at WR')
+    if (posCounts.QB >= 2) strengths.push('QB depth secured')
+    if (strengths.length === 0 && avgValue > 50) strengths.push('Solid overall value')
+
+    if (reachCount >= 3) weaknesses.push(`${reachCount} reaches vs ADP`)
+    if (posCounts.QB === 0) weaknesses.push('No QB drafted')
+    if (posCounts.RB <= 1) weaknesses.push('Thin at RB')
+    if (posCounts.WR <= 2) weaknesses.push('WR depth concern')
+    if (posCounts.TE === 0) weaknesses.push('No TE rostered')
+
+    let letter: string
+    let color: string
+    let title: string
+    if (avgValue >= 75) { letter = 'A+'; color = '#00ff88'; title = 'Elite Draft' }
+    else if (avgValue >= 65) { letter = 'A'; color = '#22c55e'; title = 'Excellent Draft' }
+    else if (avgValue >= 55) { letter = 'B+'; color = '#84cc16'; title = 'Strong Draft' }
+    else if (avgValue >= 45) { letter = 'B'; color = '#eab308'; title = 'Above Average' }
+    else if (avgValue >= 35) { letter = 'C+'; color = '#f97316'; title = 'Average Draft' }
+    else if (avgValue >= 25) { letter = 'C'; color = '#ef4444'; title = 'Below Average' }
+    else { letter = 'D'; color = '#dc2626'; title = 'Needs Work' }
+
+    if (reachCount >= 4 && letter.startsWith('A')) { letter = 'B+'; color = '#84cc16'; title = 'Reached too often' }
+
+    return { letter, color, title, strengths: strengths.slice(0, 3), weaknesses: weaknesses.slice(0, 3), valueAdded: totalValue.toFixed(0) }
+  }, [adpMap, normalizeName])
+
   const openComparison = useCallback((pick: any) => {
     const bap = adpData.find(p => !draftResults.some(d => d.playerName === p.name))
     setComparePlayer({ drafted: pick, bap })
@@ -774,6 +826,76 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {draftResults.length > 0 && draftResults.every(p => p.round <= customRounds) && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="mt-16 bg-gradient-to-br from-purple-950/80 via-black/90 to-gray-950/80 border border-purple-500/40 rounded-3xl p-10 text-center shadow-2xl shadow-purple-950/50"
+          >
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 via-purple-500 to-pink-500 bg-clip-text text-transparent mb-8">
+              Draft Recap & Team Grades
+            </h2>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              {Array.from(new Set(draftResults.map(p => p.manager))).map((manager) => {
+                const grade = calculateTeamGrade(manager, draftResults)
+                return (
+                  <motion.div
+                    key={manager}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: Math.random() * 0.3 }}
+                    className="bg-black/60 border border-cyan-900/40 p-6 rounded-2xl hover:border-cyan-500/60 transition-all group"
+                  >
+                    <div className="flex items-center gap-4 mb-4">
+                      <img
+                        src={managerAvatars[manager] || '/default-team.png'}
+                        className="w-16 h-16 rounded-full border-2 border-purple-500/30"
+                        onError={(e) => { (e.target as HTMLImageElement).src = '/default-team.png' }}
+                      />
+                      <div className="text-left">
+                        <h3 className="text-xl font-bold">{manager}</h3>
+                        <p className="text-sm text-gray-400">{draftResults.filter(p => p.manager === manager).length} picks</p>
+                      </div>
+                    </div>
+
+                    <div className="text-5xl font-extrabold mb-2" style={{ color: grade.color }}>
+                      {grade.letter}
+                    </div>
+                    <div className="text-sm text-gray-300 mb-4">{grade.title}</div>
+
+                    <div className="space-y-2 text-left text-sm">
+                      {grade.strengths.map((s, i) => (
+                        <p key={`s-${i}`} className="text-green-300 flex items-center gap-2">
+                          <span className="text-green-400">&#10004;</span> {s}
+                        </p>
+                      ))}
+                      {grade.weaknesses.map((w, i) => (
+                        <p key={`w-${i}`} className="text-red-300 flex items-center gap-2">
+                          <span className="text-red-400">&#10008;</span> {w}
+                        </p>
+                      ))}
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-gray-800 text-xs text-gray-400">
+                      Total value added: <span className="text-cyan-400 font-medium">{grade.valueAdded}</span>
+                    </div>
+                  </motion.div>
+                )
+              })}
+            </div>
+
+            <div className="mt-12 text-gray-300 max-w-3xl mx-auto">
+              <p className="text-lg italic">
+                &ldquo;This mock draft saw aggressive moves early &mdash; future contenders loaded up on youth while rebuilders stockpiled picks. The 2026 class looks deep at WR and RB.&rdquo;
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Dialog open={comparisonOpen} onOpenChange={setComparisonOpen}>
         <DialogContent className="bg-black/90 border-purple-900/50 text-white max-w-3xl">
