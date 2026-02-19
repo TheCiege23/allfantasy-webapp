@@ -1,6 +1,6 @@
 import type { TradeDecisionContextV1 } from './trade-decision-context'
 import type { PeerReviewConsensus } from './trade-analysis-schema'
-import type { QualityGateResult } from './quality-gate'
+import type { QualityGateResult, ConditionalRecommendation } from './quality-gate'
 
 export type FairnessGrade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'D' | 'F'
 
@@ -23,6 +23,7 @@ export type ValueVerdict = {
     staleSourceCount: number
     staleSources: string[]
   }
+  recommendationType: ConditionalRecommendation
 }
 
 export type ViabilityVerdict = {
@@ -293,12 +294,18 @@ function buildActionPlan(
 ): ActionPlan {
   const pctDiff = ctx.valueDelta.percentageDiff
   const favoredSide = ctx.valueDelta.favoredSide
+  const isConditional = gate.conditionalRecommendation.isConditional
 
   let assessment: string
   let sendAsIs = false
   let adjustmentNeeded: string | null = null
 
-  if (pctDiff <= 5) {
+  if (isConditional) {
+    const caveat = gate.conditionalRecommendation.reasons[0] || 'key data is missing'
+    assessment = `This recommendation is conditional — ${caveat}. Verify the missing information before acting on this analysis.`
+    sendAsIs = false
+    adjustmentNeeded = 'Confirm missing data (roster info, valuations, or injury status) before sending this trade'
+  } else if (pctDiff <= 5) {
     assessment = 'This trade is close enough in value to send as-is. Both sides should feel good about this deal.'
     sendAsIs = true
   } else if (pctDiff <= 12) {
@@ -420,6 +427,7 @@ export function formatTradeResponse(
         staleSourceCount: staleSources.length,
         staleSources,
       },
+      recommendationType: gate.conditionalRecommendation,
     },
     viabilityVerdict: {
       acceptanceLikelihood: likelihood,

@@ -9,6 +9,12 @@ export type QualityViolation = {
   adjustment?: string
 }
 
+export type ConditionalRecommendation = {
+  isConditional: boolean
+  reasons: string[]
+  label: string
+}
+
 export type QualityGateResult = {
   passed: boolean
   violations: QualityViolation[]
@@ -19,6 +25,7 @@ export type QualityGateResult = {
   filteredCounters: string[]
   filteredWarnings: string[]
   deterministicIntelligence: DeterministicIntelligence
+  conditionalRecommendation: ConditionalRecommendation
 }
 
 const CONFIDENCE_CEILING_BY_COVERAGE: [number, number][] = [
@@ -432,6 +439,115 @@ function checkValuationBoundConflicts(
   return violations
 }
 
+function checkInjuryCompoundRisk(
+  ctx: TradeDecisionContextV1
+): { violations: QualityViolation[]; ceiling: number | null } {
+  const violations: QualityViolation[] = []
+
+  const allRiskMarkers = [...ctx.sideA.riskMarkers, ...ctx.sideB.riskMarkers]
+  const injuryRiskPlayers = allRiskMarkers.filter(
+    r => r.injuryStatus && (
+      r.injuryStatus.reinjuryRisk === 'high' ||
+      r.injuryStatus.reinjuryRisk === 'moderate' ||
+      (r.injuryStatus.status !== 'Healthy' && r.injuryStatus.status !== 'Active')
+    )
+  )
+  const hasInjuryRisk = injuryRiskPlayers.length > 0
+
+  let injuryDataUnreliable = ctx.missingData.injuryDataStale === true
+  if (ctx.sourceFreshness) {
+    const g = ctx.sourceFreshness.injuries.grade
+    injuryDataUnreliable = g === 'stale' || g === 'expired' || g === 'unavailable'
+  }
+
+  const thinDelta = ctx.valueDelta.percentageDiff <= 10
+
+  if (hasInjuryRisk && injuryDataUnreliable && thinDelta) {
+    const cap = 55
+    const playerNames = injuryRiskPlayers.slice(0, 3).map(r => r.playerName).join(', ')
+    violations.push({
+      rule: 'injury_compound_risk',
+      severity: 'hard',
+      detail: `Injury risk (${playerNames}) + unreliable injury data + thin value delta (${ctx.valueDelta.percentageDiff}%) — confidence hard-capped at ${cap}%`,
+      adjustment: `Capped at ${cap}% due to compounding injury uncertainty`,
+    })
+    return { violations, ceiling: cap }
+  }
+
+  if (hasInjuryRisk && injuryDataUnreliable) {
+    const cap = 65
+    violations.push({
+      rule: 'injury_stale_risk',
+      severity: 'soft',
+      detail: `Injury risk present but injury data is unreliable — ceiling reduced to ${cap}%`,
+      adjustment: `Reduced ceiling for injury data uncertainty`,
+    })
+    return { violations, ceiling: cap }
+  }
+
+  return { violations, ceiling: null }
+}
+
+function checkMissingRosterTeamData(
+  ctx: TradeDecisionContextV1
+): { conditionalReasons: string[]; violations: QualityViolation[] } {
+  const conditionalReasons: string[] = []
+  const violations: QualityViolation[] = []
+
+  let rosterUnavailable = false
+  if (ctx.sourceFreshness) {
+    const g = ctx.sourceFreshness.rosters.grade
+    rosterUnavailable = g === 'expired' || g === 'unavailable'
+  }
+
+  const sideAEmpty = ctx.sideA.rosterComposition.size === 0
+  const sideBEmpty = ctx.sideB.rosterComposition.size === 0
+
+  if (rosterUnavailable || sideAEmpty || sideBEmpty) {
+    conditionalReasons.push('Roster data is missing or expired — needs/surplus analysis may be inaccurate')
+    violations.push({
+      rule: 'missing_roster_data',
+      severity: 'soft',
+      detail: 'Roster data is unavailable or expired — recommendation is conditional',
+      adjustment: 'Forced conditional recommendation',
+    })
+  }
+
+  if (ctx.missingData.competitorDataUnavailable) {
+    conditionalReasons.push('No competitor team data — league-wide context is unavailable')
+    violations.push({
+      rule: 'missing_competitor_data',
+      severity: 'soft',
+      detail: 'Competitor team data unavailable — league context incomplete',
+      adjustment: 'Forced conditional recommendation',
+    })
+  }
+
+  const bothTendenciesMissing =
+    ctx.sideA.managerPreferences === null && ctx.sideB.managerPreferences === null
+  if (bothTendenciesMissing && ctx.missingData.managerTendenciesUnavailable.length >= 2) {
+    conditionalReasons.push('No manager trade history for either side — acceptance predictions are unreliable')
+    violations.push({
+      rule: 'missing_manager_tendencies',
+      severity: 'soft',
+      detail: 'Both managers lack trade tendency data — acceptance signals unreliable',
+      adjustment: 'Forced conditional recommendation',
+    })
+  }
+
+  if (ctx.missingData.valuationsMissing.length >= 3) {
+    conditionalReasons.push(`Valuations missing for ${ctx.missingData.valuationsMissing.length} assets — value delta may not reflect true trade value`)
+    violations.push({
+      rule: 'missing_critical_valuations',
+      severity: 'soft',
+      detail: `${ctx.missingData.valuationsMissing.length} assets lack valuations — value analysis is incomplete`,
+      adjustment: 'Forced conditional recommendation',
+    })
+  }
+
+  return { conditionalReasons, violations }
+}
+
 export function runQualityGate(
   consensus: PeerReviewConsensus,
   ctx: TradeDecisionContextV1
@@ -449,6 +565,12 @@ export function runQualityGate(
   allViolations.push(...checkLeagueConstraintViolations(consensus, ctx))
 
   allViolations.push(...checkValuationBoundConflicts(consensus, ctx))
+
+  const { violations: injuryViolations, ceiling: injuryCeiling } = checkInjuryCompoundRisk(ctx)
+  allViolations.push(...injuryViolations)
+
+  const { conditionalReasons, violations: rosterViolations } = checkMissingRosterTeamData(ctx)
+  allViolations.push(...rosterViolations)
 
   const llmReasons = consensus.reasons.filter((_, i) => !phantomReasonIdxs.has(i))
   const llmCounters = consensus.counters.filter((_, i) => !phantomCounterIdxs.has(i))
@@ -501,7 +623,11 @@ export function runQualityGate(
     adjustedConfidence = Math.max(adjustedConfidence - 3, 10)
   }
 
-  adjustedConfidence = Math.min(adjustedConfidence, ceiling)
+  let effectiveCeiling = ceiling
+  if (injuryCeiling !== null) {
+    effectiveCeiling = Math.min(effectiveCeiling, injuryCeiling)
+  }
+  adjustedConfidence = Math.min(adjustedConfidence, effectiveCeiling)
 
   const filteredReasons = [
     ...deterministic.reasons,
@@ -542,6 +668,17 @@ export function runQualityGate(
 
   const passed = hardViolations.length === 0
 
+  const isConditional = conditionalReasons.length > 0
+  const conditionalRecommendation: ConditionalRecommendation = {
+    isConditional,
+    reasons: conditionalReasons,
+    label: isConditional ? 'Conditional' : 'Standard',
+  }
+
+  if (isConditional) {
+    filteredWarnings.push(`[Conditional] This recommendation requires verification: ${conditionalReasons[0]}`)
+  }
+
   return {
     passed,
     violations: allViolations,
@@ -552,5 +689,6 @@ export function runQualityGate(
     filteredCounters,
     filteredWarnings,
     deterministicIntelligence: deterministic,
+    conditionalRecommendation,
   }
 }
