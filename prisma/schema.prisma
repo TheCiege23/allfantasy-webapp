@@ -1966,6 +1966,7 @@ model TradeOutcomeTraining {
 
 model TradeShare {
   id          String   @id @default(uuid())
+  userId      String?
   analysis    Json
   sideA       Json
   sideB       Json
@@ -1973,6 +1974,7 @@ model TradeShare {
   expiresAt   DateTime
 
   @@index([expiresAt])
+  @@index([userId, createdAt])
 }
 
 model EngineSnapshot {

@@ -54,6 +54,7 @@ export async function POST(req: Request) {
   try {
     const share = await (prisma as any).tradeShare.create({
       data: {
+        userId: session.user.id,
         sideA: parsed.data.sideA,
         sideB: parsed.data.sideB,
         analysis: parsed.data.analysis,
