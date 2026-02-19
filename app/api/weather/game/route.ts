@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const cacheKey = `weather-${city}-${gameDate}`;
 
   const cached = await prisma.sportsDataCache.findUnique({ where: { key: cacheKey } });
-  if (cached && cached.expiresAt && new Date(cached.expiresAt) > new Date()) {
+  if (cached && cached.expiresAt && cached.expiresAt.getTime() > Date.now()) {
     return NextResponse.json(cached.value);
   }
 
