@@ -1676,6 +1676,7 @@ model RankingsSnapshot {
   composite    Decimal  @db.Decimal(10, 4)
   expectedWins Decimal? @db.Decimal(10, 4)
   luckDelta    Decimal? @db.Decimal(10, 4)
+  metricsJson  Json?
   createdAt    DateTime @default(now())
 
   @@index([leagueId, season, week])
