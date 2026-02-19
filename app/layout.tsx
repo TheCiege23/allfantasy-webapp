@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import Script from 'next/script';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import SessionProvider from '@/components/providers/SessionProvider';
 import './globals.css';
 
 const inter = Inter({
@@ -84,10 +85,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </Script>
       </head>
       <body className={`${inter.variable} bg-[#0a0a0f] text-white antialiased min-h-screen`}>
-        <ThemeProvider>
-          {children}
-          <Toaster position="top-center" richColors closeButton />
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider>
+            {children}
+            <Toaster position="top-center" richColors closeButton />
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );
