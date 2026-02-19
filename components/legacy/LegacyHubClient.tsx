@@ -42,10 +42,14 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
         </motion.div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-4 lg:w-auto lg:inline-flex bg-[#1a1238]/70 backdrop-blur-lg border border-white/10 rounded-xl mb-10">
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 lg:w-auto lg:inline-flex bg-[#1a1238]/70 backdrop-blur-lg border border-white/10 rounded-xl mb-10">
             <TabsTrigger value="transfer" className="text-base md:text-lg">League Transfer</TabsTrigger>
             <TabsTrigger value="rankings" className="text-base md:text-lg">Rankings</TabsTrigger>
             <TabsTrigger value="trades" className="text-base md:text-lg">Trade Analyzer</TabsTrigger>
+            <TabsTrigger value="strategy" className="relative text-base md:text-lg font-bold text-amber-300">
+              AI Strategy
+              <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+            </TabsTrigger>
             <TabsTrigger value="tools" disabled className="text-base md:text-lg opacity-50">
               More Tools (soon)
             </TabsTrigger>
@@ -111,6 +115,30 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
                   </CardHeader>
                   <CardContent className="min-h-[400px] flex items-center justify-center text-gray-400 text-xl">
                     Ready for testing — link coming in next update.
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {activeTab === 'strategy' && (
+              <motion.div
+                key="strategy"
+                variants={tabContentVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-2xl shadow-purple-950/20">
+                  <CardHeader>
+                    <CardTitle className="text-3xl bg-gradient-to-r from-amber-300 to-orange-400 bg-clip-text text-transparent">
+                      AI Strategy Hub
+                    </CardTitle>
+                    <CardDescription className="text-gray-300 text-lg">
+                      Personalized dynasty strategy powered by your team archetype, roster data, and league context.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="min-h-[400px] flex items-center justify-center text-gray-400 text-xl">
+                    Coming soon — AI-driven buy/sell targets, roster construction blueprints, and win-window projections.
                   </CardContent>
                 </Card>
               </motion.div>
