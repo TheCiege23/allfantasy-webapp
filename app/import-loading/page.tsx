@@ -1,7 +1,7 @@
 'use client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CheckCircle2, Database, Brain, LayoutDashboard, Trophy, Scale, Volume2, VolumeX } from 'lucide-react';
+import { CheckCircle2, Database, Brain, LayoutDashboard, Trophy, Scale } from 'lucide-react';
 
 const starPositions = Array.from({ length: 40 }, (_, i) => ({
   top: `${((i * 17 + 7) % 100)}%`,
@@ -202,18 +202,6 @@ export default function ImportLoading() {
         ))}
       </div>
 
-      <button
-        onClick={() => setSoundEnabled((v) => !v)}
-        className="fixed top-6 right-6 z-50 p-2.5 rounded-full bg-black/50 border border-cyan-900/40 backdrop-blur-sm hover:border-cyan-500/60 transition-colors"
-        title={soundEnabled ? 'Mute sounds' : 'Enable sounds'}
-      >
-        {soundEnabled ? (
-          <Volume2 className="h-5 w-5 text-cyan-400" />
-        ) : (
-          <VolumeX className="h-5 w-5 text-gray-500" />
-        )}
-      </button>
-
       <motion.div
         initial={{ opacity: 0, scale: 0.92 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -317,7 +305,7 @@ export default function ImportLoading() {
           </div>
         </div>
 
-        <div className="px-8 pb-10 border-t border-cyan-900/30 pt-6">
+        <div className="relative px-8 pb-10 border-t border-cyan-900/30 pt-6">
           <div className="text-xs uppercase text-gray-500 mb-4 tracking-wider">WHAT YOU&apos;LL GET</div>
           <div className="grid grid-cols-2 gap-4">
             {[
@@ -338,6 +326,13 @@ export default function ImportLoading() {
               </motion.div>
             ))}
           </div>
+          <motion.button
+            className="absolute bottom-4 right-4 text-xs text-gray-500 hover:text-cyan-400 transition-colors"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            whileHover={{ scale: 1.1 }}
+          >
+            {soundEnabled ? 'Sound on' : 'Sound off'}
+          </motion.button>
         </div>
       </motion.div>
     </div>
