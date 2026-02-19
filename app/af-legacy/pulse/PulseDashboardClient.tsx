@@ -15,10 +15,17 @@ interface PulseData {
   leagueSize: number;
   scoring: string;
   isDynasty: boolean;
+  week: number;
+  season: string;
   tradesThisWeek: number;
   tradesLastWeek: number;
   waiverAdds: number;
   rosterMoves: number;
+  mostActiveManagers: { managerId: string; name: string; count: number }[];
+  activitySpikePercent: string;
+  hotPlayers: { rosterId: number; points: number; matchupId: number }[];
+  coldPlayers: { rosterId: number; points: number; matchupId: number }[];
+  userTeamPulse: { projectedThisWeek: number | null; actualThisWeek: number; starterCount: number } | null;
   recentTrades: any[];
   standings: any[];
   avgPointsPerTeam: number;
@@ -139,6 +146,10 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
                     <span className="text-white font-medium">{pulseData.leagueName}</span>
                   </div>
                   <div className="flex justify-between items-center">
+                    <span className="text-gray-400">Week</span>
+                    <span className="text-white">Week {pulseData.week} &middot; {pulseData.season}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
                     <span className="text-gray-400">Size</span>
                     <span className="text-white">{pulseData.leagueSize} teams</span>
                   </div>
@@ -158,6 +169,12 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
                     <span className="text-gray-400">Avg Points</span>
                     <span className="text-emerald-400 font-bold">{pulseData.avgPointsPerTeam}</span>
                   </div>
+                  {pulseData.activitySpikePercent !== 'Stable' && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Activity</span>
+                      <Badge className="bg-amber-600/80">{pulseData.activitySpikePercent}</Badge>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -193,6 +210,70 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
                       <p className="text-sm text-gray-400 mt-1">Active Teams</p>
                     </div>
                   </div>
+
+                  {pulseData.mostActiveManagers.length > 0 && (
+                    <div className="mt-6 pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-3">Most Active Managers</p>
+                      <div className="flex flex-wrap gap-3">
+                        {pulseData.mostActiveManagers.map((mgr, idx) => (
+                          <Badge key={mgr.managerId} variant="outline" className="border-cyan-700/50 text-cyan-300 px-3 py-1">
+                            {idx === 0 ? '\u{1F525}' : ''} {mgr.name} ({mgr.count} moves)
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(pulseData.hotPlayers.length > 0 || pulseData.coldPlayers.length > 0) && (
+                    <div className="mt-6 pt-4 border-t border-white/10 grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {pulseData.hotPlayers.length > 0 && (
+                        <div>
+                          <p className="text-sm text-gray-400 mb-3 flex items-center gap-2">
+                            <ArrowUpRight className="h-4 w-4 text-emerald-400" /> Top Scoring Teams
+                          </p>
+                          <div className="space-y-2">
+                            {pulseData.hotPlayers.slice(0, 3).map((hp, idx) => (
+                              <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-emerald-950/30">
+                                <span className="text-white text-sm">Roster {hp.rosterId}</span>
+                                <span className="text-emerald-400 font-bold">{hp.points.toFixed(1)} pts</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {pulseData.coldPlayers.length > 0 && (
+                        <div>
+                          <p className="text-sm text-gray-400 mb-3 flex items-center gap-2">
+                            <ArrowDownRight className="h-4 w-4 text-red-400" /> Lowest Scoring Teams
+                          </p>
+                          <div className="space-y-2">
+                            {pulseData.coldPlayers.slice(0, 3).map((cp, idx) => (
+                              <div key={idx} className="flex justify-between items-center p-2 rounded-lg bg-red-950/30">
+                                <span className="text-white text-sm">Roster {cp.rosterId}</span>
+                                <span className="text-red-400 font-bold">{cp.points.toFixed(1)} pts</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {pulseData.userTeamPulse && (
+                    <div className="mt-6 pt-4 border-t border-white/10">
+                      <p className="text-sm text-gray-400 mb-3">Your Team This Week</p>
+                      <div className="flex items-center gap-4">
+                        <div className="text-center p-3 rounded-xl bg-cyan-950/40">
+                          <div className="text-2xl font-bold text-cyan-400">{pulseData.userTeamPulse.actualThisWeek?.toFixed(1) || '—'}</div>
+                          <p className="text-xs text-gray-500 mt-1">Points</p>
+                        </div>
+                        <div className="text-center p-3 rounded-xl bg-[#0f0a24]/60">
+                          <div className="text-2xl font-bold text-purple-400">{pulseData.userTeamPulse.starterCount}</div>
+                          <p className="text-xs text-gray-500 mt-1">Starters</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
