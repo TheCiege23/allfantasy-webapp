@@ -341,6 +341,7 @@ model LegacyLeague {
   user            LegacyUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
   rosters         LegacyRoster[]
   seasonSummary   LegacySeasonSummary?
+  activeLeague    League?
 
   @@unique([userId, sleeperLeagueId])
   @@index([userId, season])
@@ -366,6 +367,7 @@ model LegacyRoster {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   league        LegacyLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  leagueTeam    LeagueTeam?
 
   @@unique([leagueId, rosterId])
   @@index([leagueId])
@@ -2313,24 +2315,41 @@ model League {
   platform         String
   platformLeagueId String
   name             String?
+  sport            LeagueSport @default(NFL)
+  season           Int?
   leagueSize       Int?
   scoring          String?
   isDynasty        Boolean?
+  rosterSize       Int?
+  starters         Json?
+  status           String?
+  avatarUrl        String?
   settings         Json?
   lastSyncedAt     DateTime?
   syncStatus       String?
   syncError        String?
 
   rosters          Roster[]
+  teams            LeagueTeam[]
   waiverPickups    WaiverPickup[]
   user             AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  legacyLeague     LegacyLeague? @relation(fields: [legacyLeagueId], references: [id])
+  legacyLeagueId   String?   @unique
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@unique([userId, platform, platformLeagueId])
   @@index([userId])
+  @@index([sport, season])
+  @@index([status])
   @@map("leagues")
+}
+
+enum LeagueSport {
+  NFL
+  NBA
+  MLB
 }
 
 model Roster {
@@ -2347,6 +2366,54 @@ model Roster {
   @@index([leagueId])
   @@index([platformUserId])
   @@map("rosters")
+}
+
+model LeagueTeam {
+  id              String       @id @default(uuid())
+  leagueId        String
+  externalId      String
+  ownerName       String
+  teamName        String
+  avatarUrl       String?
+  wins            Int          @default(0)
+  losses          Int          @default(0)
+  ties            Int          @default(0)
+  pointsFor       Float        @default(0)
+  pointsAgainst   Float        @default(0)
+  currentRank     Int?
+  aiPowerScore    Float?
+  projectedWins   Float?
+  strengthNotes   String?
+  riskNotes       String?
+  lastUpdatedAt   DateTime     @updatedAt
+
+  league          League       @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  performances    TeamPerformance[]
+  legacyRoster    LegacyRoster? @relation(fields: [legacyRosterId], references: [id])
+  legacyRosterId  String?      @unique
+
+  @@unique([leagueId, externalId])
+  @@index([leagueId, pointsFor])
+  @@index([aiPowerScore])
+  @@map("league_teams")
+}
+
+model TeamPerformance {
+  id         String   @id @default(uuid())
+  teamId     String
+  week       Int
+  season     Int
+  points     Float
+  opponent   String?
+  result     String?
+  data       Json?
+  createdAt  DateTime @default(now())
+
+  team       LeagueTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, season, week])
+  @@index([teamId, season])
+  @@map("team_performances")
 }
 
 model LeagueAuth {
