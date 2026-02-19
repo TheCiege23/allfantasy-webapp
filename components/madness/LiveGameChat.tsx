@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Send, MessageCircle, X, ChevronDown } from 'lucide-react'
+import { Send, MessageCircle, X, Flag } from 'lucide-react'
 
 type ChatMessage = {
   id: string
@@ -23,6 +23,7 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
   const [sending, setSending] = useState(false)
   const [open, setOpen] = useState(false)
   const [unread, setUnread] = useState(0)
+  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
   const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -74,6 +75,28 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
     }
   }
 
+  const reportMessage = async (messageId: string) => {
+    const reason = prompt('Why are you reporting this message?\n\nOptions: spam, harassment, profanity, inappropriate, other')
+    if (!reason) return
+    const normalized = reason.toLowerCase().trim()
+    const valid = ['spam', 'harassment', 'profanity', 'inappropriate', 'other']
+    const matched = valid.find(v => normalized.includes(v)) || 'other'
+
+    try {
+      const res = await fetch('/api/madness/flag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId, reason: matched }),
+      })
+      if (res.ok) {
+        setFlaggedIds(prev => new Set(prev).add(messageId))
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Could not report message')
+      }
+    } catch {}
+  }
+
   if (!open) {
     return (
       <button
@@ -104,18 +127,36 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
           <p className="text-gray-500 text-sm text-center mt-8">No messages yet. Say something!</p>
         )}
         {messages.map(msg => (
-          <div key={msg.id} className={`text-sm ${msg.user.id === currentUserId ? 'text-right' : ''}`}>
-            <div className={`inline-block max-w-[80%] rounded-2xl px-4 py-2 ${
-              msg.user.id === currentUserId
-                ? 'bg-cyan-900/60 text-white'
-                : 'bg-gray-800/80 text-gray-100'
-            }`}>
-              {msg.user.id !== currentUserId && (
-                <p className="text-cyan-400 text-xs font-medium mb-1">
-                  {msg.user.displayName || msg.user.username}
-                </p>
+          <div key={msg.id} className={`group text-sm ${msg.user.id === currentUserId ? 'text-right' : ''}`}>
+            <div className="inline-flex items-end gap-1">
+              {msg.user.id === currentUserId && (
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity" />
               )}
-              <p>{msg.message}</p>
+              <div className={`inline-block max-w-[80%] rounded-2xl px-4 py-2 ${
+                msg.user.id === currentUserId
+                  ? 'bg-cyan-900/60 text-white'
+                  : 'bg-gray-800/80 text-gray-100'
+              }`}>
+                {msg.user.id !== currentUserId && (
+                  <p className="text-cyan-400 text-xs font-medium mb-1">
+                    {msg.user.displayName || msg.user.username}
+                  </p>
+                )}
+                <p>{msg.message}</p>
+              </div>
+              {msg.user.id !== currentUserId && !flaggedIds.has(msg.id) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => reportMessage(msg.id)}
+                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-500 hover:text-red-400"
+                >
+                  <Flag className="h-3 w-3" />
+                </Button>
+              )}
+              {flaggedIds.has(msg.id) && (
+                <span className="text-[10px] text-red-400">Reported</span>
+              )}
             </div>
             <p className="text-[10px] text-gray-600 mt-1">
               {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
