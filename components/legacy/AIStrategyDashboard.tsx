@@ -154,6 +154,8 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [transcript, setTranscript] = useState('');
   const [voiceSupported, setVoiceSupported] = useState(true);
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
+  const [waiverFilter, setWaiverFilter] = useState('all');
+  const [waiverPriority, setWaiverPriority] = useState('immediate');
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
@@ -778,6 +780,40 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
+                      <div className="flex flex-wrap gap-3 mb-6">
+                        <div className="flex gap-2">
+                          {['All', 'QB', 'RB', 'WR', 'TE'].map(pos => (
+                            <Button
+                              key={pos}
+                              variant={waiverFilter === pos.toLowerCase() ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setWaiverFilter(pos.toLowerCase())}
+                              className={waiverFilter === pos.toLowerCase() ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
+                            >
+                              {pos}
+                            </Button>
+                          ))}
+                        </div>
+
+                        <div className="flex gap-2">
+                          {[
+                            { label: 'Immediate Need', value: 'immediate' },
+                            { label: 'High Value', value: 'value' },
+                            { label: 'Long-Term Upside', value: 'upside' },
+                          ].map(opt => (
+                            <Button
+                              key={opt.value}
+                              variant={waiverPriority === opt.value ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setWaiverPriority(opt.value)}
+                              className={waiverPriority === opt.value ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                            >
+                              {opt.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+
                       {sectionLoading === 'waiver' ? (
                         <div className="space-y-6">
                           {[...Array(5)].map((_, i) => (
