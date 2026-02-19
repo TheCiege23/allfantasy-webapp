@@ -105,6 +105,12 @@ function HomeContent() {
         <div className="absolute top-6 left-0 right-0 px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24 z-20">
           <div className="flex items-center justify-between max-w-7xl mx-auto w-full">
             <BracketsNavLinks />
+            <img
+              src="/af-logo-text.png"
+              alt="AllFantasy"
+              className="h-5 sm:h-6 object-contain select-none"
+              draggable={false}
+            />
             <ModeToggle className="rounded-xl px-3 py-2 text-sm font-semibold active:scale-[0.98] transition" />
           </div>
         </div>
