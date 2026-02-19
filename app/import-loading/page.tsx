@@ -3,6 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { CheckCircle2, Database, Brain, LayoutDashboard, Trophy, Scale } from 'lucide-react';
 
+const starPositions = Array.from({ length: 40 }, (_, i) => ({
+  top: `${((i * 17 + 7) % 100)}%`,
+  left: `${((i * 31 + 13) % 100)}%`,
+  drift: (i % 9) * 10 - 40,
+  duration: 60 + (i % 5) * 10,
+  delay: (i % 10),
+}));
+
 const messages = [
   "Rebuilding your dynasty empire...",
   "Analyzing seasons of glory & heartbreak...",
@@ -63,6 +71,32 @@ export default function ImportLoading() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-[#0d0d17] to-[#0f0f1a] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-grid-cyan-900/10 opacity-20 pointer-events-none animate-pulse-slow" />
+
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <motion.div
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_rgba(34,211,238,0.04)_0%,_transparent_50%)]"
+          animate={{ x: ['-10%', '10%'] }}
+          transition={{ duration: 120, repeat: Infinity, repeatType: 'reverse', ease: 'linear' }}
+        />
+        {starPositions.map((star, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-1 h-1 bg-white rounded-full opacity-30"
+            style={{ top: star.top, left: star.left }}
+            animate={{
+              x: [0, star.drift],
+              opacity: [0.3, 0.8, 0.3],
+            }}
+            transition={{
+              duration: star.duration,
+              repeat: Infinity,
+              repeatType: 'reverse',
+              delay: star.delay,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </div>
 
       <motion.div
         initial={{ opacity: 0, scale: 0.92 }}
