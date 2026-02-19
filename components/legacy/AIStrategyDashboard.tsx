@@ -1,5 +1,14 @@
 'use client';
 
+type TradeFilters = {
+  position: string;
+  valueDelta: string;
+  archetypeFit: string;
+  riskLevel: string;
+  includePicks: boolean;
+  preset: string;
+};
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -156,16 +165,28 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
   const [waiverFilter, setWaiverFilter] = useState('all');
   const [waiverPriority, setWaiverPriority] = useState('immediate');
-  const [filters, setFilters] = useState({
-    position: 'all',
-    valueDelta: 'all',
-    archetypeFit: 'all',
-    riskLevel: 'all',
-    includePicks: true,
-    preset: 'none',
+  const [filters, setFilters] = useState<TradeFilters>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('tradeAnalyzerFilters');
+      if (saved) {
+        try { return JSON.parse(saved); } catch {}
+      }
+    }
+    return {
+      position: 'all',
+      valueDelta: 'all',
+      archetypeFit: 'all',
+      riskLevel: 'all',
+      includePicks: true,
+      preset: 'none',
+    };
   });
   const [trades, setTrades] = useState<any[]>([]);
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    localStorage.setItem('tradeAnalyzerFilters', JSON.stringify(filters));
+  }, [filters]);
 
   const filteredTrades = trades.filter(trade => {
     if (filters.position !== 'all' && filters.position !== 'picks') {
