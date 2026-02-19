@@ -592,9 +592,9 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
             </TabsList>
 
             <div className="bg-[#1a1238]/60 backdrop-blur-md border border-cyan-900/40 rounded-2xl p-6 mb-8 mt-6 shadow-[0_0_30px_-10px_#00f5d4]">
-              <div className="flex flex-col md:flex-row gap-6 flex-wrap">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Position Focus</label>
+                  <label className="block text-sm text-gray-400 mb-2">Position</label>
                   <div className="flex flex-wrap gap-2">
                     {['All', 'QB', 'RB', 'WR', 'TE', 'Picks'].map(pos => (
                       <Button
@@ -602,7 +602,6 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                         variant={filters.position === pos.toLowerCase() ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setFilters(prev => ({ ...prev, position: pos.toLowerCase() }))}
-                        className={filters.position === pos.toLowerCase() ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
                       >
                         {pos}
                       </Button>
@@ -611,27 +610,27 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Value Outcome</label>
+                  <label className="block text-sm text-gray-400 mb-2">Outcome</label>
                   <select
                     value={filters.valueDelta}
                     onChange={e => setFilters(prev => ({ ...prev, valueDelta: e.target.value }))}
-                    className="bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2.5 text-white"
                   >
                     <option value="all">All Outcomes</option>
-                    <option value="strong win">Strong Win (+15%+)</option>
-                    <option value="slight win">Slight Win (+5–15%)</option>
-                    <option value="fair">Fair (±5%)</option>
-                    <option value="slight loss">Slight Loss (-5–15%)</option>
-                    <option value="strong loss">Strong Loss (-15%+)</option>
+                    <option value="strong win">Strong Win</option>
+                    <option value="slight win">Slight Win</option>
+                    <option value="fair">Fair</option>
+                    <option value="slight loss">Slight Loss</option>
+                    <option value="strong loss">Strong Loss</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Fit for My Team</label>
+                  <label className="block text-sm text-gray-400 mb-2">Team Fit</label>
                   <select
                     value={filters.archetypeFit}
                     onChange={e => setFilters(prev => ({ ...prev, archetypeFit: e.target.value }))}
-                    className="bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2.5 text-white"
                   >
                     <option value="all">All Fits</option>
                     <option value="excellent">Excellent</option>
@@ -643,90 +642,166 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-gray-400 mb-2">Risk Level</label>
+                  <label className="block text-sm text-gray-400 mb-2">Risk</label>
                   <select
                     value={filters.riskLevel}
                     onChange={e => setFilters(prev => ({ ...prev, riskLevel: e.target.value }))}
-                    className="bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-400"
+                    className="w-full bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-4 py-2.5 text-white"
                   >
                     <option value="all">Any Risk</option>
-                    <option value="low">Low Risk</option>
-                    <option value="medium">Medium Risk</option>
-                    <option value="high">High Risk</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
                   </select>
                 </div>
 
-                <div className="flex items-end">
+                <div className="flex flex-col justify-end gap-3">
                   <Button
                     variant={filters.includePicks ? 'default' : 'outline'}
+                    size="sm"
                     onClick={() => setFilters(prev => ({ ...prev, includePicks: !prev.includePicks }))}
-                    className={filters.includePicks ? 'bg-purple-600 hover:bg-purple-700' : ''}
                   >
                     {filters.includePicks ? 'Include Picks \u2713' : 'Exclude Picks'}
                   </Button>
+
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFilters({
+                        position: 'all',
+                        valueDelta: 'all',
+                        archetypeFit: 'all',
+                        riskLevel: 'all',
+                        includePicks: true,
+                        preset: 'none',
+                      })}
+                      className="border-red-600/50 text-red-300 hover:bg-red-950/40"
+                    >
+                      Reset
+                    </Button>
+
+                    {(() => {
+                      const count = [
+                        filters.position !== 'all',
+                        filters.valueDelta !== 'all',
+                        filters.archetypeFit !== 'all',
+                        filters.riskLevel !== 'all',
+                        !filters.includePicks,
+                      ].filter(Boolean).length;
+
+                      return count > 0 ? (
+                        <Badge className="bg-amber-600/80 px-3 py-1">
+                          {count} active
+                        </Badge>
+                      ) : null;
+                    })()}
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setFilters({ position: 'all', valueDelta: 'strong win', archetypeFit: 'excellent', riskLevel: 'low', includePicks: true, preset: 'contender' })}
-                  className="bg-emerald-900/40 hover:bg-emerald-800/60"
-                >
-                  Contender Push
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setFilters({ position: 'all', valueDelta: 'all', archetypeFit: 'good', riskLevel: 'all', includePicks: true, preset: 'rebuild' })}
-                  className="bg-rose-900/40 hover:bg-rose-800/60"
-                >
-                  Rebuild Accumulate
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setFilters({ position: 'all', valueDelta: 'fair', archetypeFit: 'neutral', riskLevel: 'medium', includePicks: true, preset: 'balanced' })}
-                  className="bg-amber-900/40 hover:bg-amber-800/60"
-                >
-                  Balanced Mid-Season
-                </Button>
-              </div>
+            <div className="space-y-4">
+              {filteredTrades.map((trade, index) => {
+                const isStrongMatch =
+                  (trade.analysis?.fairness?.includes('win') && filters.valueDelta.includes('win')) ||
+                  (trade.analysis?.archetypeFit === 'excellent' && filters.archetypeFit === 'excellent') ||
+                  (trade.analysis?.riskLevel === 'low' && filters.riskLevel === 'low');
 
-              <div className="flex items-center gap-4 mt-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFilters({
-                    position: 'all',
-                    valueDelta: 'all',
-                    archetypeFit: 'all',
-                    riskLevel: 'all',
-                    includePicks: true,
-                    preset: 'none',
-                  })}
-                  className="border-red-600/50 text-red-300 hover:bg-red-950/40"
-                >
-                  Reset Filters
-                </Button>
+                return (
+                  <motion.div
+                    key={trade.id || index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.08 }}
+                    className={`
+                      relative p-6 rounded-2xl bg-[#1a1238]/80 border transition-all duration-300
+                      ${isStrongMatch
+                        ? 'border-cyan-400/70 shadow-[0_0_25px_8px_rgba(0,245,212,0.25)]'
+                        : 'border-cyan-900/40 hover:border-cyan-600/50'
+                      }
+                    `}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-gray-400 text-sm">Trade #{index + 1}</span>
+                        {trade.analysis?.fairness && (
+                          <Badge className={
+                            trade.analysis.fairness.includes('win')
+                              ? 'bg-emerald-600/80'
+                              : trade.analysis.fairness === 'fair'
+                              ? 'bg-amber-600/80'
+                              : 'bg-red-600/80'
+                          }>
+                            {trade.analysis.fairness}
+                          </Badge>
+                        )}
+                        {trade.analysis?.archetypeFit && (
+                          <Badge variant="outline" className="border-purple-500/50 text-purple-300">
+                            {trade.analysis.archetypeFit} fit
+                          </Badge>
+                        )}
+                      </div>
+                      {trade.analysis?.riskLevel && (
+                        <Badge variant="outline" className={
+                          trade.analysis.riskLevel === 'low'
+                            ? 'border-emerald-500/50 text-emerald-300'
+                            : trade.analysis.riskLevel === 'medium'
+                            ? 'border-amber-500/50 text-amber-300'
+                            : 'border-red-500/50 text-red-300'
+                        }>
+                          {trade.analysis.riskLevel} risk
+                        </Badge>
+                      )}
+                    </div>
 
-                {(() => {
-                  const activeCount = [
-                    filters.position !== 'all',
-                    filters.valueDelta !== 'all',
-                    filters.archetypeFit !== 'all',
-                    filters.riskLevel !== 'all',
-                    !filters.includePicks,
-                  ].filter(Boolean).length;
+                    <div className="grid grid-cols-2 gap-6 mt-4">
+                      <div>
+                        <p className="text-sm text-red-400 font-medium mb-2">You Give</p>
+                        <div className="space-y-1">
+                          {trade.give?.map((p: any, i: number) => (
+                            <div key={i} className="text-white text-sm">
+                              {p.name} <span className="text-gray-500">({p.position})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm text-emerald-400 font-medium mb-2">You Get</p>
+                        <div className="space-y-1">
+                          {trade.get?.map((p: any, i: number) => (
+                            <div key={i} className="text-white text-sm">
+                              {p.name} <span className="text-gray-500">({p.position})</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-                  return activeCount > 0 ? (
-                    <Badge className="bg-amber-600/80 text-white px-3 py-1 text-sm">
-                      {activeCount} {activeCount === 1 ? 'filter' : 'filters'} active
-                    </Badge>
-                  ) : null;
-                })()}
-              </div>
+                    {isStrongMatch && (
+                      <div className="absolute -top-2 right-4 bg-cyan-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow-md">
+                        Strong Match
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+
+              {filteredTrades.length === 0 && trades.length > 0 && (
+                <div className="text-center py-12 text-gray-500">
+                  <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg">No trades match your current filters</p>
+                  <p className="text-sm mt-1">Try adjusting your filters or reset them</p>
+                </div>
+              )}
+
+              {trades.length === 0 && (
+                <div className="text-center py-12 text-gray-500">
+                  <Target className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                  <p className="text-lg">No trade suggestions yet</p>
+                  <p className="text-sm mt-1">Generate a strategy report to discover trade opportunities</p>
+                </div>
+              )}
             </div>
 
             <AnimatePresence mode="wait">
