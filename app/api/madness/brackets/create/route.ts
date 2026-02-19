@@ -14,48 +14,39 @@ export async function POST(req: Request) {
 
   const { leagueId, name, picks } = await req.json()
 
-  if (!leagueId || !picks || typeof picks !== "object") {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
-  }
-
   const league = await (prisma as any).bracketLeague.findUnique({
     where: { id: leagueId },
   })
 
-  if (!league) {
-    return NextResponse.json({ error: "League not found" }, { status: 404 })
+  if (!league || (league.deadline && new Date() > new Date(league.deadline))) {
+    return NextResponse.json({ error: "Deadline passed or league not found" }, { status: 403 })
   }
 
-  if (league.deadline && new Date() > new Date(league.deadline)) {
-    return NextResponse.json({ error: "Deadline has passed" }, { status: 400 })
-  }
-
-  const existingCount = await (prisma as any).bracketEntry.count({
-    where: { leagueId, userId: session.user.id },
+  const userBracketCount = await (prisma as any).bracketEntry.count({
+    where: { userId: session.user.id, leagueId },
   })
 
-  if (existingCount >= 3) {
-    return NextResponse.json({ error: "Maximum 3 brackets per league" }, { status: 400 })
+  if (userBracketCount >= 3) {
+    return NextResponse.json({ error: "Max 3 brackets per user" }, { status: 403 })
   }
 
-  const entry = await (prisma as any).bracketEntry.create({
+  const bracket = await (prisma as any).bracketEntry.create({
     data: {
       leagueId,
       userId: session.user.id,
-      name: name || `Bracket ${existingCount + 1}`,
+      name: name || `Bracket ${userBracketCount + 1}`,
+      isFinalized: true,
+      finalizedAt: new Date(),
     },
   })
 
-  const pickEntries = Object.entries(picks)
-  if (pickEntries.length > 0) {
-    await (prisma as any).bracketPick.createMany({
-      data: pickEntries.map(([nodeId, winner]) => ({
-        entryId: entry.id,
-        nodeId,
-        pickedTeamName: winner as string,
-      })),
-    })
-  }
+  await (prisma as any).bracketPick.createMany({
+    data: Object.entries(picks).map(([nodeId, winnerTeam]) => ({
+      entryId: bracket.id,
+      nodeId,
+      pickedTeamName: winnerTeam as string,
+    })),
+  })
 
-  return NextResponse.json({ entryId: entry.id })
+  return NextResponse.json({ success: true, bracketId: bracket.id })
 }
