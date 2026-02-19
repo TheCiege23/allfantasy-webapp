@@ -111,31 +111,20 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
     }
   };
 
-  const handlePropose = async (trade: any) => {
-    if (!selectedLeague) return;
-    try {
-      const res = await fetch('/api/trade/propose', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leagueId: selectedLeague.platformLeagueId,
-          offerFrom: 1,
-          offerTo: trade.partnerRosterId || 0,
-          adds: trade.receivesIds || trade.youGet.split(' + '),
-          drops: trade.givesIds || trade.youGive.split(' + '),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        const deepLink = `https://sleeper.app/leagues/${selectedLeague.platformLeagueId}/trade`;
-        window.open(data.sleeperDeepLink || deepLink, '_blank');
-        toast.info('Opening Sleeper — start the trade there!');
-      } else {
-        toast.error(data.error || 'Failed to save proposal');
-      }
-    } catch {
-      toast.error('Failed to send proposal');
-    }
+  const handlePropose = (trade: any) => {
+    if (!selectedLeague) return toast.error('League not selected');
+
+    const deepLink = `https://sleeper.app/leagues/${selectedLeague.platformLeagueId}/trade`;
+
+    toast.success(`Opening Sleeper Trade Center\n\nSuggested partner: ${trade.partner}\nYou give: ${trade.youGive}\nYou get: ${trade.youGet}`, {
+      duration: 6000,
+      action: {
+        label: 'Open Sleeper',
+        onClick: () => window.open(deepLink, '_blank'),
+      },
+    });
+
+    window.open(deepLink, '_blank');
   };
 
   return (
