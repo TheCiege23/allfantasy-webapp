@@ -45,6 +45,7 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 -   **Game Theory Counter Builder**: Mathematically optimized counter offers.
 -   **NCAA Bracket Challenge**: A full March Madness bracket system with league creation, ESPN-style UI, live polling, and shareable invite links.
 -   **Trade Improvement AI (Dual-Brain)**: Utilizes Agentic Grok (multi-turn tool loop with web_search via Serper + x_keyword_search via xAI) and GPT-4o for parallel synthesis, featuring a real-time thinking UI and a feedback system that personalizes future suggestions.
+-   **2-Stage Trade Analysis Pipeline**: Stage A (Deterministic Intelligence Layer) assembles a normalized context snapshot from league settings, roster composition/needs, trade history, manager tendencies, valuations, injury status, ADP data, and player analytics. Stage B (LLM Decision Layer) feeds this identical fact layer to OpenAI and Grok for structured JSON analysis with consensus merging and conflict detection. Implemented in `trade-context-assembler.ts` and wired through the dynasty-trade-analyzer API route.
 
 **League Sync System:**
 A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage and a shared sync core.
