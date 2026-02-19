@@ -237,25 +237,31 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                   </div>
                 </div>
                 {(trade.confidence != null || trade.winProbDelta) && (
-                  <div className="flex items-center gap-3 text-xs">
+                  <div className="flex justify-between text-sm mt-3 pt-3 border-t border-gray-800">
                     {trade.confidence != null && (
-                      <span className={`font-medium ${
-                        trade.confidence >= 75 ? 'text-green-400' :
-                        trade.confidence >= 50 ? 'text-yellow-400' :
-                        trade.confidence >= 25 ? 'text-orange-400' : 'text-gray-400'
-                      }`}>
-                        {trade.confidence}/100 confidence
-                      </span>
+                      <div>
+                        <span className="text-gray-400">Confidence:</span>
+                        <span className={cn(
+                          'ml-1 font-bold',
+                          trade.confidence >= 75 ? 'text-green-400' :
+                          trade.confidence >= 50 ? 'text-yellow-400' :
+                          trade.confidence >= 25 ? 'text-orange-400' : 'text-gray-400'
+                        )}>
+                          {trade.confidence}%
+                        </span>
+                      </div>
                     )}
-                    {trade.winProbDelta && trade.winProbDelta !== 'neutral' && (
-                      <span className={`font-medium ${
-                        trade.winProbDelta.startsWith('+') ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {trade.winProbDelta} win prob
-                      </span>
-                    )}
-                    {trade.winProbDelta === 'neutral' && (
-                      <span className="text-gray-500 font-medium">neutral win prob</span>
+                    {trade.winProbDelta && (
+                      <div>
+                        <span className="text-gray-400">Win &#916;:</span>
+                        <span className={cn(
+                          'ml-1 font-bold',
+                          trade.winProbDelta.startsWith('+') ? 'text-green-400' :
+                          trade.winProbDelta.startsWith('-') ? 'text-red-400' : 'text-gray-300'
+                        )}>
+                          {trade.winProbDelta}
+                        </span>
+                      </div>
                     )}
                   </div>
                 )}
