@@ -46,6 +46,10 @@
   --badge-text-red: #991b1b;
   --on-accent-bg: #000000;
 
+  --overlay: rgba(7,3,18,0.6);
+  --dropdown-bg: #1A1330;
+  --dropdown-text: rgba(255,255,255,0.94);
+
   --neon-cyan: #22d3ee;
   --neon-purple: #c026d3;
   --neon-pink: #ec4899;
@@ -85,6 +89,10 @@ html[data-mode="dark"] {
   --badge-text-emerald: #a7f3d0;
   --badge-text-red: #fecaca;
   --on-accent-bg: #000000;
+
+  --overlay: rgba(0,0,0,0.55);
+  --dropdown-bg: #111827;
+  --dropdown-text: rgba(255,255,255,0.92);
 }
 
 html[data-mode="legacy"] {
@@ -118,6 +126,10 @@ html[data-mode="legacy"] {
   --badge-text-emerald: #a7f3d0;
   --badge-text-red: #fecaca;
   --on-accent-bg: #000000;
+
+  --overlay: rgba(7,3,18,0.6);
+  --dropdown-bg: #1A1330;
+  --dropdown-text: rgba(255,255,255,0.94);
 }
 
 body {
@@ -502,3 +514,19 @@ html[data-mode="light"] .via-white\/10 { --tw-gradient-stops: var(--tw-gradient-
 .stagger-children > *:nth-child(4) { animation-delay: 240ms; }
 .stagger-children > *:nth-child(5) { animation-delay: 320ms; }
 .stagger-children > *:nth-child(6) { animation-delay: 400ms; }
+
+
+/* Universal overlay/dropdown readability across modes */
+[data-radix-popper-content-wrapper] {
+  z-index: 90 !important;
+}
+
+select, option {
+  background: var(--dropdown-bg);
+  color: var(--dropdown-text);
+}
+
+[data-state="open"][role="dialog"] {
+  background: var(--panel);
+  color: var(--text);
+}
