@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { BracketProView } from "@/components/bracket/BracketProView"
 import { Leaderboard } from "@/components/bracket/Leaderboard"
+import { PickAssistCard } from "@/components/bracket/PickAssistCard"
 import Link from "next/link"
 import { requireVerifiedSession } from "@/lib/require-verified"
 
@@ -78,6 +79,7 @@ export default async function EntryBracketPage({
 
           <div className="space-y-6">
             <Leaderboard tournamentId={params.tournamentId} leagueId={entry.leagueId} />
+            <PickAssistCard entryId={entry.id} />
           </div>
         </div>
       </div>
