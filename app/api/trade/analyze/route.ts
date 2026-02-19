@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai-client'
+import { openaiChatJson } from '@/lib/openai-client'
 import { classifyTeam, type RosterPlayer } from '@/lib/teamClassifier'
 import { buildTradeAnalysisPrompt, type TradeAnalysisResponse } from '@/lib/prompts/tradeAnalyzer'
 import { prisma } from '@/lib/prisma'
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { give, get, leagueId, userRoster, futurePicksCount = 0, leagueSettings = '' } = body
+  const { give, get, leagueId, userRoster, futurePicksCount = 0, leagueSettings = '', rollingInsights = '' } = body
 
   if (!give?.length || !get?.length || !leagueId || !userRoster?.length) {
     return NextResponse.json(
@@ -54,7 +54,8 @@ export async function POST(req: NextRequest) {
       archetype,
       explanation,
       positionalNeeds,
-      futurePicksCount
+      futurePicksCount,
+      rollingInsights
     )
 
     const result = await openaiChatJson({

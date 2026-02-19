@@ -1,12 +1,30 @@
 import type { TeamArchetype } from '@/lib/teamClassifier'
 
+export interface CounterSuggestion {
+  description: string
+  giveAdd: string[]
+  getRemove: string[]
+  estimatedDelta: string
+}
+
+export interface VisualData {
+  giveValue: number
+  getValue: number
+  giveAge: number
+  getAge: number
+  givePositionalFit: number
+  getPositionalFit: number
+}
+
 export interface TradeAnalysisResponse {
   fairness: 'strong win' | 'slight win' | 'fair' | 'slight loss' | 'strong loss'
   valueDelta: string
   archetypeFit: 'excellent' | 'good' | 'neutral' | 'poor' | 'terrible'
   verdict: string
-  counterSuggestions: string[]
   confidence: number
+  keyRisks: string[]
+  counterSuggestions: CounterSuggestion[]
+  visualData: VisualData
 }
 
 export function buildTradeAnalysisPrompt(
@@ -16,38 +34,59 @@ export function buildTradeAnalysisPrompt(
   archetype: TeamArchetype,
   archetypeExplanation: string,
   positionalNeeds: string,
-  userFuturePicks: number
+  futurePicks: number,
+  rollingInsights: string = ''
 ): string {
-  return `You are an elite dynasty fantasy football GM and trade advisor for AllFantasy.
+  return `You are AllFantasy's elite dynasty trade advisor.
 
-League format: ${leagueSettings}
+League: ${leagueSettings}
 
-User's team archetype: ${archetype}
-Explanation: ${archetypeExplanation}
+User Team:
+\u2022 Archetype: ${archetype}
+\u2022 Explanation: ${archetypeExplanation}
+\u2022 Positional Needs: ${positionalNeeds}
+\u2022 Future capital: ${futurePicks} relevant 2026+ picks
 
-Positional situation: ${positionalNeeds}
-Future draft capital: ${userFuturePicks} firsts/seconds owned (2026+)
+Recent rolling insights:
+${rollingInsights || 'None available'}
 
-Proposed trade:
+Trade:
 Give: ${give}
 Get: ${get}
 
-Analyze with brutal honesty and dynasty-specific reasoning (2026-2028 window focus):
+Analyze dynasty-style (focus 2026\u20132028 window). Be brutally honest.
 
-1. Raw value delta (use current KTC-style market values)
-2. Fit for this exact archetype and positional needs
-3. Short-term (2026) vs long-term (2027-2028) impact
-4. Risk factors (age, injury, situation)
-5. Personalized verdict (one clear sentence)
+Output **strict JSON only**:
 
-Output format (strict JSON):
 {
   "fairness": "strong win" | "slight win" | "fair" | "slight loss" | "strong loss",
-  "valueDelta": "+18%" | "-12%" | etc,
+  "valueDelta": "+22%" | "-9%" | etc,
   "archetypeFit": "excellent" | "good" | "neutral" | "poor" | "terrible",
-  "verdict": "Push this trade hard — it perfectly fills your RB hole while keeping your contender window open.",
-  "counterSuggestions": ["Add your 2027 2nd to make it fair", "Counter with Player X instead of Y"],
-  "confidence": 85
+  "verdict": "One clear, personalized sentence.",
+  "confidence": 92,
+  "keyRisks": ["Injury concern", "Bye week conflict"],
+  "counterSuggestions": [
+    {
+      "description": "Add your 2027 2nd to balance value",
+      "giveAdd": ["2027 2nd round pick"],
+      "getRemove": [],
+      "estimatedDelta": "+5%"
+    },
+    {
+      "description": "Swap WR X for WR Y + late pick",
+      "giveAdd": ["WR Y"],
+      "getRemove": ["WR X"],
+      "estimatedDelta": "even"
+    }
+  ],
+  "visualData": {
+    "giveValue": 185,
+    "getValue": 210,
+    "giveAge": 25.8,
+    "getAge": 24.2,
+    "givePositionalFit": 68,
+    "getPositionalFit": 92
+  }
 }
 
 Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`
