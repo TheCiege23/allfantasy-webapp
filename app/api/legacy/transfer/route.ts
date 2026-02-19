@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 import { getAllPlayers } from '@/lib/sleeper-client'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 const openai = new OpenAI()
 
@@ -86,14 +88,20 @@ async function fetchSleeperData(url: string) {
 }
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "LegacyTransfer" })(async (req: NextRequest) => {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   try {
-    const { leagueId } = await req.json()
+    const { leagueId, sleeperLeagueId: altId } = await req.json()
+    const rawId = leagueId || altId
     
-    if (!leagueId || typeof leagueId !== 'string') {
+    if (!rawId || typeof rawId !== 'string') {
       return NextResponse.json({ error: 'League ID is required' }, { status: 400 })
     }
 
-    const cleanId = leagueId.trim()
+    const cleanId = rawId.trim()
     
     const league: SleeperLeague = await fetchSleeperData(`https://api.sleeper.app/v1/league/${cleanId}`)
     if (!league) {
@@ -356,8 +364,163 @@ Example format:
       storylines,
     }
 
+    const rec = league.scoring_settings?.rec || 0
+    let scoringType = 'standard'
+    if (rec === 1) scoringType = 'ppr'
+    else if (rec === 0.5) scoringType = 'half_ppr'
+    if (league.roster_positions?.includes('SUPER_FLEX')) scoringType += '_superflex'
+
+    const isDynasty = league.settings?.type === 2
+    const seasonNum = parseInt(league.season) || new Date().getFullYear()
+
+    const dbLeague = await prisma.league.upsert({
+      where: {
+        userId_platform_platformLeagueId: {
+          userId: session.user.id,
+          platform: 'sleeper',
+          platformLeagueId: cleanId,
+        },
+      },
+      update: {
+        name: league.name,
+        season: seasonNum,
+        isLegacy: true,
+        isDynasty,
+        scoring: scoringType,
+        leagueSize: league.total_rosters || managers.length,
+        settings: league as any,
+        lastSyncedAt: new Date(),
+        syncStatus: 'success',
+        syncError: null,
+      },
+      create: {
+        userId: session.user.id,
+        platform: 'sleeper',
+        platformLeagueId: cleanId,
+        name: league.name,
+        season: seasonNum,
+        isLegacy: true,
+        isDynasty,
+        scoring: scoringType,
+        leagueSize: league.total_rosters || managers.length,
+        settings: league as any,
+        lastSyncedAt: new Date(),
+        syncStatus: 'success',
+      },
+    })
+
+    for (const mgr of managers) {
+      if (!mgr.ownerId) continue
+      await prisma.leagueManager.upsert({
+        where: {
+          leagueId_sleeperUserId: {
+            leagueId: dbLeague.id,
+            sleeperUserId: mgr.ownerId,
+          },
+        },
+        update: {
+          displayName: mgr.displayName,
+          avatar: mgr.avatar,
+          wins: mgr.wins,
+          losses: mgr.losses,
+          ties: mgr.ties,
+        },
+        create: {
+          leagueId: dbLeague.id,
+          sleeperUserId: mgr.ownerId,
+          displayName: mgr.displayName,
+          avatar: mgr.avatar,
+          wins: mgr.wins,
+          losses: mgr.losses,
+          ties: mgr.ties,
+        },
+      })
+    }
+
+    await prisma.historicalSeason.upsert({
+      where: {
+        leagueId_season: {
+          leagueId: dbLeague.id,
+          season: seasonNum,
+        },
+      },
+      update: {
+        standings: managers.map(m => ({
+          rosterId: m.rosterId,
+          name: m.displayName,
+          wins: m.wins,
+          losses: m.losses,
+          ties: m.ties,
+          pointsFor: m.pointsFor,
+        })),
+        metadata: { matchupWeeks: allMatchups.length, draftType: draftInfo.type },
+      },
+      create: {
+        leagueId: dbLeague.id,
+        season: seasonNum,
+        standings: managers.map(m => ({
+          rosterId: m.rosterId,
+          name: m.displayName,
+          wins: m.wins,
+          losses: m.losses,
+          ties: m.ties,
+          pointsFor: m.pointsFor,
+        })),
+        metadata: { matchupWeeks: allMatchups.length, draftType: draftInfo.type },
+      },
+    })
+
+    for (const prevSeason of previousSeasons) {
+      const prevSeasonNum = parseInt(prevSeason.season) || 0
+      if (prevSeasonNum === 0) continue
+      await prisma.historicalSeason.upsert({
+        where: {
+          leagueId_season: {
+            leagueId: dbLeague.id,
+            season: prevSeasonNum,
+          },
+        },
+        update: {
+          metadata: { leagueId: prevSeason.league.league_id, status: prevSeason.league.status },
+        },
+        create: {
+          leagueId: dbLeague.id,
+          season: prevSeasonNum,
+          metadata: { leagueId: prevSeason.league.league_id, status: prevSeason.league.status },
+        },
+      })
+    }
+
+    for (const trade of trades.slice(0, 50)) {
+      const rosterIds = trade.roster_ids || []
+      if (rosterIds.length < 2) continue
+      const tradeWeek = allMatchups.length || 1
+      await prisma.trade.upsert({
+        where: { id: trade.transaction_id },
+        update: {
+          team1Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[0])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
+          team2Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[1])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
+          executedAt: trade.created ? new Date(trade.created) : null,
+        },
+        create: {
+          id: trade.transaction_id,
+          leagueId: dbLeague.id,
+          season: seasonNum,
+          week: tradeWeek,
+          team1Id: String(rosterIds[0]),
+          team2Id: String(rosterIds[1]),
+          team1Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[0])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
+          team2Assets: trade.adds ? Object.entries(trade.adds).filter(([, rid]) => String(rid) === String(rosterIds[1])).map(([pid]) => ({ playerId: pid, name: playerMap[pid]?.name || pid })) : [],
+          status: 'completed',
+          executedAt: trade.created ? new Date(trade.created) : null,
+          metadata: { draftPicks: trade.draft_picks || [] },
+        },
+      })
+    }
+
     return NextResponse.json({
       success: true,
+      leagueId: dbLeague.id,
       preview: transferPreview,
       message: `Found "${league.name}" with ${managers.length} managers and ${previousSeasons.length + 1} seasons of history.`
     })

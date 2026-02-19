@@ -114,12 +114,11 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
     for (let i = 0; i < selected.length; i++) {
       const league = selected[i]
       try {
-        const res = await fetch('/api/league/sync', {
+        const res = await fetch('/api/legacy/transfer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            platform: 'sleeper',
-            platformLeagueId: league.league_id,
+            leagueId: league.league_id,
           }),
         })
 
