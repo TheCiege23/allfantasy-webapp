@@ -2509,6 +2509,7 @@ model SleeperRoster {
 
 model MockDraft {
   id        String   @id @default(uuid())
+  shareId   String?  @unique
   leagueId  String
   league    League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   userId    String
