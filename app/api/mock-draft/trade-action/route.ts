@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
       try {
         const adpType = league?.isDynasty ? 'dynasty' : 'redraft'
         const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 300)
-        adpFallbackPool = adpEntries.map(e => ({ name: e.name, position: e.position, team: e.team }))
+        adpFallbackPool = adpEntries.map(e => ({ name: e.name, position: e.position, team: e.team ?? undefined }))
         const available = adpEntries.filter(e => !lockedPlayerNames.has(e.name.toLowerCase()))
         if (available.length > 0) {
           adpContext = `\nAvailable players by ADP:\n${formatADPForPrompt(available, 60)}`
