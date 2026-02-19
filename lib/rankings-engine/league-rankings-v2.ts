@@ -16,6 +16,7 @@ import { getWeekStatsFromCache } from './sleeper-matchup-cache'
 import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../idp-kicker-values'
 import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights, type CompositeWeightConfig } from './composite-weights'
+import { getActiveCompositeParams, type LearnedCompositeParams } from './composite-param-learning'
 
 export interface Driver {
   id: string
@@ -534,6 +535,7 @@ function computeAgeAdjustedMarketValue(
   valueMap: Map<string, PlayerValueMap>,
   isDynasty: boolean,
   ldiData: Record<string, { ldi: number }> | null,
+  playerInjuryMap?: Map<string, PlayerInjuryProfile>,
 ): number {
   let total = 0
   for (const pid of roster.players || []) {
@@ -548,6 +550,18 @@ function computeAgeAdjustedMarketValue(
       const posLdi = ldiData[pv.position.toUpperCase()]?.ldi ?? 50
       const posBoost = 0.85 + 0.30 * (posLdi / 100)
       val = val * posBoost
+    }
+    if (playerInjuryMap) {
+      const profile = playerInjuryMap.get(pid)
+      if (profile && profile.effectiveSeverity > 0.1) {
+        const certaintyFactor = 1 - profile.uncertainty * 0.3
+        const discount = profile.effectiveSeverity * certaintyFactor
+        if (isDynasty) {
+          val = val * (1 - discount * 0.25)
+        } else {
+          val = val * (1 - discount * 0.60)
+        }
+      }
     }
     total += val
   }
@@ -737,6 +751,26 @@ interface RosterInjuryImpact {
   marketDiscount: number
   riskConcentration: number
   injuryProfiles: PlayerInjuryProfile[]
+  byPlayerId: Map<string, PlayerInjuryProfile>
+}
+
+function applyLearnedParamsToProfile(
+  profile: import('./composite-weights').CompositeWeightProfile,
+  params: LearnedCompositeParams,
+): import('./composite-weights').CompositeWeightProfile {
+  const luckScale = 2.0 / Math.max(1.0, params.luckDampening)
+  const fcDelta = params.futureCapitalInfluence - 0.05
+  const totalOther = profile.win + profile.power + profile.market + profile.skill + profile.draftGain
+  const rebalanceFactor = totalOther > 0 ? (totalOther - fcDelta) / totalOther : 1
+  return {
+    win: Math.max(0, profile.win * rebalanceFactor),
+    power: Math.max(0, profile.power * rebalanceFactor),
+    luck: Math.max(0, profile.luck * luckScale),
+    market: Math.max(0, profile.market * rebalanceFactor),
+    skill: Math.max(0, profile.skill * rebalanceFactor),
+    draftGain: Math.max(0, profile.draftGain * rebalanceFactor),
+    futureCapital: Math.max(0, profile.futureCapital + fcDelta),
+  }
 }
 
 function computePowerScore(
@@ -744,11 +778,12 @@ function computePowerScore(
   benchP: number,
   isDynasty: boolean,
   injuryImpact: RosterInjuryImpact,
+  params?: LearnedCompositeParams | null,
 ): number {
-  const rawWeighted = isDynasty
-    ? 0.70 * starterP + 0.30 * benchP
-    : 0.80 * starterP + 0.20 * benchP
-  const healthMultiplier = 0.85 + 0.30 * injuryImpact.powerHealthRatio
+  const sbSplit = params?.starterBenchSplit ?? (isDynasty ? 0.70 : 0.80)
+  const rawWeighted = sbSplit * starterP + (1 - sbSplit) * benchP
+  const injInfluence = params?.injuryInfluence ?? 0.30
+  const healthMultiplier = (1 - injInfluence) + injInfluence * injuryImpact.powerHealthRatio
   const riskPenalty = 1 - 0.05 * injuryImpact.riskConcentration
   const adjusted = rawWeighted * healthMultiplier * riskPenalty
   return Math.round(100 * clamp01(adjusted))
@@ -878,17 +913,18 @@ function computeRosterInjuryImpact(
 ): RosterInjuryImpact {
   const starters = new Set(roster.starters || [])
   const allPlayers = roster.players || []
-  if (allPlayers.length === 0) return { powerHealthRatio: 0.5, marketDiscount: 0, riskConcentration: 0, injuryProfiles: [] }
+  if (allPlayers.length === 0) return { powerHealthRatio: 0.5, marketDiscount: 0, riskConcentration: 0, injuryProfiles: [], byPlayerId: new Map() }
 
   const nowMs = Date.now()
   const profiles: PlayerInjuryProfile[] = []
+  const byPlayerId = new Map<string, PlayerInjuryProfile>()
 
   for (const pid of allPlayers) {
     if (pid === '0') continue
     const isStarter = starters.has(pid)
-    profiles.push(
-      computePlayerInjuryProfile(pid, isStarter, sleeperPlayers, analyticsMap, dbInjuryMap, valueMap, nowMs),
-    )
+    const profile = computePlayerInjuryProfile(pid, isStarter, sleeperPlayers, analyticsMap, dbInjuryMap, valueMap, nowMs)
+    profiles.push(profile)
+    byPlayerId.set(pid, profile)
   }
 
   let starterTotalWeight = 0
@@ -927,7 +963,7 @@ function computeRosterInjuryImpact(
 
   const riskConcentration = Math.min(1, highValueInjuredCount / 3)
 
-  return { powerHealthRatio, marketDiscount, riskConcentration, injuryProfiles: profiles }
+  return { powerHealthRatio, marketDiscount, riskConcentration, injuryProfiles: profiles, byPlayerId }
 }
 
 async function fetchDbInjuryMap(playerNames: string[]): Promise<Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }>> {
@@ -2213,7 +2249,13 @@ export async function computeLeagueRankingsV2(
   const week = currentWeek ?? settings.week
   const phase = detectPhase(week, season, status)
 
-  const dbRosterRecords = await fetchRosterRecords(leagueId)
+  const leagueClassKey = isDynasty ? (isSF ? 'DYN_SF' : 'DYN_1QB') : (isSF ? 'RED_SF' : 'RED_1QB')
+  const segmentKey = `${leagueClassKey}_${phase}`
+
+  const [dbRosterRecords, learnedParams] = await Promise.all([
+    fetchRosterRecords(leagueId),
+    getActiveCompositeParams(segmentKey).catch(() => null),
+  ])
 
   const [rosters, users, fcPlayers, ldiData, playoffBracket, sleeperPlayersRaw, leagueDrafts, weightConfig] = await Promise.all([
     getLeagueRosters(leagueId),
@@ -2282,10 +2324,18 @@ export async function computeLeagueRankingsV2(
     }
   }
   let analyticsMap: Map<string, any> | undefined
+  let dbInjuryMap: Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }> | undefined
   try {
-    analyticsMap = await getPlayerAnalyticsBatch(allPlayerNames)
-    if (analyticsMap.size === 0) analyticsMap = undefined
-  } catch { analyticsMap = undefined }
+    const [analytics, injuries] = await Promise.all([
+      getPlayerAnalyticsBatch(allPlayerNames).catch(() => new Map()),
+      fetchDbInjuryMap(allPlayerNames).catch(() => new Map()),
+    ])
+    analyticsMap = analytics.size > 0 ? analytics : undefined
+    dbInjuryMap = injuries.size > 0 ? injuries : undefined
+  } catch {
+    analyticsMap = undefined
+    dbInjuryMap = undefined
+  }
 
   const isIdpLeague = detectIdpLeague(rosterPositions)
   const isKickerLeague = detectKickerLeague(rosterPositions)
@@ -2356,7 +2406,8 @@ export async function computeLeagueRankingsV2(
     const winPct = totalGames > 0 ? wins / totalGames : 0.5
     const luckDelta = wins - expectedWins
 
-    const ageAdjustedTotal = computeAgeAdjustedMarketValue(roster, valueMap, isDynasty, ldiData)
+    const rosterInjuryImpact = computeRosterInjuryImpact(roster, sleeperPlayersRaw, analyticsMap, dbInjuryMap, valueMap)
+    const ageAdjustedTotal = computeAgeAdjustedMarketValue(roster, valueMap, isDynasty, ldiData, rosterInjuryImpact.byPlayerId)
 
     const ptsFor = (roster.settings.fpts ?? 0) + (roster.settings.fpts_decimal ?? 0) / 100
     const ptsAgainst = (roster.settings.fpts_against ?? 0) + (roster.settings.fpts_against_decimal ?? 0) / 100
@@ -2416,13 +2467,14 @@ export async function computeLeagueRankingsV2(
       playoffSeed,
       isChampion,
       portfolioRaw,
+      rosterInjuryImpact,
     })
   }
 
   const allRosterIds = rosters.map(r => r.roster_id)
 
   for (const ti of teamIntermediates) {
-    const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion, portfolioRaw } = ti
+    const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion, portfolioRaw, rosterInjuryImpact } = ti
 
     const bracketFinish = playoffFinishMap.get(roster.roster_id) || null
     const madePlayoffs = bracketFinish?.madePlayoffs || (playoffSeed !== null && playoffSeed > 0)
@@ -2431,8 +2483,7 @@ export async function computeLeagueRankingsV2(
 
     const starterP = robustPercentileRank(rosterValues.starterValue, allStarterValues)
     const benchP = robustPercentileRank(rosterValues.benchValue, allBenchValues)
-    const injuryPenalty = computeRosterInjuryPenalty(roster, sleeperPlayersRaw, analyticsMap, valueMap)
-    const powerScore = computePowerScore(starterP, benchP, isDynasty, injuryPenalty)
+    const powerScore = computePowerScore(starterP, benchP, isDynasty, rosterInjuryImpact, learnedParams)
 
     const luckScore = computeLuckScore(luckDelta, allLuckDeltas)
 
@@ -2476,7 +2527,10 @@ export async function computeLeagueRankingsV2(
     )
 
     const activeWeightProfile = resolveWeightProfile(weightConfig, phase, isDynasty)
-    const composite = computeCompositeFromWeights(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore, activeWeightProfile)
+    const adaptedProfile = learnedParams
+      ? applyLearnedParamsToProfile(activeWeightProfile, learnedParams)
+      : activeWeightProfile
+    const composite = computeCompositeFromWeights(winScore, powerScore, luckScore, marketValueScore, managerSkillScore, draftGainP, phase, isDynasty, futureCapitalScore, adaptedProfile)
     const streak = computeStreak(weeklyPts, weeklyOppPts)
 
     const starterPer = robustPercentileRank(rosterValues.starterValue, allStarterValues)
@@ -2704,6 +2758,8 @@ export async function computeLeagueRankingsV2(
       proposalTargets,
       weightVersion: weightConfig.version,
       weightCalibratedAt: weightConfig.calibratedAt,
+      learnedParams: learnedParams ?? undefined,
+      segmentKey,
     },
   }
 }

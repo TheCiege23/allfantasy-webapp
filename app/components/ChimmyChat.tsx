@@ -7,6 +7,35 @@ import { toast } from 'sonner';
 const HEART_EMOJI = '\u{1F496}';
 const LOVE_EMOJI = '\u{1F495}';
 
+function renderContentWithLinks(content: string) {
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = linkRegex.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(<span key={`text-${lastIndex}`}>{content.slice(lastIndex, match.index)}</span>);
+    }
+    nodes.push(
+      <a
+        key={`link-${match.index}`}
+        href={match[2]}
+        className="underline text-cyan-300 hover:text-cyan-200"
+      >
+        {match[1]}
+      </a>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < content.length) {
+    nodes.push(<span key={`text-end`}>{content.slice(lastIndex)}</span>);
+  }
+
+  return <div className="whitespace-pre-wrap">{nodes.length ? nodes : content}</div>;
+}
+
 export default function ChimmyChat() {
   const [messages, setMessages] = useState<any[]>([
     { role: 'assistant', content: `Hi! I'm Chimmy ${HEART_EMOJI} Your personal fantasy AI assistant. Upload a trade screenshot or ask me anything!` }
@@ -117,7 +146,7 @@ export default function ChimmyChat() {
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] p-5 rounded-3xl ${msg.role === 'user' ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-200'}`}>
-              {msg.content}
+              {renderContentWithLinks(msg.content)}
               {msg.image && (
                 <img src={msg.image} alt="Trade screenshot" className="mt-4 rounded-2xl max-w-full shadow-lg" />
               )}
