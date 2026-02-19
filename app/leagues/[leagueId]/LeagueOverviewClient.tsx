@@ -129,7 +129,7 @@ export default function LeagueOverviewClient({ league, isWelcome }: LeagueOvervi
                   AI Strategy Engine <ArrowRight className="h-4 w-4" />
                 </Button>
               </Link>
-              <Link href="/af-legacy" className="block">
+              <Link href="/af-legacy?tab=overview" className="block">
                 <Button className="w-full bg-gradient-to-r from-cyan-500 to-purple-600 hover:opacity-90">
                   Open Legacy Hub <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>

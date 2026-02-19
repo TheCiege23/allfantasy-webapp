@@ -13,13 +13,38 @@ import {
 import { useState } from 'react'
 import Link from 'next/link'
 import { AFBrandingFooter } from '@/components/branding/AFWatermark'
+import { Trophy, Users, ArrowRight, BarChart3, TrendingUp, Zap, Plus } from 'lucide-react'
+
+type LeagueTeamSummary = {
+  id: string
+  teamName: string
+  ownerName: string
+  wins: number
+  losses: number
+  pointsFor: number
+}
+
+type LeagueSummary = {
+  id: string
+  name: string | null
+  platform: string
+  platformLeagueId: string
+  season: number | null
+  leagueSize: number | null
+  scoring: string | null
+  isDynasty: boolean
+  teamCount: number
+  teams: LeagueTeamSummary[]
+}
 
 interface LegacyHubClientProps {
   userId: string
+  leagues?: LeagueSummary[]
+  defaultTab?: string
 }
 
-export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
-  const [activeTab, setActiveTab] = useState('transfer')
+export default function LegacyHubClient({ userId, leagues = [], defaultTab = 'transfer' }: LegacyHubClientProps) {
+  const [activeTab, setActiveTab] = useState(defaultTab)
 
   return (
     <motion.div
@@ -52,8 +77,13 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
         </motion.div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 md:grid-cols-5 lg:w-auto lg:inline-flex bg-[#1a1238]/70 backdrop-blur-lg border border-white/10 rounded-xl mb-10">
-            <TabsTrigger value="transfer" className="text-base md:text-lg">League Transfer</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 md:grid-cols-6 lg:w-auto lg:inline-flex bg-[#1a1238]/70 backdrop-blur-lg border border-white/10 rounded-xl mb-10">
+            {leagues.length > 0 && (
+              <TabsTrigger value="overview" className="text-base md:text-lg">My Leagues</TabsTrigger>
+            )}
+            <TabsTrigger value="transfer" className="text-base md:text-lg">
+              {leagues.length > 0 ? 'Add League' : 'League Transfer'}
+            </TabsTrigger>
             <TabsTrigger value="rankings" className="text-base md:text-lg">Rankings</TabsTrigger>
             <TabsTrigger value="trades" className="text-base md:text-lg">Trade Analyzer</TabsTrigger>
             <TabsTrigger value="strategy" className="relative text-base md:text-lg font-bold text-amber-300">
@@ -66,6 +96,118 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
           </TabsList>
 
           <AnimatePresence mode="wait">
+            {activeTab === 'overview' && leagues.length > 0 && (
+              <motion.div
+                key="overview"
+                variants={tabContentVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <div className="space-y-6">
+                  {leagues.map((league, idx) => (
+                    <motion.div
+                      key={league.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.1 }}
+                    >
+                      <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-2xl shadow-purple-950/20">
+                        <CardHeader className="pb-4">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <CardTitle className="text-2xl md:text-3xl bg-gradient-to-r from-cyan-300 to-purple-400 bg-clip-text text-transparent">
+                                {league.name || 'My League'}
+                              </CardTitle>
+                              <div className="flex flex-wrap gap-2 mt-2 text-sm text-gray-400">
+                                <span className="capitalize">{league.platform}</span>
+                                <span>•</span>
+                                <span>Season {league.season}</span>
+                                <span>•</span>
+                                <span>{league.leagueSize || league.teamCount}-team</span>
+                                <span>•</span>
+                                <span className="uppercase">{league.scoring}</span>
+                                {league.isDynasty && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-amber-400 font-semibold">Dynasty</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <Link
+                              href={`/leagues/${league.id}`}
+                              className="text-sm text-cyan-400 hover:text-cyan-300 flex items-center gap-1 mt-1"
+                            >
+                              Full Overview <ArrowRight className="w-3.5 h-3.5" />
+                            </Link>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                                <Users className="w-4 h-4" /> Teams ({league.teamCount})
+                              </h3>
+                              <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                                {league.teams.slice(0, 16).map((team) => (
+                                  <div key={team.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white/5 border border-white/5">
+                                    <span className="text-gray-200 text-sm truncate">{team.teamName || team.ownerName}</span>
+                                    <span className="text-xs text-gray-400 ml-2 shrink-0">{team.wins}-{team.losses}</span>
+                                  </div>
+                                ))}
+                                {league.teams.length > 16 && (
+                                  <p className="text-xs text-gray-500 text-center mt-1">+{league.teams.length - 16} more</p>
+                                )}
+                              </div>
+                            </div>
+
+                            <div>
+                              <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+                                <Zap className="w-4 h-4" /> Quick Actions
+                              </h3>
+                              <div className="space-y-2">
+                                <Link href="/rankings" className="flex items-center justify-between p-3 rounded-lg border border-white/10 bg-white/5 hover:border-cyan-500/40 hover:bg-cyan-500/10 transition-colors">
+                                  <span className="flex items-center gap-2 text-sm font-medium"><BarChart3 className="w-4 h-4 text-cyan-400" /> Power Rankings</span>
+                                  <ArrowRight className="w-4 h-4 text-gray-500" />
+                                </Link>
+                                <Link href="/dynasty-trade-analyzer" className="flex items-center justify-between p-3 rounded-lg border border-white/10 bg-white/5 hover:border-purple-500/40 hover:bg-purple-500/10 transition-colors">
+                                  <span className="flex items-center gap-2 text-sm font-medium"><TrendingUp className="w-4 h-4 text-purple-400" /> Trade Analyzer</span>
+                                  <ArrowRight className="w-4 h-4 text-gray-500" />
+                                </Link>
+                                <button
+                                  onClick={() => setActiveTab('strategy')}
+                                  className="w-full flex items-center justify-between p-3 rounded-lg border border-white/10 bg-white/5 hover:border-amber-500/40 hover:bg-amber-500/10 transition-colors text-left"
+                                >
+                                  <span className="flex items-center gap-2 text-sm font-medium"><Trophy className="w-4 h-4 text-amber-400" /> AI Strategy Engine</span>
+                                  <ArrowRight className="w-4 h-4 text-gray-500" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
+
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: leagues.length * 0.1 }}
+                    className="text-center pt-4"
+                  >
+                    <button
+                      onClick={() => setActiveTab('transfer')}
+                      className="inline-flex items-center gap-2 px-6 py-3 rounded-xl border border-dashed border-white/20 text-gray-400 hover:border-cyan-500/40 hover:text-cyan-300 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Transfer Another League
+                    </button>
+                  </motion.div>
+                </div>
+              </motion.div>
+            )}
+
             {activeTab === 'transfer' && (
               <motion.div
                 key="transfer"

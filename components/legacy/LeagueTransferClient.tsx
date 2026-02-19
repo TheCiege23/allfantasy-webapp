@@ -216,9 +216,6 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
         if (selected.length === 1) {
           confetti({ particleCount: 200, spread: 90, origin: { y: 0.6 } })
           setStatus('Migration successful! Your legacy is now in AllFantasy')
-          setTimeout(() => {
-            router.push(`/leagues/${data.leagueId}?welcome=legacy`)
-          }, 2500)
         }
       } catch (err: any) {
         let msg = 'Migration failed. Please try again.'
@@ -565,7 +562,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
                     initial="rest"
                     whileHover="hover"
                     whileTap="tap"
-                    href="/af-legacy"
+                    href="/af-legacy?tab=overview"
                     className="px-6 py-3 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-xl font-semibold hover:opacity-90 transition-opacity shadow-lg shadow-purple-500/20"
                   >
                     Go to AF Legacy Hub
