@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 type League = { id: string; name: string; sport: string; season: number; platformLeagueId: string; platform: string; isDynasty: boolean };
 
 export default function TradeFinderClient({ initialLeagues }: { initialLeagues: League[] }) {
-  const { callAI, loading } = useAI<{ recommendations?: any[]; suggestions?: any[]; success?: boolean; meta?: any }>();
+  const { callAI, loading } = useAI<{ recommendations?: any[]; suggestions?: any[]; candidates?: any[]; success?: boolean; meta?: any }>();
   const [leagueId, setLeagueId] = useState(initialLeagues[0]?.id || '');
   const [strategy, setStrategy] = useState<'win-now' | 'rebuild' | 'balanced'>('balanced');
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -34,15 +34,22 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
     });
 
     if (result.data?.recommendations?.length) {
-      const mapped = result.data.recommendations.map((rec: any) => ({
-        partner: `Team ${rec.tradeId?.split('-')[1] || '?'}`,
-        youGive: rec.teamA?.gives?.map((a: any) => a.name).join(' + ') || rec.summary || '',
-        youGet: rec.teamA?.receives?.map((a: any) => a.name).join(' + ') || '',
-        reason: rec.whyItHelpsYou || rec.summary || rec.negotiationTip || '',
-        confidence: rec.confidence,
-        confidenceScore: rec.confidenceScore,
-        negotiation: rec.negotiation,
-      }));
+      const candidates = result.data.candidates || [];
+      const mapped = result.data.recommendations.map((rec: any) => {
+        const candidate = candidates.find((c: any) => c.tradeId === rec.tradeId);
+        return {
+          partner: `Team ${rec.tradeId?.split('-')[1] || '?'}`,
+          partnerRosterId: candidate?.teamB?.teamId ? Number(candidate.teamB.teamId) : null,
+          youGive: rec.teamA?.gives?.map((a: any) => a.name).join(' + ') || rec.summary || '',
+          youGet: rec.teamA?.receives?.map((a: any) => a.name).join(' + ') || '',
+          givesIds: rec.teamA?.gives?.map((a: any) => a.assetId) || [],
+          receivesIds: rec.teamA?.receives?.map((a: any) => a.assetId) || [],
+          reason: rec.whyItHelpsYou || rec.summary || rec.negotiationTip || '',
+          confidence: rec.confidence,
+          confidenceScore: rec.confidenceScore,
+          negotiation: rec.negotiation,
+        };
+      });
       setSuggestions(mapped);
       toast.success(`Found ${mapped.length} trade ideas!`);
     } else if (result.data?.suggestions?.length) {
@@ -147,7 +154,41 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                   </div>
                 )}
                 <div className="flex justify-end gap-3 mt-4">
-                  <Button variant="outline" size="sm">Propose</Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-cyan-600 hover:bg-cyan-700 border-cyan-600 text-white"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (!selectedLeague) return;
+                      try {
+                        const res = await fetch('/api/trade/propose', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            leagueId: selectedLeague.platformLeagueId,
+                            offerFrom: 1,
+                            offerTo: trade.partnerRosterId || 0,
+                            adds: trade.receivesIds || trade.youGet.split(' + '),
+                            drops: trade.givesIds || trade.youGive.split(' + '),
+                          }),
+                        });
+                        const data = await res.json();
+                        if (res.ok) {
+                          toast.success('Trade saved! Open Sleeper to send it.');
+                          if (data.sleeperDeepLink) {
+                            window.open(data.sleeperDeepLink, '_blank');
+                          }
+                        } else {
+                          toast.error(data.error || 'Failed to save proposal');
+                        }
+                      } catch {
+                        toast.error('Failed to send proposal');
+                      }
+                    }}
+                  >
+                    Propose
+                  </Button>
                   <Button size="sm">Details</Button>
                 </div>
               </CardContent>
