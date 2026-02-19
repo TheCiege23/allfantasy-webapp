@@ -2098,6 +2098,7 @@ model AppUser {
   leagueAuths          LeagueAuth[]
   sleeperLeagues       SleeperLeague[]
   mockDrafts           MockDraft[]
+  pushSubscriptions    PushSubscription[]
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2548,4 +2549,18 @@ model MockDraft {
   @@index([leagueId])
   @@index([userId])
   @@map("mock_drafts")
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
