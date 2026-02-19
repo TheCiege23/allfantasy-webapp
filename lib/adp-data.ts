@@ -262,17 +262,16 @@ export async function getPlayerADP(playerName: string): Promise<ADPEntry | null>
 export function formatADPForPrompt(entries: ADPEntry[], maxEntries = 100): string {
   if (entries.length === 0) return 'No ADP data available.';
 
-  const lines = entries.slice(0, maxEntries).map((p, i) => {
-    const parts = [`${i + 1}. ${p.name} (${p.position})`];
-    if (p.team) parts.push(`${p.team}`);
-    parts.push(`ADP: ${p.adp.toFixed(1)}`);
-    if (p.value != null) parts.push(`Value: ${p.value.toFixed(0)}`);
-    if (p.age != null) parts.push(`Age: ${p.age}`);
-    if (p.adpTrend != null) {
-      const dir = p.adpTrend > 0 ? 'falling' : p.adpTrend < 0 ? 'rising' : 'stable';
-      parts.push(`Trend: ${dir}`);
+  const lines = entries.slice(0, maxEntries).map(p => {
+    const team = p.team || 'FA';
+    const adp = p.adp != null ? p.adp.toFixed(1) : 'N/A';
+    const value = p.value != null ? p.value.toFixed(0) : 'N/A';
+    let line = `${p.name} (${p.position}, ${team}) - ADP: ${adp} • Value: ${value}`;
+    if (p.age != null) line += ` • Age: ${p.age}`;
+    if (p.adpTrend != null && p.adpTrend !== 0) {
+      line += ` • ${p.adpTrend < 0 ? 'RISING' : 'FALLING'}`;
     }
-    return parts.join(' | ');
+    return line;
   });
 
   return lines.join('\n');

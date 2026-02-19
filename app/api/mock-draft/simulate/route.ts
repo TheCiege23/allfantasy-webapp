@@ -88,9 +88,15 @@ export async function POST(req: NextRequest) {
     let adpContext = ''
     try {
       const adpType = league.isDynasty ? 'dynasty' : 'redraft'
-      const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
-      if (adpEntries.length > 0) {
-        adpContext = `\n\n=== LIVE ADP DATA (${adpEntries.length} players) ===\nYou MUST use this ADP data to ground your picks. Draft players in realistic ADP order with slight variation for team needs and draft style.\n\n${formatADPForPrompt(adpEntries, 200)}`
+      const liveADP = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
+      if (liveADP.length > 0) {
+        const adpSummary = liveADP.slice(0, 200).map(p =>
+          `${p.name} (${p.position}, ${p.team || 'FA'}) - ADP: ${p.adp?.toFixed(1) || 'N/A'} • Value: ${p.value?.toFixed(0) || 'N/A'}`
+        ).join('\n')
+        adpContext = `\n\n=== REAL-TIME ADP & DYNASTY VALUE DATA (${liveADP.length} players) ===
+Use this real-time ADP and dynasty value data to guide picks. Players MUST be drafted in realistic ADP order with slight variance for team needs and individual draft style. Do NOT invent players — only draft players from this list or well-known NFL starters.
+
+${adpSummary}`
       }
     } catch (adpErr) {
       console.log('[mock-draft] ADP fetch failed, AI will use internal knowledge:', adpErr)
