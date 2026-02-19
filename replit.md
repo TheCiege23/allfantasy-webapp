@@ -27,6 +27,9 @@ User access to protected features is controlled by a three-tier gating system (A
 **Dashboard (`/dashboard`):**
 The post-login dashboard serves as an AI Overview, displaying user data, league information, bracket entries, a setup checklist, and recommended actions.
 
+**Legacy Hub (`/af-legacy`):**
+The Legacy Hub is the central authenticated hub embedding full feature routes in-tab via iframe. Rankings (`/rankings`) and Dynasty Trade Analyzer (`/dynasty-trade-analyzer`) are rendered in-tab rather than as launcher cards. The standalone routes still function independently (rankings has refresh + dynasty outlook actions; trade analyzer mounts `DynastyTradeForm`). Transfer FK recovery guard is active in the backend `POST /api/legacy/transfer` route.
+
 **UI/UX Decisions:**
 The platform features a mobile-first design with a persistent Bottom Tab Bar, contextual AI Bottom Sheets, Universal AI Badges, and tabbed navigation. A universal theme system (Dark, Light, AF Legacy modes) is managed by `ThemeProvider`.
 
