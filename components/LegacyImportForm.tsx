@@ -4,15 +4,12 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { Crown, Loader2, CheckCircle2, History } from 'lucide-react';
 
-interface LegacyImportFormProps {
-  userId: string;
-}
-
-export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
+export default function LegacyImportForm({ userId }: { userId: string }) {
   const [platform, setPlatform] = useState<'sleeper' | 'espn'>('sleeper');
   const [sleeperUsername, setSleeperUsername] = useState('');
   const [espnLeagueId, setEspnLeagueId] = useState('');
@@ -61,6 +58,7 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
                 sleeperUserId: userData.user_id,
                 sport: 'nfl',
                 season,
+                isLegacy: true,
               }),
             });
             const data = await res.json();
@@ -87,6 +85,7 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
               body: JSON.stringify({
                 leagueId: espnLeagueId.trim(),
                 season,
+                isLegacy: true,
                 ...(espnS2 ? { espnS2 } : {}),
                 ...(swid ? { swid } : {}),
               }),
@@ -110,7 +109,8 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
 
       const successCount = importResults.filter(r => r.status === 'success').length;
       if (successCount > 0) {
-        toast.success(`Imported ${successCount} season${successCount !== 1 ? 's' : ''} of legacy data!`);
+        toast.success(`Imported ${successCount} season${successCount !== 1 ? 's' : ''} of legacy data! Redirecting to hub...`);
+        setTimeout(() => window.location.href = '/af-legacy', 2000);
       } else {
         toast.error('No seasons imported. Check your credentials and try again.');
       }
@@ -126,32 +126,30 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-3 justify-center">
+      <div className="flex gap-4 justify-center">
         <Button
           variant={platform === 'sleeper' ? 'default' : 'outline'}
           onClick={() => setPlatform('sleeper')}
           className={platform === 'sleeper'
-            ? 'bg-cyan-600 hover:bg-cyan-700'
-            : 'border-cyan-600/40 text-cyan-400 hover:bg-cyan-950/40'
+            ? 'flex-1 max-w-[200px] bg-cyan-600 hover:bg-cyan-700'
+            : 'flex-1 max-w-[200px] border-cyan-600/40 text-cyan-400 hover:bg-cyan-950/40'
           }
         >
-          <span className="mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs font-bold">S</span>
           Sleeper
         </Button>
         <Button
           variant={platform === 'espn' ? 'default' : 'outline'}
           onClick={() => setPlatform('espn')}
           className={platform === 'espn'
-            ? 'bg-red-600 hover:bg-red-700'
-            : 'border-red-600/40 text-red-400 hover:bg-red-950/40'
+            ? 'flex-1 max-w-[200px] bg-red-600 hover:bg-red-700'
+            : 'flex-1 max-w-[200px] border-red-600/40 text-red-400 hover:bg-red-950/40'
           }
         >
-          <span className="mr-2 flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-xs font-bold">E</span>
           ESPN
         </Button>
       </div>
 
-      <Card className="border-purple-900/30 bg-black/40 backdrop-blur-sm">
+      <Card className="border-purple-500/30 bg-black/40 backdrop-blur-md">
         <CardHeader>
           <CardTitle className="flex items-center gap-3 text-xl">
             <History className="h-5 w-5 text-purple-400" />
@@ -161,11 +159,12 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
             Import multiple seasons at once to build your complete dynasty history
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-6">
           {platform === 'sleeper' ? (
             <div>
-              <label className="mb-1 block text-sm text-gray-400">Sleeper Username</label>
+              <Label htmlFor="sleeper-username">Sleeper Username</Label>
               <Input
+                id="sleeper-username"
                 placeholder="e.g. cjabar"
                 value={sleeperUsername}
                 onChange={(e) => setSleeperUsername(e.target.value)}
@@ -176,8 +175,9 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
           ) : (
             <>
               <div>
-                <label className="mb-1 block text-sm text-gray-400">ESPN League ID</label>
+                <Label htmlFor="espn-league-id">ESPN League ID</Label>
                 <Input
+                  id="espn-league-id"
                   placeholder="e.g. 12345678 (from your league URL)"
                   value={espnLeagueId}
                   onChange={(e) => setEspnLeagueId(e.target.value)}
@@ -187,10 +187,11 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-sm text-gray-400">
+                  <Label htmlFor="espn-s2">
                     espn_s2 Cookie <Badge variant="outline" className="ml-1 text-[10px] border-gray-600">Optional</Badge>
-                  </label>
+                  </Label>
                   <Input
+                    id="espn-s2"
                     placeholder="For private leagues"
                     value={espnS2}
                     onChange={(e) => setEspnS2(e.target.value)}
@@ -199,10 +200,11 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm text-gray-400">
+                  <Label htmlFor="swid">
                     SWID Cookie <Badge variant="outline" className="ml-1 text-[10px] border-gray-600">Optional</Badge>
-                  </label>
+                  </Label>
                   <Input
+                    id="swid"
                     placeholder="For private leagues"
                     value={swid}
                     onChange={(e) => setSwid(e.target.value)}
@@ -216,7 +218,7 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm text-gray-400">Start Season</label>
+              <Label>Start Season</Label>
               <select
                 value={startSeason}
                 onChange={(e) => setStartSeason(Number(e.target.value))}
@@ -229,7 +231,7 @@ export default function LegacyImportForm({ userId }: LegacyImportFormProps) {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm text-gray-400">End Season</label>
+              <Label>End Season</Label>
               <select
                 value={endSeason}
                 onChange={(e) => setEndSeason(Number(e.target.value))}
