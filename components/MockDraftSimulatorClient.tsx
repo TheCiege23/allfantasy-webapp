@@ -64,7 +64,6 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [onClockPick, setOnClockPick] = useState<number | null>(null)
   const [tradeResult, setTradeResult] = useState<any>(null)
   const [isTrading, setIsTrading] = useState(false)
-  const [roundNeeds, setRoundNeeds] = useState<Record<number, any>>({})
   const [adpData, setAdpData] = useState<ADPPlayer[]>([])
   const [bestAvailableTop, setBestAvailableTop] = useState<ADPPlayer[]>([])
   const [tradeProposals, setTradeProposals] = useState<Record<number, any>>({})
@@ -423,7 +422,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
               <Button onClick={exportPDF} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> PDF</Button>
               <Button onClick={copyShareLink} size="sm"><Link className="mr-2 h-4 w-4" /> Share</Button>
               <Button onClick={updateWeekly} variant="outline" size="sm" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
-              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}); setBestAvailableTop([]); setExpandedNeedsRounds(new Set()); setTradeProposals({}); setDismissedProposals(new Set()) }} variant="outline" size="sm" className="border-gray-600">
+              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setBestAvailableTop([]); setTradeProposals({}); setDismissedProposals(new Set()) }} variant="outline" size="sm" className="border-gray-600">
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
             </div>
@@ -657,15 +656,18 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-bold text-cyan-400">Your Roster After Round {rNum}</span>
                                 {(() => {
-                                  const userAi = roundNeeds[rNum]?.teams?.find((at: any) => at.isUser)
-                                  if (!userAi?.needLevel) return null
+                                  const needs = calculateTeamNeeds(userTeam)
+                                  const vals = Object.values(needs)
+                                  const avgNeed = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+                                  const topPos = Object.entries(needs).sort(([,a], [,b]) => b - a)[0]
+                                  if (avgNeed <= 0) return null
                                   return (
                                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                      userAi.needLevel >= 70 ? 'bg-red-500/20 text-red-400' :
-                                      userAi.needLevel >= 45 ? 'bg-orange-500/20 text-orange-400' :
+                                      avgNeed >= 70 ? 'bg-red-500/20 text-red-400' :
+                                      avgNeed >= 45 ? 'bg-orange-500/20 text-orange-400' :
                                       'bg-emerald-500/20 text-emerald-400'
                                     }`}>
-                                      Need: {userAi.needLevel}/100{userAi.topNeed ? ` (${userAi.topNeed})` : ''}
+                                      Need: {avgNeed}/100{topPos ? ` (${topPos[0]})` : ''}
                                     </span>
                                   )
                                 })()}
