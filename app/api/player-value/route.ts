@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { openaiChatJson } from '@/lib/openai-client';
+import { getPlayerADP } from '@/lib/adp-data';
 import { z } from 'zod';
 
 const requestSchema = z.object({
@@ -108,16 +109,33 @@ export async function POST(req: Request) {
       groundingContext += `\nTrade History: ${tradeInsight.sampleSize} trades observed, avg value given: ${tradeInsight.avgValueGiven?.toFixed(0) || '?'}, avg value received: ${tradeInsight.avgValueReceived?.toFixed(0) || '?'}, market trend: ${tradeInsight.marketTrend || 'unknown'}`;
     }
 
+    let adpContext = '';
+    try {
+      const adpEntry = await getPlayerADP(playerName);
+      if (adpEntry) {
+        adpContext = `\nADP Data: ${adpEntry.name} (${adpEntry.position}) | ADP: ${adpEntry.adp.toFixed(1)}`;
+        if (adpEntry.team) adpContext += ` | Team: ${adpEntry.team}`;
+        if (adpEntry.value != null) adpContext += ` | Value: ${adpEntry.value.toFixed(0)}`;
+        if (adpEntry.age != null) adpContext += ` | Age: ${adpEntry.age}`;
+        if (adpEntry.adpTrend != null) {
+          const dir = adpEntry.adpTrend > 0 ? 'falling' : adpEntry.adpTrend < 0 ? 'rising' : 'stable';
+          adpContext += ` | Trend: ${dir}`;
+        }
+      }
+    } catch {
+      // ADP lookup is non-critical
+    }
+
     const result = await openaiChatJson({
       messages: [
         {
           role: 'system',
-          content: `You are a dynasty fantasy football trade value expert. Provide a quick dynasty trade value assessment for players. Use only provided data and your training data — never invent stats. Be concise and honest. Return ONLY valid JSON.`,
+          content: `You are a dynasty fantasy football trade value expert. Provide a quick dynasty trade value assessment for players. Use only provided data and your training data — never invent stats. Be concise and honest. When ADP data is provided, use it as primary valuation reference. Return ONLY valid JSON.`,
         },
         {
           role: 'user',
           content: `Quick dynasty value check for: ${playerName}${position ? ` (${position})` : ''}
-${leagueContext ? `League: ${leagueContext}` : '12-team SF PPR dynasty'}${groundingContext}
+${leagueContext ? `League: ${leagueContext}` : '12-team SF PPR dynasty'}${groundingContext}${adpContext}
 
 Return JSON:
 {
