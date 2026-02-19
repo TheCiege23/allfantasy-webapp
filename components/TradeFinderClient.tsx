@@ -18,6 +18,49 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
 
   const selectedLeague = initialLeagues.find(l => l.id === leagueId);
 
+  const NFL_TEAM_CITIES: Record<string, string> = {
+    ARI: 'Glendale', ATL: 'Atlanta', BAL: 'Baltimore', BUF: 'Buffalo',
+    CAR: 'Charlotte', CHI: 'Chicago', CIN: 'Cincinnati', CLE: 'Cleveland',
+    DAL: 'Arlington', DEN: 'Denver', DET: 'Detroit', GB: 'Green Bay',
+    HOU: 'Houston', IND: 'Indianapolis', JAX: 'Jacksonville', KC: 'Kansas City',
+    LAC: 'Inglewood', LAR: 'Inglewood', LV: 'Las Vegas', MIA: 'Miami',
+    MIN: 'Minneapolis', NE: 'Foxborough', NO: 'New Orleans', NYG: 'East Rutherford',
+    NYJ: 'East Rutherford', PHI: 'Philadelphia', PIT: 'Pittsburgh', SEA: 'Seattle',
+    SF: 'Santa Clara', TB: 'Tampa', TEN: 'Nashville', WAS: 'Landover',
+  };
+
+  const DOME_TEAMS = new Set(['ARI', 'ATL', 'DAL', 'DET', 'HOU', 'IND', 'LAC', 'LAR', 'LV', 'MIN', 'NO']);
+
+  const enrichWithWeather = async (suggestion: any): Promise<any> => {
+    const youGet = suggestion.youGet || '';
+    const hasWeatherSensitive = /\bK\b|\bDEF\b|\bDST\b/i.test(youGet);
+    if (!hasWeatherSensitive) return suggestion;
+
+    const teamMatch = youGet.match(/\b([A-Z]{2,3})\b/);
+    const teamAbbr = teamMatch?.[1];
+    if (!teamAbbr || DOME_TEAMS.has(teamAbbr)) return suggestion;
+
+    const city = NFL_TEAM_CITIES[teamAbbr];
+    if (!city) return suggestion;
+
+    const nextSunday = new Date();
+    nextSunday.setDate(nextSunday.getDate() + ((7 - nextSunday.getDay()) % 7 || 7));
+    const dateStr = nextSunday.toISOString().split('T')[0];
+
+    try {
+      const res = await fetch(`/api/weather/game?city=${encodeURIComponent(city)}&date=${dateStr}`);
+      if (!res.ok) return suggestion;
+      const weather = await res.json();
+      if (weather.rain > 5 || weather.windSpeed > 20) {
+        return {
+          ...suggestion,
+          reason: suggestion.reason + ` (Weather warning: ${city} forecast shows ${weather.description} — wind ${Math.round(weather.windSpeed)} mph, rain ${weather.rain}". Consider avoiding outdoor K/DEF.)`,
+        };
+      }
+    } catch {}
+    return suggestion;
+  };
+
   const objectiveMap: Record<string, string> = {
     'win-now': 'WIN_NOW',
     'rebuild': 'REBUILD',
@@ -52,11 +95,13 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
           negotiation: rec.negotiation,
         };
       });
-      setSuggestions(mapped);
-      toast.success(`Found ${mapped.length} trade ideas!`);
+      const enriched = await Promise.all(mapped.map(enrichWithWeather));
+      setSuggestions(enriched);
+      toast.success(`Found ${enriched.length} trade ideas!`);
     } else if (result.data?.suggestions?.length) {
-      setSuggestions(result.data.suggestions);
-      toast.success(`Found ${result.data.suggestions.length} trade ideas!`);
+      const enriched = await Promise.all(result.data.suggestions.map(enrichWithWeather));
+      setSuggestions(enriched);
+      toast.success(`Found ${enriched.length} trade ideas!`);
     } else {
       setSuggestions([]);
       toast.info(result.data?.meta?.message || 'No trade opportunities found right now.');
