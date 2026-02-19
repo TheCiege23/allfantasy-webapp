@@ -616,19 +616,11 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  {msg.audioUrl ? (
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <Mic className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                      <audio
-                        src={msg.audioUrl}
-                        controls
-                        preload="metadata"
-                        className="h-8 max-w-[200px]"
-                        style={{ filter: 'invert(1) hue-rotate(180deg)', opacity: 0.85 }}
-                      />
+                  <p className={`text-sm mt-0.5 break-words ${t.msgText}`}>{msg.message}</p>
+                  {msg.audioUrl && (
+                    <div className="mt-2">
+                      <audio controls src={msg.audioUrl} className="w-full max-w-xs" />
                     </div>
-                  ) : (
-                    <p className={`text-sm mt-0.5 break-words ${t.msgText}`}>{msg.message}</p>
                   )}
 
                   {isOwn && (

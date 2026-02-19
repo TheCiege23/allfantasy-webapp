@@ -284,19 +284,11 @@ export default function PrivateChatClient({ currentUser, partner }: PrivateChatC
                           ? 'bg-cyan-900/40 border border-cyan-800/40 rounded-tr-sm'
                           : 'bg-gray-800/60 border border-gray-700/40 rounded-tl-sm'
                       }`}>
-                        {msg.voiceUrl ? (
-                          <div className="flex items-center gap-2">
-                            <Mic className="w-4 h-4 text-cyan-400 flex-shrink-0" />
-                            <audio
-                              src={msg.voiceUrl}
-                              controls
-                              preload="metadata"
-                              className="h-8 max-w-[200px]"
-                              style={{ filter: 'invert(1) hue-rotate(180deg)', opacity: 0.85 }}
-                            />
+                        <p className="text-sm text-gray-100 break-words leading-relaxed">{msg.message}</p>
+                        {msg.voiceUrl && (
+                          <div className="mt-2">
+                            <audio controls src={msg.voiceUrl} className="w-full max-w-xs" />
                           </div>
-                        ) : (
-                          <p className="text-sm text-gray-100 break-words leading-relaxed">{msg.message}</p>
                         )}
                       </div>
                       <div className={`flex items-center gap-1 mt-0.5 px-1 ${isOwn ? 'justify-end' : ''}`}>
