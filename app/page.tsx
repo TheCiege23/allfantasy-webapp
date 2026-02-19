@@ -168,9 +168,9 @@ function HomeContent() {
             className="relative group flex flex-col items-center"
           >
             <img
-              src="/allfantasy-hero.png"
-              alt="AllFantasy"
-              className="w-full max-w-lg rounded-2xl mb-1"
+              src="/af-robot-king.png"
+              alt="AllFantasy Robot King"
+              className="w-full max-w-xs rounded-2xl mb-2 drop-shadow-[0_0_30px_rgba(34,211,238,0.15)]"
             />
             <InstantTradeAnalyzer />
             <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
