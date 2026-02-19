@@ -25,7 +25,9 @@ export async function POST(req: Request) {
     const json = await req.json();
     const { leagueId, season, espnS2, swid } = bodySchema.parse(json);
 
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = {
+      'User-Agent': 'Mozilla/5.0 (compatible; AllFantasy/1.0)',
+    };
     const cookies: string[] = [];
     if (espnS2) cookies.push(`espn_s2=${espnS2}`);
     if (swid) cookies.push(`SWID=${swid}`);
@@ -33,9 +35,10 @@ export async function POST(req: Request) {
 
     const baseUrl = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${leagueId}`;
 
-    const leagueRes = await fetch(`${baseUrl}?view=mTeam&view=mSettings&view=mMatchup`, {
-      headers,
-    });
+    const leagueRes = await fetch(
+      `${baseUrl}?view=mTeam&view=mRoster&view=mMatchup&view=mScoreboard&view=mSettings`,
+      { headers }
+    );
 
     if (!leagueRes.ok) {
       if (leagueRes.status === 404) {
@@ -110,7 +113,9 @@ export async function POST(req: Request) {
       const ownerName = t.owners?.[0]
         ? `${t.owners[0].firstName || ''} ${t.owners[0].lastName || ''}`.trim() || `Owner ${t.id}`
         : `Owner ${t.id}`;
-      const teamName = t.name || t.abbrev || `Team ${t.id}`;
+      const teamName = (t.location && t.nickname)
+        ? `${t.location} ${t.nickname}`
+        : t.name || t.abbrev || `${ownerName}'s Team`;
       const record = t.record?.overall || {};
 
       await prisma.leagueTeam.upsert({
@@ -180,6 +185,23 @@ export async function POST(req: Request) {
             update: { points: matchup.away.totalPoints || 0 },
             create: { teamId, week, season, points: matchup.away.totalPoints || 0 },
           });
+        }
+      }
+    }
+
+    if (data.scoreboard?.matchups) {
+      const currentWeek = data.scoringPeriodId || data.status?.currentMatchupPeriod || 1;
+      for (const matchup of data.scoreboard.matchups) {
+        for (const side of [matchup.home, matchup.away]) {
+          if (!side) continue;
+          const teamId = teamIdMap.get(side.teamId?.toString());
+          if (teamId && side.totalPoints != null) {
+            await (prisma as any).teamPerformance.upsert({
+              where: { teamId_season_week: { teamId, season, week: currentWeek } },
+              update: { points: side.totalPoints || 0 },
+              create: { teamId, week: currentWeek, season, points: side.totalPoints || 0 },
+            });
+          }
         }
       }
     }
