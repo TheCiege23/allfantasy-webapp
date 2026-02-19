@@ -2100,6 +2100,7 @@ model AppUser {
   mockDrafts           MockDraft[]
   pushSubscriptions    PushSubscription[]
   chatMessages         MadnessChatMessage[]
+  chatFlags            ChatMessageFlag[]   @relation("ChatFlagReporter")
   activeLeagueId       String?
 
   @@map("app_users")
@@ -2281,14 +2282,35 @@ model MadnessChatMessage {
   leagueId  String
   userId    String
   message   String
+  isPinned  Boolean  @default(false)
   createdAt DateTime @default(now())
 
   league BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user   AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flags  ChatMessageFlag[]
 
   @@index([leagueId, createdAt])
   @@index([userId])
   @@map("madness_chat_messages")
+}
+
+model ChatMessageFlag {
+  id           String    @id @default(uuid())
+  messageId    String
+  reportedById String
+  reason       String
+  status       String    @default("pending")
+  adminNotes   String?
+  createdAt    DateTime  @default(now())
+  reviewedAt   DateTime?
+
+  message    MadnessChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reportedBy AppUser            @relation("ChatFlagReporter", fields: [reportedById], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([reportedById])
+  @@index([status])
+  @@map("chat_message_flags")
 }
 
 enum VerificationMethod {
