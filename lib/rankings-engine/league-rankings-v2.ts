@@ -10,7 +10,7 @@ import {
   SleeperUser,
   SleeperPlayoffBracket,
 } from '../sleeper-client'
-import { fetchFantasyCalcValues, FantasyCalcPlayer, FantasyCalcSettings } from '../fantasycalc'
+import { fetchFantasyCalcValues, FantasyCalcPlayer, FantasyCalcSettings, getValuationCacheAgeMs } from '../fantasycalc'
 import { prisma } from '../prisma'
 import { getWeekStatsFromCache } from './sleeper-matchup-cache'
 import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../idp-kicker-values'
@@ -102,6 +102,19 @@ export interface TeamScore {
 
   explanation: RankExplanation
   badges: Badge[]
+  dataQuality: TeamDataQuality
+}
+
+export interface TeamDataQuality {
+  rankingConfidence: number
+  confidenceRating: 'HIGH' | 'MEDIUM' | 'LOW'
+  dataCoverage: 'FULL' | 'PARTIAL' | 'MINIMAL'
+  stalenessHours: {
+    injury: number | null
+    valuation: number
+    sleeperSync: number
+  }
+  signals: string[]
 }
 
 export interface Badge {
@@ -999,6 +1012,122 @@ async function fetchDbInjuryMap(playerNames: string[]): Promise<Map<string, { se
   } catch {}
 
   return result
+}
+
+function computeTeamDataQuality(
+  roster: SleeperRoster,
+  valueMap: Map<string, PlayerValueMap>,
+  rosterInjuryImpact: RosterInjuryImpact,
+  dbInjuryMap: Map<string, { severity: string | null; date: Date | null; type: string | null; description: string | null }> | undefined,
+  analyticsMap: Map<string, any> | undefined,
+  valuationCacheAgeMs: number | null,
+  sleeperLastSyncMs: number | null,
+  weeklyPts: number[],
+): TeamDataQuality {
+  const players = roster.players || []
+  const nowMs = Date.now()
+  const signals: string[] = []
+
+  let playersWithValue = 0
+  let playersWithInjuryData = 0
+  let playersWithAnalytics = 0
+  let latestInjuryDateMs = 0
+
+  for (const pid of players) {
+    if (pid === '0') continue
+    if (valueMap.has(pid)) playersWithValue++
+    const pVal = valueMap.get(pid)
+    const playerName = (pVal as any)?.name || (pVal as any)?.player || ''
+    if (playerName && dbInjuryMap?.has(playerName.toLowerCase())) {
+      playersWithInjuryData++
+      const injEntry = dbInjuryMap.get(playerName.toLowerCase())
+      if (injEntry?.date) {
+        const d = injEntry.date instanceof Date ? injEntry.date.getTime() : new Date(injEntry.date).getTime()
+        if (d > latestInjuryDateMs) latestInjuryDateMs = d
+      }
+    }
+    if (playerName && analyticsMap?.has(playerName)) {
+      playersWithAnalytics++
+    }
+  }
+
+  const totalPlayers = Math.max(1, players.filter(p => p !== '0').length)
+  const valueCoverage = playersWithValue / totalPlayers
+  const injuryCoverage = playersWithInjuryData / totalPlayers
+  const analyticsCoverage = playersWithAnalytics / totalPlayers
+
+  const injuryHours = latestInjuryDateMs > 0
+    ? Math.round((nowMs - latestInjuryDateMs) / 3600_000 * 10) / 10
+    : null
+  const valuationHours = valuationCacheAgeMs !== null
+    ? Math.round(valuationCacheAgeMs / 3600_000 * 10) / 10
+    : 0
+  const sleeperHours = sleeperLastSyncMs !== null
+    ? Math.round((nowMs - sleeperLastSyncMs) / 3600_000 * 10) / 10
+    : null
+
+  let confidence = 50
+
+  if (valueCoverage >= 0.90) confidence += 20
+  else if (valueCoverage >= 0.70) confidence += 12
+  else { confidence += 5; signals.push(`Low valuation coverage (${Math.round(valueCoverage * 100)}%)`) }
+
+  if (weeklyPts.length >= 4) confidence += 15
+  else if (weeklyPts.length >= 2) confidence += 8
+  else { confidence += 2; signals.push('Limited game history') }
+
+  if (injuryHours !== null && injuryHours <= 24) confidence += 5
+  else if (injuryHours !== null && injuryHours <= 72) confidence += 3
+  else signals.push(injuryHours === null ? 'No DB injury data' : 'Injury data may be stale')
+
+  if (injuryCoverage >= 0.30) confidence += 3
+  else if (injuryCoverage > 0) confidence += 1
+  else signals.push('No injury DB records for this roster')
+
+  if (analyticsCoverage >= 0.50) confidence += 5
+  else signals.push('Limited player analytics')
+
+  if (valuationHours <= 1) confidence += 2
+  else if (valuationHours > 24) { confidence -= 3; signals.push('Valuation data >24h old') }
+
+  if (sleeperHours !== null && sleeperHours <= 6) confidence += 2
+  else if (sleeperHours !== null && sleeperHours > 24) signals.push('Sleeper data >24h old')
+  else if (sleeperHours === null) signals.push('Sleeper sync age unknown')
+
+  const injuredStarterCount = rosterInjuryImpact.injuryProfiles.filter(
+    p => p.isStarter && p.effectiveSeverity > 0.3,
+  ).length
+  if (injuredStarterCount >= 3) {
+    confidence -= 5
+    signals.push(`${injuredStarterCount} injured starters add uncertainty`)
+  }
+
+  confidence = Math.max(10, Math.min(100, confidence))
+
+  let dataCoverage: 'FULL' | 'PARTIAL' | 'MINIMAL'
+  if (valueCoverage >= 0.85 && weeklyPts.length >= 3 && injuryCoverage >= 0.10) {
+    dataCoverage = 'FULL'
+  } else if (valueCoverage >= 0.50 || weeklyPts.length >= 2) {
+    dataCoverage = 'PARTIAL'
+  } else {
+    dataCoverage = 'MINIMAL'
+    signals.push('Insufficient data for reliable ranking')
+  }
+
+  const confidenceRating: 'HIGH' | 'MEDIUM' | 'LOW' =
+    confidence >= 75 ? 'HIGH' : confidence >= 50 ? 'MEDIUM' : 'LOW'
+
+  return {
+    rankingConfidence: confidence,
+    confidenceRating,
+    dataCoverage,
+    stalenessHours: {
+      injury: injuryHours,
+      valuation: valuationHours,
+      sleeperSync: sleeperHours,
+    },
+    signals,
+  }
 }
 
 function computeDraftGainPercentile(
@@ -2257,21 +2386,27 @@ export async function computeLeagueRankingsV2(
     getActiveCompositeParams(segmentKey).catch(() => null),
   ])
 
+  const fcSettings: FantasyCalcSettings = { isDynasty, numQbs: isSF ? 2 : 1, numTeams, ppr }
   const [rosters, users, fcPlayers, ldiData, playoffBracket, sleeperPlayersRaw, leagueDrafts, weightConfig] = await Promise.all([
     getLeagueRosters(leagueId),
     getLeagueUsers(leagueId),
-    fetchFantasyCalcValues({
-      isDynasty,
-      numQbs: isSF ? 2 : 1,
-      numTeams,
-      ppr,
-    }),
+    fetchFantasyCalcValues(fcSettings),
     fetchLdiForLeague(leagueId),
     phase === 'post_season' ? getPlayoffBracket(leagueId) : Promise.resolve([]),
     getAllPlayers().catch(() => null),
     getLeagueDrafts(leagueId).catch(() => []),
     getCompositeWeightConfig(),
   ])
+  const valuationCacheAgeMs = getValuationCacheAgeMs(fcSettings)
+  let sleeperLastSyncMs: number | null = null
+  try {
+    const syncRow = await prisma.legacyLeague.findFirst({
+      where: { sleeperLeagueId: leagueId },
+      select: { updatedAt: true },
+      orderBy: { updatedAt: 'desc' },
+    })
+    if (syncRow?.updatedAt) sleeperLastSyncMs = syncRow.updatedAt.getTime()
+  } catch {}
 
   let draftWithPicks: any[] = []
   if (leagueDrafts.length > 0) {
@@ -2593,6 +2728,11 @@ export async function computeLeagueRankingsV2(
       { wins: rWins, losses: rLosses },
     )
 
+    const dataQuality = computeTeamDataQuality(
+      roster, valueMap, rosterInjuryImpact, dbInjuryMap, analyticsMap,
+      valuationCacheAgeMs, sleeperLastSyncMs, weeklyPts,
+    )
+
     const dbRoster = dbRosterRecords?.get(roster.roster_id)
     const unownedLabel = roster.owner_id ? null : `Team ${roster.roster_id}`
     const resolvedUsername = user?.username || user?.display_name || dbRoster?.ownerName || unownedLabel || null
@@ -2634,6 +2774,7 @@ export async function computeLeagueRankingsV2(
 
       phase,
       explanation,
+      dataQuality,
     })
   }
 

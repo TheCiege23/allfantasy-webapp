@@ -84,6 +84,13 @@ export async function fetchFantasyCalcValues(
   return data;
 }
 
+export function getValuationCacheAgeMs(settings: FantasyCalcSettings): number | null {
+  const cacheKey = getCacheKey(settings);
+  const cached = cache.get(cacheKey);
+  if (!cached) return null;
+  return Date.now() - cached.fetchedAt;
+}
+
 export function findPlayerByName(
   players: FantasyCalcPlayer[],
   name: string
