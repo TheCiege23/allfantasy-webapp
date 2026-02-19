@@ -522,6 +522,14 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
           {!leaguesLoading && availableLeagues.length === 0 && (
             <p className="text-xs text-amber-300">No synced leagues found. Import a league first, then generate your report.</p>
           )}
+          {selectedLeagueId && (() => {
+            const sel = availableLeagues.find(l => (l.platformLeagueId || l.id) === selectedLeagueId);
+            return sel ? (
+              <p className="text-xs text-white/40">
+                {sel.platform ? `${sel.platform} · ` : ''}{selectedLeagueId}{sel.name ? ` · ${sel.name}` : ''}
+              </p>
+            ) : null;
+          })()}
         </div>
         <div className="flex gap-3">
           <Button

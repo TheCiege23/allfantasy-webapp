@@ -144,21 +144,33 @@ export default function StrategyPlanner({ leagues, sleeperUsername }: StrategyPl
   const [rosterId, setRosterId] = useState<number | null>(null);
   const [managers, setManagers] = useState<Array<{ rosterId: number; displayName: string; userId: string }>>([]);
   const [managersLoading, setManagersLoading] = useState(false);
+  const [noAutoMatch, setNoAutoMatch] = useState(false);
 
   const loadManagers = async (leagueId: string) => {
     if (!leagueId) return;
     setManagersLoading(true);
+    setNoAutoMatch(false);
     try {
       const res = await fetch(`/api/legacy/trade/league-managers?league_id=${leagueId}&sport=nfl`);
       const data = await res.json();
       if (res.ok && data.managers) {
         setManagers(data.managers);
-        const userTeam = data.managers.find((m: { displayName?: string; username?: string; userId?: string }) =>
-          m.displayName?.toLowerCase() === sleeperUsername?.toLowerCase() ||
-          m.username?.toLowerCase() === sleeperUsername?.toLowerCase() ||
-          m.userId === sleeperUsername
-        );
-        setRosterId(userTeam ? userTeam.rosterId : data.managers[0]?.rosterId || null);
+        if (sleeperUsername) {
+          const userTeam = data.managers.find((m: { displayName?: string; username?: string; userId?: string }) =>
+            m.displayName?.toLowerCase() === sleeperUsername?.toLowerCase() ||
+            m.username?.toLowerCase() === sleeperUsername?.toLowerCase() ||
+            m.userId === sleeperUsername
+          );
+          if (userTeam) {
+            setRosterId(userTeam.rosterId);
+          } else {
+            setRosterId(data.managers[0]?.rosterId || null);
+            setNoAutoMatch(true);
+          }
+        } else {
+          setRosterId(data.managers[0]?.rosterId || null);
+          setNoAutoMatch(true);
+        }
       }
     } catch { /* ignore */ }
     setManagersLoading(false);
@@ -252,6 +264,7 @@ export default function StrategyPlanner({ leagues, sleeperUsername }: StrategyPl
                 setRosterId(null);
                 setManagers([]);
                 setStrategy(null);
+                setNoAutoMatch(false);
                 if (e.target.value) loadManagers(e.target.value);
               }}
               className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white focus:outline-none focus:border-purple-400/60 focus:ring-2 focus:ring-purple-400/20 transition appearance-none cursor-pointer text-sm"
@@ -277,7 +290,7 @@ export default function StrategyPlanner({ leagues, sleeperUsername }: StrategyPl
               <label className="block text-sm text-white/70 mb-2">Your Team</label>
               <select
                 value={rosterId ?? ''}
-                onChange={(e) => setRosterId(Number(e.target.value))}
+                onChange={(e) => { setRosterId(Number(e.target.value)); setNoAutoMatch(false); }}
                 className="w-full px-4 py-3 rounded-xl bg-black/50 border border-white/20 text-white focus:outline-none focus:border-purple-400/60 focus:ring-2 focus:ring-purple-400/20 transition appearance-none cursor-pointer text-sm"
               >
                 {managers.map(m => (
@@ -286,6 +299,13 @@ export default function StrategyPlanner({ leagues, sleeperUsername }: StrategyPl
                   </option>
                 ))}
               </select>
+              {noAutoMatch && (
+                <p className="text-xs text-amber-300/80 mt-1.5">
+                  {sleeperUsername
+                    ? `Could not match "${sleeperUsername}" to a manager. Please select your team manually.`
+                    : 'No linked Sleeper account — please select your team manually.'}
+                </p>
+              )}
             </div>
           )}
 

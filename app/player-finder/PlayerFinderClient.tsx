@@ -8,6 +8,7 @@ export default function PlayerFinderClient({ defaultUsername = '' }: { defaultUs
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [players, setPlayers] = useState<any[]>([])
+  const [searched, setSearched] = useState(false)
 
   async function handleSearch() {
     const normalizedUsername = username.trim().toLowerCase()
@@ -25,6 +26,7 @@ export default function PlayerFinderClient({ defaultUsername = '' }: { defaultUs
 
     setLoading(true)
     setError(null)
+    setSearched(true)
     try {
       const res = await fetch('/api/legacy/player-finder', {
         method: 'POST',
@@ -68,8 +70,11 @@ export default function PlayerFinderClient({ defaultUsername = '' }: { defaultUs
         </button>
       </div>
       {error && <p className="text-red-300">{error}</p>}
-      {!loading && !error && players.length === 0 && (
+      {!loading && !error && !searched && (
         <p className="text-white/60 text-sm">Search for a player to view results.</p>
+      )}
+      {!loading && !error && searched && players.length === 0 && (
+        <p className="text-white/60 text-sm">No players found matching your search. Try a different name.</p>
       )}
       <div className="space-y-2">
         {players.map((p, i) => (

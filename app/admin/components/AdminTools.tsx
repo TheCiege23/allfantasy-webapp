@@ -256,6 +256,9 @@ export default function AdminTools() {
     { name: "AI Coach / Chat", tool: "AICoach", endpoint: "/api/legacy/ai-coach", status: "Active" },
     { name: "Share Generator", tool: "ShareGenerator", endpoint: "/api/legacy/share", status: "Active" },
     { name: "Playoff Backfill", tool: "PlayoffBackfill", endpoint: "/api/legacy/backfill/playoffs", status: "Active" },
+    { name: "Season Strategy", tool: "SeasonStrategy", endpoint: "/api/legacy/season-strategy", status: "Active" },
+    { name: "Mock Draft Simulator", tool: "MockDraft", endpoint: "/api/mock-draft/simulate", status: "Active" },
+    { name: "Dynasty Outlook", tool: "DynastyOutlook", endpoint: "/api/dynasty-outlook", status: "Active" },
   ];
 
   return (
