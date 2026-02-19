@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { z } from 'zod';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -11,11 +13,20 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const session = (await getServerSession(authOptions as any)) as {
+      user?: { id?: string };
+    } | null;
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const json = await req.json();
     const { leagueId } = bodySchema.parse(json);
 
-    const teams = await prisma.leagueTeam.findMany({
+    const teams = await (prisma as any).leagueTeam.findMany({
       where: { leagueId },
+      include: { performances: { orderBy: { week: 'asc' } } },
       orderBy: { pointsFor: 'desc' },
     });
 
@@ -23,17 +34,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No teams found' }, { status: 404 });
     }
 
-    const prompt = `
-You are a fantasy football expert. Given these teams' current stats:
-${teams.map(t => `- ${t.teamName} (${t.ownerName}): ${t.pointsFor} pts, ${t.wins}-${t.losses}${t.ties > 0 ? `-${t.ties}` : ''}`).join('\n')}
+    const cachedPlayers = await (prisma as any).sportsPlayer.findMany({
+      where: { sport: 'nfl' },
+      take: 30,
+      orderBy: { fetchedAt: 'desc' },
+    });
 
-For each team, output a JSON object with a "teams" array. Each entry:
-- teamExternalId: string (use the team's externalId)
-- adjustedPowerScore: number (0-100, consider rest-of-season projection, roster strength, record quality)
-- projectedWins: number (projected total wins for the season)
-- strength: short phrase (key competitive advantage)
-- risk: short phrase (biggest vulnerability)
-`;
+    const prompt = `You are an elite fantasy football GM with 15+ years experience.
+Use ONLY the following real data to evaluate these teams. Do not hallucinate or invent data.
+
+Teams:
+${teams.map((t: any) => {
+  const weeklyPoints = t.performances?.map((p: any) => p.points) || [];
+  const trend = weeklyPoints.length > 0 ? weeklyPoints.join(', ') : 'no weekly data';
+  const recentAvg = weeklyPoints.length >= 3
+    ? (weeklyPoints.slice(-3).reduce((a: number, b: number) => a + b, 0) / 3).toFixed(1)
+    : 'N/A';
+  return `- ${t.teamName} (${t.ownerName}): Record ${t.wins}-${t.losses}${t.ties > 0 ? `-${t.ties}` : ''}, Total PF: ${t.pointsFor.toFixed(1)}, PA: ${t.pointsAgainst.toFixed(1)}, Weekly trend: [${trend}], Last 3 avg: ${recentAvg}`;
+}).join('\n')}
+
+${cachedPlayers.length > 0 ? `\nRecent NFL players in database: ${cachedPlayers.slice(0, 15).map((p: any) => `${p.name} (${p.position || '?'}, ${p.team || '?'})`).join(', ')}` : ''}
+
+For each team, analyze:
+1. Scoring consistency and trajectory (trending up, down, or steady)
+2. Record quality relative to points scored (lucky or unlucky)
+3. Rest-of-season outlook based on recent performance
+4. Key competitive advantages and vulnerabilities
+
+Return a JSON object with a "teams" array. Each entry must have:
+- "externalId": string (the team's external ID)
+- "adjustedPowerScore": number 0-100 (weight recent performance heavily)
+- "projectedWins": number (projected total wins for the season)
+- "strength": string (one concise phrase about their key advantage)
+- "risk": string (one concise phrase about their biggest vulnerability)
+- "confidence": number 0-100 (how confident you are in this assessment)
+
+Team external IDs: ${teams.map((t: any) => `${t.teamName}=${t.externalId}`).join(', ')}`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -46,8 +82,8 @@ For each team, output a JSON object with a "teams" array. Each entry:
 
     await Promise.all(
       updates.map(async (u: any) => {
-        await prisma.leagueTeam.updateMany({
-          where: { externalId: u.teamExternalId, leagueId },
+        await (prisma as any).leagueTeam.updateMany({
+          where: { externalId: u.externalId, leagueId },
           data: {
             aiPowerScore: u.adjustedPowerScore,
             projectedWins: u.projectedWins,
