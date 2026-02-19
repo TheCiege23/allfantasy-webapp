@@ -2507,6 +2507,23 @@ model SleeperRoster {
   @@map("sleeper_rosters")
 }
 
+model RookieRanking {
+  id           String   @id @default(cuid())
+  year         Int
+  name         String
+  position     String
+  team         String?
+  rank         Int
+  dynastyValue Int?
+  college      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([year, name])
+  @@index([year])
+  @@index([position])
+}
+
 model MockDraft {
   id        String   @id @default(uuid())
   shareId   String?  @unique

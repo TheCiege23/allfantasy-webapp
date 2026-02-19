@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
+import { getLiveADP, formatADPForPrompt } from '@/lib/adp-data'
 
 const openai = new OpenAI()
 
@@ -84,18 +85,30 @@ export async function POST(req: NextRequest) {
       rosterContext = `\n\nCurrent rosters and needs:\n${summaries.join('\n')}`
     }
 
+    let adpContext = ''
+    try {
+      const adpType = league.isDynasty ? 'dynasty' : 'redraft'
+      const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
+      if (adpEntries.length > 0) {
+        adpContext = `\n\n=== LIVE ADP DATA (${adpEntries.length} players) ===\nYou MUST use this ADP data to ground your picks. Draft players in realistic ADP order with slight variation for team needs and draft style.\n\n${formatADPForPrompt(adpEntries, 200)}`
+      }
+    } catch (adpErr) {
+      console.log('[mock-draft] ADP fetch failed, AI will use internal knowledge:', adpErr)
+    }
+
     const systemPrompt = `You are an expert fantasy football mock draft simulator. You simulate realistic drafts based on current ADP (Average Draft Position) data, positional scarcity, and real manager draft tendencies.
 
 Rules:
 - Generate a full ${rounds}-round mock draft for a ${numTeams}-team league
 - Use snake draft order (odd rounds ascending, even rounds descending)
-- Base picks on realistic ADP values and positional needs
+- Base picks on the LIVE ADP DATA provided below — players should be drafted close to their ADP with realistic variance
 - Each AI manager should have a distinct draft style (some reach, some go BPA, some are position-focused)
 - Team at index ${userTeamIdx} ("${teamNames[userTeamIdx]}") is the user's team — mark those picks with isUser: true
 - League format: ${league.scoring || 'PPR'}, ${league.isDynasty ? 'Dynasty' : 'Redraft'}${scoringTweak === 'sf' ? '\n- SUPERFLEX LEAGUE: QBs are significantly more valuable. Draft QBs earlier and expect 2-3 QBs taken in Round 1. Value QBs like top-10 overall picks.' : ''}${scoringTweak === 'tep' ? '\n- TE PREMIUM LEAGUE: TEs receive bonus PPR scoring (1.5-2.0 PPR). Draft elite TEs earlier (Rounds 1-3 for top TEs). TEs like Kelce, LaPorta, Bowers are valued much higher.' : ''}
 - Include real NFL player names with correct positions and teams
 - Confidence represents how strongly the AI recommends that pick (60-95 range)
 - Notes should be a brief scouting blurb
+- The "value" field should reflect the player's dynasty/trade value (higher = more valuable, scale 1-100)
 
 Return a JSON object with a "draftResults" array. Each pick object:
 { "round": number, "pick": number, "overall": number, "playerName": string, "position": string, "team": string, "manager": string, "confidence": number, "isUser": boolean, "value": number, "notes": string }`
@@ -104,11 +117,11 @@ Return a JSON object with a "draftResults" array. Each pick object:
 
 Team names in draft order: ${teamNames.join(', ')}
 
-The user controls "${teamNames[userTeamIdx]}" (pick position #${userTeamIdx + 1}).${draftOrderContext}${rosterContext}
+The user controls "${teamNames[userTeamIdx]}" (pick position #${userTeamIdx + 1}).${draftOrderContext}${rosterContext}${adpContext}
 
 Custom settings: ${rounds} rounds • Scoring tweak: ${scoringTweak || 'default'}
 
-Generate all ${rounds * numTeams} picks with realistic player selections based on current ADP data.`
+Generate all ${rounds * numTeams} picks with realistic player selections based on the ADP data above.`
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
