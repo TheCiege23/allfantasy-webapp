@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import LiveLeaderboard from "@/components/madness/LiveLeaderboard"
+import LiveGameChat from "@/components/madness/LiveGameChat"
 
 function pointsForRound(round: number): number {
   switch (round) {
@@ -76,6 +77,8 @@ export default async function LeagueLeaderboardPage({ params }: { params: { id: 
 
         <LiveLeaderboard initialLeaderboard={leaderboard} leagueId={league.id} />
       </div>
+
+      <LiveGameChat leagueId={league.id} currentUserId={session.user.id!} />
     </div>
   )
 }
