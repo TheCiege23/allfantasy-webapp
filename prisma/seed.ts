@@ -47,7 +47,40 @@ async function main() {
     });
   }
 
-  console.log('Test league & teams seeded!');
+  const teams = await prisma.leagueTeam.findMany({
+    where: { leagueId: league.id },
+  });
+
+  const opponents = ['Eagles', 'Cowboys', 'Giants', 'Commanders', 'Vikings', '49ers', 'Chiefs', 'Bills', 'Bengals', 'Lions'];
+
+  for (const team of teams) {
+    for (let week = 1; week <= 10; week++) {
+      const points = Math.round((Math.random() * 150 + 80) * 100) / 100;
+      const oppPoints = Math.round((Math.random() * 150 + 80) * 100) / 100;
+      const result = points > oppPoints ? 'W' : points < oppPoints ? 'L' : 'T';
+
+      await prisma.teamPerformance.upsert({
+        where: {
+          teamId_season_week: {
+            teamId: team.id,
+            season: 2025,
+            week,
+          },
+        },
+        update: { points, opponent: opponents[week - 1], result },
+        create: {
+          teamId: team.id,
+          week,
+          season: 2025,
+          points,
+          opponent: opponents[week - 1],
+          result,
+        },
+      });
+    }
+  }
+
+  console.log('Test league, teams & weekly performances seeded!');
 }
 
 main()
