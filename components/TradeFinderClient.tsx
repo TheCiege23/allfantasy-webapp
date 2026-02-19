@@ -10,10 +10,11 @@ import { toast } from 'sonner';
 type League = { id: string; name: string; sport: string; season: number; platformLeagueId: string; platform: string; isDynasty: boolean };
 
 export default function TradeFinderClient({ initialLeagues }: { initialLeagues: League[] }) {
-  const { callAI, loading } = useAI<{ recommendations?: any[]; suggestions?: any[]; candidates?: any[]; success?: boolean; meta?: any }>();
+  const { callAI, loading, error } = useAI<{ recommendations?: any[]; suggestions?: any[]; candidates?: any[]; success?: boolean; meta?: any }>();
   const [leagueId, setLeagueId] = useState(initialLeagues[0]?.id || '');
   const [strategy, setStrategy] = useState<'win-now' | 'rebuild' | 'balanced'>('balanced');
   const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
 
   const selectedLeague = initialLeagues.find(l => l.id === leagueId);
 
@@ -25,6 +26,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
 
   const findTrades = async () => {
     if (!leagueId || !selectedLeague) return toast.error('Select a league first');
+    setHasSearched(true);
 
     const result = await callAI('/api/trade-finder', {
       league_id: selectedLeague.platformLeagueId,
@@ -110,7 +112,38 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
         {loading ? 'Searching for trades...' : 'Find Trades'}
       </Button>
 
-      {suggestions.length > 0 ? (
+      {loading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i} className="border-purple-900/20 bg-black/30 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <div className="h-6 w-3/4 bg-gray-700 rounded animate-pulse" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex justify-between">
+                  <div className="space-y-2">
+                    <div className="h-5 w-32 bg-gray-700 rounded animate-pulse" />
+                    <div className="h-4 w-48 bg-gray-700 rounded animate-pulse" />
+                  </div>
+                  <div className="h-5 w-20 bg-gray-700 rounded animate-pulse" />
+                </div>
+                <div className="h-4 w-full bg-gray-700 rounded animate-pulse" />
+                <div className="flex gap-3 justify-end">
+                  <div className="h-9 w-20 bg-gray-700 rounded animate-pulse" />
+                  <div className="h-9 w-24 bg-gray-700 rounded animate-pulse" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="text-center py-16 text-red-400 border border-red-900/40 rounded-2xl bg-red-950/30">
+          <p>{error}</p>
+          <Button variant="outline" className="mt-6 border-red-800 text-red-300 hover:bg-red-950/50" onClick={findTrades}>
+            Try Again
+          </Button>
+        </div>
+      ) : suggestions.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {suggestions.map((trade, i) => (
             <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm hover:border-purple-500/60 transition-all">
@@ -197,7 +230,9 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
         </div>
       ) : (
         <div className="text-center py-20 text-gray-500 border border-dashed border-gray-700 rounded-2xl">
-          Select a league & strategy, then click &ldquo;Find Trades&rdquo; to see AI-powered suggestions
+          {hasSearched
+            ? 'No trade opportunities found. Try a different strategy.'
+            : 'Select a league & strategy, then click "Find Trades" to see AI-powered suggestions'}
         </div>
       )}
     </div>
