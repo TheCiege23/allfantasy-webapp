@@ -15,6 +15,64 @@ function toLetter(score: number) {
   return "F"
 }
 
+type GradeDisplay = {
+  letter: string
+  title: string
+  color: string
+  notes: string[]
+}
+
+export function calculateGrade(team: any, results: any[]): GradeDisplay {
+  const picks = results.filter((p: any) => p.manager === team.teamName || p.rosterId === team.rosterId)
+  let score = 80
+
+  const hasEliteQB = picks.some((p: any) => p.position === 'QB' && (p.confidence ?? 0) > 90)
+  const hasEliteRB = picks.some((p: any) => p.position === 'RB' && (p.confidence ?? 0) > 85)
+  const hasEliteWR = picks.some((p: any) => p.position === 'WR' && (p.confidence ?? 0) > 85)
+  const youngPicks = picks.filter((p: any) => (p.age ?? 30) <= 24)
+  const totalValue = picks.reduce((sum: number, p: any) => sum + (p.value ?? 0), 0)
+
+  if (hasEliteQB) score += 15
+  if (hasEliteRB) score += 10
+  if (hasEliteWR) score += 10
+  if (youngPicks.length >= 3) score += 5
+  if (totalValue > 20000) score += 10
+  else if (totalValue > 10000) score += 5
+
+  score = Math.min(100, Math.max(0, score))
+
+  const letter = toLetter(score)
+
+  const notes: string[] = []
+  if (hasEliteQB) notes.push('Elite QB acquisition')
+  if (hasEliteRB) notes.push('Strong RB foundation')
+  if (hasEliteWR) notes.push('Deep WR corps')
+  if (youngPicks.length >= 3) notes.push('Strong future core')
+  if (totalValue > 10000) notes.push('Good value picks')
+  if (notes.length === 0) notes.push('Balanced approach')
+
+  const titleMap: Record<string, string> = {
+    'A+': 'Elite Haul', 'A': 'Excellent Class', 'A-': 'Great Class',
+    'B+': 'Solid Class', 'B': 'Above Average', 'B-': 'Decent Class',
+    'C+': 'Average Class', 'C': 'Needs Work', 'C-': 'Below Average',
+    'D': 'Poor Class', 'F': 'Rough Draft',
+  }
+
+  const colorMap: Record<string, string> = {
+    'A+': '#22c55e', 'A': '#4ade80', 'A-': '#86efac',
+    'B+': '#eab308', 'B': '#facc15', 'B-': '#fde047',
+    'C+': '#f97316', 'C': '#fb923c', 'C-': '#fdba74',
+    'D': '#ef4444', 'F': '#dc2626',
+  }
+
+  return {
+    letter,
+    title: titleMap[letter] || 'Solid Class',
+    color: colorMap[letter] || '#eab308',
+    notes,
+  }
+}
+
 function clamp01(x: number) {
   if (!Number.isFinite(x)) return 0
   return Math.max(0, Math.min(1, x))

@@ -1,153 +1,113 @@
 'use client';
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, TrendingUp, TrendingDown, ArrowRightLeft } from 'lucide-react';
-import { useAI } from '@/hooks/useAI';
-import { toast } from 'sonner';
+import { useState, useEffect, useCallback } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Users, TrendingUp, ArrowRightLeft } from 'lucide-react';
 
-type PartnerMatchViewProps = {
-  leagueId: string;
-  strategy: string;
-};
-
-type PartnerMatch = {
+type Match = {
   teamName: string;
-  rosterId: number;
-  compatibility: number;
-  theyNeed: string[];
-  youNeed: string[];
-  tradeAngle: string;
+  needs: string[];
+  yourOffer: string;
+  theirOffer: string;
+  matchScore: number;
+  record: string;
 };
 
-export default function PartnerMatchView({ leagueId, strategy }: PartnerMatchViewProps) {
-  const { callAI, loading } = useAI<{ partners?: PartnerMatch[]; recommendations?: any[] }>();
-  const [partners, setPartners] = useState<PartnerMatch[]>([]);
-  const [hasSearched, setHasSearched] = useState(false);
+export default function PartnerMatchView({ leagueId, strategy }: { leagueId: string; strategy: string }) {
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const findPartners = async () => {
-    if (!leagueId) {
-      toast.error('Select a league first from the Find Trades tab.');
-      return;
+  const fetchMatches = useCallback(async () => {
+    if (!leagueId) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/trade-partner-match?leagueId=${encodeURIComponent(leagueId)}&strategy=${strategy}`);
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error || 'Failed to find trade partners.');
+        return;
+      }
+      setMatches(data.matches || []);
+    } catch {
+      setError('Failed to find trade partners.');
+    } finally {
+      setLoading(false);
     }
-    setHasSearched(true);
+  }, [leagueId, strategy]);
 
-    const result = await callAI('/api/trade-finder', {
-      league_id: leagueId,
-      user_roster_id: 1,
-      objective: strategy === 'win-now' ? 'WIN_NOW' : strategy === 'rebuild' ? 'REBUILD' : 'BALANCED',
-      mode: 'PARTNER_SCAN',
-    });
+  useEffect(() => {
+    fetchMatches();
+  }, [fetchMatches]);
 
-    if (result.data?.partners?.length) {
-      setPartners(result.data.partners);
-      toast.success(`Found ${result.data.partners.length} potential trade partners!`);
-    } else if (result.data?.recommendations?.length) {
-      const mapped: PartnerMatch[] = result.data.recommendations.slice(0, 6).map((rec: any, i: number) => ({
-        teamName: `Team ${rec.tradeId?.split('-')[1] || i + 1}`,
-        rosterId: i + 1,
-        compatibility: rec.confidenceScore || Math.round(60 + Math.random() * 30),
-        theyNeed: rec.teamA?.gives?.map((a: any) => a.position || a.name).slice(0, 3) || [],
-        youNeed: rec.teamA?.receives?.map((a: any) => a.position || a.name).slice(0, 3) || [],
-        tradeAngle: rec.whyItHelpsYou || rec.summary || 'Complementary roster needs detected.',
-      }));
-      setPartners(mapped);
-      toast.success(`Found ${mapped.length} potential trade partners!`);
-    } else {
-      setPartners([]);
-      toast.info('No strong trade partners found right now.');
-    }
-  };
-
-  const compatColor = (score: number) => {
+  const scoreColor = (score: number) => {
     if (score >= 80) return 'text-green-400';
     if (score >= 60) return 'text-yellow-400';
     return 'text-gray-400';
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <p className="text-gray-400 text-sm mb-4">
-          Find league managers whose roster needs complement yours — the best trades happen when both sides win.
-        </p>
-        <Button
-          onClick={findPartners}
-          disabled={loading || !leagueId}
-          className="h-12 px-8 text-lg bg-gradient-to-r from-teal-600 via-purple-600 to-pink-600 hover:opacity-90"
-        >
-          {loading ? 'Scanning rosters...' : 'Scan for Partners'}
-        </Button>
+  if (loading) {
+    return (
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {[...Array(6)].map((_, i) => (
+          <Card key={i} className="border-purple-900/20 bg-black/30 backdrop-blur-sm">
+            <CardContent className="p-6 space-y-3">
+              <div className="h-6 w-3/4 bg-gray-700 rounded animate-pulse" />
+              <div className="h-4 w-full bg-gray-700 rounded animate-pulse" />
+              <div className="h-4 w-2/3 bg-gray-700 rounded animate-pulse" />
+              <div className="h-4 w-1/2 bg-gray-700 rounded animate-pulse" />
+            </CardContent>
+          </Card>
+        ))}
       </div>
+    );
+  }
 
-      {loading ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="border-purple-900/20 bg-black/30 backdrop-blur-sm">
-              <CardHeader className="pb-2">
-                <div className="h-6 w-3/4 bg-gray-700 rounded animate-pulse" />
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="h-4 w-full bg-gray-700 rounded animate-pulse" />
-                <div className="h-4 w-2/3 bg-gray-700 rounded animate-pulse" />
-                <div className="h-4 w-1/2 bg-gray-700 rounded animate-pulse" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : partners.length > 0 ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {partners.map((p, i) => (
-            <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm hover:border-teal-500/60 transition-all">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex justify-between items-center text-lg">
-                  <span className="flex items-center gap-2">
-                    <Users className="h-4 w-4 text-teal-400" />
-                    {p.teamName}
-                  </span>
-                  <span className={`text-sm font-bold ${compatColor(p.compatibility)}`}>
-                    {p.compatibility}% match
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex gap-4 text-xs">
-                  <div className="flex-1">
-                    <p className="text-teal-300 font-medium flex items-center gap-1 mb-1">
-                      <TrendingUp className="h-3 w-3" /> They need
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {p.theyNeed.map((n, j) => (
-                        <span key={j} className="bg-teal-900/40 text-teal-300 px-2 py-0.5 rounded-full text-xs">{n}</span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-purple-300 font-medium flex items-center gap-1 mb-1">
-                      <TrendingDown className="h-3 w-3" /> You need
-                    </p>
-                    <div className="flex flex-wrap gap-1">
-                      {p.youNeed.map((n, j) => (
-                        <span key={j} className="bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded-full text-xs">{n}</span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs text-gray-400 border-t border-gray-800 pt-2 flex items-start gap-1.5">
-                  <ArrowRightLeft className="h-3 w-3 mt-0.5 flex-shrink-0 text-gray-500" />
-                  {p.tradeAngle}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-20 text-gray-500 border border-dashed border-gray-700 rounded-2xl">
-          {hasSearched
-            ? 'No strong trade partners found. Try adjusting your strategy.'
-            : 'Click "Scan for Partners" to find managers with complementary roster needs.'}
-        </div>
-      )}
+  if (error) {
+    return <div className="text-red-400 text-center py-12">{error}</div>;
+  }
+
+  if (matches.length === 0) {
+    return (
+      <div className="text-center py-20 text-gray-500 border border-dashed border-gray-700 rounded-2xl">
+        No strong trade partners found right now. Try a different league or strategy.
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      {matches.map((match, i) => (
+        <Card key={i} className="border-cyan-900/40 bg-black/50 backdrop-blur-sm hover:border-teal-500/60 transition-all">
+          <CardContent className="p-6 space-y-3">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <Users className="h-4 w-4 text-teal-400" />
+                {match.teamName}
+              </h3>
+              <span className={`text-sm font-bold ${scoreColor(match.matchScore)}`}>
+                {match.matchScore}/100
+              </span>
+            </div>
+            {match.record && (
+              <p className="text-xs text-gray-500">{match.record}</p>
+            )}
+            <p className="text-sm text-gray-300">
+              <span className="text-gray-500">Needs:</span> {match.needs.length > 0 ? match.needs.join(', ') : 'No clear needs'}
+            </p>
+            <div className="flex items-start gap-1.5 text-sm text-green-300">
+              <TrendingUp className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+              <span>You could offer: {match.yourOffer}</span>
+            </div>
+            <div className="flex items-start gap-1.5 text-sm text-purple-300 border-t border-gray-800 pt-2">
+              <ArrowRightLeft className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+              <span>They could offer: {match.theirOffer}</span>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   );
 }
