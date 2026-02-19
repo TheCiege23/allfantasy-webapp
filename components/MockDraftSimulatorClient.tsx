@@ -110,16 +110,14 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     return map
   }, [draftResults])
 
-  const calculateTeamNeeds = useCallback((teamData: { manager: string; counts: Record<string, number> }) => {
-    const NEED_TARGETS: Record<string, number> = { QB: 2, RB: 4, WR: 4, TE: 2 }
-    const needs: Record<string, number> = {}
-    for (const pos of ['QB', 'RB', 'WR', 'TE']) {
-      const count = teamData.counts[pos] || 0
-      const target = NEED_TARGETS[pos]
-      const filled = Math.min(count / target, 1)
-      needs[pos] = Math.round((1 - filled) * 100)
+  const calculateTeamNeeds = useCallback((teamData: { manager: string; counts: Record<string, number> }, round: number) => {
+    const roster = teamData.counts
+    return {
+      QB: round < 5 && (roster.QB || 0) < 2 ? 85 : 30,
+      RB: (roster.RB || 0) < 4 ? 75 : 25,
+      WR: (roster.WR || 0) < 5 ? 70 : 20,
+      TE: (roster.TE || 0) < 2 ? 60 : 15,
     }
-    return needs
   }, [])
 
   useEffect(() => {
@@ -656,7 +654,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-bold text-cyan-400">Your Roster After Round {rNum}</span>
                                 {(() => {
-                                  const needs = calculateTeamNeeds(userTeam)
+                                  const needs = calculateTeamNeeds(userTeam, rNum)
                                   const vals = Object.values(needs)
                                   const avgNeed = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
                                   const topPos = Object.entries(needs).sort(([,a], [,b]) => b - a)[0]
@@ -708,7 +706,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
                               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                                 {quickNeeds.map(team => {
-                                  const needs = calculateTeamNeeds(team)
+                                  const needs = calculateTeamNeeds(team, rNum)
                                   return (
                                     <div key={team.manager} className={`p-4 rounded-xl ${team.isUser ? 'bg-cyan-950/30 border border-cyan-500/30' : 'bg-gray-950/50'}`}>
                                       <div className="flex items-center gap-3 mb-3">
