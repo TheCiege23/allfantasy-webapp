@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Trophy, Hammer, Scale } from 'lucide-react';
+import { Trophy, Hammer, Scale, ExternalLink } from 'lucide-react';
 import { useAI } from '@/hooks/useAI';
 import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+import PartnerMatchView from '@/components/PartnerMatchView';
 
 type League = { id: string; name: string; sport: string; season: number; platformLeagueId: string; platform: string; isDynasty: boolean };
 
@@ -15,6 +17,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
   const [strategy, setStrategy] = useState<'win-now' | 'rebuild' | 'balanced'>('balanced');
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [tab, setTab] = useState<'find' | 'partner'>('find');
 
   const selectedLeague = initialLeagues.find(l => l.id === leagueId);
 
@@ -110,6 +113,30 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
 
   return (
     <div className="space-y-10">
+      <div className="flex rounded-xl overflow-hidden border border-purple-900/50 mb-2">
+        <button
+          onClick={() => setTab('find')}
+          className={cn(
+            'flex-1 py-4 px-6 text-center font-medium transition-all',
+            tab === 'find' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-black/40 text-gray-400 hover:text-gray-200'
+          )}
+        >
+          Find Trades
+        </button>
+        <button
+          onClick={() => setTab('partner')}
+          className={cn(
+            'flex-1 py-4 px-6 text-center font-medium transition-all',
+            tab === 'partner' ? 'bg-gradient-to-r from-teal-600 to-purple-600 text-white' : 'bg-black/40 text-gray-400 hover:text-gray-200'
+          )}
+        >
+          Partner Match
+        </button>
+      </div>
+
+      {tab === 'partner' ? (
+        <PartnerMatchView leagueId={selectedLeague?.platformLeagueId || ''} strategy={strategy} />
+      ) : (<>
       <div className="flex flex-col md:flex-row gap-4 items-stretch bg-gradient-to-r from-purple-950/80 to-black/80 p-4 rounded-xl border border-purple-500/30 backdrop-blur-md">
         <Select value={leagueId} onValueChange={setLeagueId}>
           <SelectTrigger className="flex-1 bg-gray-950 border-cyan-800">
@@ -235,7 +262,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                   <Button
                     variant="outline"
                     size="sm"
-                    className="bg-cyan-600 hover:bg-cyan-700 border-cyan-600 text-white"
+                    className="bg-cyan-600 hover:bg-cyan-700 border-cyan-600 text-white gap-1.5"
                     onClick={async (e) => {
                       e.stopPropagation();
                       if (!selectedLeague) return;
@@ -253,10 +280,9 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                         });
                         const data = await res.json();
                         if (res.ok) {
-                          toast.success('Trade saved! Open Sleeper to send it.');
-                          if (data.sleeperDeepLink) {
-                            window.open(data.sleeperDeepLink, '_blank');
-                          }
+                          const deepLink = `https://sleeper.app/leagues/${selectedLeague.platformLeagueId}/trade`;
+                          window.open(data.sleeperDeepLink || deepLink, '_blank');
+                          toast.info('Opening Sleeper — start the trade there!');
                         } else {
                           toast.error(data.error || 'Failed to save proposal');
                         }
@@ -265,7 +291,8 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
                       }
                     }}
                   >
-                    Propose
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Propose in Sleeper
                   </Button>
                   <Button size="sm">Details</Button>
                 </div>
@@ -280,6 +307,7 @@ export default function TradeFinderClient({ initialLeagues }: { initialLeagues: 
             : 'Select a league & strategy, then click "Find Trades" to see AI-powered suggestions'}
         </div>
       )}
+      </>)}
     </div>
   );
 }
