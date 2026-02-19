@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: { params: { shareId: string 
   const description = `Check out ${userName}'s March Madness bracket — powered by AI insights and live scoring. Join the league!`;
   const baseUrl = process.env.NEXT_PUBLIC_URL || 'https://allfantasy.ai';
   const url = `${baseUrl}/madness/share/${share.id}`;
-  const ogImage = imageUrl || `${baseUrl}/icon-512.png`;
+  const ogImage = `${baseUrl}/api/madness/og-image/${share.id}`;
 
   const html = `
     <!DOCTYPE html>
