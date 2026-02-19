@@ -32,10 +32,19 @@ interface RecentTrade {
   sides: TradeSide[]
 }
 
+interface StorylineEvidence {
+  type: string
+  label: string
+  detail: string
+}
+
 interface Storyline {
   title: string
   description: string
   type: string
+  confidence?: number
+  evidence?: StorylineEvidence[]
+  nextTrigger?: string
 }
 
 interface TransferPreview {
@@ -82,6 +91,37 @@ const STORYLINE_COLORS: Record<string, string> = {
   dynasty: 'border-cyan-500/30 bg-cyan-500/5',
   trade_war: 'border-pink-500/30 bg-pink-500/5',
   sleeper: 'border-slate-500/30 bg-slate-500/5',
+}
+
+const EVIDENCE_ICONS: Record<string, string> = {
+  record: '\u{1F4CA}',
+  trade: '\u{1F91D}',
+  manager: '\u{1F464}',
+  matchup: '\u{26A1}',
+  trend: '\u{1F4C8}',
+}
+
+const EVIDENCE_COLORS: Record<string, string> = {
+  record: 'bg-blue-500/15 text-blue-300 border-blue-500/20',
+  trade: 'bg-pink-500/15 text-pink-300 border-pink-500/20',
+  manager: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
+  matchup: 'bg-amber-500/15 text-amber-300 border-amber-500/20',
+  trend: 'bg-purple-500/15 text-purple-300 border-purple-500/20',
+}
+
+function ConfidenceBar({ value }: { value: number }) {
+  const color = value >= 80 ? 'bg-emerald-500' : value >= 50 ? 'bg-amber-500' : 'bg-red-400'
+  const label = value >= 80 ? 'High' : value >= 50 ? 'Medium' : 'Low'
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+        <div className={cx('h-full rounded-full transition-all', color)} style={{ width: `${Math.max(value, 3)}%` }} />
+      </div>
+      <span className={cx('text-[8px] font-semibold tabular-nums',
+        value >= 80 ? 'text-emerald-400' : value >= 50 ? 'text-amber-400' : 'text-red-400'
+      )}>{value}% {label}</span>
+    </div>
+  )
 }
 
 function deriveRivalryWeek(managers: Manager[]): { team1: string; team2: string; narrative: string } | null {
@@ -319,21 +359,52 @@ export default function MigrationProof({ preview }: { preview: TransferPreview }
               </div>
             )}
 
-            {/* AI Storylines */}
+            {/* AI Storylines v2 */}
             {storylines.length > 0 && (
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="text-sm">{'\u{1F4DD}'}</span>
                   <span className="text-[10px] font-semibold text-white/40 uppercase tracking-wider">AI Season Storylines</span>
                 </div>
-                <div className="space-y-2">
-                  {storylines.slice(0, 4).map((s, i) => (
-                    <div key={i} className={cx('rounded-lg border p-2.5 space-y-1', STORYLINE_COLORS[s.type] || 'border-white/10 bg-white/[0.03]')}>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">{STORYLINE_ICONS[s.type] || '\u{1F4A1}'}</span>
-                        <span className="text-[10px] font-bold text-white">{s.title}</span>
+                <div className="space-y-3">
+                  {storylines.slice(0, 5).map((s, i) => (
+                    <div key={i} className={cx('rounded-lg border p-3 space-y-2', STORYLINE_COLORS[s.type] || 'border-white/10 bg-white/[0.03]')}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs">{STORYLINE_ICONS[s.type] || '\u{1F4A1}'}</span>
+                          <span className="text-[10px] font-bold text-white">{s.title}</span>
+                        </div>
+                        <span className="text-[8px] text-white/20 uppercase">{s.type.replace('_', ' ')}</span>
                       </div>
                       <p className="text-[9px] text-white/50 leading-relaxed">{s.description}</p>
+
+                      {typeof s.confidence === 'number' && (
+                        <ConfidenceBar value={s.confidence} />
+                      )}
+
+                      {s.evidence && s.evidence.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {s.evidence.map((e, j) => (
+                            <span
+                              key={j}
+                              className={cx('inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[8px] font-medium',
+                                EVIDENCE_COLORS[e.type] || 'bg-white/10 text-white/50 border-white/10'
+                              )}
+                              title={e.detail}
+                            >
+                              <span className="text-[7px]">{EVIDENCE_ICONS[e.type] || '\u{1F4CC}'}</span>
+                              {e.label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {s.nextTrigger && (
+                        <div className="flex items-start gap-1 pt-0.5">
+                          <span className="text-[7px] mt-0.5 text-white/20">{'\u{1F514}'}</span>
+                          <span className="text-[8px] text-white/30 leading-relaxed italic">{s.nextTrigger}</span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

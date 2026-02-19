@@ -224,50 +224,133 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
     const superflex = league.roster_positions?.filter(p => p === 'SUPER_FLEX').length || 0
     const tep = league.scoring_settings?.bonus_rec_te || 0
 
-    // Generate AI storylines based on league history
-    let storylines: { title: string; description: string; type: string }[] = []
+    interface StorylineV2 {
+      title: string
+      description: string
+      type: string
+      confidence: number
+      evidence: { type: string; label: string; detail: string }[]
+      nextTrigger: string
+    }
+
+    const sortedByWins = [...managers].sort((a, b) => b.wins - a.wins || parseFloat(b.pointsFor || '0') - parseFloat(a.pointsFor || '0'))
+    const sortedByPts = [...managers].sort((a, b) => parseFloat(b.pointsFor || '0') - parseFloat(a.pointsFor || '0'))
+
+    const topManager = sortedByWins[0] || { displayName: 'Unknown', wins: 0, losses: 0, pointsFor: '0' }
+    const bottomManager = sortedByWins[sortedByWins.length - 1] || topManager
+    const closePairs: string[] = []
+    for (let i = 0; i < sortedByWins.length - 1; i++) {
+      if (Math.abs(sortedByWins[i].wins - sortedByWins[i + 1].wins) <= 1) {
+        closePairs.push(`${sortedByWins[i].displayName} (${sortedByWins[i].wins}W) vs ${sortedByWins[i + 1].displayName} (${sortedByWins[i + 1].wins}W)`)
+      }
+    }
+
+    const tradeLeaders: Record<number, number> = {}
+    trades.forEach(t => (t.roster_ids || []).forEach(rid => { tradeLeaders[rid] = (tradeLeaders[rid] || 0) + 1 }))
+    const topTrader = Object.entries(tradeLeaders).sort((a, b) => b[1] - a[1])[0]
+    const topTraderManager = topTrader ? managers.find(m => m.rosterId === Number(topTrader[0])) : null
+
+    const highScorer = sortedByPts[0] || topManager
+    const lowScorer = sortedByPts[sortedByPts.length - 1] || bottomManager
+
+    const evidenceContext = `DETERMINISTIC EVIDENCE (use these facts, do not invent stats):
+- League leader: ${topManager?.displayName} at ${topManager?.wins}-${topManager?.losses} (${topManager?.pointsFor} pts)
+- Last place: ${bottomManager?.displayName} at ${bottomManager?.wins}-${bottomManager?.losses} (${bottomManager?.pointsFor} pts)
+- Close races: ${closePairs.length > 0 ? closePairs.join('; ') : 'None within 1 win'}
+- Top scorer: ${highScorer?.displayName} (${highScorer?.pointsFor} pts)
+- Lowest scorer: ${lowScorer?.displayName} (${lowScorer?.pointsFor} pts)
+- Most active trader: ${topTraderManager ? `${topTraderManager.displayName} (${topTrader![1]} trades)` : 'No trades'}
+- Total trades: ${trades.length}
+- Seasons of history: ${previousSeasons.length + 1}
+- Win-loss spread: ${topManager?.wins - (bottomManager?.wins || 0)} games between 1st and last`
+
+    let storylines: StorylineV2[] = []
     try {
-      const storylinePrompt = `You are a fantasy sports analyst creating exciting storylines for an upcoming 2025 fantasy football season.
+      const storylinePrompt = `You are a fantasy sports analyst creating data-backed storylines for an upcoming 2025 fantasy football season.
 
 League: "${league.name}"
 Type: ${leagueType}
-Seasons of history: ${previousSeasons.length + 1}
-Number of teams: ${managers.length}
-Total trades this season: ${trades.length}
+Teams: ${managers.length}
 
 Managers and their records:
 ${managers.map(m => `- ${m.displayName}: ${m.wins}-${m.losses}${m.ties ? `-${m.ties}` : ''} (${m.pointsFor} pts)`).join('\n')}
 
-Based on this league data, generate 3-5 compelling storylines for the 2025 season. Each storyline should:
-- Reference specific managers by name when relevant
-- Create narratives around rivalries, redemption arcs, dynasty builders, etc.
-- Be engaging and fun to read
-- Feel personalized to this specific league
+${evidenceContext}
 
-Return JSON array with objects containing: title (short catchy headline), description (2-3 sentences), type (one of: rivalry, redemption, contender, underdog, dynasty, trade_war, sleeper)
+Generate 3-5 compelling storylines. Each MUST be grounded in the evidence above—reference specific records, point totals, and manager names.
 
-Example format:
-[{"title": "The Rematch", "description": "After losing in last year's championship...", "type": "rivalry"}]`
+For each storyline, return:
+- title: short catchy headline (4-8 words)
+- description: 2-3 sentences referencing real data
+- type: one of: rivalry, redemption, contender, underdog, dynasty, trade_war, sleeper
+- confidence: 0-100, how strongly the data supports this narrative. Use 80-95 for storylines with strong numerical evidence. Use 50-70 for projected/speculative arcs. Use 30-49 for purely hypothetical narratives.
+- evidence: array of {type, label, detail} where type is one of "record", "trade", "manager", "matchup", "trend" — label is a short tag, detail is the specific data point
+- nextTrigger: one sentence describing what event/result would update this storyline (e.g. "If X loses 2 more games..." or "Next trade involving Y")
+
+Return JSON: {"storylines": [...]}
+
+Example:
+{"storylines": [{"title": "The Points Machine", "description": "Despite sitting at 5-4, Jordan leads the league with 1,247 points—32 more than the next closest manager.", "type": "contender", "confidence": 88, "evidence": [{"type": "record", "label": "5-4 Record", "detail": "Jordan: 1247.32 pts, 2nd most wins but highest scorer"}, {"type": "trend", "label": "Scoring Trend", "detail": "32 pts above next closest"}], "nextTrigger": "If Jordan wins 2 of next 3, playoff lock becomes near-certain"}]}`
 
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [{ role: 'user', content: storylinePrompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 1000,
+        max_tokens: 2000,
       })
 
       const content = completion.choices[0]?.message?.content
       if (content) {
         const parsed = JSON.parse(content)
-        storylines = parsed.storylines || parsed.stories || (Array.isArray(parsed) ? parsed : [])
+        const raw: any[] = parsed.storylines || parsed.stories || (Array.isArray(parsed) ? parsed : [])
+        storylines = raw.map(s => ({
+          title: String(s.title || ''),
+          description: String(s.description || ''),
+          type: String(s.type || 'sleeper'),
+          confidence: typeof s.confidence === 'number' ? Math.max(0, Math.min(100, Math.round(s.confidence))) : 50,
+          evidence: Array.isArray(s.evidence) ? s.evidence.map((e: any) => ({
+            type: String(e?.type || 'trend'),
+            label: String(e?.label || ''),
+            detail: String(e?.detail || ''),
+          })).filter((e: any) => e.label && e.detail) : [],
+          nextTrigger: typeof s.nextTrigger === 'string' ? s.nextTrigger : '',
+        }))
       }
     } catch (err) {
       console.error('Storyline generation error:', err)
-      // Fallback storylines if AI fails
       storylines = [
-        { title: 'The Championship Chase', description: `With ${previousSeasons.length + 1} seasons of history, ${league.name} enters 2025 with established rivalries and unfinished business.`, type: 'contender' },
-        { title: 'Trade Season Heats Up', description: `${trades.length} trades already this season shows this league means business. Who will make the move that defines the 2025 campaign?`, type: 'trade_war' },
-        { title: 'New Season, New Hope', description: `${managers.length} managers ready to compete. Last year's struggles are forgotten—2025 is a fresh start for everyone.`, type: 'redemption' },
+        {
+          title: 'The Championship Chase',
+          description: `${topManager?.displayName} leads at ${topManager?.wins}-${topManager?.losses} with ${topManager?.pointsFor} pts. With ${previousSeasons.length + 1} seasons of history, ${league.name} enters 2025 with unfinished business.`,
+          type: 'contender',
+          confidence: 75,
+          evidence: [
+            { type: 'record', label: `${topManager?.wins}-${topManager?.losses}`, detail: `${topManager?.displayName} leads standings` },
+            { type: 'trend', label: `${previousSeasons.length + 1} Seasons`, detail: 'Established league history' },
+          ],
+          nextTrigger: `If ${topManager?.displayName} loses 2 straight, the race reopens`,
+        },
+        {
+          title: 'Trade Season Heats Up',
+          description: `${trades.length} trades this season${topTraderManager ? `, led by ${topTraderManager.displayName} with ${topTrader![1]} deals` : ''}. Who will make the move that defines the 2025 campaign?`,
+          type: 'trade_war',
+          confidence: trades.length > 5 ? 80 : 55,
+          evidence: [
+            { type: 'trade', label: `${trades.length} Trades`, detail: 'Total completed trades this season' },
+            ...(topTraderManager ? [{ type: 'manager' as const, label: 'Most Active', detail: `${topTraderManager.displayName}: ${topTrader![1]} trades` }] : []),
+          ],
+          nextTrigger: 'Next completed trade updates activity leaderboard',
+        },
+        {
+          title: 'Underdog Watch',
+          description: `${bottomManager?.displayName} sits at ${bottomManager?.wins}-${bottomManager?.losses} with ${bottomManager?.pointsFor} pts. Every season has a comeback story—could this be the year?`,
+          type: 'underdog',
+          confidence: 40,
+          evidence: [
+            { type: 'record', label: `${bottomManager?.wins}-${bottomManager?.losses}`, detail: `${bottomManager?.displayName} in last place` },
+          ],
+          nextTrigger: `If ${bottomManager?.displayName} wins 3 of next 4, the storyline becomes redemption`,
+        },
       ]
     }
 
