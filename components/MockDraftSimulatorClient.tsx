@@ -55,6 +55,8 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [onClockPick, setOnClockPick] = useState<number | null>(null)
   const [tradeResult, setTradeResult] = useState<any>(null)
   const [isTrading, setIsTrading] = useState(false)
+  const [roundNeeds, setRoundNeeds] = useState<Record<number, any>>({})
+  const [loadingNeeds, setLoadingNeeds] = useState<Record<number, boolean>>({})
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -116,6 +118,24 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
+  const fetchRoundNeeds = async (roundNum: number) => {
+    if (!selectedLeagueId || draftResults.length === 0 || roundNeeds[roundNum] || loadingNeeds[roundNum]) return
+    setLoadingNeeds(prev => ({ ...prev, [roundNum]: true }))
+    try {
+      const { data } = await callAI('/api/mock-draft/needs', {
+        leagueId: selectedLeagueId,
+        round: roundNum,
+        draftResults,
+      })
+      if (data) {
+        setRoundNeeds(prev => ({ ...prev, [roundNum]: data }))
+      }
+    } catch (err: any) {
+      console.error('[needs]', err)
+    }
+    setLoadingNeeds(prev => ({ ...prev, [roundNum]: false }))
+  }
+
   const simulateTrade = async (direction: 'up' | 'down', pickNumber: number) => {
     if (draftResults.length === 0 || !selectedLeagueId) return
     setIsTrading(true)
@@ -133,6 +153,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       if (data?.updatedDraft) {
         setDraftResults(data.updatedDraft)
         setOnClockPick(null)
+        setRoundNeeds({})
         setTradeResult({
           direction,
           pickNumber,
@@ -242,7 +263,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
               <Button onClick={exportPDF} variant="outline"><Download className="mr-2 h-4 w-4" /> PDF</Button>
               <Button onClick={copyShareLink}><Link className="mr-2 h-4 w-4" /> Share</Button>
               <Button onClick={updateWeekly} variant="outline" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
-              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false) }} variant="outline" className="border-gray-600">
+              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}) }} variant="outline" className="border-gray-600">
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
             </div>
@@ -335,50 +356,66 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                     </AnimatePresence>
                   </div>
 
-                  {(() => {
-                    const picksThrough = draftResults.filter(p => p.round <= round + 1)
-                    const managers = Array.from(new Set(draftResults.map(p => p.manager)))
-                    const teamNeeds = managers.map(mgr => {
-                      const drafted: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
-                      for (const p of picksThrough) {
-                        if (p.manager === mgr && drafted[p.position] !== undefined) {
-                          drafted[p.position]++
-                        }
-                      }
-                      const needs: string[] = []
-                      if (drafted.QB === 0) needs.push('QB')
-                      if (drafted.RB < 2) needs.push('RB')
-                      if (drafted.WR < 2) needs.push('WR')
-                      if (drafted.TE === 0) needs.push('TE')
-                      return { manager: mgr, drafted, needs, isUser: picksThrough.some(p => p.manager === mgr && p.isUser) }
-                    })
-                    const teamsWithNeeds = teamNeeds.filter(t => t.needs.length > 0)
-                    if (teamsWithNeeds.length === 0) return null
-                    return (
-                      <div className="mt-6 bg-black/40 border border-gray-800 rounded-xl p-5">
-                        <h4 className="text-sm font-medium text-gray-300 mb-3">Projected Team Needs After Round {round + 1}</h4>
+                  <div className="mt-6">
+                    {!roundNeeds[round + 1] && !loadingNeeds[round + 1] && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fetchRoundNeeds(round + 1)}
+                        className="border-gray-700 text-gray-400 hover:text-white text-xs"
+                      >
+                        <Users className="mr-2 h-3 w-3" /> Analyze Team Needs After Round {round + 1}
+                      </Button>
+                    )}
+                    {loadingNeeds[round + 1] && (
+                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <Loader2 className="h-4 w-4 animate-spin" /> AI analyzing team needs...
+                      </div>
+                    )}
+                    {roundNeeds[round + 1]?.teams && (
+                      <div className="bg-black/40 border border-gray-800 rounded-xl p-5">
+                        <h4 className="text-sm font-medium text-gray-300 mb-3">AI Team Needs After Round {round + 1}</h4>
+
+                        {roundNeeds[round + 1].userAdvice && (
+                          <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 mb-4 text-sm text-cyan-300">
+                            {roundNeeds[round + 1].userAdvice}
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                          {teamNeeds.slice(0, 12).map(t => (
+                          {roundNeeds[round + 1].teams.map((t: any) => (
                             <div key={t.manager} className={`p-3 rounded-lg ${t.isUser ? 'bg-cyan-950/30 border border-cyan-500/20' : 'bg-gray-950/50'}`}>
                               <div className="font-medium mb-1 truncate">{t.manager} {t.isUser ? '(You)' : ''}</div>
-                              <div className="text-gray-400">
-                                QB: {t.drafted.QB} · RB: {t.drafted.RB} · WR: {t.drafted.WR} · TE: {t.drafted.TE}
-                              </div>
-                              {t.needs.length > 0 && (
-                                <div className="mt-1 flex gap-1 flex-wrap">
-                                  {t.needs.map(n => (
-                                    <span key={n} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${POSITION_COLORS[n] || 'text-gray-400 bg-gray-800'}`}>
-                                      NEED {n}
+                              {t.roster && (
+                                <div className="text-gray-400 mb-1">
+                                  QB: {t.roster.QB || 0} · RB: {t.roster.RB || 0} · WR: {t.roster.WR || 0} · TE: {t.roster.TE || 0}
+                                </div>
+                              )}
+                              {t.needs?.length > 0 && (
+                                <div className="flex gap-1 flex-wrap mb-1">
+                                  {t.needs.map((n: any, idx: number) => (
+                                    <span key={idx} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                      n.urgency === 'critical' ? 'bg-red-500/20 text-red-400 border border-red-500/30' :
+                                      n.urgency === 'high' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' :
+                                      POSITION_COLORS[n.position] || 'text-gray-400 bg-gray-800'
+                                    }`}>
+                                      {n.urgency === 'critical' ? '!!' : n.urgency === 'high' ? '!' : ''} {n.position}
                                     </span>
                                   ))}
                                 </div>
+                              )}
+                              {t.strategy && (
+                                <p className="text-[10px] text-gray-600 line-clamp-2">{t.strategy}</p>
+                              )}
+                              {t.likelyTargets?.length > 0 && (
+                                <p className="text-[10px] text-purple-400 mt-1 truncate">Targets: {t.likelyTargets.join(', ')}</p>
                               )}
                             </div>
                           ))}
                         </div>
                       </div>
-                    )
-                  })()}
+                    )}
+                  </div>
                 </div>
               )
             })}
