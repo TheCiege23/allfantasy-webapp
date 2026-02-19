@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, CheckCircle2, AlertCircle, Loader2, Shield, Zap, History, Users, ChevronDown, ChevronUp, RefreshCw, Trophy, TrendingUp, BarChart3 } from 'lucide-react'
+import { fadeInUp, staggerContainer } from '@/components/motion/variants'
 
 type SleeperLeague = {
   league_id: string
@@ -266,35 +267,42 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
   const selectedLeagueData = leagues.find(l => selectedLeagues.has(l.league_id))
 
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={staggerContainer}
+      className="space-y-8"
+    >
+      <motion.div variants={staggerContainer} className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <motion.div variants={fadeInUp}>
           <FeatureCard
             icon={<Shield className="w-6 h-6 text-cyan-400" />}
             title="Encrypted Transfer"
             description="Your league data is encrypted end-to-end during migration"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+        <motion.div variants={fadeInUp}>
           <FeatureCard
             icon={<History className="w-6 h-6 text-purple-400" />}
             title="History Preserved"
             description="Trade history, standings, and records all come with you"
           />
         </motion.div>
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+        <motion.div variants={fadeInUp}>
           <FeatureCard
             icon={<Zap className="w-6 h-6 text-yellow-400" />}
             title="Instant AI Setup"
             description="AI analysis begins the moment your league lands"
           />
         </motion.div>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <motion.div
+        variants={staggerContainer}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-12"
+      >
         <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
+          variants={fadeInUp}
           className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-8"
         >
           <StepIndicator currentStep={step} />
@@ -571,9 +579,7 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
+          variants={fadeInUp}
           className="relative flex justify-center"
         >
           <div className="w-80 sm:w-96 bg-black rounded-[3rem] p-3 border-8 border-gray-900 shadow-2xl shadow-purple-500/10 sticky top-8">
@@ -710,8 +716,8 @@ export default function LeagueTransferClient({ userId }: { userId: string }) {
             </div>
           </div>
         </motion.div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
