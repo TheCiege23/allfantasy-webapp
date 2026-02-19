@@ -1,3 +1,4 @@
+import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
@@ -6,7 +7,7 @@ import { classifyTeam, type RosterPlayer } from '@/lib/teamClassifier'
 import { getRollingInsights } from '@/lib/rolling-insights'
 import { prisma } from '@/lib/prisma'
 
-export async function POST(req: NextRequest) {
+export const POST = withApiUsage({ endpoint: "/api/strategy/generate", tool: "StrategyGenerate" })(async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   const userId = (session?.user as any)?.id
   if (!userId) {
@@ -218,4 +219,4 @@ Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`
       { status: 500 }
     )
   }
-}
+})

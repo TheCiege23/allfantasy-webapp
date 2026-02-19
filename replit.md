@@ -49,6 +49,17 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 **League Sync System:**
 A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage and a shared sync core.
 
+## Launch Week Status (Feb 2026)
+**Feature Freeze: ACTIVE** - Legacy Hub is frozen for launch. Only bugfixes accepted.
+- Release commit: `e623d85` (checkpoint before hardening)
+- Smoke test suite: 24 Playwright tests (CI-required gate)
+- Golden path tests cover: auth redirects, rankings, trade analyzer, strategy, share, API auth guards
+- Observability: 5xx alerting on `/api/legacy/transfer`, `/api/trade-finder`, `/api/strategy/generate`
+- Redirect loop detection active via Next.js middleware on /login (logs + cookie-based counting)
+- Preflight script: `npm run preflight` validates all env vars, DB connection, migrations, auth config
+- CI: `.github/workflows/smoke-tests.yml` runs Playwright as required merge gate with HTML report artifact
+- Rollback: Use Replit checkpoints to restore to last known-good state. Current checkpoint commit: `e623d85`
+
 ## External Dependencies
 -   **OpenAI**: General AI analysis.
 -   **Grok**: Social media post generation.

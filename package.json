@@ -11,7 +11,10 @@
     "db:migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:smoke": "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$(which chromium 2>/dev/null || echo '') npx playwright test",
+    "test:smoke:ci": "npx playwright test",
+    "preflight": "tsx scripts/preflight-check.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
