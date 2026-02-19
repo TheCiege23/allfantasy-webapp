@@ -82,6 +82,66 @@ function checkConfidenceVsCompleteness(
     }
   }
 
+  if (ctx.missingData.valuationDataStale) {
+    const staleCeiling = Math.min(ceiling, 65)
+    if (staleCeiling < ceiling) {
+      ceiling = staleCeiling
+      violations.push({
+        rule: 'confidence_vs_stale_valuation',
+        severity: 'soft',
+        detail: `Player valuations are stale (>3 days) — ceiling reduced to ${staleCeiling}%`,
+        adjustment: `Reduced ceiling for stale valuation data`,
+      })
+    }
+  }
+
+  if (ctx.missingData.adpDataStale) {
+    const staleCeiling = Math.min(ceiling, 75)
+    if (staleCeiling < ceiling) {
+      ceiling = staleCeiling
+      violations.push({
+        rule: 'confidence_vs_stale_adp',
+        severity: 'soft',
+        detail: `ADP data is stale (>7 days) — ceiling reduced to ${staleCeiling}%`,
+        adjustment: `Reduced ceiling for stale ADP data`,
+      })
+    }
+  }
+
+  if (ctx.missingData.tradeHistoryStale) {
+    const staleCeiling = Math.min(ceiling, 75)
+    if (staleCeiling < ceiling) {
+      ceiling = staleCeiling
+      violations.push({
+        rule: 'confidence_vs_stale_trade_history',
+        severity: 'soft',
+        detail: `Trade history is stale (>7 days) — ceiling reduced to ${staleCeiling}%`,
+        adjustment: `Reduced ceiling for stale trade history`,
+      })
+    }
+  }
+
+  const staleCount = [
+    ctx.missingData.injuryDataStale,
+    ctx.missingData.valuationDataStale,
+    ctx.missingData.adpDataStale,
+    ctx.missingData.analyticsDataStale,
+    ctx.missingData.tradeHistoryStale,
+  ].filter(Boolean).length
+
+  if (staleCount >= 3) {
+    const multiStaleCeiling = Math.min(ceiling, 50)
+    if (multiStaleCeiling < ceiling) {
+      ceiling = multiStaleCeiling
+      violations.push({
+        rule: 'confidence_vs_multi_stale',
+        severity: 'hard',
+        detail: `${staleCount}/5 data sources are stale — ceiling hard-capped at ${multiStaleCeiling}%`,
+        adjustment: `Multiple stale sources cap`,
+      })
+    }
+  }
+
   return { violations, ceiling }
 }
 

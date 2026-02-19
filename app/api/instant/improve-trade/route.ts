@@ -297,7 +297,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 })
     }
 
-    const { tradeText, currentVerdict, currentFairness } = body
+    const { tradeText, currentVerdict, currentFairness, contextId } = body
     const shouldStream = body.stream !== false
     const useRealTimeNews = body.useRealTimeNews !== false
     const leagueSize = typeof body.leagueSize === 'number' && [8, 10, 12, 14, 16, 32].includes(body.leagueSize) ? body.leagueSize : 12

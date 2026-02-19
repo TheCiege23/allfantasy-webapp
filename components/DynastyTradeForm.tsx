@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search, Download, Share2, Link, Shield, Target, MessageSquare, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search, Download, Share2, Link, Shield, Target, MessageSquare, CheckCircle, AlertTriangle, XCircle, Clock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/legacy-ui';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
 import { useAI } from '@/hooks/useAI';
@@ -591,6 +591,59 @@ export default function DynastyTradeForm() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {sections.valueVerdict.disagreementCodes && sections.valueVerdict.disagreementCodes.length > 0 && (() => {
+                const modelCodes = (sections.valueVerdict.disagreementCodes as string[]).filter((c: string) => c !== 'data_quality_concern')
+                const hasDataQuality = (sections.valueVerdict.disagreementCodes as string[]).includes('data_quality_concern')
+                return (
+                  <>
+                    {modelCodes.length > 0 && (
+                      <div className="rounded-lg border border-red-900/30 bg-red-950/20 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <AlertTriangle className="h-4 w-4 text-red-400" />
+                          <span className="text-sm font-semibold text-red-400">AI Disagreement</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {modelCodes.map((code: string, i: number) => (
+                            <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono bg-red-900/40 text-red-300 border border-red-800/50">
+                              {code.replace(/_/g, ' ')}
+                            </span>
+                          ))}
+                        </div>
+                        {sections.valueVerdict.disagreementDetails && !hasDataQuality && (
+                          <p className="text-xs text-gray-400">{sections.valueVerdict.disagreementDetails}</p>
+                        )}
+                      </div>
+                    )}
+                    {hasDataQuality && (
+                      <div className="rounded-lg border border-orange-900/30 bg-orange-950/20 p-3">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3.5 w-3.5 text-orange-400" />
+                          <span className="text-xs font-semibold text-orange-400">Data Quality Notice</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {sections.valueVerdict.dataFreshness && sections.valueVerdict.dataFreshness.staleSources.length > 0
+                            ? `${sections.valueVerdict.dataFreshness.staleSources.join(', ')} data may be outdated, which could reduce analysis accuracy.`
+                            : 'Multiple data sources may be outdated, which could reduce analysis accuracy.'}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+
+              {sections.valueVerdict.dataFreshness && sections.valueVerdict.dataFreshness.staleSourceCount > 0 && (
+                <div className="rounded-lg border border-gray-700/50 bg-gray-900/40 p-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-3.5 w-3.5 text-gray-500" />
+                    <span className="text-[11px] text-gray-500">
+                      {sections.valueVerdict.dataFreshness.staleSourceCount === 1
+                        ? `${sections.valueVerdict.dataFreshness.staleSources[0]} data may be outdated`
+                        : `${sections.valueVerdict.dataFreshness.staleSourceCount} data sources may be outdated: ${sections.valueVerdict.dataFreshness.staleSources.join(', ')}`}
+                    </span>
+                  </div>
                 </div>
               )}
             </CardContent>

@@ -113,6 +113,43 @@ async function fetchInjuries(playerNames: string[]): Promise<Map<string, { statu
   return result
 }
 
+type InjuryInfo = { status: string; type: string | null; description: string | null; date: string | null; fetchedAt: string | null }
+
+const HIGH_REINJURY_TYPES = new Set(['acl', 'achilles', 'hamstring', 'ankle', 'concussion', 'knee', 'shoulder'])
+
+function estimateMissedGames(injury: InjuryInfo | null): number | null {
+  if (!injury) return null
+  const status = (injury.status || '').toLowerCase()
+  if (status === 'out') return 4
+  if (status === 'doubtful') return 2
+  if (status === 'questionable') return 1
+  if (status === 'ir' || status.includes('injured reserve')) return 8
+  if (status === 'pup' || status.includes('physically unable')) return 6
+  if (status === 'suspended') return 4
+  const desc = (injury.description || '').toLowerCase()
+  if (desc.includes('season-ending') || desc.includes('torn')) return 16
+  if (desc.includes('surgery')) return 10
+  if (desc.includes('sprain') || desc.includes('strain')) return 3
+  return null
+}
+
+function classifyReinjuryRisk(
+  injury: InjuryInfo | null,
+  recencyDays: number | null
+): 'low' | 'moderate' | 'high' | 'unknown' {
+  if (!injury) return 'unknown'
+  const injType = (injury.type || '').toLowerCase()
+  const desc = (injury.description || '').toLowerCase()
+  const combined = `${injType} ${desc}`
+
+  const isHighRiskType = [...HIGH_REINJURY_TYPES].some(t => combined.includes(t))
+  const isRecent = recencyDays !== null && recencyDays < 90
+
+  if (isHighRiskType && isRecent) return 'high'
+  if (isHighRiskType || isRecent) return 'moderate'
+  return 'low'
+}
+
 interface ManagerContextResult {
   managerId: string
   managerName: string
@@ -392,7 +429,17 @@ export async function assembleTradeDecisionContext(
   for (const entry of adpResults) {
     if (entry) {
       adpMap.set(entry.name.toLowerCase(), entry)
-      if (!adpFetchedAt) adpFetchedAt = assembledAt
+    }
+  }
+  if (adpMap.size > 0) {
+    try {
+      const latestSnapshot = await prisma.playerAnalyticsSnapshot.findFirst({
+        select: { updatedAt: true },
+        orderBy: { updatedAt: 'desc' },
+      })
+      adpFetchedAt = latestSnapshot?.updatedAt?.toISOString() || assembledAt
+    } catch {
+      adpFetchedAt = assembledAt
     }
   }
 
@@ -461,6 +508,9 @@ export async function assembleTradeDecisionContext(
       recencyDays = Math.round((Date.now() - injDate.getTime()) / (1000 * 60 * 60 * 24))
     }
 
+    const missedGames = estimateMissedGames(injury)
+    const reinjuryRisk = classifyReinjuryRisk(injury, recencyDays)
+
     return {
       playerName: nameTrimmed,
       ageBucket: classifyAgeBucket(age, position),
@@ -471,6 +521,8 @@ export async function assembleTradeDecisionContext(
         description: injury.description,
         reportDate: injury.date,
         recencyDays,
+        missedGames,
+        reinjuryRisk,
       } : null,
       analytics: analytics ? {
         athleticGrade: analytics.combine?.athleticismScore ?? null,
@@ -544,13 +596,30 @@ export async function assembleTradeDecisionContext(
     ? 'medium' as const
     : 'low' as const
 
+  const STALENESS_SLA = {
+    injury: 7 * 24 * 60 * 60 * 1000,
+    valuation: 3 * 24 * 60 * 60 * 1000,
+    adp: 7 * 24 * 60 * 60 * 1000,
+    analytics: 14 * 24 * 60 * 60 * 1000,
+    tradeHistory: 7 * 24 * 60 * 60 * 1000,
+  }
+
+  const isStale = (fetchedAt: string | null, slaMs: number): boolean => {
+    if (!fetchedAt) return true
+    return (Date.now() - new Date(fetchedAt).getTime()) > slaMs
+  }
+
   const missingData: MissingDataFlags = {
     valuationsMissing,
     adpMissing,
     analyticsMissing,
-    injuryDataStale: latestInjuryFetchedAt
-      ? (Date.now() - new Date(latestInjuryFetchedAt).getTime()) > 7 * 24 * 60 * 60 * 1000
-      : true,
+    injuryDataStale: isStale(latestInjuryFetchedAt, STALENESS_SLA.injury),
+    valuationDataStale: isStale(valuationFetchedAt, STALENESS_SLA.valuation),
+    adpDataStale: allPlayerNames.length > 0
+      && (adpMap.size === 0 || isStale(adpFetchedAt, STALENESS_SLA.adp)),
+    analyticsDataStale: allPlayerNames.length > 0
+      && (analyticsMap.size === 0 || analyticsMap.size / allPlayerNames.length < 0.3),
+    tradeHistoryStale: isStale(tradeHistory.fetchedAt, STALENESS_SLA.tradeHistory),
     managerTendenciesUnavailable,
     competitorDataUnavailable: competitorData.competitors.length === 0,
     tradeHistoryInsufficient: tradeHistory.totalTrades < 3,

@@ -52,6 +52,13 @@ export type PeerReviewProviderResult = {
   schemaValid: boolean;
 };
 
+export type DisagreementCode =
+  | 'verdict_polarity_mismatch'
+  | 'confidence_spread_high'
+  | 'reason_overlap_low'
+  | 'data_quality_concern'
+  | 'provider_degraded';
+
 export type PeerReviewConsensus = {
   verdict: z.infer<typeof VerdictEnum>;
   confidence: number;
@@ -63,6 +70,8 @@ export type PeerReviewConsensus = {
     consensusMethod: "agreement" | "disagreement" | "single_provider" | "degraded_fallback";
     totalLatencyMs: number;
     confidenceAdjustment: string;
+    disagreementCodes?: DisagreementCode[];
+    disagreementDetails?: string;
   };
 };
 
@@ -175,6 +184,10 @@ export function mergePeerReviews(
         confidenceAdjustment: isDegraded
           ? `−${confidencePenalty} (${failedProvider!.provider} unavailable)`
           : "none",
+        ...(isDegraded ? {
+          disagreementCodes: ['provider_degraded'] as DisagreementCode[],
+          disagreementDetails: `${failedProvider!.provider} was unavailable, analysis based solely on ${r.provider}.`,
+        } : {}),
       },
     };
   }
@@ -217,6 +230,27 @@ export function mergePeerReviews(
     `Provider disagreement: ${a.provider} says "${aV.verdict}" (${aV.confidence}%), ${b.provider} says "${bV.verdict}" (${bV.confidence}%)`
   );
 
+  const disagreementCodes: DisagreementCode[] = [];
+  const detailParts: string[] = [];
+
+  disagreementCodes.push('verdict_polarity_mismatch');
+  detailParts.push(`${a.provider} rated "${classA}" while ${b.provider} rated "${classB}"`);
+
+  const confidenceSpread = Math.abs(aV.confidence - bV.confidence);
+  if (confidenceSpread >= 25) {
+    disagreementCodes.push('confidence_spread_high');
+    detailParts.push(`Confidence spread of ${confidenceSpread}% suggests different data interpretation`);
+  }
+
+  const aReasonSet = new Set(aV.reasons.map(r => r.toLowerCase().slice(0, 40)));
+  const bReasonSet = new Set(bV.reasons.map(r => r.toLowerCase().slice(0, 40)));
+  const overlap = [...aReasonSet].filter(r => bReasonSet.has(r)).length;
+  const totalUnique = new Set([...aReasonSet, ...bReasonSet]).size;
+  if (totalUnique > 0 && overlap / totalUnique < 0.3) {
+    disagreementCodes.push('reason_overlap_low');
+    detailParts.push(`Providers cited different reasoning (${Math.round((overlap / totalUnique) * 100)}% overlap)`);
+  }
+
   return {
     verdict: "Disagreement",
     confidence: cappedConfidence,
@@ -228,6 +262,8 @@ export function mergePeerReviews(
       consensusMethod: "disagreement",
       totalLatencyMs,
       confidenceAdjustment: `capped at ${cappedConfidence} (verdict class mismatch: ${a.provider}=${classA}, ${b.provider}=${classB})`,
+      disagreementCodes,
+      disagreementDetails: detailParts.join('. ') + '.',
     },
   };
 }

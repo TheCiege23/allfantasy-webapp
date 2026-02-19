@@ -16,6 +16,12 @@ export type ValueVerdict = {
   vetoRisk: 'None' | 'Low' | 'Moderate' | 'High'
   reasons: string[]
   warnings: string[]
+  disagreementCodes?: string[]
+  disagreementDetails?: string
+  dataFreshness: {
+    staleSourceCount: number
+    staleSources: string[]
+  }
 }
 
 export type ViabilityVerdict = {
@@ -372,6 +378,18 @@ export function formatTradeResponse(
     ? `Moderate activity (${ctx.tradeHistoryStats.totalTrades} trades total)`
     : `Low activity league (${ctx.tradeHistoryStats.totalTrades} trades total)`
 
+  const staleSources: string[] = []
+  if (ctx.missingData.valuationDataStale) staleSources.push('Valuations')
+  if (ctx.missingData.adpDataStale) staleSources.push('ADP')
+  if (ctx.missingData.injuryDataStale) staleSources.push('Injuries')
+  if (ctx.missingData.analyticsDataStale) staleSources.push('Analytics')
+  if (ctx.missingData.tradeHistoryStale) staleSources.push('Trade History')
+
+  const warnings = [...gate.filteredWarnings]
+  if (staleSources.length > 0) {
+    warnings.push(`Data freshness notice: ${staleSources.join(', ')} may be outdated`)
+  }
+
   return {
     valueVerdict: {
       fairnessGrade: computeFairnessGrade(ctx.valueDelta.percentageDiff),
@@ -384,7 +402,22 @@ export function formatTradeResponse(
       confidence: gate.adjustedConfidence,
       vetoRisk: computeVetoRisk(ctx.valueDelta.percentageDiff),
       reasons: gate.filteredReasons,
-      warnings: gate.filteredWarnings,
+      warnings,
+      ...(() => {
+        const codes = [...(consensus.meta.disagreementCodes || [])]
+        let details = consensus.meta.disagreementDetails || ''
+        if (staleSources.length >= 2 && !codes.includes('data_quality_concern')) {
+          codes.push('data_quality_concern')
+          details = details
+            ? `${details} ${staleSources.length} data sources are stale, which may affect analysis reliability.`
+            : `${staleSources.length} data sources are stale, which may affect analysis reliability.`
+        }
+        return codes.length > 0 ? { disagreementCodes: codes, disagreementDetails: details } : {}
+      })(),
+      dataFreshness: {
+        staleSourceCount: staleSources.length,
+        staleSources,
+      },
     },
     viabilityVerdict: {
       acceptanceLikelihood: likelihood,
