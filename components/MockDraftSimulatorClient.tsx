@@ -535,6 +535,19 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                             <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-4 mb-3">
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-xs font-bold text-cyan-400">Your Roster After Round {rNum}</span>
+                                {(() => {
+                                  const userAi = roundNeeds[rNum]?.teams?.find((at: any) => at.isUser)
+                                  if (!userAi?.needLevel) return null
+                                  return (
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      userAi.needLevel >= 70 ? 'bg-red-500/20 text-red-400' :
+                                      userAi.needLevel >= 45 ? 'bg-orange-500/20 text-orange-400' :
+                                      'bg-emerald-500/20 text-emerald-400'
+                                    }`}>
+                                      Need: {userAi.needLevel}/100{userAi.topNeed ? ` (${userAi.topNeed})` : ''}
+                                    </span>
+                                  )
+                                })()}
                               </div>
                               <div className="grid grid-cols-4 gap-2">
                                 {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => {
@@ -602,7 +615,18 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                                   const aiTeam = roundNeeds[rNum]?.teams?.find((at: any) => at.manager === t.manager)
                                   return (
                                     <div key={t.manager} className={`p-3 rounded-lg ${t.isUser ? 'bg-cyan-950/30 border border-cyan-500/20' : 'bg-gray-950/50'}`}>
-                                      <div className="font-medium mb-2 truncate text-xs">{t.manager} {t.isUser ? '(You)' : ''}</div>
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="font-medium truncate text-xs">{t.manager} {t.isUser ? '(You)' : ''}</div>
+                                        {aiTeam?.needLevel != null && (
+                                          <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            aiTeam.needLevel >= 70 ? 'bg-red-500/20 text-red-400' :
+                                            aiTeam.needLevel >= 45 ? 'bg-orange-500/20 text-orange-400' :
+                                            'bg-emerald-500/20 text-emerald-400'
+                                          }`}>
+                                            {aiTeam.needLevel}
+                                          </div>
+                                        )}
+                                      </div>
                                       <div className="space-y-1">
                                         {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => {
                                           const count = t.counts[pos]

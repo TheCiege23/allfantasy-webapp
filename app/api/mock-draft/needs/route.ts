@@ -6,6 +6,71 @@ import OpenAI from 'openai'
 
 const openai = new OpenAI()
 
+const POSITION_TARGETS: Record<string, { starter: number; ideal: number }> = {
+  QB: { starter: 1, ideal: 2 },
+  RB: { starter: 2, ideal: 4 },
+  WR: { starter: 2, ideal: 4 },
+  TE: { starter: 1, ideal: 2 },
+  K: { starter: 1, ideal: 1 },
+  DEF: { starter: 1, ideal: 1 },
+}
+
+function calculateNeedLevel(
+  counts: Record<string, number>,
+  round: number,
+  totalRounds: number,
+  isDynasty: boolean
+): { score: number; topNeed: string | null; breakdown: Record<string, number> } {
+  const breakdown: Record<string, number> = {}
+  let maxNeed = 0
+  let topNeed: string | null = null
+
+  for (const [pos, targets] of Object.entries(POSITION_TARGETS)) {
+    const count = counts[pos] || 0
+    let need = 0
+
+    if (count < targets.starter) {
+      const deficit = targets.starter - count
+      need = 70 + deficit * 15
+
+      const earlyWindow = pos === 'QB' || pos === 'TE'
+        ? totalRounds * 0.4
+        : totalRounds * 0.5
+      if (round < earlyWindow) {
+        need += 10
+      }
+    } else if (count < targets.ideal) {
+      const deficit = targets.ideal - count
+      need = 30 + deficit * 15
+
+      const remainingRounds = totalRounds - round
+      if (remainingRounds <= 3 && deficit > 1) {
+        need += 10
+      }
+    } else {
+      need = 5
+    }
+
+    if (isDynasty && (pos === 'QB' || pos === 'RB') && count < targets.ideal) {
+      need += 5
+    }
+
+    need = Math.min(100, Math.max(0, need))
+    breakdown[pos] = need
+
+    if (need > maxNeed) {
+      maxNeed = need
+      topNeed = pos
+    }
+  }
+
+  const score = Math.round(
+    Object.values(breakdown).reduce((sum, v) => sum + v, 0) / Object.keys(breakdown).length
+  )
+
+  return { score, topNeed, breakdown }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions as any) as { user?: { id?: string } } | null
@@ -39,15 +104,25 @@ export async function POST(req: NextRequest) {
     const managers = Array.from(new Set(draftResults.map((p: any) => p.manager)))
 
     const rosters: Record<string, { position: string; player: string }[]> = {}
+    const rosterCounts: Record<string, Record<string, number>> = {}
     for (const mgr of managers) {
       rosters[mgr] = picksThrough
         .filter((p: any) => p.manager === mgr)
         .map((p: any) => ({ position: p.position, player: p.playerName }))
+      const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
+      rosters[mgr].forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++ })
+      rosterCounts[mgr] = counts
     }
 
     const leagueFormat = `${league?.scoring || 'PPR'} ${league?.isDynasty ? 'Dynasty' : 'Redraft'}`
     const leagueSize = league?.leagueSize || managers.length
     const totalRounds = Math.max(...draftResults.map((p: any) => p.round))
+    const isDynasty = !!league?.isDynasty
+
+    const needLevels: Record<string, ReturnType<typeof calculateNeedLevel>> = {}
+    for (const mgr of managers) {
+      needLevels[mgr] = calculateNeedLevel(rosterCounts[mgr], round, totalRounds, isDynasty)
+    }
     const remainingRounds = totalRounds - round
 
     const userManager = draftResults.find((p: any) => p.isUser)?.manager || 'User'
@@ -74,9 +149,9 @@ Return valid JSON:
 Current rosters through Round ${round}:
 ${managers.map(mgr => {
   const r = rosters[mgr]
-  const counts: Record<string, number> = { QB: 0, RB: 0, WR: 0, TE: 0, K: 0, DEF: 0 }
-  r.forEach(p => { if (counts[p.position] !== undefined) counts[p.position]++ })
-  return `${mgr}${mgr === userManager ? ' [USER]' : ''}: ${r.map(p => `${p.player} (${p.position})`).join(', ')} | Counts: QB:${counts.QB} RB:${counts.RB} WR:${counts.WR} TE:${counts.TE}`
+  const c = rosterCounts[mgr]
+  const nl = needLevels[mgr]
+  return `${mgr}${mgr === userManager ? ' [USER]' : ''}: ${r.map(p => `${p.player} (${p.position})`).join(', ')} | Counts: QB:${c.QB} RB:${c.RB} WR:${c.WR} TE:${c.TE} | Need Score: ${nl.score}/100 (Top Need: ${nl.topNeed || 'None'})`
 }).join('\n')}
 
 ${remainingRounds} rounds remain. Consider:
@@ -112,9 +187,37 @@ Return needs analysis for ALL ${managers.length} teams.`
       return NextResponse.json({ error: 'Invalid AI response' }, { status: 500 })
     }
 
+    const aiTeams = parsed.teams || []
+    for (const team of aiTeams) {
+      const nl = needLevels[team.manager]
+      if (nl) {
+        team.needLevel = nl.score
+        team.topNeed = nl.topNeed
+        team.needBreakdown = nl.breakdown
+      }
+    }
+
+    for (const mgr of managers) {
+      if (!aiTeams.find((t: any) => t.manager === mgr)) {
+        const nl = needLevels[mgr]
+        const c = rosterCounts[mgr]
+        aiTeams.push({
+          manager: mgr,
+          isUser: mgr === userManager,
+          roster: c,
+          needs: [],
+          likelyTargets: [],
+          strategy: '',
+          needLevel: nl.score,
+          topNeed: nl.topNeed,
+          needBreakdown: nl.breakdown,
+        })
+      }
+    }
+
     return NextResponse.json({
       round,
-      teams: parsed.teams || [],
+      teams: aiTeams,
       userAdvice: parsed.userAdvice || '',
     })
   } catch (err: any) {
