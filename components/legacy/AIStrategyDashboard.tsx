@@ -389,7 +389,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
               />
             </div>
 
-            <Card className="flex-1 bg-[#0f0a24]/70 border-cyan-900/30 backdrop-blur-md shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+            <Card className="flex-1 bg-[#0f0a24]/70 border-cyan-900/30 backdrop-blur-md shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
               <CardHeader>
                 <CardTitle className="text-xl text-cyan-300">Team Radar Profile</CardTitle>
               </CardHeader>
@@ -411,7 +411,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
           </div>
 
           {timelineEvents.length > 0 && (
-            <Card className="bg-gradient-to-r from-purple-950/40 to-cyan-950/40 border-none shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+            <Card className="bg-gradient-to-r from-purple-950/40 to-cyan-950/40 border-none shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
               <CardHeader>
                 <CardTitle className="text-2xl text-amber-300">Your Dynasty Timeline</CardTitle>
               </CardHeader>
@@ -594,7 +594,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   exit={{ opacity: 0 }}
                   className="mt-8"
                 >
-                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
                     <CardHeader>
                       <CardTitle className="text-2xl text-cyan-300">Weekly Brief</CardTitle>
                     </CardHeader>
@@ -632,7 +632,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   exit={{ opacity: 0 }}
                   className="mt-8"
                 >
-                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
                     <CardHeader>
                       <CardTitle className="text-2xl text-purple-300">Roster Moves</CardTitle>
                     </CardHeader>
@@ -670,7 +670,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   exit={{ opacity: 0 }}
                   className="mt-8"
                 >
-                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
                     <CardHeader>
                       <CardTitle className="text-2xl text-emerald-300">Waiver AI</CardTitle>
                     </CardHeader>
@@ -708,7 +708,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                   exit={{ opacity: 0 }}
                   className="mt-8"
                 >
-                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+                  <Card className="bg-[#1a1238]/40 border-cyan-900/30 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
                     <CardHeader>
                       <CardTitle className="text-2xl text-amber-300">Long-Term Plan</CardTitle>
                     </CardHeader>
@@ -742,7 +742,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
         </motion.div>
       )}
 
-      <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-[0_0_30px_10px_rgba(0,245,212,0.15)] hover:shadow-[0_0_50px_20px_rgba(0,245,212,0.25)] transition-shadow duration-500">
+      <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] transition-shadow duration-500">
         <CardHeader>
           <CardTitle className="text-2xl flex items-center gap-3">
             <MessageSquare className="h-6 w-6 text-purple-400" />
@@ -816,7 +816,7 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                 <Card
                   key={r.id}
                   onClick={() => loadHistoricalReport(r)}
-                  className="bg-[#1a1238]/60 hover:bg-[#1a1238]/90 transition-all cursor-pointer border-white/5 hover:border-cyan-800/40 shadow-[0_0_20px_6px_rgba(0,245,212,0.1)] hover:shadow-[0_0_40px_14px_rgba(0,245,212,0.2)] duration-500"
+                  className="bg-[#1a1238]/60 hover:bg-[#1a1238]/90 transition-all cursor-pointer border-white/5 hover:border-cyan-800/40 shadow-[0_0_40px_-10px_#00f5d4] hover:shadow-[0_0_60px_-5px_#a855f7] duration-500"
                 >
                   <CardContent className="pt-6">
                     <p className="font-medium text-white">{r.title}</p>
