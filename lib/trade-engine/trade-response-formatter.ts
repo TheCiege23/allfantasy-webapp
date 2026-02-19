@@ -1,5 +1,5 @@
 import type { TradeDecisionContextV1 } from './trade-decision-context'
-import type { PeerReviewConsensus } from './trade-analysis-schema'
+import type { PeerReviewConsensus, DisagreementBlock } from './trade-analysis-schema'
 import type { QualityGateResult, ConditionalRecommendation } from './quality-gate'
 
 export type FairnessGrade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'D' | 'F'
@@ -24,6 +24,7 @@ export type ValueVerdict = {
     staleSources: string[]
   }
   recommendationType: ConditionalRecommendation
+  disagreement: DisagreementBlock
 }
 
 export type ViabilityVerdict = {
@@ -300,11 +301,17 @@ function buildActionPlan(
   let sendAsIs = false
   let adjustmentNeeded: string | null = null
 
+  const isReviewMode = consensus.disagreement.reviewMode
+
   if (isConditional) {
     const caveat = gate.conditionalRecommendation.reasons[0] || 'key data is missing'
     assessment = `This recommendation is conditional — ${caveat}. Verify the missing information before acting on this analysis.`
     sendAsIs = false
     adjustmentNeeded = 'Confirm missing data (roster info, valuations, or injury status) before sending this trade'
+  } else if (isReviewMode) {
+    assessment = `Our AI models disagree on this trade — we recommend reviewing both perspectives before deciding. The value numbers are solid, but the strategic interpretation is split.`
+    sendAsIs = false
+    adjustmentNeeded = 'Wait for more data clarity or get input from leaguemates before sending'
   } else if (pctDiff <= 5) {
     assessment = 'This trade is close enough in value to send as-is. Both sides should feel good about this deal.'
     sendAsIs = true
@@ -428,6 +435,7 @@ export function formatTradeResponse(
         staleSources,
       },
       recommendationType: gate.conditionalRecommendation,
+      disagreement: consensus.disagreement,
     },
     viabilityVerdict: {
       acceptanceLikelihood: likelihood,

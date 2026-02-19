@@ -59,12 +59,20 @@ export type DisagreementCode =
   | 'data_quality_concern'
   | 'provider_degraded';
 
+export type DisagreementBlock = {
+  winnerMismatch: boolean;
+  confidenceSpread: number;
+  keyDifferences: string[];
+  reviewMode: boolean;
+};
+
 export type PeerReviewConsensus = {
   verdict: z.infer<typeof VerdictEnum>;
   confidence: number;
   reasons: string[];
   counters: string[];
   warnings: string[];
+  disagreement: DisagreementBlock;
   meta: {
     providers: PeerReviewProviderResult[];
     consensusMethod: "agreement" | "disagreement" | "single_provider" | "degraded_fallback";
@@ -150,6 +158,82 @@ function verdictClass(v: string): "A" | "B" | "Even" {
   return "Even";
 }
 
+function computeKeyDifferences(
+  a: PeerReviewProviderResult,
+  b: PeerReviewProviderResult
+): string[] {
+  const diffs: string[] = [];
+  const aV = a.verdict!;
+  const bV = b.verdict!;
+  const classA = verdictClass(aV.verdict);
+  const classB = verdictClass(bV.verdict);
+
+  if (classA !== classB) {
+    diffs.push(`Winner: ${a.provider} says ${aV.verdict}, ${b.provider} says ${bV.verdict}`);
+  }
+
+  const confDiff = Math.abs(aV.confidence - bV.confidence);
+  if (confDiff >= 15) {
+    diffs.push(`Confidence gap: ${a.provider} at ${aV.confidence}% vs ${b.provider} at ${bV.confidence}% (${confDiff}pt spread)`);
+  }
+
+  const aKeywords = new Set(aV.reasons.flatMap(r => r.toLowerCase().match(/\b[a-z]{4,}\b/g) || []));
+  const bKeywords = new Set(bV.reasons.flatMap(r => r.toLowerCase().match(/\b[a-z]{4,}\b/g) || []));
+  const aOnly = [...aKeywords].filter(k => !bKeywords.has(k));
+  const bOnly = [...bKeywords].filter(k => !aKeywords.has(k));
+  if (aOnly.length > 3 || bOnly.length > 3) {
+    diffs.push(`Different focus areas: providers emphasize different factors in their reasoning`);
+  }
+
+  const aHasRisk = aV.warnings.some(w => /injury|risk|stale|missing/i.test(w));
+  const bHasRisk = bV.warnings.some(w => /injury|risk|stale|missing/i.test(w));
+  if (aHasRisk !== bHasRisk) {
+    const riskProvider = aHasRisk ? a.provider : b.provider;
+    const noRiskProvider = aHasRisk ? b.provider : a.provider;
+    diffs.push(`Risk assessment: ${riskProvider} flags injury/data risks that ${noRiskProvider} does not`);
+  }
+
+  const aCounterTone = aV.counters.some(c => /restructure|reject|overpa/i.test(c));
+  const bCounterTone = bV.counters.some(c => /restructure|reject|overpa/i.test(c));
+  if (aCounterTone !== bCounterTone) {
+    diffs.push(`Trade viability: providers disagree on whether this trade is actionable`);
+  }
+
+  return diffs.slice(0, 5);
+}
+
+function buildReviewModeCounters(
+  a: PeerReviewProviderResult,
+  b: PeerReviewProviderResult
+): string[] {
+  const counters: string[] = [];
+
+  counters.push(
+    `AI models disagree on this trade — consider getting a second opinion from leaguemates or waiting for updated data before committing`
+  );
+
+  const allCounters = [...(a.verdict?.counters || []), ...(b.verdict?.counters || [])];
+  const saferCounters = allCounters.filter(c =>
+    /wait|monitor|hold|verify|confirm|check|caution/i.test(c) ||
+    !/aggressive|smash|accept|send/i.test(c)
+  );
+
+  if (saferCounters.length > 0) {
+    counters.push(saferCounters[0]);
+  } else if (allCounters.length > 0) {
+    counters.push(allCounters[0]);
+  }
+
+  return counters.slice(0, 2);
+}
+
+const NO_DISAGREEMENT: DisagreementBlock = {
+  winnerMismatch: false,
+  confidenceSpread: 0,
+  keyDifferences: [],
+  reviewMode: false,
+};
+
 export function mergePeerReviews(
   results: PeerReviewProviderResult[]
 ): PeerReviewConsensus | null {
@@ -177,6 +261,7 @@ export function mergePeerReviews(
       reasons: r.verdict!.reasons,
       counters: r.verdict!.counters,
       warnings,
+      disagreement: NO_DISAGREEMENT,
       meta: {
         providers: results,
         consensusMethod: isDegraded ? "degraded_fallback" : "single_provider",
@@ -205,9 +290,19 @@ export function mergePeerReviews(
   const mergedCounters = dedupeAndRank(aV.counters, bV.counters);
   const mergedWarnings = dedupeAndRank(aV.warnings, bV.warnings);
 
+  const confidenceSpread = Math.abs(aV.confidence - bV.confidence);
+  const winnerMismatch = classA !== classB;
+
   if (classA === classB) {
     const boostedConfidence = Math.min(100, avgConfidence + 10);
     const agreedVerdict = aV.confidence >= bV.confidence ? aV.verdict : bV.verdict;
+
+    const keyDifferences: string[] = [];
+    if (confidenceSpread >= 15) {
+      keyDifferences.push(`Confidence gap: ${a.provider} at ${aV.confidence}% vs ${b.provider} at ${bV.confidence}%`);
+    }
+
+    const mildDisagreement = confidenceSpread >= 25;
 
     return {
       verdict: agreedVerdict,
@@ -215,20 +310,39 @@ export function mergePeerReviews(
       reasons: mergedReasons,
       counters: mergedCounters,
       warnings: mergedWarnings,
+      disagreement: {
+        winnerMismatch: false,
+        confidenceSpread,
+        keyDifferences,
+        reviewMode: mildDisagreement,
+      },
       meta: {
         providers: results,
         consensusMethod: "agreement",
         totalLatencyMs,
         confidenceAdjustment: `+10 (both providers agree: ${classA})`,
+        ...(mildDisagreement ? {
+          disagreementCodes: ['confidence_spread_high'] as DisagreementCode[],
+          disagreementDetails: `Providers agree on winner but differ in confidence by ${confidenceSpread}%.`,
+        } : {}),
       },
     };
   }
 
   const cappedConfidence = Math.min(avgConfidence, 40);
+  const keyDifferences = computeKeyDifferences(a, b);
+  const isHighDisagreement = winnerMismatch && (confidenceSpread >= 20 || keyDifferences.length >= 3);
+  const reviewModeCounters = isHighDisagreement
+    ? buildReviewModeCounters(a, b)
+    : mergedCounters;
 
   mergedWarnings.unshift(
     `Provider disagreement: ${a.provider} says "${aV.verdict}" (${aV.confidence}%), ${b.provider} says "${bV.verdict}" (${bV.confidence}%)`
   );
+
+  if (isHighDisagreement) {
+    mergedWarnings.push(`[Review Mode] High disagreement between AI models — showing safer alternatives instead of aggressive recommendations`);
+  }
 
   const disagreementCodes: DisagreementCode[] = [];
   const detailParts: string[] = [];
@@ -236,7 +350,6 @@ export function mergePeerReviews(
   disagreementCodes.push('verdict_polarity_mismatch');
   detailParts.push(`${a.provider} rated "${classA}" while ${b.provider} rated "${classB}"`);
 
-  const confidenceSpread = Math.abs(aV.confidence - bV.confidence);
   if (confidenceSpread >= 25) {
     disagreementCodes.push('confidence_spread_high');
     detailParts.push(`Confidence spread of ${confidenceSpread}% suggests different data interpretation`);
@@ -255,8 +368,14 @@ export function mergePeerReviews(
     verdict: "Disagreement",
     confidence: cappedConfidence,
     reasons: mergedReasons,
-    counters: mergedCounters,
+    counters: reviewModeCounters,
     warnings: mergedWarnings,
+    disagreement: {
+      winnerMismatch,
+      confidenceSpread,
+      keyDifferences,
+      reviewMode: isHighDisagreement,
+    },
     meta: {
       providers: results,
       consensusMethod: "disagreement",

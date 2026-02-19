@@ -610,6 +610,15 @@ export function runQualityGate(
     adjustedConfidence -= 8
   } else if (consensus.meta.consensusMethod === 'disagreement') {
     adjustedConfidence -= 5
+    if (consensus.disagreement.reviewMode) {
+      adjustedConfidence -= 3
+      allViolations.push({
+        rule: 'review_mode_active',
+        severity: 'soft',
+        detail: `High disagreement between AI models (${consensus.disagreement.keyDifferences.length} key differences, ${consensus.disagreement.confidenceSpread}pt confidence spread) — review mode active with conservative counters`,
+        adjustment: 'Additional -3 for high-disagreement review mode',
+      })
+    }
   }
 
   const hardViolations = allViolations.filter(v => v.severity === 'hard')
