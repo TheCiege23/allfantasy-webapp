@@ -155,6 +155,7 @@ type ChatMessage = {
   id: string
   message: string
   audioUrl?: string | null
+  animationUrl?: string | null
   createdAt: string
   isPinned?: boolean
   reactions?: Reaction[]
@@ -606,6 +607,16 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
                     </span>
                   </div>
                   <p className="text-sm text-purple-100 break-words leading-relaxed">{msg.message}</p>
+                  {msg.animationUrl && (
+                    <div className="mt-3 rounded-lg overflow-hidden border border-purple-500/20">
+                      <img
+                        src={msg.animationUrl}
+                        alt="Chimmy celebration animation"
+                        className="w-full max-w-sm rounded-lg"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )
