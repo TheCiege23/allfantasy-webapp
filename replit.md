@@ -55,13 +55,34 @@ A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with
 ## Launch Week Status (Feb 2026)
 **Feature Freeze: ACTIVE** - Legacy Hub is frozen for launch. Only bugfixes accepted.
 - Release commit: `e623d85` (checkpoint before hardening)
-- Smoke test suite: 24 Playwright tests (CI-required gate)
+- Smoke test suite: 29 Playwright tests (CI-required gate)
 - Golden path tests cover: auth redirects, rankings, trade analyzer, strategy, share, API auth guards
+- Verification matrix: A (Legacy Hub tabs), B (direct route fallbacks), C (critical backend guards)
 - Observability: 5xx alerting on `/api/legacy/transfer`, `/api/trade-finder`, `/api/strategy/generate`
 - Redirect loop detection active via Next.js middleware on /login (logs + cookie-based counting)
 - Preflight script: `npm run preflight` validates all env vars, DB connection, migrations, auth config
 - CI: `.github/workflows/smoke-tests.yml` runs Playwright as required merge gate with HTML report artifact
 - Rollback: Use Replit checkpoints to restore to last known-good state. Current checkpoint commit: `e623d85`
+
+### Go-Live Checklist Status
+| # | Task | Status |
+|---|------|--------|
+| 1 | Env sanity (NEXTAUTH_URL, secret, DB, AI keys) | PASS - 0 failures, 4 warnings (table casing) |
+| 2 | Auth flow for protected routes | PASS - 7 routes verified redirect to /login |
+| 3 | Legacy Hub visual check | PASS - redirects to login when unauthenticated (expected) |
+| 4 | Feature parity (rankings refresh, trade analyzer) | PASS - Refresh AI Analysis button + Power Rankings heading confirmed |
+| 5 | Legacy transfer FK guard | PASS - returns 401 unauthenticated, FK recovery guard in code |
+| 6 | API guardrail check | PASS - all protected APIs return 401/403/400, never 500 |
+| 7 | CI gate (Playwright required) | PASS - `.github/workflows/smoke-tests.yml` configured |
+| 8 | Deploy canary | PENDING - requires production deploy |
+| 9 | 24h observability | READY - alerting module active, admin endpoint at `/api/admin/observability` |
+| 10 | Full rollout | PENDING - after 24h observe period |
+
+### Fast Triage Map
+- **White/washed cards on Legacy Hub**: Check route is rendering current token overrides on hub container
+- **Trade analyzer in Legacy tab shows login/error**: Auth-protected route in iframe; verify session cookie domain/proxy setup and auth env vars
+- **User sees "sample/no data" on rankings**: Rankings can render with userId=null; ensure signed-in + synced leagues
+- **Transfer throws FK/user errors**: Confirm fallback user creation path executes (lines 98-121 of transfer/route.ts) and DB constraints healthy
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.

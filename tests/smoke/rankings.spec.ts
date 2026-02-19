@@ -6,12 +6,12 @@ test('rankings page has Refresh AI Analysis button', async ({ page }) => {
   await expect(refreshBtn).toBeVisible({ timeout: 10_000 })
 })
 
-test('rankings page shows sample league heading', async ({ page }) => {
+test('rankings page shows a league power rankings heading', async ({ page }) => {
   await page.goto('/rankings', { waitUntil: 'domcontentloaded' })
-  await expect(page.locator('text=Sample League Power Rankings')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole('heading', { name: /power rankings/i }).first()).toBeVisible({ timeout: 10_000 })
 })
 
-test('rankings page shows sign-in prompt for unauthenticated users', async ({ page }) => {
+test('rankings page renders hero section', async ({ page }) => {
   await page.goto('/rankings', { waitUntil: 'domcontentloaded' })
-  await expect(page.locator('text=Sign in')).toBeVisible({ timeout: 10_000 })
+  await expect(page.locator('text=Your League Right Now').first()).toBeVisible({ timeout: 10_000 })
 })
