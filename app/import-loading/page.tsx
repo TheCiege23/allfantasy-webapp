@@ -62,7 +62,7 @@ export default function ImportLoading() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0a0f] via-[#0d0d17] to-[#0f0f1a] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-grid-cyan-900/10 opacity-20 pointer-events-none animate-pulse" />
+      <div className="absolute inset-0 bg-grid-cyan-900/10 opacity-20 pointer-events-none animate-pulse-slow" />
 
       <motion.div
         initial={{ opacity: 0, scale: 0.92 }}
@@ -117,7 +117,7 @@ export default function ImportLoading() {
               animate={{ width: `${progress}%` }}
               transition={{ duration: 1.5, ease: 'easeOut' }}
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse" />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-wave" />
             </motion.div>
           </div>
 
