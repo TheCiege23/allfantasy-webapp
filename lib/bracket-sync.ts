@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { triggerChimmyForAllLeagues } from "@/lib/chimmy-storyline"
 
 type TheSportsDbEvent = {
   idEvent: string
@@ -423,6 +424,47 @@ export async function runBracketSync(season: number) {
   const { finalized, seeded } = await scoreAndAdvanceFinals(
     tournament.id
   )
+
+  if (updated > 0) {
+    try {
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000)
+      const newlyFinalized = await (prisma as any).marchMadnessGame.findMany({
+        where: {
+          tournamentId: tournament.id,
+          winnerId: { not: null },
+          date: { gte: fiveMinAgo },
+        },
+        select: {
+          team1: true,
+          team2: true,
+          winnerId: true,
+          team1Seed: true,
+          team2Seed: true,
+          round: true,
+          region: true,
+        },
+        orderBy: { date: 'desc' },
+        take: 10,
+      })
+
+      if (newlyFinalized.length > 0) {
+        const results = newlyFinalized.map((g: any) => ({
+          team1: g.team1,
+          team2: g.team2,
+          winnerId: g.winnerId,
+          team1Seed: g.team1Seed,
+          team2Seed: g.team2Seed,
+          round: g.round,
+          region: g.region,
+        }))
+
+        const chimmy = await triggerChimmyForAllLeagues(results)
+        console.log(`[Chimmy] Posted storylines to ${chimmy.leaguesNotified} leagues`)
+      }
+    } catch (err) {
+      console.error('[Chimmy] Failed to post storylines:', err)
+    }
+  }
 
   return {
     ok: true as const,

@@ -10,6 +10,8 @@ import { useRouter } from 'next/navigation'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
 
+const CHIMMY_BOT_ID = 'chimmy-bot-00000000'
+
 type ChatTheme = 'dark' | 'neon' | 'classic'
 
 const CHAT_THEMES: Record<ChatTheme, {
@@ -587,20 +589,26 @@ export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = 
         {visibleMessages.map(msg => {
           const grouped = groupReactions(msg.reactions || [], currentUserId)
           const isOwn = msg.user.id === currentUserId
+          const isChimmy = msg.user.id === CHIMMY_BOT_ID
           const displayName = msg.user.displayName || msg.user.username
-          const initial = (displayName?.[0] || '?').toUpperCase()
+          const initial = isChimmy ? '🧙' : (displayName?.[0] || '?').toUpperCase()
 
           return (
-            <div key={msg.id} className={`group ${msg.isPinned ? 'bg-amber-950/20 -mx-4 px-4 py-1 rounded-lg border-l-2 border-amber-500/50' : ''}`}>
+            <div key={msg.id} className={`group ${msg.isPinned ? 'bg-amber-950/20 -mx-4 px-4 py-1 rounded-lg border-l-2 border-amber-500/50' : ''} ${isChimmy ? 'bg-purple-950/20 -mx-4 px-4 py-2 rounded-lg border-l-2 border-purple-500/50' : ''}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
-                  isOwn ? t.avatarOwn : t.avatarOther
+                  isChimmy ? 'bg-gradient-to-br from-purple-600 to-pink-600 text-white' : isOwn ? t.avatarOwn : t.avatarOther
                 }`}>
                   {initial}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-baseline gap-2">
-                    {isOwn ? (
+                    {isChimmy ? (
+                      <span className="font-medium text-sm text-purple-400 inline-flex items-center gap-1">
+                        Chimmy
+                        <span className="text-[9px] bg-purple-900/50 text-purple-300 px-1.5 py-0.5 rounded-full">AI</span>
+                      </span>
+                    ) : isOwn ? (
                       <span className={`font-medium text-sm ${t.nameOwn}`}>{displayName}</span>
                     ) : (
                       <button
