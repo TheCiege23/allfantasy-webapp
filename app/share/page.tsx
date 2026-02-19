@@ -1,60 +1,19 @@
-'use client'
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import ShareClient from './ShareClient'
 
-import { useState } from 'react'
-
-export default function ShareClient() {
-  const [username, setUsername] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<{ caption?: string; hashtags?: string[]; alt_captions?: string[] } | null>(null)
-
-  async function handleGenerate() {
-    const normalizedUsername = username.trim().toLowerCase()
-    if (!normalizedUsername) {
-      setError('Sleeper username is required')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/legacy/share', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sleeper_username: normalizedUsername, share_type: 'legacy', platform: 'x' }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Share generation failed')
-      setResult(data)
-    } catch (e: any) {
-      setError(e.message || 'Share generation failed')
-    } finally {
-      setLoading(false)
-    }
+export default async function SharePage() {
+  const session = await getServerSession(authOptions)
+  if (!session?.user?.id) {
+    redirect('/login?next=/share')
   }
 
-  return (
-    <div className="min-h-screen bg-[#0a051f] text-white p-6 md:p-10 space-y-4">
-      <h1 className="text-3xl font-bold">Share Generator</h1>
-      <div className="flex gap-3 max-w-2xl">
-        <input className="flex-1 bg-white/5 border border-white/20 rounded px-3 py-2" placeholder="Sleeper username" value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} />
-        <button onClick={handleGenerate} disabled={loading || !username.trim()} className="bg-cyan-600 rounded px-3 py-2 disabled:opacity-50">{loading ? 'Generating...' : 'Generate'}</button>
-      </div>
-      {error && <p className="text-red-300">{error}</p>}
-      {result && (
-        <div className="bg-white/5 border border-white/20 rounded p-4 space-y-3">
-          <div>
-            <div className="text-xs text-white/60 mb-1">Caption</div>
-            <p className="text-sm whitespace-pre-wrap">{result.caption || '—'}</p>
-          </div>
-          {result.hashtags?.length ? (
-            <div>
-              <div className="text-xs text-white/60 mb-1">Hashtags</div>
-              <p className="text-sm text-cyan-300">{result.hashtags.join(' ')}</p>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </div>
-  )
+  const appUser = await prisma.appUser.findUnique({
+    where: { id: session.user.id },
+    include: { legacyUser: true },
+  })
+
+  return <ShareClient defaultUsername={appUser?.legacyUser?.sleeperUsername || ''} />
 }
