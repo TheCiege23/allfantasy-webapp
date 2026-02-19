@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, TrendingDown, ShieldAlert, Target, Crown } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown } from 'lucide-react';
 
 interface TradeAsset {
   id: string;
@@ -70,21 +70,17 @@ export default function DynastyTradeForm() {
     setResult(null);
 
     try {
-      const res = await fetch('/api/dynasty-outlook', {
+      const sideADesc = teamAAssets.map(a => a.name).join(', ');
+      const sideBDesc = teamBAssets.map(a => a.name).join(', ');
+      const ctx = `${leagueFormat} ${qbFormat === 'sf' ? 'Superflex' : '1QB'} PPR`;
+
+      const res = await fetch('/api/dynasty-trade-analyzer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tradeMode: true,
-          teamA: {
-            name: teamAName,
-            gives: teamAAssets.map(a => ({ name: a.name, type: a.type })),
-          },
-          teamB: {
-            name: teamBName,
-            gives: teamBAssets.map(a => ({ name: a.name, type: a.type })),
-          },
-          format: leagueFormat,
-          qbFormat,
+          sideA: sideADesc,
+          sideB: sideBDesc,
+          leagueContext: ctx,
         }),
       });
 
@@ -96,19 +92,20 @@ export default function DynastyTradeForm() {
       }
 
       const data = await res.json();
-      if (data.success && data.analysis) {
+      if (data.analysis) {
+        const a = data.analysis;
         setResult({
-          winner: data.analysis.winner || 'Even',
-          winnerScore: data.analysis.winnerScore || 50,
-          loserScore: data.analysis.loserScore || 50,
-          dynastyVerdict: data.analysis.dynastyVerdict || data.analysis.overallOutlook || '',
-          analysis: data.analysis.analysis || data.analysis.keyRecommendation || '',
-          teamAGrade: data.analysis.teamAGrade || 'B',
-          teamBGrade: data.analysis.teamBGrade || 'B',
-          vetoRisk: data.analysis.vetoRisk || 'low',
-          agingConcerns: data.analysis.agingConcerns || [],
-          recommendations: data.analysis.keyRecommendations || data.analysis.recommendations || [],
-          confidence: data.analysis.confidence || data.analysis.confidenceScore || 70,
+          winner: a.winner || 'Even',
+          winnerScore: 0,
+          loserScore: 0,
+          dynastyVerdict: a.valueDelta || '',
+          analysis: Array.isArray(a.factors) ? a.factors.join('\n') : (a.factors || ''),
+          teamAGrade: '',
+          teamBGrade: '',
+          vetoRisk: 'low',
+          agingConcerns: [],
+          recommendations: [],
+          confidence: a.confidence || 70,
         });
       }
     } catch {
@@ -143,14 +140,6 @@ export default function DynastyTradeForm() {
         ))}
       </div>
     );
-  }
-
-  function gradeColor(grade: string) {
-    if (grade.startsWith('A')) return 'text-green-400 border-green-500/40 bg-green-950/20';
-    if (grade.startsWith('B')) return 'text-cyan-400 border-cyan-500/40 bg-cyan-950/20';
-    if (grade.startsWith('C')) return 'text-yellow-400 border-yellow-500/40 bg-yellow-950/20';
-    if (grade.startsWith('D')) return 'text-orange-400 border-orange-500/40 bg-orange-950/20';
-    return 'text-red-400 border-red-500/40 bg-red-950/20';
   }
 
   return (
@@ -317,69 +306,24 @@ export default function DynastyTradeForm() {
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-1">Winner</p>
                 <p className="text-3xl font-bold text-white mb-2">{result.winner}</p>
-                <p className="text-gray-300">{result.dynastyVerdict}</p>
+                {result.dynastyVerdict && (
+                  <p className="text-gray-300 mt-2">{result.dynastyVerdict}</p>
+                )}
               </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-lg border border-white/10 bg-gray-900/60 p-4 text-center">
-                <p className="text-sm text-gray-400 mb-2">{teamAName} Grade</p>
-                <Badge className={`text-2xl px-4 py-1 ${gradeColor(result.teamAGrade)}`}>
-                  {result.teamAGrade}
-                </Badge>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-gray-900/60 p-4 text-center">
-                <p className="text-sm text-gray-400 mb-2">{teamBName} Grade</p>
-                <Badge className={`text-2xl px-4 py-1 ${gradeColor(result.teamBGrade)}`}>
-                  {result.teamBGrade}
-                </Badge>
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-gray-900/60 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <ShieldAlert className="h-4 w-4 text-yellow-400" />
-                <span className="text-sm font-semibold text-yellow-400">Veto Risk</span>
-              </div>
-              <Badge variant="outline" className={`${
-                result.vetoRisk === 'high' ? 'border-red-500 text-red-400' :
-                result.vetoRisk === 'medium' ? 'border-yellow-500 text-yellow-400' :
-                'border-green-500 text-green-400'
-              }`}>
-                {result.vetoRisk.charAt(0).toUpperCase() + result.vetoRisk.slice(1)}
-              </Badge>
             </div>
 
             {result.analysis && (
               <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
-                <p className="text-sm font-semibold text-cyan-400 mb-2">Analysis</p>
-                <p className="text-gray-300">{result.analysis}</p>
-              </div>
-            )}
-
-            {result.agingConcerns.length > 0 && (
-              <div className="rounded-lg border border-orange-900/30 bg-gray-900/60 p-4">
                 <div className="flex items-center gap-2 mb-3">
-                  <TrendingDown className="h-4 w-4 text-orange-400" />
-                  <span className="text-sm font-semibold text-orange-400">Aging Concerns</span>
+                  <TrendingUp className="h-4 w-4 text-cyan-400" />
+                  <span className="text-sm font-semibold text-cyan-400">Key Factors</span>
                 </div>
-                <ul className="space-y-1">
-                  {result.agingConcerns.map((c, i) => (
-                    <li key={i} className="text-sm text-gray-400">- {c}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.recommendations.length > 0 && (
-              <div className="rounded-lg border border-green-900/30 bg-gray-900/60 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Target className="h-4 w-4 text-green-400" />
-                  <span className="text-sm font-semibold text-green-400">Recommendations</span>
-                </div>
-                <ul className="space-y-1">
-                  {result.recommendations.map((r, i) => (
-                    <li key={i} className="text-sm text-gray-300">- {r}</li>
+                <ul className="space-y-2">
+                  {result.analysis.split('\n').filter(Boolean).map((factor, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-cyan-400 shrink-0" />
+                      {factor}
+                    </li>
                   ))}
                 </ul>
               </div>
