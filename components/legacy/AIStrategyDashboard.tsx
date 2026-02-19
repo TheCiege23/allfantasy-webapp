@@ -986,6 +986,11 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                 Listening: &quot;{transcript}&quot;
               </div>
             )}
+            {micPermissionDenied && (
+              <p className="text-xs text-amber-400 mt-2">
+                Microphone access denied. Go to browser settings → Privacy → Microphone → allow this site, then refresh.
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>
