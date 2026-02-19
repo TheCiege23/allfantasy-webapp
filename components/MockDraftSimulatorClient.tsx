@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, ChevronDown, ChevronUp, Handshake, Check } from 'lucide-react'
+import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, Handshake, Check } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
@@ -65,10 +65,8 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [tradeResult, setTradeResult] = useState<any>(null)
   const [isTrading, setIsTrading] = useState(false)
   const [roundNeeds, setRoundNeeds] = useState<Record<number, any>>({})
-  const [loadingNeeds, setLoadingNeeds] = useState<Record<number, boolean>>({})
   const [adpData, setAdpData] = useState<ADPPlayer[]>([])
   const [bestAvailableTop, setBestAvailableTop] = useState<ADPPlayer[]>([])
-  const [expandedNeedsRounds, setExpandedNeedsRounds] = useState<Set<number>>(new Set())
   const [tradeProposals, setTradeProposals] = useState<Record<number, any>>({})
   const [dismissedProposals, setDismissedProposals] = useState<Set<number>>(new Set())
 
@@ -102,6 +100,28 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
     return result
   }, [draftResults])
+
+  const managerAvatars = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const p of draftResults) {
+      if (p.manager && p.managerAvatar && !map[p.manager]) {
+        map[p.manager] = p.managerAvatar
+      }
+    }
+    return map
+  }, [draftResults])
+
+  const calculateTeamNeeds = useCallback((teamData: { manager: string; counts: Record<string, number> }) => {
+    const NEED_TARGETS: Record<string, number> = { QB: 2, RB: 4, WR: 4, TE: 2 }
+    const needs: Record<string, number> = {}
+    for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+      const count = teamData.counts[pos] || 0
+      const target = NEED_TARGETS[pos]
+      const filled = Math.min(count / target, 1)
+      needs[pos] = Math.round((1 - filled) * 100)
+    }
+    return needs
+  }, [])
 
   useEffect(() => {
     if (!selectedLeagueId || !selectedLeague) return
@@ -215,23 +235,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
-  const fetchRoundNeeds = async (roundNum: number) => {
-    if (!selectedLeagueId || draftResults.length === 0 || roundNeeds[roundNum] || loadingNeeds[roundNum]) return
-    setLoadingNeeds(prev => ({ ...prev, [roundNum]: true }))
-    try {
-      const { data } = await callAI('/api/mock-draft/needs', {
-        leagueId: selectedLeagueId,
-        round: roundNum,
-        draftResults,
-      })
-      if (data) {
-        setRoundNeeds(prev => ({ ...prev, [roundNum]: data }))
-      }
-    } catch (err: any) {
-      console.error('[needs]', err)
-    }
-    setLoadingNeeds(prev => ({ ...prev, [roundNum]: false }))
-  }
+
 
   const simulateTrade = async (direction: 'up' | 'down', pickNumber: number) => {
     if (draftResults.length === 0 || !selectedLeagueId) return
@@ -642,7 +646,6 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                   <div className="mt-6">
                     {(() => {
                       const rNum = round + 1
-                      const isExpanded = expandedNeedsRounds.has(rNum)
                       const TARGETS: Record<string, number> = { QB: 1, RB: 4, WR: 4, TE: 1, K: 1, DEF: 1 }
                       const quickNeeds = perRoundRosters[rNum] || []
                       const userTeam = quickNeeds.find(t => t.isUser)
@@ -690,99 +693,54 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                             </div>
                           )}
 
-                          <div className="flex gap-2 items-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                const next = new Set(expandedNeedsRounds)
-                                isExpanded ? next.delete(rNum) : next.add(rNum)
-                                setExpandedNeedsRounds(next)
-                              }}
-                              className="text-gray-500 hover:text-white text-xs p-1 h-auto"
+                          {quickNeeds.length > 0 && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              className="mt-4 bg-black/60 border border-gray-800 rounded-2xl p-6 overflow-hidden"
                             >
-                              {isExpanded ? <ChevronUp className="h-3 w-3 mr-1" /> : <ChevronDown className="h-3 w-3 mr-1" />}
-                              All Teams
-                            </Button>
-                            {!roundNeeds[rNum] && !loadingNeeds[rNum] && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => fetchRoundNeeds(rNum)}
-                                className="border-gray-700 text-gray-400 hover:text-white text-xs h-7"
-                              >
-                                <Star className="mr-1 h-3 w-3" /> AI Analysis
-                              </Button>
-                            )}
-                            {loadingNeeds[rNum] && (
-                              <span className="flex items-center gap-1 text-xs text-gray-500">
-                                <Loader2 className="h-3 w-3 animate-spin" /> Analyzing...
-                              </span>
-                            )}
-                          </div>
+                              <h4 className="text-sm font-medium text-gray-300 mb-4 flex items-center gap-2">
+                                Team Needs After Round {rNum}
+                                <span className="text-xs bg-cyan-900/50 px-2 py-1 rounded-full">Updated</span>
+                              </h4>
 
-                          {isExpanded && (
-                            <div className="mt-3 bg-black/40 border border-gray-800 rounded-xl p-4">
-                              {roundNeeds[rNum]?.userAdvice && (
-                                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-lg p-3 mb-3 text-xs text-cyan-300">
-                                  {roundNeeds[rNum].userAdvice}
-                                </div>
-                              )}
-                              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs">
-                                {quickNeeds.map(t => {
-                                  const aiTeam = roundNeeds[rNum]?.teams?.find((at: any) => at.manager === t.manager)
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+                                {quickNeeds.map(team => {
+                                  const needs = calculateTeamNeeds(team)
                                   return (
-                                    <div key={t.manager} className={`p-3 rounded-lg ${t.isUser ? 'bg-cyan-950/30 border border-cyan-500/20' : 'bg-gray-950/50'}`}>
-                                      <div className="flex items-center justify-between mb-2">
-                                        <div className="font-medium truncate text-xs">{t.manager} {t.isUser ? '(You)' : ''}</div>
-                                        {aiTeam?.needLevel != null && (
-                                          <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                                            aiTeam.needLevel >= 70 ? 'bg-red-500/20 text-red-400' :
-                                            aiTeam.needLevel >= 45 ? 'bg-orange-500/20 text-orange-400' :
-                                            'bg-emerald-500/20 text-emerald-400'
-                                          }`}>
-                                            {aiTeam.needLevel}
-                                          </div>
-                                        )}
+                                    <div key={team.manager} className={`p-4 rounded-xl ${team.isUser ? 'bg-cyan-950/30 border border-cyan-500/30' : 'bg-gray-950/50'}`}>
+                                      <div className="flex items-center gap-3 mb-3">
+                                        <img
+                                          src={managerAvatars[team.manager] || '/default-avatar.png'}
+                                          alt={team.manager}
+                                          className="w-10 h-10 rounded-full border border-gray-700 object-cover"
+                                          onError={(e) => { (e.target as HTMLImageElement).src = '/default-avatar.png' }}
+                                        />
+                                        <span className="font-medium truncate text-sm">{team.manager}{team.isUser ? ' (You)' : ''}</span>
                                       </div>
-                                      <div className="space-y-1">
-                                        {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => {
-                                          const count = t.counts[pos]
-                                          const target = TARGETS[pos]
-                                          const pct = Math.min(100, (count / target) * 100)
-                                          const posColor = pos === 'QB' ? 'bg-red-500' : pos === 'RB' ? 'bg-cyan-500' : pos === 'WR' ? 'bg-green-500' : 'bg-purple-500'
-                                          return (
-                                            <div key={pos} className="flex items-center gap-2">
-                                              <span className={`w-6 text-[9px] font-bold ${POSITION_COLORS[pos]?.split(' ')[0] || 'text-gray-400'}`}>{pos}</span>
-                                              <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
-                                                <div className={`h-full rounded-full ${posColor}`} style={{ width: `${pct}%` }} />
-                                              </div>
-                                              <span className="text-[9px] text-gray-600 w-5 text-right">{count}/{target}</span>
+
+                                      <div className="space-y-2">
+                                        {(['QB', 'RB', 'WR', 'TE'] as const).map(pos => (
+                                          <div key={pos} className="flex items-center gap-2">
+                                            <div className="w-8 text-xs font-mono text-gray-400">{pos}</div>
+                                            <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                                              <div
+                                                className="h-full rounded-full transition-all duration-1000"
+                                                style={{
+                                                  width: `${needs[pos] || 0}%`,
+                                                  background: (needs[pos] || 0) > 70 ? '#ef4444' : (needs[pos] || 0) > 40 ? '#f59e0b' : '#10b981',
+                                                }}
+                                              />
                                             </div>
-                                          )
-                                        })}
+                                            <div className="text-xs w-10 text-right">{needs[pos] || 0}%</div>
+                                          </div>
+                                        ))}
                                       </div>
-                                      {aiTeam?.needs?.length > 0 && (
-                                        <div className="flex gap-1 flex-wrap mt-2">
-                                          {aiTeam.needs.slice(0, 3).map((n: any, idx: number) => (
-                                            <span key={idx} className={`px-1 py-0.5 rounded text-[8px] font-bold ${
-                                              n.urgency === 'critical' ? 'bg-red-500/20 text-red-400' :
-                                              n.urgency === 'high' ? 'bg-orange-500/20 text-orange-400' :
-                                              'bg-gray-800 text-gray-400'
-                                            }`}>
-                                              {n.urgency === 'critical' ? '!!' : n.urgency === 'high' ? '!' : ''}{n.position}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      )}
-                                      {aiTeam?.likelyTargets?.length > 0 && (
-                                        <p className="text-[9px] text-purple-400 mt-1 truncate">{aiTeam.likelyTargets.slice(0, 2).join(', ')}</p>
-                                      )}
                                     </div>
                                   )
                                 })}
                               </div>
-                            </div>
+                            </motion.div>
                           )}
                         </>
                       )
