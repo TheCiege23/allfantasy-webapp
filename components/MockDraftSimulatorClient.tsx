@@ -75,14 +75,12 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const updateWeekly = async () => {
     if (!selectedLeagueId) return
     setIsSimulating(true)
-    const { data } = await callAI('/api/mock-draft/simulate', {
+    const { data } = await callAI('/api/mock-draft/update-weekly', {
       leagueId: selectedLeagueId,
-      rounds,
-      refresh: true,
     })
     if (data?.draftResults) {
       setDraftResults(data.draftResults)
-      toast.success('Mock draft updated with latest real-world data!')
+      toast.success('Mock draft updated with latest injuries, news & performance data!')
     }
     setIsSimulating(false)
   }
