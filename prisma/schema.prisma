@@ -2106,6 +2106,7 @@ model AppUser {
   sentDMs              PrivateChatMessage[] @relation("DMSender")
   receivedDMs          PrivateChatMessage[] @relation("DMReceiver")
   activeLeagueId       String?
+  aiStrategyReports    AIStrategyReport[]
 
   @@map("app_users")
 }
@@ -2737,4 +2738,23 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+model AIStrategyReport {
+  id        String   @id @default(uuid())
+  userId    String
+  leagueId  String
+  title     String?
+  content   Json
+  archetype String
+  score     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([leagueId])
+  @@index([userId, leagueId])
+  @@map("ai_strategy_reports")
 }

@@ -140,21 +140,18 @@ Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`
     }
 
     try {
-      await prisma.tradeAnalysisSnapshot.create({
+      await prisma.aIStrategyReport.create({
         data: {
+          userId,
           leagueId,
-          sleeperUsername: session?.user?.name || session?.user?.email || 'unknown',
-          snapshotType: 'ai-strategy',
-          payloadJson: {
-            archetype: teamData.archetype,
-            score: teamData.score,
-            rosterGrade: strategy.rosterGrade,
-            winWindow: strategy.winWindow,
-          },
+          title: `${teamData.archetype} — ${strategy.winWindow || 'Dynasty'} Strategy`,
+          content: strategy,
+          archetype: teamData.archetype,
+          score: teamData.score,
         },
       })
     } catch (e) {
-      console.warn('[Strategy Generate] Snapshot save failed (non-critical):', e)
+      console.warn('[Strategy Generate] Report save failed (non-critical):', e)
     }
 
     return NextResponse.json({ success: true, strategy })
