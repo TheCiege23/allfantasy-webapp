@@ -376,20 +376,24 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
       {draftResults.length > 0 && (
         <div id="draft-board" className="bg-black/80 border border-cyan-900/50 rounded-3xl p-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-bold">Live Mock Draft Board</h2>
-            <div className="flex gap-3 flex-wrap">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold">Live Mock Draft Board</h2>
               {Object.keys(tradeProposals).length > 0 && (
-                <span className="flex items-center gap-1 text-xs text-purple-400">
+                <span className="flex items-center gap-1 text-xs text-purple-400 bg-purple-500/10 border border-purple-500/20 rounded-full px-2.5 py-1">
                   <Handshake className="h-3 w-3" /> {Object.keys(tradeProposals).length - dismissedProposals.size} offer{Object.keys(tradeProposals).length - dismissedProposals.size !== 1 ? 's' : ''}
                 </span>
               )}
-              <Button onClick={exportImage} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Image</Button>
-              <Button onClick={exportPDF} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> PDF</Button>
-              <Button onClick={copyShareLink} size="sm"><Link className="mr-2 h-4 w-4" /> Share</Button>
-              <Button onClick={updateWeekly} variant="outline" size="sm" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
-              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setBestAvailableTop([]); setTradeProposals({}); setDismissedProposals(new Set()) }} variant="outline" size="sm" className="border-gray-600">
-                <RotateCcw className="mr-2 h-4 w-4" /> Reset
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-1.5 border border-gray-800 rounded-lg p-1">
+                <Button onClick={exportImage} variant="ghost" size="sm" className="h-7 text-xs text-gray-400 hover:text-white"><Download className="mr-1.5 h-3.5 w-3.5" /> Image</Button>
+                <Button onClick={exportPDF} variant="ghost" size="sm" className="h-7 text-xs text-gray-400 hover:text-white"><Download className="mr-1.5 h-3.5 w-3.5" /> PDF</Button>
+                <Button onClick={copyShareLink} variant="ghost" size="sm" className="h-7 text-xs text-gray-400 hover:text-white"><Link className="mr-1.5 h-3.5 w-3.5" /> Share</Button>
+              </div>
+              <Button onClick={updateWeekly} variant="outline" size="sm" className="h-7 text-xs" disabled={isSimulating || loading}><RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Update Weekly</Button>
+              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setBestAvailableTop([]); setTradeProposals({}); setDismissedProposals(new Set()) }} variant="outline" size="sm" className="h-7 text-xs border-red-900/40 text-red-400 hover:text-red-300 hover:bg-red-950/30">
+                <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
               </Button>
             </div>
           </div>
