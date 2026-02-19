@@ -68,10 +68,14 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
 
   const body = await req.json()
-  const { name, season, sport } = body as {
+  const { name, season, sport, maxManagers, isPaidLeague, fancredEntryFee, fancredPaymentReference } = body as {
     name: string
     season: number
     sport: string
+    maxManagers?: number
+    isPaidLeague?: boolean
+    fancredEntryFee?: number
+    fancredPaymentReference?: string
   }
   if (!name || !season || !sport)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 })
@@ -85,6 +89,10 @@ export async function POST(req: Request) {
       { error: "Tournament not found for that sport/season" },
       { status: 404 }
     )
+
+  const normalizedMaxManagers = Math.min(1000, Math.max(2, Number(maxManagers || 100)))
+  const paidLeague = Boolean(isPaidLeague)
+  const normalizedEntryFee = paidLeague ? Math.max(0, Number(fancredEntryFee || 0)) : 0
 
   let joinCode = makeJoinCode()
   for (let i = 0; i < 5; i++) {
@@ -100,7 +108,16 @@ export async function POST(req: Request) {
       name,
       tournamentId: tournament.id,
       ownerId: auth.userId,
+      maxManagers: normalizedMaxManagers,
       joinCode,
+      scoringRules: {
+        entriesPerUserFree: 2,
+        maxEntriesPerUser: 10,
+        isPaidLeague: paidLeague,
+        fancredEntryFee: normalizedEntryFee,
+        fancredPaymentReference: fancredPaymentReference?.trim() || null,
+        commissionerPaymentConfirmedAt: null,
+      },
       members: {
         create: { userId: auth.userId, role: "ADMIN" },
       },
@@ -112,5 +129,7 @@ export async function POST(req: Request) {
     ok: true,
     leagueId: league.id,
     joinCode: league.joinCode,
+    maxManagers: normalizedMaxManagers,
+    isPaidLeague: paidLeague,
   })
 }
