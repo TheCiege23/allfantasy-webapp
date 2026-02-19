@@ -17,6 +17,8 @@ import { buildIdpKickerValueMap, detectIdpLeague, detectKickerLeague } from '../
 import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights, type CompositeWeightConfig } from './composite-weights'
 import { getActiveCompositeParams, type LearnedCompositeParams } from './composite-param-learning'
+import { applyAntiGamingConstraints, type AntiGamingInput } from './anti-gaming'
+import { getPreviousWeekSnapshots, type SnapshotMetrics } from './snapshots'
 
 export interface Driver {
   id: string
@@ -103,6 +105,21 @@ export interface TeamScore {
   explanation: RankExplanation
   badges: Badge[]
   dataQuality: TeamDataQuality
+  antiGaming: AntiGamingConstraintInfo | null
+}
+
+export interface AntiGamingConstraintInfo {
+  constrained: boolean
+  originalRank: number
+  justifications: Array<{
+    metric: string
+    label: string
+    previousValue: number | null
+    currentValue: number
+    delta: number | null
+    passed: boolean
+  }>
+  failedMetrics: string[]
 }
 
 export interface TeamDataQuality {
@@ -2328,7 +2345,7 @@ function computeMotivationalFrame(
   }
 }
 
-function generateBadges(team: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta'>, allTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta'>[]): Badge[] {
+function generateBadges(team: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming'>, allTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming'>[]): Badge[] {
   const badges: Badge[] = []
 
   const maxPS = Math.max(...allTeams.map(t => t.powerScore))
@@ -2381,9 +2398,10 @@ export async function computeLeagueRankingsV2(
   const leagueClassKey = isDynasty ? (isSF ? 'DYN_SF' : 'DYN_1QB') : (isSF ? 'RED_SF' : 'RED_1QB')
   const segmentKey = `${leagueClassKey}_${phase}`
 
-  const [dbRosterRecords, learnedParams] = await Promise.all([
+  const [dbRosterRecords, learnedParams, previousSnapshots] = await Promise.all([
     fetchRosterRecords(leagueId),
     getActiveCompositeParams(segmentKey).catch(() => null),
+    getPreviousWeekSnapshots({ leagueId, season, currentWeek: week }).catch(() => new Map()),
   ])
 
   const fcSettings: FantasyCalcSettings = { isDynasty, numQbs: isSF ? 2 : 1, numTeams, ppr }
@@ -2491,7 +2509,7 @@ export async function computeLeagueRankingsV2(
 
   const ldiSampleCount = ldiData ? Object.values(ldiData).reduce((s: number, e: any) => s + (e?.sample ?? 0), 0) : 0
 
-  const rawTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta'>[] = []
+  const rawTeams: Omit<TeamScore, 'badges' | 'rank' | 'prevRank' | 'rankDelta' | 'antiGaming'>[] = []
 
   const allStarterValues: number[] = []
   const allBenchValues: number[] = []
@@ -2607,6 +2625,7 @@ export async function computeLeagueRankingsV2(
   }
 
   const allRosterIds = rosters.map(r => r.roster_id)
+  const teamSnapshotMetrics = new Map<number, SnapshotMetrics>()
 
   for (const ti of teamIntermediates) {
     const { roster, user, rosterValues, weeklyPts, weeklyOppPts, expectedWins, sos, winPct, luckDelta, ageAdjustedTotal, tradeEff, processConsistency, ptsFor, ptsAgainst, playoffSeed, isChampion, portfolioRaw, rosterInjuryImpact } = ti
@@ -2738,6 +2757,14 @@ export async function computeLeagueRankingsV2(
     const resolvedUsername = user?.username || user?.display_name || dbRoster?.ownerName || unownedLabel || null
     const resolvedDisplayName = user?.display_name || user?.username || dbRoster?.ownerName || unownedLabel || null
 
+    const snapshotMetrics: SnapshotMetrics = {
+      starterValuePercentile: starterPer,
+      expectedWins,
+      injuryHealthRatio: rosterInjuryImpact.powerHealthRatio,
+      tradeEffPremium: tradeEff.avgPremium,
+    }
+    teamSnapshotMetrics.set(roster.roster_id, snapshotMetrics)
+
     rawTeams.push({
       rosterId: roster.roster_id,
       ownerId: roster.owner_id,
@@ -2780,14 +2807,52 @@ export async function computeLeagueRankingsV2(
 
   rawTeams.sort((a, b) => b.composite - a.composite)
 
-  const teams: TeamScore[] = rawTeams.map((t, idx) => {
+  const antiGamingInputs: AntiGamingInput[] = rawTeams.map((t, idx) => ({
+    rosterId: t.rosterId,
+    currentRank: idx + 1,
+    composite: t.composite,
+    metrics: teamSnapshotMetrics.get(t.rosterId) || {
+      starterValuePercentile: 0,
+      expectedWins: t.expectedWins,
+      injuryHealthRatio: 1,
+      tradeEffPremium: 0,
+    },
+  }))
+
+  const antiGamingResults = applyAntiGamingConstraints(antiGamingInputs, previousSnapshots)
+  const antiGamingMap = new Map(antiGamingResults.map(r => [r.rosterId, r]))
+
+  const sortedByAdjustedRank = rawTeams
+    .map((t, idx) => ({ team: t, originalRank: idx + 1 }))
+    .sort((a, b) => {
+      const aAdj = antiGamingMap.get(a.team.rosterId)?.adjustedRank ?? a.originalRank
+      const bAdj = antiGamingMap.get(b.team.rosterId)?.adjustedRank ?? b.originalRank
+      if (aAdj !== bAdj) return aAdj - bAdj
+      return b.team.composite - a.team.composite
+    })
+
+  const teams: TeamScore[] = sortedByAdjustedRank.map((entry, idx) => {
+    const t = entry.team
+    const agResult = antiGamingMap.get(t.rosterId)
+    const prevSnap = previousSnapshots.get(String(t.rosterId))
     const badges = generateBadges(t, rawTeams)
+    const finalRank = idx + 1
+
+    const rawMetrics = teamSnapshotMetrics.get(t.rosterId) ?? null
+
     return {
       ...t,
-      rank: idx + 1,
-      prevRank: null,
-      rankDelta: null,
+      rank: finalRank,
+      prevRank: prevSnap?.rank ?? null,
+      rankDelta: prevSnap ? prevSnap.rank - finalRank : null,
       badges,
+      antiGaming: agResult ? {
+        constrained: agResult.constrained,
+        originalRank: agResult.originalRank,
+        justifications: agResult.justifications,
+        failedMetrics: agResult.failedMetrics,
+      } : null,
+      _snapshotMetrics: rawMetrics,
     }
   })
 

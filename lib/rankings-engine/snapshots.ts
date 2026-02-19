@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma"
 
+export interface SnapshotMetrics {
+  starterValuePercentile: number
+  expectedWins: number
+  injuryHealthRatio: number
+  tradeEffPremium: number
+}
+
 export async function saveRankingsSnapshot(args: {
   leagueId: string
   season: string
@@ -10,6 +17,7 @@ export async function saveRankingsSnapshot(args: {
     composite: number
     expectedWins?: number | null
     luckDelta?: number | null
+    metricsJson?: SnapshotMetrics | null
   }>
 }) {
   const { leagueId, season, week } = args
@@ -29,7 +37,8 @@ export async function saveRankingsSnapshot(args: {
           rank: Number(t.rank),
           composite: t.composite,
           expectedWins: t.expectedWins ?? null,
-          luckDelta: t.luckDelta ?? null
+          luckDelta: t.luckDelta ?? null,
+          metricsJson: t.metricsJson ?? undefined,
         },
         create: {
           leagueId,
@@ -39,11 +48,40 @@ export async function saveRankingsSnapshot(args: {
           rank: Number(t.rank),
           composite: t.composite,
           expectedWins: t.expectedWins ?? null,
-          luckDelta: t.luckDelta ?? null
+          luckDelta: t.luckDelta ?? null,
+          metricsJson: t.metricsJson ?? undefined,
         }
       })
     )
   )
+}
+
+export async function getPreviousWeekSnapshots(args: {
+  leagueId: string
+  season: string
+  currentWeek: number
+}): Promise<Map<string, { rank: number; composite: number; metrics: SnapshotMetrics | null }>> {
+  const prevWeek = args.currentWeek - 1
+  if (prevWeek < 1) return new Map()
+
+  const rows = await prisma.rankingsSnapshot.findMany({
+    where: {
+      leagueId: args.leagueId,
+      season: args.season,
+      week: prevWeek,
+    },
+  })
+
+  const map = new Map<string, { rank: number; composite: number; metrics: SnapshotMetrics | null }>()
+  for (const r of rows) {
+    const metrics = r.metricsJson as SnapshotMetrics | null
+    map.set(r.rosterId, {
+      rank: r.rank,
+      composite: Number(r.composite),
+      metrics,
+    })
+  }
+  return map
 }
 
 export async function getRankHistory(args: {

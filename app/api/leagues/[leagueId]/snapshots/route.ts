@@ -27,7 +27,8 @@ export const POST = withApiUsage({
         rank: t.rank,
         composite: Number(t.composite ?? 0),
         expectedWins: t.expectedWins ?? null,
-        luckDelta: t.luckDelta ?? null
+        luckDelta: t.luckDelta ?? null,
+        metricsJson: t._snapshotMetrics ?? null,
       }))
     })
 
