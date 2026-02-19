@@ -53,6 +53,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "You must confirm you are 18 or older." }, { status: 400 })
     }
 
+    const method = verificationMethod === "PHONE" ? "PHONE" : "EMAIL"
+    if (method === "PHONE" && !normalizePhone(phone)) {
+      return NextResponse.json({ error: "Phone is required for phone verification." }, { status: 400 })
+    }
+
     const existing = await (prisma as any).appUser.findFirst({
       where: { OR: [{ email }, { username }] },
       select: { id: true, email: true, username: true },
@@ -102,7 +107,7 @@ export async function POST(req: Request) {
           displayName: displayName?.trim() || username,
           phone: normalizePhone(phone),
           ageConfirmedAt: now,
-          verificationMethod: verificationMethod === "PHONE" ? "PHONE" : "EMAIL",
+          verificationMethod: method,
           ...sleeperData,
           profileComplete: false,
         },
