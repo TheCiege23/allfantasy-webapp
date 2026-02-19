@@ -14,8 +14,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
-    const { leagueId, pickNumber, action } = body
+    const { leagueId, pickNumber, action } = await req.json()
 
     if (!leagueId || !pickNumber || !action) {
       return NextResponse.json({ error: 'leagueId, pickNumber, and action are required' }, { status: 400 })
@@ -24,59 +23,54 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'action must be "accept" or "reject"' }, { status: 400 })
     }
 
-    const draft = await prisma.mockDraft.findFirst({
+    const mock = await prisma.mockDraft.findFirst({
       where: { leagueId, userId: session.user.id },
       orderBy: { createdAt: 'desc' },
     })
 
-    if (!draft || !Array.isArray(draft.results)) {
-      return NextResponse.json({ error: 'No prior mock draft found. Run a mock draft first.' }, { status: 404 })
+    if (!mock || !Array.isArray(mock.results)) {
+      return NextResponse.json({ error: 'No draft found' }, { status: 404 })
     }
 
-    const storedProposals = (draft.proposals as any[]) || []
+    const storedProposals = (mock.proposals as any[]) || []
     const proposal = storedProposals.find((p: any) => p.pickOverall === pickNumber)
 
     if (!proposal) {
       return NextResponse.json({ error: `No trade proposal found for pick #${pickNumber}` }, { status: 404 })
     }
 
+    let updatedResults = mock.results as any[]
+
     if (action === 'reject') {
       const remainingProposals = storedProposals.filter((p: any) => p.pickOverall !== pickNumber)
       await prisma.mockDraft.update({
-        where: { id: draft.id },
-        data: { proposals: remainingProposals.length > 0 ? remainingProposals : [] },
+        where: { id: mock.id },
+        data: { proposals: remainingProposals },
       })
 
-      return NextResponse.json({
-        updatedDraft: draft.results,
-        action: 'reject',
-        message: `Trade proposal for pick #${pickNumber} rejected.`,
-      })
+      return NextResponse.json({ updatedDraft: updatedResults })
     }
 
-    const originalDraft = (draft.results as any[]).map(p => ({ ...p }))
-    const userPickIdx = originalDraft.findIndex((p: any) => p.overall === pickNumber && p.isUser)
-    if (userPickIdx === -1) {
-      return NextResponse.json({ error: 'That pick is not yours or does not exist' }, { status: 400 })
+    const originalDraft = (updatedResults as any[]).map(p => ({ ...p }))
+    const userPick = originalDraft.find((p: any) => p.overall === pickNumber && p.isUser)
+    if (!userPick) {
+      return NextResponse.json({ error: 'That pick is not yours' }, { status: 400 })
     }
 
     const tradePartnerPick = proposal.fromPick
-    const explicit = originalDraft.find((p: any) => p.overall === tradePartnerPick && !p.isUser)
-    if (!explicit) {
-      return NextResponse.json({ error: `Pick #${tradePartnerPick} is no longer a valid trade partner` }, { status: 400 })
+    const partnerPick = originalDraft.find((p: any) => p.overall === tradePartnerPick && !p.isUser)
+    if (!partnerPick) {
+      return NextResponse.json({ error: `Pick #${tradePartnerPick} is no longer valid` }, { status: 400 })
     }
 
     const league = await prisma.league.findFirst({
       where: { id: leagueId, userId: session.user.id },
     })
 
-    const userPick = originalDraft[userPickIdx]
     const userManager = userPick.manager
-    const userAvatar = userPick.managerAvatar || null
-    const partnerManager = explicit.manager
-    const partnerAvatar = explicit.managerAvatar || null
+    const partnerManager = partnerPick.manager
+    const tradePoint = Math.min(pickNumber, tradePartnerPick)
 
-    const tradePoint = Math.min(userPick.overall, explicit.overall)
     const lockedPicks = originalDraft.filter((p: any) => p.overall < tradePoint)
     const picksToRedraft = originalDraft
       .filter((p: any) => p.overall >= tradePoint)
@@ -85,26 +79,28 @@ export async function POST(req: NextRequest) {
     for (const p of picksToRedraft) {
       if (p.overall === pickNumber) {
         p.manager = partnerManager
-        p.managerAvatar = partnerAvatar
+        p.managerAvatar = partnerPick.managerAvatar || null
         p.isUser = false
       } else if (p.overall === tradePartnerPick) {
         p.manager = userManager
-        p.managerAvatar = userAvatar
+        p.managerAvatar = userPick.managerAvatar || null
         p.isUser = true
       }
     }
 
-    const lockedPlayerNames = new Set(lockedPicks.map((p: any) => p.playerName?.toLowerCase()).filter(Boolean))
+    const lockedPlayerNames = new Set(
+      lockedPicks.map((p: any) => p.playerName?.toLowerCase()).filter(Boolean)
+    )
 
     let adpContext = ''
+    let adpFallbackPool: { name: string; position?: string; team?: string }[] = []
     try {
       const adpType = league?.isDynasty ? 'dynasty' : 'redraft'
-      const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
-      if (adpEntries.length > 0) {
-        const available = adpEntries.filter(e => !lockedPlayerNames.has(e.name.toLowerCase()))
-        if (available.length > 0) {
-          adpContext = `\nAvailable players by ADP (use this for realistic picks):\n${formatADPForPrompt(available, 60)}`
-        }
+      const adpEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 300)
+      adpFallbackPool = adpEntries.map(e => ({ name: e.name, position: e.position, team: e.team }))
+      const available = adpEntries.filter(e => !lockedPlayerNames.has(e.name.toLowerCase()))
+      if (available.length > 0) {
+        adpContext = `\nAvailable players by ADP:\n${formatADPForPrompt(available, 60)}`
       }
     } catch {}
 
@@ -115,9 +111,14 @@ export async function POST(req: NextRequest) {
       `#${p.overall} R${p.round}P${p.pick} — ${p.manager}${p.isUser ? ' [USER]' : ''}`
     ).join('\n')
 
-    const systemPrompt = `You are an expert fantasy football draft simulator. After a draft-day trade, you must re-run all picks from the trade point forward with realistic player selections based on ADP data, team needs, and draft position.
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert fantasy football draft simulator. After a draft-day trade, re-run all picks from the trade point forward with realistic ADP-based selections.
 
-Return valid JSON with this exact structure:
+Return valid JSON:
 {
   "picks": [
     { "overall": number, "playerName": string, "position": string, "team": string, "confidence": number, "value": number, "notes": string }
@@ -125,31 +126,27 @@ Return valid JSON with this exact structure:
 }
 
 Rules:
-- Return one entry per slot in the "picks" array, matching the overall numbers provided
-- Use ADP data to ground selections — earlier picks get better players
-- No duplicate players — each player can only be drafted once
-- Do NOT include any player already locked in before the trade
-- The [USER] manager should get realistic best-available picks at their draft slots
-- Confidence range: 60-95`
-
-    const userPrompt = `A trade just happened in a ${leagueFormat} mock draft:
+- One entry per slot, matching overall numbers provided
+- Use ADP data — earlier picks get better players
+- No duplicate players, no players already locked before the trade
+- [USER] manager gets realistic best-available picks
+- Confidence range: 60-95`,
+        },
+        {
+          role: 'user',
+          content: `Trade accepted in a ${leagueFormat} mock draft:
 "${userManager}" traded pick #${pickNumber} to "${partnerManager}" for pick #${tradePartnerPick}.
-${direction === 'up' ? `${userManager} moved UP to get an earlier pick.` : `${userManager} moved DOWN, gaining value from a later pick position.`}
+${direction === 'up' ? `${userManager} moved UP for an earlier pick.` : `${userManager} moved DOWN, gaining value.`}
 
-Players already locked (drafted before pick #${tradePoint}, DO NOT reuse):
+Locked players (before pick #${tradePoint}, DO NOT reuse):
 ${Array.from(lockedPlayerNames).join(', ') || 'None'}
 
-Re-draft these ${picksToRedraft.length} slots from pick #${tradePoint} forward:
+Re-simulate these ${picksToRedraft.length} slots from pick #${tradePoint} onward:
 ${slotsToFill}
 ${adpContext}
 
-Return a "picks" array with exactly ${picksToRedraft.length} entries, one per slot above, using realistic ADP-based selections.`
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
+Return exactly ${picksToRedraft.length} picks.`,
+        },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.7,
@@ -175,18 +172,11 @@ Return a "picks" array with exactly ${picksToRedraft.length} entries, one per sl
       if (ap.overall) aiPickMap.set(ap.overall, ap)
     }
 
-    let adpFallbackPool: { name: string; position?: string; team?: string }[] = []
-    try {
-      const adpType = league?.isDynasty ? 'dynasty' : 'redraft'
-      const fallbackEntries = await getLiveADP(adpType as 'dynasty' | 'redraft', 300)
-      adpFallbackPool = fallbackEntries.map(e => ({ name: e.name, position: e.position, team: e.team }))
-    } catch {}
-
     const usedPlayers = new Set(lockedPlayerNames)
 
     for (const slot of picksToRedraft) {
       const aiPick = aiPickMap.get(slot.overall)
-      if (aiPick && aiPick.playerName && !usedPlayers.has(aiPick.playerName.toLowerCase())) {
+      if (aiPick?.playerName && !usedPlayers.has(aiPick.playerName.toLowerCase())) {
         slot.playerName = aiPick.playerName
         slot.position = aiPick.position || slot.position
         slot.team = aiPick.team || slot.team
@@ -210,60 +200,41 @@ Return a "picks" array with exactly ${picksToRedraft.length} entries, one per sl
       }
     }
 
-    const updatedDraft = [...lockedPicks, ...picksToRedraft]
-    updatedDraft.sort((a, b) => a.overall - b.overall)
+    updatedResults = [...lockedPicks, ...picksToRedraft].sort((a, b) => a.overall - b.overall)
 
-    const allPlayerNames = updatedDraft.map((p: any) => p.playerName?.toLowerCase()).filter(Boolean)
-    const uniquePlayers = new Set(allPlayerNames)
-    if (uniquePlayers.size < allPlayerNames.length) {
-      const seen = new Set<string>()
-      for (const slot of updatedDraft) {
-        const key = slot.playerName?.toLowerCase()
-        if (key && seen.has(key)) {
-          const fallback = adpFallbackPool.find(f => !seen.has(f.name.toLowerCase()) && !lockedPlayerNames.has(f.name.toLowerCase()))
-          if (fallback) {
-            slot.playerName = fallback.name
-            slot.position = fallback.position || slot.position
-            slot.team = fallback.team || slot.team
-            slot.notes = 'Dedup fallback'
-          }
+    const seen = new Set<string>()
+    for (const slot of updatedResults) {
+      const key = slot.playerName?.toLowerCase()
+      if (key && seen.has(key)) {
+        const fallback = adpFallbackPool.find(
+          f => !seen.has(f.name.toLowerCase()) && !lockedPlayerNames.has(f.name.toLowerCase())
+        )
+        if (fallback) {
+          slot.playerName = fallback.name
+          slot.position = fallback.position || slot.position
+          slot.team = fallback.team || slot.team
+          slot.notes = 'Dedup fallback'
         }
-        if (slot.playerName) seen.add(slot.playerName.toLowerCase())
       }
+      if (slot.playerName) seen.add(slot.playerName.toLowerCase())
     }
 
-    const uniqueOveralls = new Set(updatedDraft.map((p: any) => p.overall))
-    if (uniqueOveralls.size !== updatedDraft.length) {
-      console.error('[trade-action] Duplicate overalls detected')
-      return NextResponse.json({ error: 'Draft integrity error' }, { status: 500 })
-    }
-    if (updatedDraft.length !== originalDraft.length) {
-      console.error('[trade-action] Length mismatch:', updatedDraft.length, 'vs', originalDraft.length)
+    if (updatedResults.length !== originalDraft.length) {
+      console.error('[trade-action] Length mismatch:', updatedResults.length, 'vs', originalDraft.length)
       return NextResponse.json({ error: 'Draft integrity error' }, { status: 500 })
     }
 
-    try {
-      await prisma.mockDraft.update({
-        where: { id: draft.id },
-        data: {
-          results: updatedDraft,
-          proposals: [],
-        },
-      })
-    } catch (saveErr) {
-      console.error('[trade-action] Failed to save:', saveErr)
-    }
-
-    return NextResponse.json({
-      updatedDraft,
-      action: 'accept',
-      tradeDescription: `${userManager} traded pick #${pickNumber} to ${partnerManager} for pick #${tradePartnerPick}. All picks from #${tradePoint} onward have been re-simulated.`,
-      tradedPicks: {
-        userNewPick: tradePartnerPick,
-        partnerNewPick: pickNumber,
-        partnerManager,
+    const newDraft = await prisma.mockDraft.create({
+      data: {
+        leagueId,
+        userId: session.user.id,
+        rounds: mock.rounds,
+        results: updatedResults,
+        proposals: [],
       },
     })
+
+    return NextResponse.json({ updatedDraft: updatedResults, draftId: newDraft.id })
   } catch (err: any) {
     console.error('[trade-action] Error:', err)
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })

@@ -280,15 +280,11 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
 
       if (data?.updatedDraft) {
         setDraftResults(data.updatedDraft)
+        setCurrentDraftId((data as any).draftId || null)
         setOnClockPick(null)
         setRoundNeeds({})
         setTradeProposals({})
-        setTradeResult({
-          direction: tradeProposals[pickNumber]?.direction || 'up',
-          pickNumber,
-          tradeDescription: (data as any).tradeDescription,
-          tradedPicks: (data as any).tradedPicks,
-        })
+        setDismissedProposals(new Set())
         toast.success('Trade accepted! Board updated.')
       }
     } catch (err: any) {
@@ -306,6 +302,11 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
         action: 'reject',
       })
 
+      setTradeProposals(prev => {
+        const updated = { ...prev }
+        delete updated[pickNumber]
+        return updated
+      })
       setDismissedProposals(prev => new Set([...prev, pickNumber]))
 
       if (data?.updatedDraft) {
