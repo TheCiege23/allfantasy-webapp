@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, ChevronDown, ChevronUp } from 'lucide-react'
+import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, ChevronDown, ChevronUp, Handshake, Check } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
@@ -69,6 +69,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [adpData, setAdpData] = useState<ADPPlayer[]>([])
   const [bestAvailableTop, setBestAvailableTop] = useState<ADPPlayer[]>([])
   const [expandedNeedsRounds, setExpandedNeedsRounds] = useState<Set<number>>(new Set())
+  const [tradeProposals, setTradeProposals] = useState<Record<number, any>>({})
+  const [loadingProposals, setLoadingProposals] = useState(false)
+  const [dismissedProposals, setDismissedProposals] = useState<Set<number>>(new Set())
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -251,6 +254,79 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     setIsTrading(false)
   }
 
+  const fetchTradeProposals = useCallback(async () => {
+    if (!selectedLeagueId || draftResults.length === 0 || loadingProposals) return
+    setLoadingProposals(true)
+    try {
+      const res = await fetch('/api/mock-draft/trade-propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, draftResults }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const proposalMap: Record<number, any> = {}
+        for (const p of (data.proposals || [])) {
+          proposalMap[p.pickOverall] = p
+        }
+        setTradeProposals(proposalMap)
+        setDismissedProposals(new Set())
+        const count = Object.keys(proposalMap).length
+        if (count > 0) toast.info(`${count} trade proposal${count > 1 ? 's' : ''} from other managers!`)
+      }
+    } catch (err) {
+      console.error('[trade-propose]', err)
+    }
+    setLoadingProposals(false)
+  }, [selectedLeagueId, draftResults, loadingProposals])
+
+  useEffect(() => {
+    if (draftResults.length > 0 && Object.keys(tradeProposals).length === 0 && !loadingProposals) {
+      const timer = setTimeout(() => fetchTradeProposals(), 2000)
+      return () => clearTimeout(timer)
+    }
+  }, [draftResults])
+
+  const handleAcceptTrade = async (pickOverall: number) => {
+    const proposal = tradeProposals[pickOverall]
+    if (!proposal) return
+    setIsTrading(true)
+    toast.info('Executing trade...')
+
+    try {
+      const { data } = await callAI('/api/mock-draft/trade-simulate', {
+        leagueId: selectedLeagueId,
+        currentPick: pickOverall,
+        direction: proposal.direction,
+        rounds: customRounds,
+        tradePartnerPick: proposal.fromPick,
+      })
+
+      if (data?.updatedDraft) {
+        setDraftResults(data.updatedDraft)
+        setOnClockPick(null)
+        setRoundNeeds({})
+        setTradeProposals({})
+        setTradeResult({
+          direction: proposal.direction,
+          pickNumber: pickOverall,
+          tradeDescription: (data as any).tradeDescription,
+          tradedPicks: (data as any).tradedPicks,
+        })
+        toast.success(`Trade accepted! You swapped pick #${pickOverall} with ${proposal.fromTeam}'s pick #${proposal.fromPick}.`)
+      }
+    } catch (err: any) {
+      console.error('[accept-trade]', err)
+      toast.error(err.message || 'Failed to execute trade')
+    }
+    setIsTrading(false)
+  }
+
+  const handleRejectTrade = (pickOverall: number) => {
+    setDismissedProposals(prev => new Set([...prev, pickOverall]))
+    toast.info('Trade rejected')
+  }
+
   const copyShareLink = async () => {
     if (draftResults.length === 0 || !selectedLeagueId) return
     try {
@@ -342,10 +418,20 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-2xl font-bold">Live Mock Draft Board</h2>
             <div className="flex gap-3 flex-wrap">
+              {loadingProposals && (
+                <span className="flex items-center gap-1 text-xs text-purple-400">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Finding trades...
+                </span>
+              )}
+              {!loadingProposals && Object.keys(tradeProposals).length > 0 && (
+                <span className="flex items-center gap-1 text-xs text-purple-400">
+                  <Handshake className="h-3 w-3" /> {Object.keys(tradeProposals).length - dismissedProposals.size} offer{Object.keys(tradeProposals).length - dismissedProposals.size !== 1 ? 's' : ''}
+                </span>
+              )}
               <Button onClick={exportPDF} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> PDF</Button>
               <Button onClick={copyShareLink} size="sm"><Link className="mr-2 h-4 w-4" /> Share</Button>
               <Button onClick={updateWeekly} variant="outline" size="sm" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
-              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}); setBestAvailableTop([]); setExpandedNeedsRounds(new Set()) }} variant="outline" size="sm" className="border-gray-600">
+              <Button onClick={() => { setDraftResults([]); setCurrentDraftId(null); setIsSimulating(false); setRoundNeeds({}); setLoadingNeeds({}); setBestAvailableTop([]); setExpandedNeedsRounds(new Set()); setTradeProposals({}); setDismissedProposals(new Set()) }} variant="outline" size="sm" className="border-gray-600">
                 <RotateCcw className="mr-2 h-4 w-4" /> Reset
               </Button>
             </div>
@@ -514,6 +600,50 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                                 {isTrading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ArrowDown className="mr-1 h-3 w-3" />}
                                 Trade Down
                               </Button>
+                            </div>
+                          )}
+
+                          {pick.isUser && tradeProposals[pick.overall] && !dismissedProposals.has(pick.overall) && (
+                            <div className="mt-4 p-4 bg-gradient-to-br from-purple-950/60 to-black/60 border border-purple-500/40 rounded-xl" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex items-center gap-2 mb-2">
+                                <Handshake className="h-4 w-4 text-purple-400" />
+                                <span className="text-sm font-medium text-purple-300">
+                                  Trade from {tradeProposals[pick.overall].fromTeam}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-300 mb-2 space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-emerald-400 font-medium">You get:</span>
+                                  <span>{tradeProposals[pick.overall].theyGive}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-red-400 font-medium">You give:</span>
+                                  <span>{tradeProposals[pick.overall].youGive}</span>
+                                </div>
+                              </div>
+                              {tradeProposals[pick.overall].reason && (
+                                <p className="text-[10px] text-gray-500 mb-3 italic">{tradeProposals[pick.overall].reason}</p>
+                              )}
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRejectTrade(pick.overall)}
+                                  disabled={isTrading}
+                                  className="flex-1 border-red-500/50 text-red-400 hover:bg-red-950/40 text-xs h-8"
+                                >
+                                  <X className="mr-1 h-3 w-3" /> Reject
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleAcceptTrade(pick.overall)}
+                                  disabled={isTrading}
+                                  className="flex-1 bg-green-600 hover:bg-green-700 text-xs h-8"
+                                >
+                                  {isTrading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Check className="mr-1 h-3 w-3" />}
+                                  Accept
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </motion.div>

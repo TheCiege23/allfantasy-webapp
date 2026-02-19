@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { leagueId, currentPick, direction, rounds = 18 } = body
+    const { leagueId, currentPick, direction, rounds = 18, tradePartnerPick } = body
 
     if (!leagueId || !currentPick || !direction) {
       return NextResponse.json({ error: 'leagueId, currentPick, and direction are required' }, { status: 400 })
@@ -43,24 +43,34 @@ export async function POST(req: NextRequest) {
       where: { id: leagueId, userId: session.user.id },
     })
 
-    const candidates = originalDraft
-      .map((p, idx) => ({ ...p, _idx: idx }))
-      .filter((p: any) => {
-        if (direction === 'up') {
-          return p.overall < currentPick && p.overall >= currentPick - 10 && !p.isUser
-        } else {
-          return p.overall > currentPick && p.overall <= currentPick + 10 && !p.isUser
-        }
-      })
-      .sort((a: any, b: any) => direction === 'up' ? b.overall - a.overall : a.overall - b.overall)
+    let tradePartner: any
 
-    if (candidates.length === 0) {
-      return NextResponse.json({
-        error: `No viable trade partners ${direction === 'up' ? 'above' : 'below'} pick #${currentPick}`,
-      }, { status: 400 })
+    if (tradePartnerPick) {
+      const explicit = originalDraft.find((p: any) => p.overall === tradePartnerPick && !p.isUser)
+      if (!explicit) {
+        return NextResponse.json({ error: `Pick #${tradePartnerPick} is not a valid trade partner` }, { status: 400 })
+      }
+      tradePartner = { ...explicit, _idx: originalDraft.indexOf(explicit) }
+    } else {
+      const candidates = originalDraft
+        .map((p, idx) => ({ ...p, _idx: idx }))
+        .filter((p: any) => {
+          if (direction === 'up') {
+            return p.overall < currentPick && p.overall >= currentPick - 10 && !p.isUser
+          } else {
+            return p.overall > currentPick && p.overall <= currentPick + 10 && !p.isUser
+          }
+        })
+        .sort((a: any, b: any) => direction === 'up' ? b.overall - a.overall : a.overall - b.overall)
+
+      if (candidates.length === 0) {
+        return NextResponse.json({
+          error: `No viable trade partners ${direction === 'up' ? 'above' : 'below'} pick #${currentPick}`,
+        }, { status: 400 })
+      }
+
+      tradePartner = candidates[0]
     }
-
-    const tradePartner = candidates[0]
     const partnerIdx = tradePartner._idx
     const userPick = originalDraft[userPickIdx]
     const userManager = userPick.manager
