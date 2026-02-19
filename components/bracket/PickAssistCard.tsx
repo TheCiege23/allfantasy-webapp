@@ -2,62 +2,64 @@
 
 import { useState } from "react"
 
+type Rec = {
+  nodeId: string
+  matchup: string
+  round: number
+  safePick: string | null
+  upsetPick: string | null
+  safeConfidence: number
+  insight: string
+}
+
 export function PickAssistCard({ entryId }: { entryId: string }) {
   const [loading, setLoading] = useState(false)
-  const [tips, setTips] = useState<{ team: string; edge: string }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [recs, setRecs] = useState<Rec[]>([])
 
-  async function fetchAssist() {
+  async function runAssist() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/bracket/pick-assist", {
+      const res = await fetch("/api/bracket/ai/pick-assist", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({ entryId }),
       })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const msg = await res.json().catch(() => ({ error: "Request failed" }))
-        setError(msg.error || "Failed to load pick assist")
+        setError(data.error || "Failed to load AI assist")
         return
       }
-      const data = await res.json()
-      setTips(data.tips ?? [])
+      setRecs(data.recommendations || [])
     } catch {
-      setError("Network error")
+      setError("Failed to load AI assist")
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-white/80">AI Pick Assist</h3>
-        <button
-          onClick={fetchAssist}
-          disabled={loading}
-          className="text-xs px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition"
-        >
-          {loading ? "Analyzing…" : tips ? "Refresh" : "Get Tips"}
+    <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-cyan-200">AI Pick Assist</div>
+        <button onClick={runAssist} disabled={loading} className="text-xs rounded-md bg-cyan-400 text-black px-2 py-1 font-medium">
+          {loading ? "Loading..." : "Refresh"}
         </button>
       </div>
-
-      {error && <p className="text-xs text-red-400">{error}</p>}
-
-      {tips && tips.length === 0 && (
-        <p className="text-xs text-white/40">No tips available for remaining games.</p>
-      )}
-
-      {tips && tips.length > 0 && (
-        <ul className="space-y-2">
-          {tips.map((t, i) => (
-            <li key={i} className="text-xs text-white/70">
-              <span className="font-medium text-white/90">{t.team}</span>{" "}
-              — {t.edge}
-            </li>
+      {error && <div className="text-xs text-red-300">{error}</div>}
+      {recs.length === 0 ? (
+        <div className="text-xs text-gray-300">Get matchup-aware pick suggestions based on seed value and bracket leverage.</div>
+      ) : (
+        <div className="space-y-2">
+          {recs.slice(0, 4).map((r) => (
+            <div key={r.nodeId} className="rounded-xl border border-white/10 bg-black/20 p-2">
+              <div className="text-xs text-gray-400">Round {r.round} • {r.matchup}</div>
+              <div className="text-sm text-white">Safe: <span className="text-cyan-200">{r.safePick || "TBD"}</span> ({r.safeConfidence}%)</div>
+              <div className="text-xs text-gray-300">Upset dart: {r.upsetPick || "TBD"}</div>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   )
