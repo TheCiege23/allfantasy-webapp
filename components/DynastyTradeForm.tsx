@@ -215,6 +215,7 @@ export default function DynastyTradeForm() {
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
+            <p className="text-xs text-gray-500 mt-2">Examples: 2026 1st, 2027 2nd from Chiefs, 2028 late 1st</p>
           </CardContent>
         </Card>
 
@@ -255,6 +256,7 @@ export default function DynastyTradeForm() {
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
+            <p className="text-xs text-gray-500 mt-2">Examples: 2026 1st, 2027 2nd from Chiefs, 2028 late 1st</p>
           </CardContent>
         </Card>
       </div>
