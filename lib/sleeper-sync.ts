@@ -67,6 +67,32 @@ export async function syncSleeperLeague(
     },
   });
 
+  const draftId = leagueData.draft_id;
+  if (draftId) {
+    try {
+      const draftRes = await fetch(`https://api.sleeper.app/v1/draft/${draftId}`);
+      if (draftRes.ok) {
+        const draftData = await draftRes.json();
+        const thirtyDays = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30);
+
+        await prisma.sportsDataCache.upsert({
+          where: { key: `draft-${draftId}` },
+          update: { data: draftData, expiresAt: thirtyDays },
+          create: { key: `draft-${draftId}`, data: draftData, expiresAt: thirtyDays },
+        });
+
+        const orderMapping = draftData.draft_order || {};
+        await prisma.sportsDataCache.upsert({
+          where: { key: `draft-order-${sleeperLeagueId}` },
+          update: { data: orderMapping, expiresAt: thirtyDays },
+          create: { key: `draft-order-${sleeperLeagueId}`, data: orderMapping, expiresAt: thirtyDays },
+        });
+      }
+    } catch (draftErr) {
+      console.warn(`[sleeper-sync] Draft cache failed for ${draftId}:`, draftErr);
+    }
+  }
+
   let rosterCount = 0;
   for (const roster of rostersData) {
     const rId = String(roster.roster_id);

@@ -56,6 +56,20 @@ export async function POST(req: NextRequest) {
       ? league.teams.map(t => t.teamName || t.ownerName || 'Unknown')
       : Array.from({ length: numTeams }, (_, i) => `Team ${i + 1}`)
 
+    let draftOrderContext = ''
+    try {
+      const draftOrderCache = await prisma.sportsDataCache.findFirst({
+        where: { key: `draft-order-${league.platformLeagueId}` },
+      })
+      if (draftOrderCache?.data && typeof draftOrderCache.data === 'object') {
+        const orderMap = draftOrderCache.data as Record<string, number>
+        const entries = Object.entries(orderMap).sort(([, a], [, b]) => a - b)
+        if (entries.length > 0) {
+          draftOrderContext = `\n\nReal draft order from Sleeper (roster_id → slot): ${entries.map(([rid, slot]) => `${rid}→#${slot}`).join(', ')}`
+        }
+      }
+    } catch {}
+
     const userTeamIdx = 0
 
     let rosterContext = ''
@@ -90,7 +104,7 @@ Return a JSON object with a "draftResults" array. Each pick object:
 
 Team names in draft order: ${teamNames.join(', ')}
 
-The user controls "${teamNames[userTeamIdx]}" (pick position #${userTeamIdx + 1}).${rosterContext}
+The user controls "${teamNames[userTeamIdx]}" (pick position #${userTeamIdx + 1}).${draftOrderContext}${rosterContext}
 
 Generate all ${rounds * numTeams} picks with realistic player selections based on current ADP data.`
 
