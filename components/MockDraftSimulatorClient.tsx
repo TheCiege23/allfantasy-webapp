@@ -68,6 +68,8 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [bestAvailableTop, setBestAvailableTop] = useState<ADPPlayer[]>([])
   const [tradeProposals, setTradeProposals] = useState<Record<number, any>>({})
   const [dismissedProposals, setDismissedProposals] = useState<Set<number>>(new Set())
+  const [comparisonOpen, setComparisonOpen] = useState(false)
+  const [comparePlayer, setComparePlayer] = useState<any>(null)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -119,6 +121,15 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       TE: (roster.TE || 0) < 2 ? 60 : 15,
     }
   }, [])
+
+  const openComparison = useCallback((pick: any) => {
+    const draftedBefore = draftResults
+      .filter(d => d.overall <= pick.overall)
+      .map(d => normalizeName(d.playerName))
+    const bap = adpData.find(p => !draftedBefore.includes(normalizeName(p.name)))
+    setComparePlayer({ drafted: pick, bap: bap || null })
+    setComparisonOpen(true)
+  }, [draftResults, adpData, normalizeName])
 
   useEffect(() => {
     if (!selectedLeagueId || !selectedLeague) return
@@ -455,7 +466,10 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                                 ? 'bg-cyan-950/30 border-2 border-cyan-500/40 hover:border-cyan-400/60'
                                 : 'bg-gray-950 border border-gray-800 hover:border-purple-500/60'
                           }`}
-                          onClick={() => pick.isUser && setOnClockPick(onClockPick === pick.overall ? null : pick.overall)}
+                          onClick={() => {
+                            if (pick.isUser) setOnClockPick(onClockPick === pick.overall ? null : pick.overall)
+                            openComparison(pick)
+                          }}
                         >
                           {onClockPick === pick.overall && pick.isUser && (
                             <div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[9px] px-2 py-0.5 rounded-full font-bold">
@@ -759,6 +773,78 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           </div>
         </div>
       )}
+
+      <AnimatePresence>
+        {comparisonOpen && comparePlayer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setComparisonOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-gray-950 border border-gray-800 rounded-2xl p-6 max-w-lg w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <h3 className="text-lg font-bold">Pick Comparison</h3>
+                <Button variant="ghost" size="sm" onClick={() => setComparisonOpen(false)} className="text-gray-500 hover:text-white h-8 w-8 p-0">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-4 text-center">
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Drafted</div>
+                  <div className="text-lg font-bold mb-1">{comparePlayer.drafted.playerName}</div>
+                  <Badge className={`${POSITION_COLORS[comparePlayer.drafted.position] || ''} border text-[10px] px-1.5 py-0 mb-2`}>
+                    {comparePlayer.drafted.position}
+                  </Badge>
+                  <div className="text-sm text-gray-400">{comparePlayer.drafted.team}</div>
+                  <div className="text-xs text-gray-500 mt-2">Pick #{comparePlayer.drafted.overall}</div>
+                  {(() => {
+                    const adp = adpMap.get(normalizeName(comparePlayer.drafted.playerName))
+                    return adp ? <div className="text-xs text-cyan-400 mt-1">ADP: {adp.adp.toFixed(1)}</div> : null
+                  })()}
+                </div>
+
+                <div className="bg-purple-950/20 border border-purple-500/20 rounded-xl p-4 text-center">
+                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Best Available</div>
+                  {comparePlayer.bap ? (
+                    <>
+                      <div className="text-lg font-bold mb-1">{comparePlayer.bap.name}</div>
+                      <Badge className={`${POSITION_COLORS[comparePlayer.bap.position] || ''} border text-[10px] px-1.5 py-0 mb-2`}>
+                        {comparePlayer.bap.position}
+                      </Badge>
+                      <div className="text-sm text-gray-400">{comparePlayer.bap.team || 'FA'}</div>
+                      <div className="text-xs text-cyan-400 mt-2">ADP: {comparePlayer.bap.adp?.toFixed(1) || 'N/A'}</div>
+                      {(() => {
+                        const diff = comparePlayer.drafted.overall - (comparePlayer.bap.adp || 0)
+                        if (Math.abs(diff) <= 3) return <div className="text-xs text-gray-500 mt-1">Fair pick</div>
+                        return diff > 3
+                          ? <div className="text-xs text-emerald-400 mt-1">Steal ({Math.round(diff)} picks late)</div>
+                          : <div className="text-xs text-red-400 mt-1">Reach ({Math.abs(Math.round(diff))} picks early)</div>
+                      })()}
+                    </>
+                  ) : (
+                    <div className="text-sm text-gray-500 mt-4">No ADP data available</div>
+                  )}
+                </div>
+              </div>
+
+              {comparePlayer.drafted.notes && (
+                <div className="mt-4 bg-black/40 border border-gray-800 rounded-lg p-3 text-xs text-gray-400 italic">
+                  {comparePlayer.drafted.notes}
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
