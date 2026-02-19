@@ -31,6 +31,8 @@ export interface TradeOfferEventInput {
   } | null
   segmentParts?: SegmentParts | null
   acceptProb?: number | null
+  rawAcceptProb?: number | null
+  isotonicApplied?: boolean | null
   verdict?: string | null
   grade?: string | null
   confidenceScore?: number | null
@@ -56,6 +58,12 @@ export async function logTradeOfferEvent(input: TradeOfferEventInput): Promise<s
     const featuresJson: Record<string, any> = { ...(input.features ?? {}) }
     if (input.segmentParts) {
       featuresJson.segmentParts = input.segmentParts
+    }
+    if (input.isotonicApplied != null) {
+      featuresJson.isotonicApplied = input.isotonicApplied
+      if (input.rawAcceptProb != null) {
+        featuresJson.rawAcceptProb = input.rawAcceptProb
+      }
     }
 
     const driversJson = input.driverSet ?? []

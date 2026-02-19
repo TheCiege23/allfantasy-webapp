@@ -77,6 +77,10 @@ export type ViabilityVerdict = {
   starterBenchDelta: StarterBenchDelta
   leagueActivity: string
   signals: string[]
+  calibration?: {
+    isotonicApplied: boolean
+    rawAcceptProbability?: number
+  }
 }
 
 export type ActionPlan = {
@@ -745,7 +749,8 @@ function computeStarterBenchDelta(ctx: TradeDecisionContextV1): StarterBenchDelt
 export function formatTradeResponse(
   consensus: PeerReviewConsensus,
   ctx: TradeDecisionContextV1,
-  gate: QualityGateResult
+  gate: QualityGateResult,
+  options?: { isotonicApplied?: boolean; rawAcceptProbability?: number }
 ): FormattedTradeResponse {
   const partnerFit = computeNeedsAlignment(ctx)
   const timing = computeTimingFit(ctx)
@@ -817,6 +822,10 @@ export function formatTradeResponse(
       starterBenchDelta,
       leagueActivity,
       signals,
+      calibration: options?.isotonicApplied ? {
+        isotonicApplied: true,
+        rawAcceptProbability: options.rawAcceptProbability,
+      } : undefined,
     },
     actionPlan: buildActionPlan(gate, ctx, consensus, acceptanceScore),
   }

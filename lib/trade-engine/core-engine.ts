@@ -21,6 +21,7 @@ import {
 } from './negotiation-gpt-contract'
 import {
   getCalibratedWeights,
+  calibrateAcceptProbability,
   type CalibratedWeights,
   type SegmentContext,
 } from './accept-calibration'
@@ -90,6 +91,8 @@ export interface LineupImpactReport {
 
 export interface AcceptModel {
   acceptProbability: number
+  rawAcceptProbability?: number
+  isotonicApplied?: boolean
   drivers: TradeDriverData['acceptDrivers']
   confidenceDrivers: TradeDriverData['confidenceDrivers']
   confidenceScore: number
@@ -196,9 +199,13 @@ function buildLineupImpact(drivers: TradeDriverData): LineupImpactReport {
   }
 }
 
-function buildAcceptModel(drivers: TradeDriverData): AcceptModel {
+async function buildAcceptModel(drivers: TradeDriverData): Promise<AcceptModel> {
+  const { calibrated, isotonicApplied } = await calibrateAcceptProbability(drivers.acceptProbability)
+
   return {
-    acceptProbability: drivers.acceptProbability,
+    acceptProbability: calibrated,
+    rawAcceptProbability: isotonicApplied ? drivers.acceptProbability : undefined,
+    isotonicApplied,
     drivers: drivers.acceptDrivers,
     confidenceDrivers: drivers.confidenceDrivers,
     confidenceScore: drivers.confidenceScore,
@@ -301,7 +308,7 @@ export async function runCoreEngine(input: CoreEngineInput): Promise<CoreEngineO
     mode: input.mode,
     valuationReport: buildValuationReport(input.give, input.receive),
     lineupImpact: buildLineupImpact(drivers),
-    acceptModel: buildAcceptModel(drivers),
+    acceptModel: await buildAcceptModel(drivers),
     tradeLabels: buildTradeLabels(drivers),
     negotiationBlock: negotiation,
     explainers: buildExplainers(drivers),

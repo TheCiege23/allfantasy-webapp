@@ -41,7 +41,7 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 -   **Devy Player Classification & Intelligence Engine**: Comprehensive NCAA to NFL player classification and devy value modeling.
 -   **Player Analytics Database**: Stores extensive NFL player analytics data for valuation and intelligence engines.
 -   **Monte Carlo Simulation Engine**: Performs matchup, season, and championship delta simulations.
--   **Acceptance Probability Model**: A logistic regression model to predict trade acceptance.
+-   **Acceptance Probability Model**: A logistic regression model to predict trade acceptance, with isotonic regression post-hoc calibration (PAVA algorithm) for real-outcome calibrated predictions. The `isotonic-calibrator.ts` fits a monotone piecewise-linear mapping from raw probabilities to observed acceptance rates using binned PAVA. The calibration map is stored in `TradeLearningStats.isotonicMapJson` and applied live in `accept-calibration.ts` via `calibrateAcceptProbability()`. Weekly recalibration (`auto-recalibration.ts`) recomputes the isotonic map alongside shadow b0 and segment b0s. The `calibration-metrics.ts` health dashboard includes isotonic status (active, sample size, ECE before/after).
 -   **Game Theory Counter Builder**: Mathematically optimized counter offers.
 -   **NCAA Bracket Challenge**: A full March Madness bracket system with league creation, ESPN-style UI, live polling, and shareable invite links.
 -   **Trade Improvement AI (Dual-Brain)**: Utilizes Agentic Grok (multi-turn tool loop with web_search via Serper + x_keyword_search via xAI) and GPT-4o for parallel synthesis, featuring a real-time thinking UI and a feedback system that personalizes future suggestions.

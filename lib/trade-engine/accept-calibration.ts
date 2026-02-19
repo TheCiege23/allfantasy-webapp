@@ -1,5 +1,6 @@
 import { prisma } from '../prisma'
 import { Prisma } from '@prisma/client'
+import { applyIsotonicMap, type IsotonicBinPoint, type IsotonicMap } from './isotonic-calibrator'
 
 const DEFAULT_B0 = -1.10
 const MIN_CALIBRATION_SAMPLE = 30
@@ -315,6 +316,7 @@ interface SegmentB0Map {
 
 let cachedWeights: CalibratedWeights | null = null
 let cachedSegmentB0s: SegmentB0Map | null = null
+let cachedIsotonicPoints: IsotonicBinPoint[] | null = null
 let cachedAt = 0
 const CACHE_TTL_MS = 60 * 60 * 1000
 
@@ -378,6 +380,9 @@ export async function getCalibratedWeights(
         w7: FEATURE_WEIGHTS.w7,
       }
 
+      const isotonicData = rawStats?.isotonicMapJson as unknown as IsotonicMap | null
+      cachedIsotonicPoints = isotonicData?.points ?? null
+
       cachedSegmentB0s = segB0s
       cachedAt = now
     } catch (err) {
@@ -405,7 +410,26 @@ export async function getCalibratedWeights(
 
 export function invalidateCalibrationCache(): void {
   cachedWeights = null
+  cachedIsotonicPoints = null
   cachedAt = 0
+}
+
+export async function calibrateAcceptProbability(
+  rawProbability: number,
+  season: number = CALIBRATION_SEASON,
+): Promise<{ calibrated: number; raw: number; isotonicApplied: boolean }> {
+  await getCalibratedWeights(season)
+
+  if (cachedIsotonicPoints && cachedIsotonicPoints.length >= 3) {
+    const calibrated = applyIsotonicMap(rawProbability, cachedIsotonicPoints)
+    return { calibrated, raw: rawProbability, isotonicApplied: true }
+  }
+
+  return { calibrated: rawProbability, raw: rawProbability, isotonicApplied: false }
+}
+
+export function getIsotonicPoints(): IsotonicBinPoint[] | null {
+  return cachedIsotonicPoints
 }
 
 export async function runFullCalibration(

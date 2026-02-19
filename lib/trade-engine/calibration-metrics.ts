@@ -17,6 +17,14 @@ export interface CalibrationHealthMetrics {
   predictionDistribution: Array<{ bucket: string; count: number }>
   totalPaired: number
   alerts: Alert[]
+  isotonic?: {
+    active: boolean
+    sampleSize: number
+    points: number
+    eceBefore: number
+    eceAfter: number
+    computedAt: string
+  }
 }
 
 export interface SegmentMetrics {
@@ -259,7 +267,27 @@ export async function computeCalibrationHealth(daysBack: number): Promise<Calibr
     }
   }
 
-  return { reliabilityCurve, ece, brierScore, predictionDistribution, totalPaired: paired.length, alerts }
+  let isotonicStatus: CalibrationHealthMetrics['isotonic'] = undefined
+  try {
+    const stats = await prisma.tradeLearningStats.findUnique({
+      where: { season: 2025 },
+      select: { isotonicMapJson: true, isotonicComputedAt: true, isotonicSampleSize: true },
+    })
+    const rawStats = stats as Record<string, unknown> | null
+    const isoMap = rawStats?.isotonicMapJson as { points?: Array<unknown>; ece?: number; eceCalibratedEstimate?: number } | null
+    if (isoMap && isoMap.points) {
+      isotonicStatus = {
+        active: true,
+        sampleSize: (rawStats?.isotonicSampleSize as number) ?? 0,
+        points: isoMap.points.length,
+        eceBefore: isoMap.ece ?? 0,
+        eceAfter: isoMap.eceCalibratedEstimate ?? 0,
+        computedAt: (rawStats?.isotonicComputedAt as Date)?.toISOString() ?? '',
+      }
+    }
+  } catch {}
+
+  return { reliabilityCurve, ece, brierScore, predictionDistribution, totalPaired: paired.length, alerts, isotonic: isotonicStatus }
 }
 
 export async function computeSegmentDrift(daysBack: number): Promise<SegmentDriftMetrics> {

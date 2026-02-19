@@ -1,6 +1,7 @@
 import { prisma } from '../prisma'
 import { Prisma } from '@prisma/client'
 import { invalidateCalibrationCache } from './accept-calibration'
+import { computeAndStoreIsotonicMap, type IsotonicMap } from './isotonic-calibrator'
 
 const DEFAULT_B0 = -1.10
 const MIN_RECALIBRATION_SAMPLE = 30
@@ -48,6 +49,12 @@ export interface RecalibrationResult {
     computed: boolean
     segmentCount: number
     entries: SegmentB0Entry[]
+  }
+  isotonic: {
+    computed: boolean
+    sampleSize: number
+    eceBefore: number | null
+    eceAfter: number | null
   }
 }
 
@@ -402,6 +409,7 @@ export async function runWeeklyRecalibration(
       return {
         shadow: { computed: false, shadowB0: null, metrics: null, promoted: false, promotedB0: null },
         segments: { computed: false, segmentCount: 0, entries: [] },
+        isotonic: { computed: false, sampleSize: 0, eceBefore: null, eceAfter: null },
       }
     }
   }
@@ -463,7 +471,13 @@ export async function runWeeklyRecalibration(
     })
   }
 
-  console.log(`[AutoRecal] Weekly recalibration complete. Shadow=${shadowMetrics?.computedB0 ?? 'none'}, promoted=${promoted}, segments=${segmentEntries.length}`)
+  const isotonicMap = await computeAndStoreIsotonicMap(season)
+
+  if (isotonicMap) {
+    invalidateCalibrationCache()
+  }
+
+  console.log(`[AutoRecal] Weekly recalibration complete. Shadow=${shadowMetrics?.computedB0 ?? 'none'}, promoted=${promoted}, segments=${segmentEntries.length}, isotonic=${isotonicMap ? `${isotonicMap.points.length}pts` : 'skipped'}`)
 
   return {
     shadow: {
@@ -477,6 +491,12 @@ export async function runWeeklyRecalibration(
       computed: segmentEntries.length > 0,
       segmentCount: segmentEntries.length,
       entries: segmentEntries,
+    },
+    isotonic: {
+      computed: isotonicMap !== null,
+      sampleSize: isotonicMap?.sampleSize ?? 0,
+      eceBefore: isotonicMap?.ece ?? null,
+      eceAfter: isotonicMap?.eceCalibratedEstimate ?? null,
     },
   }
 }

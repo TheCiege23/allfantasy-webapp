@@ -784,6 +784,9 @@ model TradeLearningStats {
   shadowB0ComputedAt     DateTime?
   shadowB0Metrics        Json?
   segmentB0s             Json?
+  isotonicMapJson        Json?
+  isotonicComputedAt     DateTime?
+  isotonicSampleSize     Int?
   lastRecalibrationAt    DateTime?
   lastCalibrated         DateTime?
   lastUpdated            DateTime @updatedAt
