@@ -205,6 +205,29 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     setIsSimulating(false)
   }
 
+  const exportImage = async () => {
+    const element = document.getElementById('draft-board')
+    if (!element) return
+    const leagueName = selectedLeague?.name || 'Mock Draft'
+    toast.info('Generating image...')
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        backgroundColor: '#0a0a0a',
+        useCORS: true,
+        logging: false,
+      })
+      const link = document.createElement('a')
+      link.download = `AllFantasy-Mock-Draft-${leagueName.replace(/\s+/g, '-')}.png`
+      link.href = canvas.toDataURL('image/png')
+      link.click()
+      toast.success('Image exported!')
+    } catch (err) {
+      console.error('[image-export]', err)
+      toast.error('Failed to generate image')
+    }
+  }
+
   const exportPDF = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -417,6 +440,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                   <Handshake className="h-3 w-3" /> {Object.keys(tradeProposals).length - dismissedProposals.size} offer{Object.keys(tradeProposals).length - dismissedProposals.size !== 1 ? 's' : ''}
                 </span>
               )}
+              <Button onClick={exportImage} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> Image</Button>
               <Button onClick={exportPDF} variant="outline" size="sm"><Download className="mr-2 h-4 w-4" /> PDF</Button>
               <Button onClick={copyShareLink} size="sm"><Link className="mr-2 h-4 w-4" /> Share</Button>
               <Button onClick={updateWeekly} variant="outline" size="sm" disabled={isSimulating || loading}><RefreshCw className="mr-2 h-4 w-4" /> Update Weekly</Button>
