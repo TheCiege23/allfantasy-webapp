@@ -33,6 +33,7 @@ import { HallOfFameSection } from "@/components/rankings/HallOfFameSection"
 import MigrationProof from "@/components/MigrationProof"
 import RivalryWeekCards from "@/components/RivalryWeekCards"
 import AIFeaturesPanel from "@/components/AIFeaturesPanel"
+import DataFreshnessBanner from "@/components/DataFreshnessBanner"
 import OverviewLanes from "@/app/af-legacy/components/OverviewLanes"
 import OverviewReportCard from "@/app/af-legacy/components/OverviewReportCard"
 import OverviewInsights from "@/app/af-legacy/components/OverviewInsights"
@@ -15361,6 +15362,13 @@ function AFLegacyContent() {
                         </p>
                       )}
                     </div>
+
+                    {/* Data Freshness Banner */}
+                    {transferPreview?.dataQuality && (
+                      <div className="mb-4">
+                        <DataFreshnessBanner dataQuality={transferPreview.dataQuality} />
+                      </div>
+                    )}
 
                     {/* Migration Proof: Before → After Split Screen */}
                     {transferPreview && (

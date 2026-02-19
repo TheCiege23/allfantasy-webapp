@@ -1,10 +1,47 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import type { RivalryWeekData, RivalryPair } from '@/lib/rivalry-engine'
+import type { RivalryWeekData, RivalryPair, RivalryEvidence } from '@/lib/rivalry-engine'
 
 function cx(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
+}
+
+const EVIDENCE_ICONS: Record<string, string> = {
+  h2h: '\u{1F4CA}',
+  trade: '\u{1F91D}',
+  record: '\u{1F3C6}',
+  matchup: '\u{26A1}',
+  streak: '\u{1F525}',
+}
+
+const EVIDENCE_CHIP_COLORS: Record<string, string> = {
+  h2h: 'bg-blue-500/10 text-blue-300 border-blue-500/15',
+  trade: 'bg-pink-500/10 text-pink-300 border-pink-500/15',
+  record: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/15',
+  matchup: 'bg-amber-500/10 text-amber-300 border-amber-500/15',
+  streak: 'bg-red-500/10 text-red-300 border-red-500/15',
+}
+
+function EvidenceChips({ evidence }: { evidence: RivalryEvidence[] }) {
+  if (!evidence || evidence.length === 0) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {evidence.map((e, i) => (
+        <span
+          key={i}
+          className={cx(
+            'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border text-[8px] font-medium',
+            EVIDENCE_CHIP_COLORS[e.type] || 'bg-white/5 text-white/40 border-white/10'
+          )}
+          title={e.detail}
+        >
+          <span className="text-[7px]">{EVIDENCE_ICONS[e.type] || '\u{1F4CC}'}</span>
+          {e.label}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 function Avatar({ src, name, size = 32 }: { src: string | null; name: string; size?: number }) {
@@ -105,6 +142,8 @@ function RivalryOfTheWeekCard({ pair, narrative }: { pair: RivalryPair; narrativ
         {narrative && (
           <p className="text-[11px] text-white/45 leading-relaxed italic text-center">{narrative}</p>
         )}
+
+        <EvidenceChips evidence={pair.evidence} />
       </button>
 
       {expanded && (
@@ -181,6 +220,8 @@ function RevengeGameCard({ pair, narrative }: { pair: RivalryPair; narrative?: s
             {winner.displayName} has won {pair.streakHolder.streak} straight meetings
           </div>
         )}
+        <EvidenceChips evidence={pair.evidence} />
+
         {narrative && (
           <p className="text-[11px] text-white/40 leading-relaxed italic">{narrative}</p>
         )}
@@ -234,6 +275,8 @@ function TradeTensionCard({ data, narrative }: { data: NonNullable<RivalryWeekDa
             <div className="text-[7px] text-white/20 uppercase tracking-wider font-semibold">H2H Meetings</div>
           </div>
         </div>
+
+        <EvidenceChips evidence={pair.evidence} />
 
         {narrative && (
           <p className="text-[11px] text-white/40 leading-relaxed italic">{narrative}</p>

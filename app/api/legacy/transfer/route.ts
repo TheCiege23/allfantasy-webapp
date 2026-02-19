@@ -219,10 +219,61 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
       }
     }) || []
 
+    const fetchedAt = Date.now()
+
     const leagueType = league.settings?.type === 2 ? 'Dynasty' : league.settings?.type === 1 ? 'Keeper' : 'Redraft'
     const ppr = league.scoring_settings?.rec || 0
     const superflex = league.roster_positions?.filter(p => p === 'SUPER_FLEX').length || 0
     const tep = league.scoring_settings?.bonus_rec_te || 0
+
+    const hasUsers = Array.isArray(users) && users.length > 0
+    const hasRosters = Array.isArray(rosters) && rosters.length > 0
+    const hasMatchups = allMatchups.length > 0
+    const hasTrades = trades.length > 0
+    const hasDraftPicks = draftPicks.length > 0
+    const hasPlayerMap = Object.keys(playerMap).length > 0
+    const hasHistory = previousSeasons.length > 0
+    const rostersWithPlayers = rosters?.filter(r => (r.players?.length || 0) > 0).length || 0
+    const rosterCoverage = hasRosters ? Math.round((rostersWithPlayers / rosters!.length) * 100) : 0
+    const matchupWeeksCovered = allMatchups.length
+    const sourcesAvailable = [hasUsers, hasRosters, hasMatchups, hasTrades, hasDraftPicks, hasPlayerMap].filter(Boolean).length
+    const sourcesTotal = 6
+    const completenessScore = Math.round(
+      (sourcesAvailable / sourcesTotal) * 50 +
+      (rosterCoverage / 100) * 25 +
+      (Math.min(matchupWeeksCovered, 17) / 17) * 25
+    )
+    const confidencePenalty =
+      (!hasRosters ? 30 : rosterCoverage < 50 ? 15 : 0) +
+      (!hasMatchups ? 20 : matchupWeeksCovered < 5 ? 10 : 0) +
+      (!hasUsers ? 10 : 0) +
+      (!hasPlayerMap ? 10 : 0)
+
+    const dataQuality = {
+      fetchedAt,
+      sources: {
+        users: hasUsers,
+        rosters: hasRosters,
+        matchups: hasMatchups,
+        trades: hasTrades,
+        draftPicks: hasDraftPicks,
+        playerMap: hasPlayerMap,
+        history: hasHistory,
+      },
+      rosterCoverage,
+      matchupWeeksCovered,
+      completenessScore: Math.max(0, Math.min(100, completenessScore)),
+      confidencePenalty: Math.min(confidencePenalty, 50),
+      tier: completenessScore >= 80 ? 'FULL' as const : completenessScore >= 50 ? 'PARTIAL' as const : 'MINIMAL' as const,
+      signals: [
+        ...(rosterCoverage < 100 ? [`${100 - rosterCoverage}% of rosters missing player data`] : []),
+        ...(!hasTrades ? ['No trade history available'] : []),
+        ...(!hasDraftPicks ? ['No draft data available'] : []),
+        ...(matchupWeeksCovered < 5 ? [`Only ${matchupWeeksCovered} weeks of matchup data`] : []),
+        ...(!hasHistory ? ['No previous season history'] : []),
+        ...(!hasPlayerMap ? ['Player name resolution unavailable'] : []),
+      ],
+    }
 
     interface StorylineV2 {
       title: string
@@ -268,23 +319,31 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/transfer", tool: "Lega
     try {
       const storylinePrompt = `You are a fantasy sports analyst creating data-backed storylines for an upcoming 2025 fantasy football season.
 
+CRITICAL GROUNDING RULES:
+- You may ONLY reference managers, records, point totals, and trades that appear in the data below.
+- Do NOT invent any stats, scores, player names, or events not present in this payload.
+- Every number you cite must come from the evidence section below.
+- If the data is thin, say so honestly — lower the confidence score rather than fabricating details.
+
 League: "${league.name}"
 Type: ${leagueType}
 Teams: ${managers.length}
 
 Managers and their records:
-${managers.map(m => `- ${m.displayName}: ${m.wins}-${m.losses}${m.ties ? `-${m.ties}` : ''} (${m.pointsFor} pts)`).join('\n')}
+${managers.map(m => `- ${m.displayName}: ${m.wins}-${m.losses}${m.ties ? `-${m.ties}` : ''} (${m.pointsFor} pts, roster: ${m.rosterSize} players)`).join('\n')}
 
 ${evidenceContext}
+
+Data quality note: ${dataQuality.completenessScore}% completeness. ${dataQuality.signals.length > 0 ? `Gaps: ${dataQuality.signals.join('; ')}` : 'All data sources available.'}
 
 Generate 3-5 compelling storylines. Each MUST be grounded in the evidence above—reference specific records, point totals, and manager names.
 
 For each storyline, return:
 - title: short catchy headline (4-8 words)
-- description: 2-3 sentences referencing real data
+- description: 2-3 sentences referencing real data from above. Do not invent statistics.
 - type: one of: rivalry, redemption, contender, underdog, dynasty, trade_war, sleeper
-- confidence: 0-100, how strongly the data supports this narrative. Use 80-95 for storylines with strong numerical evidence. Use 50-70 for projected/speculative arcs. Use 30-49 for purely hypothetical narratives.
-- evidence: array of {type, label, detail} where type is one of "record", "trade", "manager", "matchup", "trend" — label is a short tag, detail is the specific data point
+- confidence: 0-100, how strongly the data supports this narrative. Use 80-95 for storylines with strong numerical evidence. Use 50-70 for projected/speculative arcs. Use 30-49 for purely hypothetical narratives. If data quality is below 70%, cap max confidence at 75.
+- evidence: array of {type, label, detail} where type is one of "record", "trade", "manager", "matchup", "trend" — label is a short tag, detail is the specific data point from the payload above
 - nextTrigger: one sentence describing what event/result would update this storyline (e.g. "If X loses 2 more games..." or "Next trade involving Y")
 
 Return JSON: {"storylines": [...]}
@@ -307,7 +366,7 @@ Example:
           title: String(s.title || ''),
           description: String(s.description || ''),
           type: String(s.type || 'sleeper'),
-          confidence: typeof s.confidence === 'number' ? Math.max(0, Math.min(100, Math.round(s.confidence))) : 50,
+          confidence: typeof s.confidence === 'number' ? Math.max(0, Math.min(100, Math.round(s.confidence) - dataQuality.confidencePenalty)) : Math.max(10, 50 - dataQuality.confidencePenalty),
           evidence: Array.isArray(s.evidence) ? s.evidence.map((e: any) => ({
             type: String(e?.type || 'trend'),
             label: String(e?.label || ''),
@@ -410,6 +469,7 @@ Only include keys for cards that have data above. Keep each narrative under 50 w
     }
 
     const transferPreview = {
+      dataQuality,
       league: {
         id: league.league_id,
         name: league.name,

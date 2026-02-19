@@ -29,6 +29,12 @@ interface HeadToHead {
   matchups: { week: number; pts1: number; pts2: number; winner: number }[]
 }
 
+export interface RivalryEvidence {
+  type: 'h2h' | 'trade' | 'record' | 'matchup' | 'streak'
+  label: string
+  detail: string
+}
+
 export interface RivalryPair {
   team1: { rosterId: number; displayName: string; username: string; avatar: string | null; wins: number; losses: number; pointsFor: string }
   team2: { rosterId: number; displayName: string; username: string; avatar: string | null; wins: number; losses: number; pointsFor: string }
@@ -40,6 +46,7 @@ export interface RivalryPair {
   lastMatchup: { week: number; pts1: number; pts2: number; winner: number } | null
   recentLoser: number | null
   streakHolder: { rosterId: number; streak: number } | null
+  evidence: RivalryEvidence[]
 }
 
 export interface RivalryWeekData {
@@ -182,6 +189,45 @@ export function computeRivalryWeek(
         : null
       : null
 
+    const evidence: RivalryEvidence[] = []
+    evidence.push({
+      type: 'h2h',
+      label: `H2H: ${h2h.wins1}-${h2h.wins2}`,
+      detail: `${m1.displayName} and ${m2.displayName} have played ${totalGames} head-to-head games (${h2h.wins1} wins vs ${h2h.wins2} wins)`,
+    })
+    if (tradeFrictionCount > 0) {
+      evidence.push({
+        type: 'trade',
+        label: `${tradeFrictionCount} Trade${tradeFrictionCount > 1 ? 's' : ''}`,
+        detail: `${tradeFrictionCount} completed trade${tradeFrictionCount > 1 ? 's' : ''} between these managers`,
+      })
+    }
+    const winDiff = Math.abs(m1.wins - m2.wins)
+    if (winDiff <= 2) {
+      evidence.push({
+        type: 'record',
+        label: `${winDiff === 0 ? 'Tied' : `${winDiff}W gap`}`,
+        detail: `${m1.displayName} (${m1.wins}-${m1.losses}) vs ${m2.displayName} (${m2.wins}-${m2.losses}) — ${winDiff === 0 ? 'identical records' : `separated by ${winDiff} win${winDiff > 1 ? 's' : ''}`}`,
+      })
+    }
+    if (lastMatchup) {
+      const margin = Math.abs(lastMatchup.pts1 - lastMatchup.pts2)
+      evidence.push({
+        type: 'matchup',
+        label: `Wk ${lastMatchup.week}: ${margin.toFixed(1)}pt margin`,
+        detail: `Last meeting in Week ${lastMatchup.week}: ${lastMatchup.pts1.toFixed(1)} - ${lastMatchup.pts2.toFixed(1)} (${margin < 10 ? 'nailbiter' : margin < 25 ? 'competitive' : 'blowout'})`,
+      })
+    }
+    const streak = getStreak(h2h)
+    if (streak && streak.streak >= 2) {
+      const streakName = streak.rosterId === m1.rosterId ? m1.displayName : m2.displayName
+      evidence.push({
+        type: 'streak',
+        label: `${streak.streak}-game streak`,
+        detail: `${streakName} has won ${streak.streak} consecutive head-to-head meetings`,
+      })
+    }
+
     rivalries.push({
       team1: { rosterId: m1.rosterId, displayName: m1.displayName, username: m1.username, avatar: m1.avatar, wins: m1.wins, losses: m1.losses, pointsFor: m1.pointsFor },
       team2: { rosterId: m2.rosterId, displayName: m2.displayName, username: m2.username, avatar: m2.avatar, wins: m2.wins, losses: m2.losses, pointsFor: m2.pointsFor },
@@ -192,7 +238,8 @@ export function computeRivalryWeek(
       totalScore: Math.round(totalScore),
       lastMatchup,
       recentLoser,
-      streakHolder: getStreak(h2h),
+      streakHolder: streak,
+      evidence,
     })
   }
 
