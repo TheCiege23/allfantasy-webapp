@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { Send, MessageCircle, X, Flag, Smile } from 'lucide-react'
+import { Send, MessageCircle, X, Flag, Smile, Pin } from 'lucide-react'
 import { toast } from 'sonner'
 
 const EMOJIS = [
@@ -42,7 +42,7 @@ function groupReactions(reactions: Reaction[], currentUserId: string): GroupedRe
   return Array.from(map.entries()).map(([emoji, data]) => ({ emoji, ...data }))
 }
 
-export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: string; currentUserId: string }) {
+export default function LiveGameChat({ leagueId, currentUserId, isLeagueOwner = false }: { leagueId: string; currentUserId: string; isLeagueOwner?: boolean }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -173,6 +173,29 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
     } catch {}
   }
 
+  const pinMessage = async (messageId: string) => {
+    try {
+      const res = await fetch('/api/madness/pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      })
+      if (res.ok) {
+        const { isPinned } = await res.json()
+        setMessages(prev =>
+          prev.map(msg => ({
+            ...msg,
+            isPinned: msg.id === messageId ? isPinned : (isPinned ? false : msg.isPinned),
+          })),
+        )
+        toast.success(isPinned ? 'Message pinned' : 'Message unpinned')
+      } else {
+        const data = await res.json()
+        toast.error(data.error || 'Could not pin message')
+      }
+    } catch {}
+  }
+
   const reportMessage = async (messageId: string) => {
     const reason = prompt('Why are you reporting this message?\n\nOptions: spam, harassment, profanity, inappropriate, other')
     if (!reason) return
@@ -224,6 +247,20 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
         </div>
       </div>
 
+      {(() => {
+        const pinned = messages.find(m => m.isPinned)
+        if (!pinned) return null
+        return (
+          <div className="px-4 py-2 bg-amber-950/40 border-b border-amber-800/30 flex items-center gap-2">
+            <Pin className="h-3 w-3 text-amber-400 flex-shrink-0" />
+            <p className="text-xs text-amber-200 truncate flex-1">
+              <span className="font-medium text-amber-400">{pinned.user.displayName || pinned.user.username}:</span>{' '}
+              {pinned.message}
+            </p>
+          </div>
+        )
+      })()}
+
       <div ref={containerRef} className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <p className="text-gray-500 text-sm text-center mt-8">No messages yet. Say something!</p>
@@ -235,7 +272,7 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
           const initial = (displayName?.[0] || '?').toUpperCase()
 
           return (
-            <div key={msg.id} className="group">
+            <div key={msg.id} className={`group ${msg.isPinned ? 'bg-amber-950/20 -mx-4 px-4 py-1 rounded-lg border-l-2 border-amber-500/50' : ''}`}>
               <div className="flex items-start gap-3">
                 <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold ${
                   isOwn ? 'bg-cyan-700 text-white' : 'bg-gray-700 text-gray-300'
@@ -295,6 +332,16 @@ export default function LiveGameChat({ leagueId, currentUserId }: { leagueId: st
                     </PopoverContent>
                   </Popover>
 
+                  {isLeagueOwner && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => pinMessage(msg.id)}
+                      className={`h-7 w-7 transition-colors ${msg.isPinned ? 'text-amber-400 hover:text-amber-300' : 'text-gray-400 hover:text-amber-400'}`}
+                    >
+                      <Pin className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   {!isOwn && !flaggedIds.has(msg.id) && (
                     <Button
                       variant="ghost"
