@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useReactMediaRecorder } from 'react-media-recorder'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Send, ArrowLeft, Check, CheckCheck, MessageSquare, Mic, Square, Loader2 } from 'lucide-react'
+import { Send, ArrowLeft, Check, CheckCheck, MessageSquare, Mic, MicOff, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 type UserInfo = {
@@ -41,15 +42,18 @@ export default function PrivateChatClient({ currentUser, partner }: PrivateChatC
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [sendingVoice, setSendingVoice] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollRef = useRef<NodeJS.Timeout | null>(null)
 
-  const [isRecording, setIsRecording] = useState(false)
-  const [recordingTime, setRecordingTime] = useState(0)
-  const [sendingVoice, setSendingVoice] = useState(false)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const chunksRef = useRef<Blob[]>([])
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const [recording, setRecording] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+  const {
+    startRecording,
+    stopRecording,
+    mediaBlobUrl,
+  } = useReactMediaRecorder({ audio: true, blobPropertyBag: { type: 'audio/webm' } })
 
   const partnerName = partner.displayName || partner.username
   const partnerInitial = (partnerName?.[0] || '?').toUpperCase()
@@ -82,17 +86,18 @@ export default function PrivateChatClient({ currentUser, partner }: PrivateChatC
     }, 4000)
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
-      if (timerRef.current) clearInterval(timerRef.current)
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop())
-        mediaRecorderRef.current.stop()
-      }
     }
   }, [fetchMessages, markRead])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    if (mediaBlobUrl) {
+      setPreviewUrl(mediaBlobUrl)
+    }
+  }, [mediaBlobUrl])
 
   const sendMessage = async () => {
     if (!input.trim() || sending) return
@@ -121,72 +126,34 @@ export default function PrivateChatClient({ currentUser, partner }: PrivateChatC
     }
   }
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg'
-      const recorder = new MediaRecorder(stream, { mimeType })
-      chunksRef.current = []
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data)
-      }
-
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(chunksRef.current, { type: mimeType })
-        if (blob.size > 2 * 1024 * 1024) {
-          toast.error('Voice message too long (max 2MB)')
-          return
-        }
-        if (blob.size < 1000) {
-          toast.error('Voice message too short')
-          return
-        }
-        await sendVoiceMessage(blob, mimeType)
-      }
-
-      recorder.start()
-      mediaRecorderRef.current = recorder
-      setIsRecording(true)
-      setRecordingTime(0)
-      timerRef.current = setInterval(() => {
-        setRecordingTime((t) => {
-          if (t >= 59) {
-            stopRecording()
-            return t
-          }
-          return t + 1
-        })
-      }, 1000)
-    } catch {
-      toast.error('Microphone access denied')
+  const toggleRecord = () => {
+    if (recording) {
+      stopRecording()
+      setRecording(false)
+    } else {
+      startRecording()
+      setRecording(true)
     }
   }
 
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop()
-    }
-    setIsRecording(false)
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-  }
-
-  const sendVoiceMessage = async (blob: Blob, mimeType: string) => {
+  const sendVoice = async () => {
+    if (!mediaBlobUrl) return
     setSendingVoice(true)
     try {
-      const ext = mimeType.includes('webm') ? 'webm' : 'ogg'
+      const blob = await fetch(mediaBlobUrl).then((r) => r.blob())
+      if (blob.size > 2 * 1024 * 1024) {
+        toast.error('Voice message too long (max 2MB)')
+        return
+      }
       const formData = new FormData()
-      formData.append('voice', blob, `voice.${ext}`)
+      formData.append('voice', blob, 'voice.webm')
       formData.append('receiverId', partner.id)
 
       const res = await fetch('/api/dm/voice', { method: 'POST', body: formData })
       if (res.ok) {
         const data = await res.json()
         setMessages((prev) => [...prev, data.message])
+        setPreviewUrl(null)
       } else {
         const err = await res.json()
         toast.error(err.error || 'Failed to send voice')
@@ -198,10 +165,8 @@ export default function PrivateChatClient({ currentUser, partner }: PrivateChatC
     }
   }
 
-  const formatDuration = (sec: number) => {
-    const m = Math.floor(sec / 60)
-    const s = sec % 60
-    return `${m}:${s.toString().padStart(2, '0')}`
+  const discardVoice = () => {
+    setPreviewUrl(null)
   }
 
   const formatTime = (dateStr: string) => {
@@ -353,56 +318,61 @@ export default function PrivateChatClient({ currentUser, partner }: PrivateChatC
       </div>
 
       <div className="border-t border-gray-800 bg-black/60 backdrop-blur-sm p-3 sticky bottom-0">
-        <div className="max-w-2xl mx-auto flex gap-2 items-center">
-          {isRecording ? (
-            <>
-              <div className="flex-1 flex items-center gap-3 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
-                <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-red-400 text-sm font-medium">Recording {formatDuration(recordingTime)}</span>
-              </div>
-              <Button
-                onClick={stopRecording}
-                size="icon"
-                className="bg-red-600 hover:bg-red-500 text-white"
-              >
-                <Square className="h-4 w-4" />
-              </Button>
-            </>
-          ) : sendingVoice ? (
-            <>
-              <div className="flex-1 flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-lg px-3 py-2">
-                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />
-                <span className="text-gray-400 text-sm">Sending voice message...</span>
-              </div>
-            </>
+        <div className="max-w-2xl mx-auto">
+          {previewUrl ? (
+            <div className="flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-full px-4 py-2">
+              <Mic className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <audio controls src={previewUrl} className="h-8 w-48" />
+              {sendingVoice ? (
+                <Loader2 className="w-4 h-4 text-cyan-400 animate-spin flex-shrink-0" />
+              ) : (
+                <>
+                  <Button size="sm" onClick={sendVoice} className="bg-green-600 hover:bg-green-700 text-white">
+                    Send
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={discardVoice} className="text-gray-400 hover:text-white h-8 w-8">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
           ) : (
-            <>
+            <div className="flex gap-2 items-center">
               <Button
-                onClick={startRecording}
+                onClick={toggleRecord}
                 size="icon"
                 variant="ghost"
-                className="text-gray-400 hover:text-cyan-400 hover:bg-gray-800"
-                title="Record voice message"
+                className={recording ? 'text-red-500 animate-pulse hover:text-red-400 hover:bg-red-900/20' : 'text-gray-400 hover:text-cyan-400 hover:bg-gray-800'}
+                title={recording ? 'Stop recording' : 'Record voice message'}
               >
-                <Mic className="h-4 w-4" />
+                {recording ? <MicOff className="h-5 w-5" /> : <Mic className="h-4 w-4" />}
               </Button>
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                placeholder={`Message ${partnerName}...`}
-                maxLength={1000}
-                className="flex-1 bg-gray-900 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-700"
-              />
-              <Button
-                onClick={sendMessage}
-                disabled={!input.trim() || sending}
-                size="icon"
-                className="bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-40"
-              >
-                <Send className="h-4 w-4" />
-              </Button>
-            </>
+              {recording ? (
+                <div className="flex-1 flex items-center gap-3 bg-red-900/20 border border-red-800/40 rounded-lg px-3 py-2">
+                  <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-red-400 text-sm font-medium">Recording...</span>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                    placeholder={`Message ${partnerName}...`}
+                    maxLength={1000}
+                    className="flex-1 bg-gray-900 border-gray-700 text-white placeholder:text-gray-500 focus:border-cyan-700"
+                  />
+                  <Button
+                    onClick={sendMessage}
+                    disabled={!input.trim() || sending}
+                    size="icon"
+                    className="bg-cyan-600 hover:bg-cyan-500 text-white disabled:opacity-40"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
