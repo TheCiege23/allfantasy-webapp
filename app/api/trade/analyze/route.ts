@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { openaiChatJson } from '@/lib/openai-client'
 import { classifyTeam, type RosterPlayer } from '@/lib/teamClassifier'
 import { buildTradeAnalysisPrompt, type TradeAnalysisResponse } from '@/lib/prompts/tradeAnalyzer'
+import { getRollingInsights } from '@/lib/rolling-insights'
 import { prisma } from '@/lib/prisma'
 
 export async function POST(req: NextRequest) {
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { give, get, leagueId, userRoster, futurePicksCount = 0, leagueSettings = '', rollingInsights = '' } = body
+  const { give, get, leagueId, userRoster, futurePicksCount = 0, leagueSettings = '' } = body
 
   if (!give?.length || !get?.length || !leagueId || !userRoster?.length) {
     return NextResponse.json(
@@ -44,24 +45,32 @@ export async function POST(req: NextRequest) {
       futurePicksCount
     )
 
-    const giveNames = give.map((p: any) => p.name || p.playerName || 'Unknown').join(', ')
-    const getNames = get.map((p: any) => p.name || p.playerName || 'Unknown').join(', ')
+    const playerIds = [...give, ...get]
+      .map((p: any) => p.playerId || p.id)
+      .filter(Boolean)
+    const insights = playerIds.length ? await getRollingInsights(playerIds) : []
+    const insightsText = insights
+      .map(i => `${i.playerName}: ${i.insight} (${i.games} games)`)
+      .join('\n') || 'No recent performance insights.'
+
+    const giveNames = give.map((p: any) => `${p.name || p.playerName || 'Unknown'} (${p.position || p.pos || '?'})`).join(', ')
+    const getNames = get.map((p: any) => `${p.name || p.playerName || 'Unknown'} (${p.position || p.pos || '?'})`).join(', ')
 
     const prompt = buildTradeAnalysisPrompt(
       giveNames,
       getNames,
-      leagueSettings || 'Dynasty SF PPR',
+      leagueSettings || 'Superflex PPR 12-team',
       archetype,
       explanation,
       positionalNeeds,
       futurePicksCount,
-      rollingInsights
+      insightsText
     )
 
     const result = await openaiChatJson({
       messages: [{ role: 'user', content: prompt }],
-      temperature: 0.65,
-      maxTokens: 1200,
+      temperature: 0.7,
+      maxTokens: 1500,
     })
 
     if (!result.ok) {
@@ -109,7 +118,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       analysis,
-      archetypeData: { archetype, score, explanation, positionalNeeds },
+      archetypeData: { archetype, score, explanation },
+      positionalNeeds,
     })
   } catch (error: any) {
     console.error('[Trade Analyze] Error:', error)

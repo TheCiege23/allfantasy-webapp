@@ -454,4 +454,62 @@ export async function syncNFLScheduleToDb(options?: { season?: string }): Promis
   return synced;
 }
 
+export interface PlayerInsight {
+  playerName: string
+  insight: string
+  games: number
+}
+
+export async function getRollingInsights(playerIds: string[]): Promise<PlayerInsight[]> {
+  if (!playerIds.length) return []
+
+  const insights: PlayerInsight[] = []
+
+  try {
+    const season = getCurrentNFLSeason()
+
+    const statsRows = await prisma.playerSeasonStats.findMany({
+      where: {
+        sport: 'NFL',
+        playerId: { in: playerIds },
+        season,
+        seasonType: 'regular',
+      },
+      orderBy: { fetchedAt: 'desc' },
+    })
+
+    for (const row of statsRows) {
+      const stats = row.stats as Record<string, any> | null
+      if (!stats) continue
+
+      const parts: string[] = []
+
+      if (stats.passing_yards != null && stats.passing_yards > 0) {
+        parts.push(`${stats.passing_yards} pass yds, ${stats.passing_touchdowns ?? 0} TD, ${stats.interceptions ?? 0} INT`)
+      }
+      if (stats.rushing_yards != null && stats.rushing_yards > 0) {
+        parts.push(`${stats.rushing_yards} rush yds, ${stats.rushing_touchdowns ?? 0} rush TD`)
+      }
+      if (stats.receiving_yards != null && stats.receiving_yards > 0) {
+        parts.push(`${stats.receptions ?? 0} rec, ${stats.receiving_yards} rec yds, ${stats.receiving_touchdowns ?? 0} rec TD`)
+      }
+      if (stats.DK_fantasy_points_per_game != null) {
+        parts.push(`${stats.DK_fantasy_points_per_game.toFixed(1)} FPPG`)
+      }
+
+      if (parts.length) {
+        insights.push({
+          playerName: row.playerName || row.playerId,
+          insight: parts.join(' | '),
+          games: row.gamesPlayed ?? stats.games_played ?? 0,
+        })
+      }
+    }
+  } catch (err) {
+    console.warn('[getRollingInsights] Failed to fetch insights, continuing without:', err)
+  }
+
+  return insights
+}
+
 export { getCurrentNFLSeason, getAccessToken as testAuth };
