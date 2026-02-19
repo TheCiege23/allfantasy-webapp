@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
-import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search, Download, Share2, Link } from 'lucide-react';
+import { ArrowLeftRight, Plus, X, Loader2, TrendingUp, Crown, Search, Download, Share2, Link, Shield, Target, MessageSquare, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/legacy-ui';
 import { PlayerAutocomplete } from '@/components/PlayerAutocomplete';
 import { useAI } from '@/hooks/useAI';
@@ -37,6 +37,49 @@ interface TradeResult {
   recommendations?: string[];
 }
 
+interface TradeSections {
+  valueVerdict: {
+    fairnessGrade: string;
+    edge: string;
+    edgeSide: string;
+    valueDeltaPercent: number;
+    valueDeltaAbsolute: number;
+    sideATotalValue: number;
+    sideBTotalValue: number;
+    confidence: number;
+    vetoRisk: string;
+    reasons: string[];
+    warnings: string[];
+  };
+  viabilityVerdict: {
+    acceptanceLikelihood: string;
+    acceptanceScore: number;
+    partnerFit: {
+      needsAlignment: string;
+      surplusMatch: string;
+      fitScore: number;
+      details: string[];
+    };
+    timing: {
+      sideAWindow: string;
+      sideBWindow: string;
+      timingFit: string;
+      details: string[];
+    };
+    leagueActivity: string;
+    signals: string[];
+  };
+  actionPlan: {
+    bestOffer: {
+      assessment: string;
+      sendAsIs: boolean;
+      adjustmentNeeded: string | null;
+    };
+    counters: { description: string; rationale: string }[];
+    messageText: string;
+  };
+}
+
 interface PlayerValue {
   value: number;
   tier: string;
@@ -46,7 +89,7 @@ interface PlayerValue {
 }
 
 export default function DynastyTradeForm() {
-  const { callAI, loading } = useAI<{ analysis: TradeResult }>();
+  const { callAI, loading } = useAI<{ analysis: TradeResult; sections: TradeSections }>();
 
   const [teamAName, setTeamAName] = useState('Team A');
   const [teamBName, setTeamBName] = useState('Team B');
@@ -56,6 +99,7 @@ export default function DynastyTradeForm() {
   const [teamBPickInput, setTeamBPickInput] = useState('');
   const [leagueContext, setLeagueContext] = useState('12-team SF PPR dynasty');
   const [result, setResult] = useState<TradeResult | null>(null);
+  const [sections, setSections] = useState<TradeSections | null>(null);
   const [playerValues, setPlayerValues] = useState<Record<string, PlayerValue>>({});
   const [valueLookupLoading, setValueLookupLoading] = useState<string | null>(null);
 
@@ -171,6 +215,9 @@ export default function DynastyTradeForm() {
         agingConcerns: a.agingConcerns,
         recommendations: a.recommendations,
       });
+      if (data.sections) {
+        setSections(data.sections);
+      }
     }
   }
 
@@ -253,6 +300,7 @@ export default function DynastyTradeForm() {
     setTeamBName('Team B');
     setLeagueContext('12-team SF PPR dynasty');
     setResult(null);
+    setSections(null);
     setPlayerValues({});
     setValueLookupLoading(null);
     localStorage.removeItem('dynastyTrade');
@@ -452,6 +500,247 @@ export default function DynastyTradeForm() {
             </div>
           </CardContent>
         </Card>
+      ) : result && sections ? (
+        <div id="trade-result" className="space-y-6">
+          <Card className="glass-card border-purple-900/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <Shield className="h-5 w-5 text-purple-400" />
+                Value Verdict
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-xl border border-purple-500/30 bg-gradient-to-r from-purple-950/40 to-cyan-950/40 p-6">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="text-center flex-1 min-w-[120px]">
+                    <div className={`text-5xl font-bold font-mono ${
+                      sections.valueVerdict.fairnessGrade.startsWith('A') ? 'text-green-400' :
+                      sections.valueVerdict.fairnessGrade.startsWith('B') ? 'text-cyan-400' :
+                      sections.valueVerdict.fairnessGrade === 'C' ? 'text-amber-400' :
+                      'text-red-400'
+                    }`}>
+                      {sections.valueVerdict.fairnessGrade}
+                    </div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Fairness</div>
+                  </div>
+                  <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                  <div className="text-center flex-1 min-w-[120px]">
+                    <div className="text-lg font-bold text-white">{sections.valueVerdict.edge}</div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Edge</div>
+                  </div>
+                  <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                  <div className="text-center flex-1 min-w-[100px]">
+                    <div className={`text-3xl font-bold font-mono ${
+                      sections.valueVerdict.confidence >= 80 ? 'text-green-400' :
+                      sections.valueVerdict.confidence >= 60 ? 'text-cyan-400' :
+                      'text-amber-400'
+                    }`}>
+                      {sections.valueVerdict.confidence}%
+                    </div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Confidence</div>
+                  </div>
+                  <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                  <div className="text-center flex-1 min-w-[80px]">
+                    <div className={`text-3xl font-bold ${
+                      sections.valueVerdict.vetoRisk === 'None' || sections.valueVerdict.vetoRisk === 'Low' ? 'text-green-400' :
+                      sections.valueVerdict.vetoRisk === 'High' ? 'text-red-400' :
+                      'text-amber-400'
+                    }`}>
+                      {sections.valueVerdict.vetoRisk === 'None' ? 'SAFE' :
+                       sections.valueVerdict.vetoRisk === 'Low' ? 'LOW' :
+                       sections.valueVerdict.vetoRisk === 'High' ? 'HIGH' : 'MED'}
+                    </div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Veto Risk</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between text-sm text-gray-400 px-2">
+                <span>{teamAName}: <span className="text-white font-mono">{sections.valueVerdict.sideATotalValue.toLocaleString()}</span></span>
+                <span>{teamBName}: <span className="text-white font-mono">{sections.valueVerdict.sideBTotalValue.toLocaleString()}</span></span>
+              </div>
+
+              {sections.valueVerdict.reasons.length > 0 && (
+                <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <TrendingUp className="h-4 w-4 text-cyan-400" />
+                    <span className="text-sm font-semibold text-cyan-400">Key Factors</span>
+                  </div>
+                  <ul className="space-y-2">
+                    {sections.valueVerdict.reasons.map((r, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-cyan-400 shrink-0" />
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {sections.valueVerdict.warnings.length > 0 && (
+                <div className="rounded-lg border border-amber-900/30 bg-gray-900/60 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertTriangle className="h-4 w-4 text-amber-400" />
+                    <span className="text-sm font-semibold text-amber-400">Warnings</span>
+                  </div>
+                  <ul className="space-y-1">
+                    {sections.valueVerdict.warnings.filter(w => !w.startsWith('[QualityGate]')).map((w, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
+                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-cyan-900/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <Target className="h-5 w-5 text-cyan-400" />
+                Viability Verdict
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-xl border border-cyan-500/20 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 p-6">
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div className="text-center flex-1 min-w-[120px]">
+                    <div className={`text-2xl font-bold ${
+                      sections.viabilityVerdict.acceptanceLikelihood === 'Very Likely' ? 'text-green-400' :
+                      sections.viabilityVerdict.acceptanceLikelihood === 'Likely' ? 'text-cyan-400' :
+                      sections.viabilityVerdict.acceptanceLikelihood === 'Uncertain' ? 'text-amber-400' :
+                      'text-red-400'
+                    }`}>
+                      {sections.viabilityVerdict.acceptanceLikelihood}
+                    </div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Acceptance</div>
+                  </div>
+                  <div className="w-px h-12 bg-gray-700 hidden sm:block" />
+                  <div className="text-center flex-1 min-w-[100px]">
+                    <div className="text-3xl font-bold font-mono text-white">
+                      {sections.viabilityVerdict.partnerFit.fitScore}
+                    </div>
+                    <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Partner Fit</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider block mb-2">Roster Fit</span>
+                  <p className="text-sm font-medium text-white mb-1">{sections.viabilityVerdict.partnerFit.needsAlignment}</p>
+                  <p className="text-xs text-gray-400">{sections.viabilityVerdict.partnerFit.surplusMatch}</p>
+                  {sections.viabilityVerdict.partnerFit.details.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {sections.viabilityVerdict.partnerFit.details.map((d, i) => (
+                        <li key={i} className="text-xs text-gray-300 flex items-start gap-1.5">
+                          <span className="mt-1 h-1 w-1 rounded-full bg-cyan-400 shrink-0" />
+                          {d}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider block mb-2">Timing</span>
+                  <p className="text-sm font-medium text-white mb-1">{sections.viabilityVerdict.timing.timingFit}</p>
+                  {sections.viabilityVerdict.timing.details.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {sections.viabilityVerdict.timing.details.map((d, i) => (
+                        <li key={i} className="text-xs text-gray-300 flex items-start gap-1.5">
+                          <span className="mt-1 h-1 w-1 rounded-full bg-cyan-400 shrink-0" />
+                          {d}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
+              {sections.viabilityVerdict.signals.length > 0 && (
+                <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3">
+                  <span className="text-xs text-gray-400 uppercase tracking-wider block mb-2">Signals</span>
+                  <ul className="space-y-1">
+                    {sections.viabilityVerdict.signals.map((s, i) => (
+                      <li key={i} className="text-xs text-gray-300 flex items-start gap-1.5">
+                        <span className="mt-1 h-1 w-1 rounded-full bg-gray-500 shrink-0" />
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-[10px] text-gray-500 mt-2">{sections.viabilityVerdict.leagueActivity}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="glass-card border-green-900/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-3 text-xl">
+                <MessageSquare className="h-5 w-5 text-green-400" />
+                Action Plan
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className={`rounded-xl border p-5 ${
+                sections.actionPlan.bestOffer.sendAsIs
+                  ? 'border-green-500/30 bg-green-950/20'
+                  : 'border-amber-500/30 bg-amber-950/20'
+              }`}>
+                <div className="flex items-start gap-3">
+                  {sections.actionPlan.bestOffer.sendAsIs ? (
+                    <CheckCircle className="h-5 w-5 text-green-400 mt-0.5 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
+                  )}
+                  <div>
+                    <p className="text-sm font-semibold text-white mb-1">
+                      {sections.actionPlan.bestOffer.sendAsIs ? 'Ready to Send' : 'Needs Adjustment'}
+                    </p>
+                    <p className="text-sm text-gray-300">{sections.actionPlan.bestOffer.assessment}</p>
+                    {sections.actionPlan.bestOffer.adjustmentNeeded && (
+                      <p className="text-sm text-amber-300 mt-2">{sections.actionPlan.bestOffer.adjustmentNeeded}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {sections.actionPlan.counters.length > 0 && (
+                <div className="space-y-3">
+                  <span className="text-sm font-semibold text-green-400 block">Counter Proposals</span>
+                  {sections.actionPlan.counters.map((c, i) => (
+                    <div key={i} className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
+                      <p className="text-sm text-white font-medium mb-1">Option {i + 1}</p>
+                      <p className="text-sm text-gray-300">{c.description}</p>
+                      <p className="text-xs text-gray-500 mt-1">{c.rationale}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="rounded-lg border border-gray-700 bg-gray-900/60 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold text-gray-300">Suggested Message</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(sections.actionPlan.messageText);
+                      toast.success('Message copied!');
+                    }}
+                    className="text-xs text-cyan-400 hover:text-cyan-300"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <p className="text-sm text-gray-400 italic leading-relaxed">
+                  &ldquo;{sections.actionPlan.messageText}&rdquo;
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       ) : result ? (
         <Card id="trade-result" className="glass-card border-purple-900/50">
           <CardHeader>
@@ -465,89 +754,24 @@ export default function DynastyTradeForm() {
               <div className="text-center">
                 <p className="text-sm text-gray-400 mb-2 uppercase tracking-wider">Winner</p>
                 <p className="text-4xl font-bold text-white mb-4">{result.winner}</p>
-                {result.valueDelta && (
-                  <p className="text-lg text-gray-300">{result.valueDelta}</p>
-                )}
               </div>
             </div>
-
-            <div className="flex justify-center gap-8 sm:gap-12 text-center py-2">
+            <div className="flex justify-center gap-8 text-center py-2">
               <div>
-                <div className={`text-4xl sm:text-5xl font-bold font-mono ${
+                <div className={`text-4xl font-bold font-mono ${
                   result.confidence >= 80 ? 'text-green-400' :
-                  result.confidence >= 60 ? 'text-cyan-400' :
-                  'text-amber-400'
-                }`}>
-                  {result.confidence}%
-                </div>
-                <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">AI Confidence</div>
+                  result.confidence >= 60 ? 'text-cyan-400' : 'text-amber-400'
+                }`}>{result.confidence}%</div>
+                <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-1">Confidence</div>
               </div>
-              {result.vetoRisk && (
-                <>
-                  <div className="w-px bg-gray-800" />
-                  <div>
-                    <div className={`text-4xl sm:text-5xl font-bold ${
-                      result.vetoRisk.toLowerCase().includes('low') ? 'text-green-400' :
-                      result.vetoRisk.toLowerCase().includes('high') ? 'text-red-400' :
-                      'text-amber-400'
-                    }`}>
-                      {result.vetoRisk.toLowerCase().includes('low') ? 'LOW' :
-                       result.vetoRisk.toLowerCase().includes('high') ? 'HIGH' : 'MED'}
-                    </div>
-                    <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Veto Risk</div>
-                  </div>
-                </>
-              )}
-              {result.dynastyVerdict && (
-                <>
-                  <div className="w-px bg-gray-800" />
-                  <div className="max-w-[140px]">
-                    <div className="text-lg sm:text-xl font-bold text-purple-400">{result.dynastyVerdict}</div>
-                    <div className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider mt-1">Dynasty Verdict</div>
-                  </div>
-                </>
-              )}
             </div>
-
             {result.factors.length > 0 && (
               <div className="rounded-lg border border-cyan-900/30 bg-gray-900/60 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <TrendingUp className="h-4 w-4 text-cyan-400" />
-                  <span className="text-sm font-semibold text-cyan-400">Key Factors</span>
-                </div>
                 <ul className="space-y-2">
-                  {result.factors.map((factor, i) => (
+                  {result.factors.map((f, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
                       <span className="mt-1 h-1.5 w-1.5 rounded-full bg-cyan-400 shrink-0" />
-                      {factor}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.agingConcerns && result.agingConcerns.length > 0 && (
-              <div className="rounded-lg border border-amber-900/30 bg-gray-900/60 p-4">
-                <span className="text-sm font-semibold text-amber-400 mb-2 block">Aging Concerns</span>
-                <ul className="space-y-1">
-                  {result.agingConcerns.map((concern, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-400 shrink-0" />
-                      {concern}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {result.recommendations && result.recommendations.length > 0 && (
-              <div className="rounded-lg border border-green-900/30 bg-gray-900/60 p-4">
-                <span className="text-sm font-semibold text-green-400 mb-2 block">Recommendations</span>
-                <ul className="space-y-1">
-                  {result.recommendations.map((rec, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-green-400 shrink-0" />
-                      {rec}
+                      {f}
                     </li>
                   ))}
                 </ul>

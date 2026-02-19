@@ -11,6 +11,7 @@ import {
   runPeerReviewAnalysis,
 } from '@/lib/trade-engine/dual-brain-trade-analyzer';
 import { runQualityGate } from '@/lib/trade-engine/quality-gate';
+import { formatTradeResponse } from '@/lib/trade-engine/trade-response-formatter';
 import type { TradeDecisionContextV1 } from '@/lib/trade-engine/trade-decision-context';
 
 function parseLeagueContext(raw: string | undefined): LeagueContextInput {
@@ -101,8 +102,10 @@ export async function POST(req: Request) {
     }
 
     const verdictToWinner = consensus.verdict === 'Disagreement' ? 'Even' as const : consensus.verdict
+    const sections = formatTradeResponse(consensus, tradeContext, gate)
 
     return NextResponse.json({
+      sections,
       analysis: {
         winner: verdictToWinner,
         verdict: consensus.verdict,
