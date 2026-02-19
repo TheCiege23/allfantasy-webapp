@@ -6,6 +6,9 @@ type TradeFilters = {
   archetypeFit: string;
   riskLevel: string;
   includePicks: boolean;
+  minAge: number;
+  maxAge: number;
+  avoidByeWeek: boolean;
   preset: string;
 };
 
@@ -165,9 +168,10 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
   const [waiverFilter, setWaiverFilter] = useState('all');
   const [waiverPriority, setWaiverPriority] = useState('immediate');
+  const filterStorageKey = `tradeAnalyzerFilters_${selectedLeagueId || 'default'}`;
   const [filters, setFilters] = useState<TradeFilters>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('tradeAnalyzerFilters');
+      const saved = localStorage.getItem(filterStorageKey);
       if (saved) {
         try { return JSON.parse(saved); } catch {}
       }
@@ -178,6 +182,9 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
       archetypeFit: 'all',
       riskLevel: 'all',
       includePicks: true,
+      minAge: 21,
+      maxAge: 35,
+      avoidByeWeek: false,
       preset: 'none',
     };
   });
@@ -185,8 +192,28 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
-    localStorage.setItem('tradeAnalyzerFilters', JSON.stringify(filters));
-  }, [filters]);
+    localStorage.setItem(filterStorageKey, JSON.stringify(filters));
+  }, [filters, filterStorageKey]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(filterStorageKey);
+      if (saved) {
+        try { setFilters(JSON.parse(saved)); return; } catch {}
+      }
+      setFilters({
+        position: 'all',
+        valueDelta: 'all',
+        archetypeFit: 'all',
+        riskLevel: 'all',
+        includePicks: true,
+        minAge: 21,
+        maxAge: 35,
+        avoidByeWeek: false,
+        preset: 'none',
+      });
+    }
+  }, [filterStorageKey]);
 
   const filteredTrades = trades.filter(trade => {
     if (filters.position !== 'all' && filters.position !== 'picks') {
@@ -198,6 +225,12 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
     if (filters.archetypeFit !== 'all' && trade.analysis?.archetypeFit !== filters.archetypeFit) return false;
     if (filters.riskLevel !== 'all' && trade.analysis?.riskLevel !== filters.riskLevel) return false;
     if (!filters.includePicks && trade.hasPicks) return false;
+    const allPlayers = [...(trade.give || []), ...(trade.get || [])];
+    const playerAges = allPlayers.filter((p: any) => p.age).map((p: any) => p.age);
+    if (playerAges.length > 0) {
+      if (playerAges.some((age: number) => age < filters.minAge || age > filters.maxAge)) return false;
+    }
+    if (filters.avoidByeWeek && trade.hasByeWeekConflict) return false;
     return true;
   });
 
@@ -674,6 +707,9 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                         archetypeFit: 'all',
                         riskLevel: 'all',
                         includePicks: true,
+                        minAge: 21,
+                        maxAge: 35,
+                        avoidByeWeek: false,
                         preset: 'none',
                       })}
                       className="border-red-600/50 text-red-300 hover:bg-red-950/40"
@@ -688,6 +724,9 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                         filters.archetypeFit !== 'all',
                         filters.riskLevel !== 'all',
                         !filters.includePicks,
+                        filters.minAge !== 21,
+                        filters.maxAge !== 35,
+                        filters.avoidByeWeek,
                       ].filter(Boolean).length;
 
                       return count > 0 ? (
@@ -698,6 +737,38 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
                     })()}
                   </div>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-6 mt-4 pt-4 border-t border-cyan-900/30">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm text-gray-400">Age Range:</label>
+                  <input
+                    type="number"
+                    min={18}
+                    max={filters.maxAge}
+                    value={filters.minAge}
+                    onChange={e => setFilters(prev => ({ ...prev, minAge: Number(e.target.value) }))}
+                    className="w-16 bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-2 py-1.5 text-white text-center text-sm"
+                  />
+                  <span className="text-gray-500">–</span>
+                  <input
+                    type="number"
+                    min={filters.minAge}
+                    max={45}
+                    value={filters.maxAge}
+                    onChange={e => setFilters(prev => ({ ...prev, maxAge: Number(e.target.value) }))}
+                    className="w-16 bg-[#0f0a24] border border-cyan-800/50 rounded-lg px-2 py-1.5 text-white text-center text-sm"
+                  />
+                </div>
+
+                <Button
+                  variant={filters.avoidByeWeek ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFilters(prev => ({ ...prev, avoidByeWeek: !prev.avoidByeWeek }))}
+                  className={filters.avoidByeWeek ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                >
+                  {filters.avoidByeWeek ? 'Avoiding Bye Conflicts \u2713' : 'Bye Week Filter'}
+                </Button>
               </div>
             </div>
 
