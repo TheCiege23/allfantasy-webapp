@@ -35,7 +35,7 @@ export async function GET(
         entryId: e.id,
         entryName: e.name,
         ownerName: e.user?.displayName ?? e.user?.email ?? "Unknown",
-        points: scoreByEntry.get(e.id) ?? 0,
+        points: Number(scoreByEntry.get(e.id) ?? 0),
       }))
       .sort((a, b) => b.points - a.points)
 
