@@ -1,29 +1,48 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAI } from '@/hooks/useAI';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 
-type Suggestion = {
-  playerName: string;
-  position: string;
-  team: string;
-  reason: string;
-  priority: number;
-};
+type Suggestion = { playerName: string; position: string; team: string; reason: string; priority: number };
+type League = { id: string; name: string; platform?: string; scoring?: string };
 
 export default function WaiverAISuggestions() {
   const { callAI, loading } = useAI<{ suggestions: Suggestion[] }>();
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [leagueId, setLeagueId] = useState('');
+  const [rosterWeakness, setRosterWeakness] = useState('auto');
+  const [leagues, setLeagues] = useState<League[]>([]);
+  const [loadingLeagues, setLoadingLeagues] = useState(true);
+
+  useEffect(() => {
+    async function fetchLeagues() {
+      try {
+        const res = await fetch('/api/league/list');
+        if (res.ok) {
+          const data = await res.json();
+          setLeagues(data.leagues || []);
+        }
+      } catch {
+      } finally {
+        setLoadingLeagues(false);
+      }
+    }
+    fetchLeagues();
+  }, []);
 
   const generateSuggestions = async () => {
-    if (!leagueId) return toast.error('Select a league first');
+    if (!leagueId) return toast.error('Select a league');
 
-    const { data, error } = await callAI(
+    const { data } = await callAI(
       '/api/waiver-ai-suggest',
-      { leagueId },
+      {
+        leagueId,
+        rosterWeakness: rosterWeakness === 'auto' ? undefined : rosterWeakness,
+      },
       { successMessage: 'Waiver suggestions generated!' }
     );
 
@@ -34,32 +53,67 @@ export default function WaiverAISuggestions() {
 
   return (
     <div className="space-y-8">
-      <div className="flex gap-4">
-        <input
-          type="text"
-          placeholder="Your League ID"
-          value={leagueId}
-          onChange={(e) => setLeagueId(e.target.value)}
-          className="flex-1 bg-gray-950 border border-cyan-800 rounded px-4 py-2 text-white placeholder:text-gray-500 focus:outline-none focus:border-cyan-500"
-        />
-        <Button onClick={generateSuggestions} disabled={loading} className="bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
-          {loading ? 'Analyzing...' : 'Get AI Waiver Suggestions'}
-        </Button>
+      <div className="grid md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-2 text-gray-300">League</label>
+          <Select value={leagueId} onValueChange={setLeagueId}>
+            <SelectTrigger className="bg-gray-950 border-cyan-800">
+              <SelectValue placeholder={loadingLeagues ? 'Loading leagues...' : 'Select League'} />
+            </SelectTrigger>
+            <SelectContent>
+              {leagues.map((lg) => (
+                <SelectItem key={lg.id} value={lg.id}>
+                  {lg.name || 'Unnamed League'}{lg.platform ? ` (${lg.platform})` : ''}
+                </SelectItem>
+              ))}
+              {leagues.length === 0 && !loadingLeagues && (
+                <SelectItem value="_none" disabled>No leagues found - import one first</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-2 text-gray-300">Focus Position</label>
+          <Select value={rosterWeakness} onValueChange={setRosterWeakness}>
+            <SelectTrigger className="bg-gray-950 border-purple-800">
+              <SelectValue placeholder="Auto-detect weak spots" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">Auto (from roster)</SelectItem>
+              <SelectItem value="QB">QB</SelectItem>
+              <SelectItem value="RB">RB</SelectItem>
+              <SelectItem value="WR">WR</SelectItem>
+              <SelectItem value="TE">TE</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-end">
+          <Button
+            onClick={generateSuggestions}
+            disabled={loading || !leagueId}
+            className="w-full h-10 bg-gradient-to-r from-cyan-600 to-purple-600 hover:from-cyan-700 hover:to-purple-700"
+          >
+            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {loading ? 'Analyzing...' : 'Generate Suggestions'}
+          </Button>
+        </div>
       </div>
 
       {suggestions.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {suggestions.map((s, i) => (
-            <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-xl">
-                  {s.playerName} ({s.position} - {s.team})
+            <Card key={i} className="border-purple-900/40 bg-black/50 backdrop-blur-sm hover:border-purple-500/60 transition-colors">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">
+                  {s.playerName} <span className="text-gray-400">({s.position} - {s.team})</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-gray-300 mb-4">{s.reason}</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-400">Priority:</span>
+                <p className="text-gray-300 mb-4 text-sm">{s.reason}</p>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-400">Priority</span>
                   <span className="font-bold text-cyan-400">{s.priority}/10</span>
                 </div>
               </CardContent>
@@ -67,8 +121,8 @@ export default function WaiverAISuggestions() {
           ))}
         </div>
       ) : (
-        <div className="text-center text-gray-500 py-12">
-          Click the button to get personalized waiver wire targets based on your roster, league scoring, and recent trends.
+        <div className="text-center py-16 text-gray-500 border border-dashed border-gray-700 rounded-2xl">
+          Select a league and generate suggestions to see targeted waiver wire adds based on your roster needs.
         </div>
       )}
     </div>

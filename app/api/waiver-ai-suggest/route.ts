@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 const requestSchema = z.object({
   leagueId: z.string().min(1),
+  rosterWeakness: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'League ID is required' }, { status: 400 });
   }
 
-  const { leagueId } = parsed.data;
+  const { leagueId, rosterWeakness } = parsed.data;
 
   try {
     const league = await (prisma as any).league.findFirst({
@@ -62,10 +63,12 @@ export async function POST(req: Request) {
 
     const systemPrompt = `You are an expert fantasy football waiver wire analyst. Analyze the user's league and team to suggest the best available waiver wire pickups. Focus on players likely to be on waivers (not stars). Consider recent trends, matchups, injuries, and roster needs. Return ONLY valid JSON.`;
 
+    const positionFocus = rosterWeakness ? `\nFOCUS: Prioritize ${rosterWeakness} suggestions - the user specifically needs help at this position.` : '';
+
     const userPrompt = `Based on this league and team context, suggest 5-8 waiver wire targets.
 
 ${leagueContext}
-${rosterSummary}
+${rosterSummary}${positionFocus}
 
 Return JSON:
 {
