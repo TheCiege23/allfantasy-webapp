@@ -153,8 +153,12 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
                     {[
                       { href: '/af-legacy/pulse', label: 'League Pulse' },
                       { href: '/trade-finder', label: 'Trade Finder' },
+                      { href: '/player-finder', label: 'Player Finder' },
                       { href: '/waiver-ai', label: 'Waiver AI' },
                       { href: '/rankings', label: 'Dynasty Rankings' },
+                      { href: '/compare', label: 'Manager Compare' },
+                      { href: '/share', label: 'Share Generator' },
+                      { href: '/strategy', label: 'Season Strategy' },
                       { href: '/dynasty-trade-analyzer', label: 'Trade Analyzer' },
                       { href: '/dashboard', label: 'Legacy Dashboard' },
                     ].map((tool) => (
