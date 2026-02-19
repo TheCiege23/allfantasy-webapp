@@ -149,6 +149,8 @@ const PARTICLES = [
 ];
 
 export default function AIStrategyDashboard({ userId }: { userId: string }) {
+  const [availableLeagues, setAvailableLeagues] = useState<Array<{ id: string; platformLeagueId?: string; name?: string; platform?: string }>>([]);
+  const [leaguesLoading, setLeaguesLoading] = useState(true);
   const [strategy, setStrategy] = useState<StrategyResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [sectionLoading, setSectionLoading] = useState<string | null>(null);
@@ -190,6 +192,21 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
   });
   const [trades, setTrades] = useState<any[]>([]);
   const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    fetch('/api/league/list')
+      .then(r => r.json())
+      .then(data => {
+        const leagueList = (data?.leagues || []) as Array<{ id: string; platformLeagueId?: string; name?: string; platform?: string }>;
+        setAvailableLeagues(leagueList);
+        if (!selectedLeagueId && leagueList.length > 0) {
+          const preferred = leagueList.find(l => l.platformLeagueId)?.platformLeagueId || leagueList[0].platformLeagueId || leagueList[0].id;
+          if (preferred) setSelectedLeagueId(preferred);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLeaguesLoading(false));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(filterStorageKey, JSON.stringify(filters));
@@ -486,13 +503,26 @@ export default function AIStrategyDashboard({ userId }: { userId: string }) {
 
       <div className="relative z-10 space-y-8 p-4 md:p-8">
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-        <input
-          type="text"
-          placeholder="Enter your League ID"
-          value={selectedLeagueId}
-          onChange={(e) => setSelectedLeagueId(e.target.value)}
-          className="flex-1 bg-[#1a1238]/80 border border-cyan-900/40 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-cyan-500 focus:outline-none"
-        />
+        <div className="flex-1 space-y-2">
+          <select
+            value={selectedLeagueId}
+            onChange={(e) => setSelectedLeagueId(e.target.value)}
+            className="w-full bg-[#1a1238]/80 border border-cyan-900/40 rounded-xl px-4 py-3 text-white focus:border-cyan-500 focus:outline-none"
+          >
+            <option value="">Select a synced league</option>
+            {availableLeagues.map((league) => {
+              const value = league.platformLeagueId || league.id;
+              return (
+                <option key={league.id} value={value}>
+                  {league.name || value} {league.platform ? `(${league.platform})` : ''}
+                </option>
+              );
+            })}
+          </select>
+          {!leaguesLoading && availableLeagues.length === 0 && (
+            <p className="text-xs text-amber-300">No synced leagues found. Import a league first, then generate your report.</p>
+          )}
+        </div>
         <div className="flex gap-3">
           <Button
             onClick={handleGenerate}

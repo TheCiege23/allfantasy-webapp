@@ -11,6 +11,7 @@ import {
   tabContentVariants,
 } from '@/components/motion/variants'
 import { useState } from 'react'
+import Link from 'next/link'
 import { AFBrandingFooter } from '@/components/branding/AFWatermark'
 
 interface LegacyHubClientProps {
@@ -59,8 +60,8 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
               AI Strategy
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
             </TabsTrigger>
-            <TabsTrigger value="tools" disabled className="text-base md:text-lg opacity-50">
-              More Tools (soon)
+            <TabsTrigger value="tools" className="text-base md:text-lg">
+              More Tools
             </TabsTrigger>
           </TabsList>
 
@@ -100,10 +101,13 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
                 <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-2xl shadow-purple-950/20">
                   <CardHeader>
                     <CardTitle className="text-3xl">Dynasty Rankings</CardTitle>
-                    <CardDescription>Coming soon — stacked positional bars, AI power scores, tier badges.</CardDescription>
+                    <CardDescription>Open the full rankings workspace with scorecards, tiers, and history.</CardDescription>
                   </CardHeader>
-                  <CardContent className="min-h-[400px] flex items-center justify-center text-gray-400 text-xl">
-                    Feature in active development — check back soon!
+                  <CardContent className="min-h-[220px] flex flex-col items-center justify-center gap-4 text-gray-300 text-center">
+                    <p className="text-lg">Your rankings tools are live in the dedicated Rankings page.</p>
+                    <Link href="/rankings" className="rounded-lg px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 font-semibold hover:opacity-90 transition-opacity">
+                      Open Rankings
+                    </Link>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -120,10 +124,45 @@ export default function LegacyHubClient({ userId }: LegacyHubClientProps) {
                 <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-2xl shadow-purple-950/20">
                   <CardHeader>
                     <CardTitle className="text-3xl">Dynasty Trade Analyzer</CardTitle>
-                    <CardDescription>Multi-player + picks, value deltas, confidence meter, counter-offers.</CardDescription>
+                    <CardDescription>Analyze multi-player deals, picks, confidence, and counters.</CardDescription>
                   </CardHeader>
-                  <CardContent className="min-h-[400px] flex items-center justify-center text-gray-400 text-xl">
-                    Ready for testing — link coming in next update.
+                  <CardContent className="min-h-[220px] flex flex-col items-center justify-center gap-4 text-gray-300 text-center">
+                    <p className="text-lg">The AI trade analyzer is available now.</p>
+                    <Link href="/dynasty-trade-analyzer" className="rounded-lg px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-600 font-semibold hover:opacity-90 transition-opacity">
+                      Open Trade Analyzer
+                    </Link>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+
+            {activeTab === 'tools' && (
+              <motion.div
+                key="tools"
+                variants={tabContentVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+              >
+                <Card className="bg-[#0f0a24]/80 border-cyan-900/30 backdrop-blur-sm shadow-2xl shadow-purple-950/20">
+                  <CardHeader>
+                    <CardTitle className="text-3xl">More Legacy Tools</CardTitle>
+                    <CardDescription>Quick links to the rest of your legacy and dynasty toolkit.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {[
+                      { href: '/af-legacy/pulse', label: 'League Pulse' },
+                      { href: '/trade-finder', label: 'Trade Finder' },
+                      { href: '/waiver-ai', label: 'Waiver AI' },
+                      { href: '/rankings', label: 'Dynasty Rankings' },
+                      { href: '/dynasty-trade-analyzer', label: 'Trade Analyzer' },
+                      { href: '/dashboard', label: 'Legacy Dashboard' },
+                    ].map((tool) => (
+                      <Link key={tool.href} href={tool.href} className="rounded-xl border border-white/10 bg-white/5 p-4 hover:border-cyan-500/40 hover:bg-cyan-500/10 transition-colors">
+                        <div className="font-semibold text-lg text-white">{tool.label}</div>
+                        <div className="text-sm text-gray-400 mt-1">Open tool</div>
+                      </Link>
+                    ))}
                   </CardContent>
                 </Card>
               </motion.div>
