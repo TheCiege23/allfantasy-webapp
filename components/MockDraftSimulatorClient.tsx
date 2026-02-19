@@ -266,57 +266,44 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   }
 
 
-  const handleAcceptTrade = async (pickNumber: number) => {
+  const handleTradeAction = async (pickNumber: number, action: 'accept' | 'reject') => {
     setIsTrading(true)
-    toast.info('Executing trade...')
+    if (action === 'accept') toast.info('Executing trade...')
 
     try {
       const { data } = await callAI('/api/mock-draft/trade-action', {
         leagueId: selectedLeagueId,
         pickNumber,
-        action: 'accept',
+        action,
       })
 
-      if (data?.updatedDraft) {
+      if (action === 'accept' && data?.updatedDraft) {
         setDraftResults(data.updatedDraft)
         setCurrentDraftId((data as any).draftId || null)
         setOnClockPick(null)
-        setRoundNeeds({})
         setTradeProposals({})
         setDismissedProposals(new Set())
         toast.success('Trade accepted! Board updated.')
-      }
-    } catch (err: any) {
-      console.error('[accept-trade]', err)
-      toast.error(err.message || 'Failed to execute trade')
-    }
-    setIsTrading(false)
-  }
-
-  const handleRejectTrade = async (pickNumber: number) => {
-    try {
-      const { data } = await callAI('/api/mock-draft/trade-action', {
-        leagueId: selectedLeagueId,
-        pickNumber,
-        action: 'reject',
-      })
-
-      setTradeProposals(prev => {
-        const updated = { ...prev }
-        delete updated[pickNumber]
-        return updated
-      })
-      setDismissedProposals(prev => new Set([...prev, pickNumber]))
-
-      if (data?.updatedDraft) {
-        setDraftResults(data.updatedDraft)
+      } else {
+        setTradeProposals(prev => {
+          const updated = { ...prev }
+          delete updated[pickNumber]
+          return updated
+        })
+        setDismissedProposals(prev => new Set([...prev, pickNumber]))
+        if (data?.updatedDraft) setDraftResults(data.updatedDraft)
         toast.info('Trade rejected. Continuing normal draft.')
       }
     } catch (err: any) {
-      console.error('[reject-trade]', err)
-      setDismissedProposals(prev => new Set([...prev, pickNumber]))
-      toast.info('Trade rejected. Continuing normal draft.')
+      console.error(`[${action}-trade]`, err)
+      if (action === 'accept') {
+        toast.error(err.message || 'Failed to execute trade')
+      } else {
+        setDismissedProposals(prev => new Set([...prev, pickNumber]))
+        toast.info('Trade rejected. Continuing normal draft.')
+      }
     }
+    setIsTrading(false)
   }
 
   const copyShareLink = async () => {
@@ -592,47 +579,40 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                           )}
 
                           {pick.isUser && tradeProposals[pick.overall] && !dismissedProposals.has(pick.overall) && (
-                            <div className="mt-4 p-4 bg-gradient-to-br from-purple-950/60 to-black/60 border border-purple-500/40 rounded-xl" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <Handshake className="h-4 w-4 text-purple-400" />
-                                <span className="text-sm font-medium text-purple-300">
-                                  Trade from {tradeProposals[pick.overall].fromTeam}
-                                </span>
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              className="mt-4 p-5 bg-gradient-to-br from-purple-950/70 to-black/70 border border-purple-500/50 rounded-xl overflow-hidden"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="text-sm font-medium text-purple-300 mb-3">
+                                Trade Proposal from {tradeProposals[pick.overall].fromTeam}
                               </div>
-                              <div className="text-xs text-gray-300 mb-2 space-y-1">
-                                <div className="flex items-center gap-1">
-                                  <span className="text-emerald-400 font-medium">You get:</span>
-                                  <span>{tradeProposals[pick.overall].theyGive}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <span className="text-red-400 font-medium">You give:</span>
-                                  <span>{tradeProposals[pick.overall].youGive}</span>
-                                </div>
+                              <div className="text-sm text-gray-300 mb-4">
+                                They offer: <span className="font-medium text-green-300">{tradeProposals[pick.overall].theyGive}</span>
+                                <br />
+                                For your: <span className="font-medium text-red-300">{tradeProposals[pick.overall].youGive}</span>
                               </div>
-                              {tradeProposals[pick.overall].reason && (
-                                <p className="text-[10px] text-gray-500 mb-3 italic">{tradeProposals[pick.overall].reason}</p>
-                              )}
-                              <div className="flex gap-2">
+                              <div className="flex gap-3">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleRejectTrade(pick.overall)}
+                                  onClick={() => handleTradeAction(pick.overall, 'reject')}
                                   disabled={isTrading}
-                                  className="flex-1 border-red-500/50 text-red-400 hover:bg-red-950/40 text-xs h-8"
+                                  className="flex-1 border-red-500/50 text-red-400 hover:bg-red-950/40"
                                 >
-                                  <X className="mr-1 h-3 w-3" /> Reject
+                                  Reject
                                 </Button>
                                 <Button
                                   size="sm"
-                                  onClick={() => handleAcceptTrade(pick.overall)}
+                                  onClick={() => handleTradeAction(pick.overall, 'accept')}
                                   disabled={isTrading}
-                                  className="flex-1 bg-green-600 hover:bg-green-700 text-xs h-8"
+                                  className="flex-1 bg-green-600 hover:bg-green-700"
                                 >
-                                  {isTrading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Check className="mr-1 h-3 w-3" />}
-                                  Accept
+                                  Accept Trade
                                 </Button>
                               </div>
-                            </div>
+                            </motion.div>
                           )}
                         </motion.div>
                       ))}
