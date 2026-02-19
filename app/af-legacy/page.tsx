@@ -4,9 +4,9 @@ import { authOptions } from '@/lib/auth'
 import LegacyHubClient from '@/components/legacy/LegacyHubClient'
 
 export default async function LegacyHubPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession(authOptions) as { user?: { id?: string; email?: string | null; name?: string | null } } | null
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     redirect(`/login?next=${encodeURIComponent('/af-legacy')}`)
   }
 
