@@ -440,28 +440,23 @@ html[data-mode="light"] .via-white\/10 { --tw-gradient-stops: var(--tw-gradient-
 }
 
 @keyframes float-slow {
-  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.4; }
-  25% { transform: translateY(-30px) translateX(10px); opacity: 0.8; }
-  50% { transform: translateY(-15px) translateX(-8px); opacity: 0.5; }
-  75% { transform: translateY(-40px) translateX(15px); opacity: 0.7; }
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-40px) translateX(20px); }
 }
 @keyframes float-medium {
-  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.3; }
-  33% { transform: translateY(-25px) translateX(-12px); opacity: 0.7; }
-  66% { transform: translateY(-45px) translateX(8px); opacity: 0.5; }
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-60px) translateX(-30px); }
 }
 @keyframes float-fast {
-  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.5; }
-  50% { transform: translateY(-20px) translateX(6px); opacity: 0.9; }
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-80px) translateX(40px); }
 }
 @keyframes gradient-slow {
-  0%, 100% { background-position: 0% 50%; }
+  0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
-.animate-float-slow { animation: float-slow 8s ease-in-out infinite; }
-.animate-float-medium { animation: float-medium 6s ease-in-out infinite; }
-.animate-float-fast { animation: float-fast 4s ease-in-out infinite; }
-.animate-gradient-slow {
-  background-size: 200% 200%;
-  animation: gradient-slow 15s ease infinite;
-}
+.animate-float-slow { animation: float-slow 18s infinite ease-in-out; }
+.animate-float-medium { animation: float-medium 14s infinite ease-in-out; }
+.animate-float-fast { animation: float-fast 10s infinite ease-in-out; }
+.animate-gradient-slow { animation: gradient-slow 25s ease infinite; background-size: 400% 400%; }
