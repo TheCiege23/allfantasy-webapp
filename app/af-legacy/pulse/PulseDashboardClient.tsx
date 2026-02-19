@@ -41,7 +41,7 @@ export default function PulseDashboardClient({ userId }: { userId: string }) {
   const [pulseLoading, setPulseLoading] = useState(false);
 
   useEffect(() => {
-    fetch('/api/leagues')
+    fetch('/api/league/list')
       .then(r => r.json())
       .then(data => {
         const leagueList = data.leagues || [];
