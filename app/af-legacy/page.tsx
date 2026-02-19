@@ -40,6 +40,7 @@ import type { GuardianEvaluationData } from "@/components/DecisionGuardianModal"
 import AcceptanceMeter from "@/components/AcceptanceMeter"
 import { useAI } from "@/hooks/useAI"
 import type { AcceptanceModelData } from "@/components/AcceptanceMeter"
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import BottomTabBar from "@/components/mobile/BottomTabBar"
 import type { MainTab } from "@/components/mobile/BottomTabBar"
 import SubTabNav from "@/components/mobile/SubTabNav"
@@ -6256,186 +6257,34 @@ function AFLegacyContent() {
                   </div>
                 )}
 
-                {/* Desktop Tab Navigation - 5 Primary + More */}
+                {/* Desktop Tab Navigation */}
                 <div className="mb-6 relative z-30 hidden lg:block">
-                  {(() => {
-                    const primaryTabIds: Tab[] = ['overview', 'trade', 'waiver', 'chat', 'transfer']
-                    const moreTabIds: Tab[] = ['finder', 'player-finder', 'rankings', 'pulse', 'compare', 'share', 'strategy']
-                    const primaryTabs = tabs.filter(t => primaryTabIds.includes(t.id))
-                    const moreTabs = tabs.filter(t => moreTabIds.includes(t.id))
-                    const isMoreActive = moreTabIds.includes(activeTab)
-                    const activeMoreTab = moreTabs.find(t => t.id === activeTab)
-                    
-                    const tabLabels: Record<string, string> = {
-                      'overview': 'Overview',
-                      'trade': 'AI Trade Hub',
-                      'waiver': 'Waiver AI',
-                      'chat': 'AI Chat',
-                      'transfer': 'Transfer',
-                    }
-                    
-                    return (
-                      <div className="relative">
-                        <div className="absolute left-0 top-0 bottom-0 w-6 sm:w-8 bg-gradient-to-r from-slate-950/80 to-transparent z-10 pointer-events-none lg:opacity-50" />
-                        <div className="absolute right-0 top-0 bottom-0 w-6 sm:w-8 bg-gradient-to-l from-slate-950/80 to-transparent z-10 pointer-events-none lg:opacity-50" />
-                        
-                        <div className="flex flex-nowrap overflow-x-auto items-center gap-1.5 sm:gap-2 pb-1 -mb-1 scrollbar-hide px-2 sm:px-0">
-                        {primaryTabs.map((tab) => {
-                          const isActive = activeTab === tab.id
-                          const displayLabel = tabLabels[tab.id] || tab.label
-                          return (
-                            <button
-                              key={tab.id}
-                              onClick={() => { handleActiveTabChange(tab.id); setMoreMenuOpen(false) }}
-                              className={cx(
-                                'group relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl whitespace-nowrap transition-all duration-150 text-sm min-h-[44px] touch-manipulation',
-                                isActive
-                                  ? 'bg-gradient-to-r from-cyan-500/15 to-purple-500/15 text-white'
-                                  : 'bg-black/15 border border-white/5 text-white/40 hover:text-white/70 hover:bg-white/5 active:scale-[0.98]'
-                              )}
-                            >
-                              {isActive && (
-                                <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-gradient-to-r from-cyan-400/80 to-purple-400/80 rounded-full" />
-                              )}
-                              <div className={cx(
-                                'flex items-center justify-center w-7 h-7 rounded-xl transition-colors',
-                                isActive 
-                                  ? 'bg-white/10 text-cyan-300' 
-                                  : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-white/60'
-                              )}>
-                                {tab.icon}
-                              </div>
-                              <span className={cx(
-                                'hidden sm:inline transition-colors',
-                                isActive ? 'font-semibold text-white tracking-tight' : 'font-medium text-white/50'
-                              )}>
-                                {displayLabel}
-                              </span>
-                              {tab.badge && (
-                                <span className={cx(
-                                  'px-1.5 py-0.5 rounded text-[9px] font-medium uppercase tracking-wide hidden sm:inline border',
-                                  tab.badge === 'AI' ? 'bg-purple-500/20 text-purple-300/80 border-purple-500/20' :
-                                  'bg-white/5 text-white/40 border-white/10'
-                                )}>{tab.badge}</span>
-                              )}
-                            </button>
-                          )
-                        })}
-                        
-                        <div className="relative flex-shrink-0 z-20">
-                          <button
-                            ref={moreButtonRef}
-                            type="button"
-                            onClick={(e) => { 
-                              e.stopPropagation(); 
-                              if (!moreMenuOpen && moreButtonRef.current) {
-                                const rect = moreButtonRef.current.getBoundingClientRect();
-                                const isMobile = window.innerWidth < 640;
-                                setMoreMenuPosition({
-                                  top: rect.bottom + 8,
-                                  right: isMobile ? 0 : (window.innerWidth - rect.right)
-                                });
-                              }
-                              setMoreMenuOpen(!moreMenuOpen); 
-                            }}
-                            className={cx(
-                              'group relative flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl whitespace-nowrap transition-all duration-150 text-sm min-h-[44px] touch-manipulation',
-                              isMoreActive
-                                ? 'bg-gradient-to-r from-purple-500/15 to-pink-500/15 text-white'
-                                : 'bg-black/15 border border-white/5 text-white/40 hover:text-white/70 hover:bg-white/5 active:scale-[0.98]'
-                            )}
-                          >
-                            {isMoreActive && (
-                              <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-gradient-to-r from-purple-400/80 to-pink-400/80 rounded-full" />
-                            )}
-                            <div className={cx(
-                              'flex items-center justify-center w-7 h-7 rounded-xl transition-colors',
-                              isMoreActive 
-                                ? 'bg-white/10 text-purple-300' 
-                                : 'bg-white/5 text-white/40 group-hover:bg-white/10 group-hover:text-white/60'
-                            )}>
-                              <ChevronRight className={cx('w-3.5 h-3.5 transition-transform opacity-70', moreMenuOpen ? 'rotate-90' : '')} />
-                            </div>
+                  <Tabs value={activeTab} onValueChange={(v) => { handleActiveTabChange(v as Tab); setMoreMenuOpen(false) }}>
+                    <TabsList className="bg-[#1a1238]/60 backdrop-blur-md border border-white/10 rounded-xl flex-wrap gap-1">
+                      {tabs.map((tab) => (
+                        <TabsTrigger key={tab.id} value={tab.id} className="flex items-center gap-2">
+                          <span className="flex items-center justify-center w-5 h-5">{tab.icon}</span>
+                          <span>{tab.label}</span>
+                          {tab.badge && (
                             <span className={cx(
-                              'hidden sm:inline transition-colors',
-                              isMoreActive ? 'font-semibold text-white tracking-tight' : 'font-medium text-white/50'
-                            )}>
-                              {isMoreActive && activeMoreTab ? activeMoreTab.label : 'More'}
-                            </span>
-                            {isMoreActive && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400/80 animate-[pulse_2s_ease-in-out_infinite] sm:hidden" />
-                            )}
-                          </button>
-                          
-                          {moreMenuOpen && moreMenuPosition && (
-                            <>
-                              <div className="fixed inset-0 z-[9998]" onClick={() => setMoreMenuOpen(false)} />
-                              <div 
-                                className={cx(
-                                  'fixed z-[9999] rounded-2xl border border-white/8 bg-slate-950/95 backdrop-blur-2xl shadow-lg shadow-black/30 p-3 overflow-hidden',
-                                  moreMenuPosition.right === 0 ? 'left-3 right-3' : 'min-w-[240px]'
-                                )}
-                                style={{
-                                  top: `${moreMenuPosition.top}px`,
-                                  ...(moreMenuPosition.right > 0 ? { right: `${moreMenuPosition.right}px` } : {}),
-                                }}
-                              >
-                                <div className="text-[9px] uppercase tracking-[0.15em] text-white/30 px-3 py-2 mb-2 border-b border-white/10">More Tools</div>
-                                <div className="space-y-1">
-                                  <a
-                                    href="/brackets"
-                                    className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-150 min-h-[44px] text-white/50 hover:bg-white/8 hover:text-white/80"
-                                  >
-                                    <div className="flex items-center justify-center w-7 h-7 rounded-xl bg-white/5 text-white/50">
-                                      <span className="text-sm">🏀</span>
-                                    </div>
-                                    <span className="text-sm font-medium flex-1">Brackets</span>
-                                    <span className="px-1.5 py-0.5 rounded text-[8px] font-medium uppercase border bg-amber-500/15 text-amber-300/70 border-amber-500/20">New</span>
-                                  </a>
-                                  {moreTabs.map((tab) => {
-                                    const isActive = activeTab === tab.id
-                                    return (
-                                      <button
-                                        key={tab.id}
-                                        onClick={() => { handleActiveTabChange(tab.id); setMoreMenuOpen(false) }}
-                                        className={cx(
-                                          'w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left transition-all duration-150 min-h-[44px]',
-                                          isActive
-                                            ? 'bg-white/10 text-white'
-                                            : 'text-white/50 hover:bg-white/8 hover:text-white/80'
-                                        )}
-                                      >
-                                        <div className={cx(
-                                          'flex items-center justify-center w-7 h-7 rounded-xl transition-colors',
-                                          isActive 
-                                            ? 'bg-purple-500/25 text-purple-300' 
-                                            : 'bg-white/5 text-white/50 group-hover:bg-white/10 group-hover:text-white/70'
-                                        )}>
-                                          {tab.icon}
-                                        </div>
-                                        <span className={cx('text-sm flex-1', isActive ? 'font-semibold text-white' : 'font-medium')}>{tab.label}</span>
-                                        {tab.badge && (
-                                          <span className={cx(
-                                            'px-1.5 py-0.5 rounded text-[8px] font-medium uppercase border',
-                                            tab.badge === 'AI' ? 'bg-purple-500/15 text-purple-300/70 border-purple-500/20' :
-                                            tab.badge === 'Beta' ? 'bg-amber-500/15 text-amber-300/70 border-amber-500/20' :
-                                            'bg-white/5 text-white/40 border-white/10'
-                                          )}>{tab.badge}</span>
-                                        )}
-                                        {isActive && <CheckCircle2 className="w-3 h-3 text-purple-400/70 flex-shrink-0" />}
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            </>
+                              'px-1.5 py-0.5 rounded text-[8px] font-medium uppercase border ml-1',
+                              tab.badge === 'AI' ? 'bg-purple-500/15 text-purple-300/70 border-purple-500/20' :
+                              tab.badge === 'Beta' ? 'bg-amber-500/15 text-amber-300/70 border-amber-500/20' :
+                              'bg-white/5 text-white/40 border-white/10'
+                            )}>{tab.badge}</span>
                           )}
-                        </div>
-                      </div>
-                      </div>
-                    )
-                  })()}
-                  
+                        </TabsTrigger>
+                      ))}
+                      <a
+                        href="/brackets"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-200"
+                      >
+                        <span>🏀</span>
+                        <span>Brackets</span>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-medium uppercase border bg-amber-500/15 text-amber-300/70 border-amber-500/20">New</span>
+                      </a>
+                    </TabsList>
+                  </Tabs>
                 </div>
 
                 <div className={mobileAlertsActive ? 'hidden lg:block' : ''}>
