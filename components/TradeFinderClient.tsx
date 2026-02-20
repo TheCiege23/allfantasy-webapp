@@ -200,19 +200,20 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
         counterFromPartner: true,
       });
 
-      if (data?.analysis) {
+      if (data) {
+        const analysis = (data as any);
         const newSuggestions = [...suggestions];
         newSuggestions[index] = {
           ...trade,
           status: 'countered',
-          counterOffer: data.analysis,
-          outcome: data.analysis.youGiveAdjusted
-            ? `Counter from ${trade.partner}: "${data.analysis.reason || 'I need a bit more.'}" They'd give ${data.analysis.youGiveAdjusted} and want you to add ${data.analysis.youWantAdded || 'a future pick'}.`
-            : `Counter from ${trade.partner}: ${data.analysis.valueDelta || 'They want more value'}. ${data.analysis.recommendations?.[0] || ''}`,
+          counterOffer: analysis,
+          outcome: analysis.youGiveAdjusted
+            ? `Counter from ${trade.partner}: "${analysis.reason || 'I need a bit more.'}" They'd give ${analysis.youGiveAdjusted} and want you to add ${analysis.youWantAdded || 'a future pick'}.`
+            : `Counter from ${trade.partner}: ${analysis.valueDelta || 'They want more value'}. ${analysis.recommendations?.[0] || ''}`,
         };
         setSuggestions(newSuggestions);
         toast.info(`Counter received from ${trade.partner}`, {
-          description: data.analysis.dynastyVerdict || 'They adjusted the deal slightly.',
+          description: analysis.dynastyVerdict || 'They adjusted the deal slightly.',
           duration: 8000,
         });
       } else {
