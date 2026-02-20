@@ -1426,6 +1426,7 @@ function AFLegacyContent() {
       'transfer': 'Transfer Fantasy Football Leagues from Sleeper, Yahoo & More',
       'strategy': 'Season Strategy Planner | AI-Powered Fantasy Football Roadmap',
       'shop': 'Official AllFantasy Merch | Shop AF Gear on Etsy',
+      'mock-draft': 'AI Mock Draft Simulator & Predict Board | AllFantasy',
     }
     document.title = seoTitles[activeTab] || 'AF Legacy | AllFantasy'
   }, [activeTab])
