@@ -78,6 +78,52 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             gtag('config', 'G-LY788DCM6K');
           `}
         </Script>
+        <Script id="analytics-healthcheck" strategy="afterInteractive">
+          {`
+            (function() {
+              try {
+                var shouldDebug =
+                  window.location.search.indexOf('af_debug_analytics=1') !== -1 ||
+                  localStorage.getItem('af_debug_analytics') === '1';
+
+                if (!shouldDebug) return;
+
+                setTimeout(function() {
+                  var hasDataLayer = Array.isArray(window.dataLayer);
+                  var hasGtag = typeof window.gtag === 'function';
+
+                  console.group('[AF Analytics Health]');
+                  console.info('GA Measurement ID:', 'G-LY788DCM6K');
+                  console.info('window.gtag ready:', hasGtag);
+                  console.info('window.dataLayer ready:', hasDataLayer);
+                  console.info('dataLayer length:', hasDataLayer ? window.dataLayer.length : 0);
+
+                  try {
+                    if (hasGtag) {
+                      window.gtag('event', 'af_analytics_healthcheck', {
+                        page_path: window.location.pathname,
+                        debug_mode: true,
+                      });
+                      console.info('Sent test event: af_analytics_healthcheck');
+                    } else {
+                      console.warn('gtag not ready; test event not sent');
+                    }
+                  } catch (err) {
+                    console.warn('Failed to send test event', err);
+                  }
+
+                  fetch('/api/analytics/debug', { cache: 'no-store' })
+                    .then(function(r){ return r.json(); })
+                    .then(function(data){ console.info('/api/analytics/debug =>', data); })
+                    .catch(function(err){ console.warn('Debug endpoint failed', err); })
+                    .finally(function(){ console.groupEnd(); });
+                }, 1500);
+              } catch (e) {
+                console.warn('[AF Analytics Health] init failed', e);
+              }
+            })();
+          `}
+        </Script>
         <Script id="meta-pixel" strategy="afterInteractive">
           {`
             !function(f,b,e,v,n,t,s)
