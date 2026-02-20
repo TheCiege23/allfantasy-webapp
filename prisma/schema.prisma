@@ -1871,6 +1871,13 @@ model DevyPlayer {
   draftRound         Int?
   draftPick          Int?
 
+  draftStatus        String   @default("college")
+  statusSource       String?
+  statusConfidence   Int      @default(0)
+  statusUpdatedAt    DateTime?
+  lastRosterYear     Int?
+  declaredDraftYear  Int?
+
   cfbdId             String?
   sleeperId          String?
   nflTeam            String?
@@ -1922,6 +1929,7 @@ model DevyPlayer {
   @@index([draftEligibleYear])
   @@index([graduatedToNFL])
   @@index([cfbdId])
+  @@index([draftStatus])
   @@index([draftProjectionScore])
 }
 

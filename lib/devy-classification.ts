@@ -1,10 +1,13 @@
 import { prisma } from '@/lib/prisma'
-import { getCFBPlayerStats, getCFBTeamRoster, type CFBPlayer, type CFBPlayerStats } from '@/lib/cfb-player-data'
+import { getCFBPlayerStats, getCFBTeamRoster, getCFBDraftPicks, type CFBPlayer, type CFBPlayerStats, type CFBDraftPick } from '@/lib/cfb-player-data'
 import { computeAllDevyIntelMetrics } from '@/lib/devy-intel'
+
+export type DraftStatus = 'college' | 'declared' | 'drafted' | 'nfl_active' | 'returning'
 
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
+    .replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '')
     .replace(/[^a-z ]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -81,6 +84,17 @@ export interface DevySyncResult {
   ingested: number
   graduated: number
   classified: number
+  statusBreakdown: Record<DraftStatus, number>
+  errors: string[]
+}
+
+export interface ClassificationResult {
+  total: number
+  college: number
+  declared: number
+  drafted: number
+  nflActive: number
+  returning: number
   errors: string[]
 }
 
@@ -98,10 +112,17 @@ const TOP_CFB_TEAMS = [
 
 const FANTASY_POSITIONS = new Set(['QB', 'RB', 'WR', 'TE'])
 
-export async function ingestCFBDRosters(season?: number): Promise<{ ingested: number; errors: string[] }> {
-  const year = season || new Date().getFullYear()
+export async function ingestCFBDRosters(season?: number): Promise<{ ingested: number; rosterYear: number; errors: string[] }> {
+  const currentYear = new Date().getFullYear()
+  let year = season || currentYear
   let ingested = 0
   const errors: string[] = []
+
+  const testRoster = await getCFBTeamRoster('Alabama', year)
+  if (testRoster.length === 0 && year === currentYear) {
+    year = currentYear - 1
+    console.log(`[DevySync] Current year roster not available, falling back to ${year}`)
+  }
 
   for (const team of TOP_CFB_TEAMS) {
     try {
@@ -136,6 +157,11 @@ export async function ingestCFBDRosters(season?: number): Promise<{ ingested: nu
               league: 'NCAA',
               devyEligible: true,
               graduatedToNFL: false,
+              draftStatus: 'college',
+              statusSource: 'cfbd_roster',
+              statusConfidence: 90,
+              statusUpdatedAt: new Date(),
+              lastRosterYear: year,
               source: 'cfbd',
               lastSyncedAt: new Date(),
             },
@@ -145,6 +171,7 @@ export async function ingestCFBDRosters(season?: number): Promise<{ ingested: nu
               weightLbs: p.weight,
               cfbdId: p.id ? String(p.id) : null,
               draftEligibleYear,
+              lastRosterYear: year,
               lastSyncedAt: new Date(),
             },
           })
@@ -160,7 +187,7 @@ export async function ingestCFBDRosters(season?: number): Promise<{ ingested: nu
     }
   }
 
-  return { ingested, errors }
+  return { ingested, rosterYear: year, errors }
 }
 
 export async function ingestCFBDStats(season?: number): Promise<{ updated: number; errors: string[] }> {
@@ -227,64 +254,252 @@ export async function ingestCFBDStats(season?: number): Promise<{ updated: numbe
   return { updated, errors }
 }
 
-export async function classifyGraduations(): Promise<{ graduated: number; errors: string[] }> {
-  let graduated = 0
-  const errors: string[] = []
-
-  try {
-    const sleeperPlayersRes = await fetch('https://api.sleeper.app/v1/players/nfl')
-    if (!sleeperPlayersRes.ok) {
-      errors.push('Failed to fetch Sleeper NFL players')
-      return { graduated, errors }
+function normalizePosition(pos: string): string {
+  const lower = pos.toLowerCase().trim()
+  const map: Record<string, string> = {
+    quarterback: 'QB', 'running back': 'RB', 'wide receiver': 'WR',
+    'tight end': 'TE', qb: 'QB', rb: 'RB', wr: 'WR', te: 'TE',
+    'offensive lineman': 'OL', 'offensive tackle': 'OL', 'offensive guard': 'OL',
+    'center': 'OL', 'defensive lineman': 'DL', 'defensive tackle': 'DT',
+    'defensive end': 'DE', 'defensive edge': 'EDGE',
+    linebacker: 'LB', 'inside linebacker': 'LB', 'outside linebacker': 'LB',
+    'defensive back': 'DB', 'corner back': 'DB', cornerback: 'DB',
+    safety: 'DB', kicker: 'K', punter: 'P', 'place kicker': 'K',
+    ath: 'ATH', athlete: 'ATH', 'kick returner': 'WR',
+  }
+  if (map[lower]) return map[lower]
+  if (lower.includes('/')) {
+    const parts = lower.split('/')
+    for (const p of parts) {
+      if (map[p.trim()]) return map[p.trim()]
     }
-    const nflPlayers: Record<string, any> = await sleeperPlayersRes.json()
+  }
+  return pos.toUpperCase()
+}
 
-    const nflNameMap = new Map<string, { id: string; team: string; position: string }>()
-    for (const [id, p] of Object.entries(nflPlayers)) {
-      if (!p) continue
-      const name = normalizeName(`${p.first_name || ''} ${p.last_name || ''}`)
-      if (name.length < 3) continue
-      nflNameMap.set(name, {
-        id,
-        team: p.team || '',
-        position: p.position || '',
-      })
-    }
+function positionsMatch(pos1: string, pos2: string): boolean {
+  if (pos1 === pos2) return true
+  const n1 = normalizePosition(pos1)
+  const n2 = normalizePosition(pos2)
+  if (n1 === n2) return true
+  if (n1 === 'ATH' || n2 === 'ATH') return true
+  return false
+}
 
-    const eligiblePlayers = await prisma.devyPlayer.findMany({
-      where: { devyEligible: true, graduatedToNFL: false },
-    })
-
-    for (const devy of eligiblePlayers) {
-      const nflMatch = nflNameMap.get(devy.normalizedName)
-      if (!nflMatch) continue
-
-      if (devy.position !== nflMatch.position) continue
-
-      try {
-        await prisma.devyPlayer.update({
-          where: { id: devy.id },
-          data: {
-            devyEligible: false,
-            graduatedToNFL: true,
-            league: 'NFL',
-            sleeperId: nflMatch.id,
-            nflTeam: nflMatch.team,
-            lastClassifiedAt: new Date(),
-            lastSyncedAt: new Date(),
-          },
-        })
-        graduated++
-        console.log(`[DevyClassify] Graduated: ${devy.name} (${devy.school}) → ${nflMatch.team}`)
-      } catch (dbErr: any) {
-        errors.push(`Graduation update failed for ${devy.name}: ${dbErr.message?.slice(0, 100)}`)
-      }
-    }
-  } catch (err: any) {
-    errors.push(`Classification error: ${err.message?.slice(0, 200)}`)
+export async function classifyDraftStatus(rosterYear: number): Promise<ClassificationResult> {
+  const currentYear = new Date().getFullYear()
+  const now = new Date()
+  const result: ClassificationResult = {
+    total: 0, college: 0, declared: 0, drafted: 0, nflActive: 0, returning: 0, errors: []
   }
 
-  return { graduated, errors }
+  console.log('[ClassifyStatus] Building NFL player index from Sleeper...')
+  let nflNameMap = new Map<string, { id: string; team: string; position: string; status: string; yearsExp: number }>()
+  try {
+    const sleeperRes = await fetch('https://api.sleeper.app/v1/players/nfl')
+    if (sleeperRes.ok) {
+      const nflPlayers: Record<string, any> = await sleeperRes.json()
+      for (const [id, p] of Object.entries(nflPlayers)) {
+        if (!p) continue
+        const name = normalizeName(`${p.first_name || ''} ${p.last_name || ''}`)
+        if (name.length < 3) continue
+        nflNameMap.set(name, {
+          id,
+          team: p.team || '',
+          position: p.position || '',
+          status: p.status || '',
+          yearsExp: p.years_exp || 0,
+        })
+      }
+      console.log(`[ClassifyStatus] Sleeper index: ${nflNameMap.size} NFL players`)
+    } else {
+      result.errors.push('Failed to fetch Sleeper NFL players')
+    }
+  } catch (err: any) {
+    result.errors.push(`Sleeper fetch error: ${err.message?.slice(0, 100)}`)
+  }
+
+  console.log('[ClassifyStatus] Fetching CFBD draft picks...')
+  const draftPicksByName = new Map<string, CFBDraftPick[]>()
+  const draftYearsToCheck = [currentYear, currentYear - 1]
+  for (const draftYear of draftYearsToCheck) {
+    try {
+      const picks = await getCFBDraftPicks(draftYear)
+      for (const pick of picks) {
+        if (!pick.playerName) continue
+        const normalizedPickName = normalizeName(pick.playerName)
+        if (normalizedPickName.length < 3) continue
+        const existing = draftPicksByName.get(normalizedPickName) || []
+        existing.push(pick)
+        draftPicksByName.set(normalizedPickName, existing)
+      }
+      console.log(`[ClassifyStatus] CFBD draft ${draftYear}: ${picks.length} picks loaded`)
+      await new Promise(r => setTimeout(r, 300))
+    } catch (err: any) {
+      result.errors.push(`Draft picks ${draftYear} fetch error: ${err.message?.slice(0, 100)}`)
+    }
+  }
+
+  console.log('[ClassifyStatus] Building current roster index from CFBD...')
+  const currentRosterSet = new Set<string>()
+  for (const team of TOP_CFB_TEAMS) {
+    try {
+      const roster = await getCFBTeamRoster(team, rosterYear)
+      for (const p of roster) {
+        if (!FANTASY_POSITIONS.has(p.position)) continue
+        const key = `${normalizeName(p.fullName)}|${p.position}|${team}`
+        currentRosterSet.add(key)
+      }
+      await new Promise(r => setTimeout(r, 100))
+    } catch {
+    }
+  }
+  console.log(`[ClassifyStatus] Current roster index: ${currentRosterSet.size} players on ${rosterYear} rosters`)
+
+  const allDevyPlayers = await prisma.devyPlayer.findMany()
+  console.log(`[ClassifyStatus] Classifying ${allDevyPlayers.length} devy players...`)
+  result.total = allDevyPlayers.length
+
+  for (const player of allDevyPlayers) {
+    const normalizedName = player.normalizedName || normalizeName(player.name)
+    let newStatus: DraftStatus = 'college'
+    let statusSource = ''
+    let confidence = 0
+    let nflTeam: string | null = player.nflTeam
+    let sleeperId: string | null = player.sleeperId
+    let draftYear: number | null = player.draftYear
+    let nflDraftRound: number | null = player.nflDraftRound
+    let nflDraftPick: number | null = player.nflDraftPick
+    let devyEligible = player.devyEligible
+    let graduatedToNFL = player.graduatedToNFL
+    let league = player.league
+
+    const nflMatch = nflNameMap.get(normalizedName)
+    if (nflMatch && positionsMatch(nflMatch.position, player.position)) {
+      newStatus = 'nfl_active'
+      statusSource = 'sleeper'
+      confidence = 95
+      nflTeam = nflMatch.team
+      sleeperId = nflMatch.id
+      devyEligible = false
+      graduatedToNFL = true
+      league = 'NFL'
+      result.nflActive++
+    } else {
+      const draftPickCandidates = draftPicksByName.get(normalizedName) || []
+      const draftPick = draftPickCandidates.find(dp => {
+        const schoolMatch = normalizeName(dp.collegeTeam) === normalizeName(player.school)
+        const posMatch = !dp.position || positionsMatch(dp.position, player.position)
+        return schoolMatch && posMatch
+      }) || (draftPickCandidates.length === 1 ? draftPickCandidates[0] : null)
+
+      if (draftPick) {
+        newStatus = 'drafted'
+        statusSource = 'cfbd_draft'
+        confidence = 95
+        nflTeam = draftPick.nflTeam || nflTeam
+        draftYear = draftPick.year
+        nflDraftRound = draftPick.round
+        nflDraftPick = draftPick.overallPick
+        devyEligible = false
+        graduatedToNFL = true
+        league = 'NFL'
+        result.drafted++
+      } else {
+        const rosterKey = `${normalizedName}|${player.position}|${player.school}`
+        const onCurrentRoster = currentRosterSet.has(rosterKey)
+
+        if (onCurrentRoster) {
+          const eligYear = player.draftEligibleYear || calculateDraftEligibleYear(player.classYear)
+          const classYr = player.classYear || 0
+
+          if (classYr >= 5 || (classYr >= 4 && eligYear < currentYear)) {
+            newStatus = 'returning'
+            statusSource = 'cfbd_roster+5th_year_or_past_eligible'
+            confidence = 85
+            result.returning++
+          } else {
+            newStatus = 'college'
+            statusSource = 'cfbd_roster'
+            confidence = 90
+            result.college++
+          }
+          devyEligible = true
+          graduatedToNFL = false
+          league = 'NCAA'
+        } else {
+          const eligYear = player.draftEligibleYear || calculateDraftEligibleYear(player.classYear)
+          const classYr = player.classYear || 0
+
+          if (eligYear <= currentYear && classYr >= 4) {
+            newStatus = 'declared'
+            statusSource = 'inferred_senior_not_on_roster'
+            confidence = 80
+            devyEligible = false
+            graduatedToNFL = false
+            league = 'NCAA'
+            result.declared++
+          } else if (eligYear <= currentYear && classYr >= 3) {
+            newStatus = 'declared'
+            statusSource = 'inferred_early_declare'
+            confidence = 65
+            devyEligible = false
+            graduatedToNFL = false
+            league = 'NCAA'
+            result.declared++
+          } else {
+            if (player.lastRosterYear && player.lastRosterYear >= rosterYear - 1) {
+              newStatus = 'college'
+              statusSource = 'last_roster_year'
+              confidence = 60
+              result.college++
+            } else {
+              newStatus = 'college'
+              statusSource = 'default'
+              confidence = 40
+              result.college++
+            }
+            devyEligible = true
+            graduatedToNFL = false
+            league = 'NCAA'
+          }
+        }
+      }
+    }
+
+    const statusChanged = player.draftStatus !== newStatus
+
+    try {
+      await prisma.devyPlayer.update({
+        where: { id: player.id },
+        data: {
+          draftStatus: newStatus,
+          statusSource,
+          statusConfidence: confidence,
+          statusUpdatedAt: now,
+          devyEligible,
+          graduatedToNFL,
+          league,
+          nflTeam,
+          sleeperId,
+          draftYear,
+          nflDraftRound,
+          nflDraftPick,
+          lastClassifiedAt: now,
+          lastSyncedAt: now,
+        },
+      })
+
+      if (statusChanged) {
+        console.log(`[ClassifyStatus] ${player.name} (${player.school}): ${player.draftStatus} → ${newStatus} [${statusSource}, ${confidence}%]`)
+      }
+    } catch (dbErr: any) {
+      result.errors.push(`Update failed for ${player.name}: ${dbErr.message?.slice(0, 100)}`)
+    }
+  }
+
+  console.log(`[ClassifyStatus] Complete: college=${result.college}, declared=${result.declared}, drafted=${result.drafted}, nfl_active=${result.nflActive}, returning=${result.returning}`)
+  return result
 }
 
 export async function enrichDevyIntelMetrics(): Promise<{ updated: number; errors: string[] }> {
@@ -328,22 +543,35 @@ export async function runFullDevySync(season?: number): Promise<DevySyncResult> 
   console.log('[DevySync] Starting full devy sync...')
 
   const roster = await ingestCFBDRosters(season)
-  console.log(`[DevySync] Ingested ${roster.ingested} players from ${TOP_CFB_TEAMS.length} teams`)
+  console.log(`[DevySync] Ingested ${roster.ingested} players from ${TOP_CFB_TEAMS.length} teams (roster year: ${roster.rosterYear})`)
 
   const stats = await ingestCFBDStats(season)
   console.log(`[DevySync] Updated stats for ${stats.updated} players`)
 
-  const grad = await classifyGraduations()
-  console.log(`[DevySync] Graduated ${grad.graduated} players to NFL`)
+  const classification = await classifyDraftStatus(roster.rosterYear)
+  console.log(`[DevySync] Classification complete: ${JSON.stringify({
+    college: classification.college,
+    declared: classification.declared,
+    drafted: classification.drafted,
+    nflActive: classification.nflActive,
+    returning: classification.returning,
+  })}`)
 
   const intel = await enrichDevyIntelMetrics()
   console.log(`[DevySync] Enriched intel metrics for ${intel.updated} players`)
 
   return {
     ingested: roster.ingested,
-    graduated: grad.graduated,
-    classified: roster.ingested + stats.updated,
-    errors: [...roster.errors, ...stats.errors, ...grad.errors, ...intel.errors],
+    graduated: classification.drafted + classification.nflActive,
+    classified: classification.total,
+    statusBreakdown: {
+      college: classification.college,
+      declared: classification.declared,
+      drafted: classification.drafted,
+      nfl_active: classification.nflActive,
+      returning: classification.returning,
+    },
+    errors: [...roster.errors, ...stats.errors, ...classification.errors, ...intel.errors],
   }
 }
 
@@ -352,6 +580,7 @@ export async function getEligibleDevyPlayers(opts?: {
   limit?: number
   minValue?: number
   draftEligibleYear?: number
+  draftStatus?: DraftStatus
 }): Promise<any[]> {
   const where: any = {
     devyEligible: true,
@@ -361,10 +590,26 @@ export async function getEligibleDevyPlayers(opts?: {
   if (opts?.position) where.position = opts.position
   if (opts?.minValue) where.devyValue = { gte: opts.minValue }
   if (opts?.draftEligibleYear) where.draftEligibleYear = opts.draftEligibleYear
+  if (opts?.draftStatus) where.draftStatus = opts.draftStatus
 
   return prisma.devyPlayer.findMany({
     where,
     orderBy: { devyValue: 'desc' },
     take: opts?.limit || 100,
   })
+}
+
+export async function getStatusSummary(): Promise<Record<DraftStatus, number>> {
+  const counts = await prisma.devyPlayer.groupBy({
+    by: ['draftStatus'],
+    _count: { id: true },
+  })
+
+  const summary: Record<string, number> = {
+    college: 0, declared: 0, drafted: 0, nfl_active: 0, returning: 0,
+  }
+  for (const row of counts) {
+    summary[row.draftStatus] = row._count.id
+  }
+  return summary as Record<DraftStatus, number>
 }

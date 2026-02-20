@@ -319,6 +319,7 @@ export async function GET(req: Request) {
           where: {
             devyEligible: true,
             graduatedToNFL: false,
+            draftStatus: { in: ['college', 'declared', 'returning'] },
             position: position !== 'all' ? position.toUpperCase() : undefined,
           },
           take: 200,
@@ -337,6 +338,10 @@ export async function GET(req: Request) {
           const playerCfbdStats = cfbdStatsMap.get(normalizedName)
 
           const { signal, strength, tags, projectedRound, volatility } = computeDevySignal(dp, playerCfbdStats)
+
+          const draftStatus = (dp as any).draftStatus || 'college'
+          if (draftStatus === 'declared') tags.unshift('Declared for Draft')
+          else if (draftStatus === 'returning') tags.unshift('Returning to School')
 
           if (signal === 'HOLD' && strength < 15) continue
 

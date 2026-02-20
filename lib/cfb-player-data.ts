@@ -152,21 +152,25 @@ export async function searchCFBPlayers(searchTerm: string): Promise<CFBPlayer[]>
     }
 
     const data = await response.json()
-    return data.map((p: any) => ({
-      id: p.id,
-      firstName: p.first_name,
-      lastName: p.last_name,
-      fullName: `${p.first_name} ${p.last_name}`,
-      team: p.team,
-      position: p.position,
-      jersey: p.jersey,
-      year: p.year,
-      height: p.height,
-      weight: p.weight,
-      hometown: p.hometown,
-      homeState: p.home_state,
-      homeCountry: p.home_country,
-    }))
+    return data.map((p: any) => {
+      const fn = p.firstName || p.first_name || ''
+      const ln = p.lastName || p.last_name || ''
+      return {
+        id: p.id,
+        firstName: fn,
+        lastName: ln,
+        fullName: `${fn} ${ln}`,
+        team: p.team,
+        position: p.position,
+        jersey: p.jersey,
+        year: p.year,
+        height: p.height,
+        weight: p.weight,
+        hometown: p.homeCity || p.hometown || null,
+        homeState: p.homeState || p.home_state || null,
+        homeCountry: p.homeCountry || p.home_country || null,
+      }
+    })
   } catch (error) {
     console.error('CFBD player search error:', error)
     return []
@@ -239,6 +243,64 @@ export async function getCFBPlayerStats(year: number, team?: string): Promise<CF
   }
 }
 
+export interface CFBDraftPick {
+  collegeId: number | null
+  collegeName: string
+  collegeTeam: string
+  collegeConference: string | null
+  nflTeam: string
+  year: number
+  round: number
+  pick: number
+  overallPick: number
+  position: string
+  playerName: string
+  height: number | null
+  weight: number | null
+}
+
+export async function getCFBDraftPicks(year: number, college?: string): Promise<CFBDraftPick[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  try {
+    let url = `${CFBD_BASE}/draft/picks?year=${year}`
+    if (college) url += `&college=${encodeURIComponent(college)}`
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Accept': 'application/json',
+      },
+    })
+
+    if (!response.ok) {
+      console.error('[CFBD] Draft picks fetch failed:', response.status)
+      return []
+    }
+
+    const data = await response.json()
+    return data.map((p: any) => ({
+      collegeId: p.collegeAthleteId || p.collegeId || null,
+      collegeName: p.name || '',
+      collegeTeam: p.collegeTeam || p.college || '',
+      collegeConference: p.collegeConference || null,
+      nflTeam: p.nflTeam || '',
+      year: p.year,
+      round: p.round,
+      pick: p.pick,
+      overallPick: p.overall || p.pick,
+      position: p.position || '',
+      playerName: p.name || '',
+      height: p.height || null,
+      weight: p.weight || null,
+    }))
+  } catch (error) {
+    console.error('[CFBD] Draft picks error:', String(error))
+    return []
+  }
+}
+
 export async function getCFBTeamRoster(team: string, year?: number): Promise<CFBPlayer[]> {
   const apiKey = process.env.CFBD_KEY
   if (!apiKey) return []
@@ -258,21 +320,31 @@ export async function getCFBTeamRoster(team: string, year?: number): Promise<CFB
     if (!response.ok) return []
 
     const data = await response.json()
-    return data.map((p: any) => ({
-      id: p.id,
-      firstName: p.first_name,
-      lastName: p.last_name,
-      fullName: `${p.first_name} ${p.last_name}`,
-      team: team,
-      position: p.position,
-      jersey: p.jersey,
-      year: p.year,
-      height: p.height,
-      weight: p.weight,
-      hometown: p.home_town,
-      homeState: p.home_state,
-      homeCountry: p.home_country,
-    }))
+    return data
+      .filter((p: any) => {
+        const fn = p.firstName || p.first_name
+        const ln = p.lastName || p.last_name
+        return fn && ln && fn !== 'undefined' && ln !== 'undefined'
+      })
+      .map((p: any) => {
+        const fn = p.firstName || p.first_name || ''
+        const ln = p.lastName || p.last_name || ''
+        return {
+          id: p.id,
+          firstName: fn,
+          lastName: ln,
+          fullName: `${fn} ${ln}`,
+          team: team,
+          position: p.position,
+          jersey: p.jersey,
+          year: p.year,
+          height: p.height,
+          weight: p.weight,
+          hometown: p.homeCity || p.home_town || null,
+          homeState: p.homeState || p.home_state || null,
+          homeCountry: p.homeCountry || p.home_country || null,
+        }
+      })
   } catch (error) {
     console.error('CFBD roster error:', error)
     return []
