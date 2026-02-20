@@ -2,6 +2,7 @@ import Link from "next/link"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { BracketologySpotlight } from "@/components/bracket/BracketologySpotlight"
 
 export const dynamic = "force-dynamic"
 
@@ -82,6 +83,8 @@ export default async function BracketsHomePage() {
             </div>
           )}
         </div>
+
+        <BracketologySpotlight />
 
         {myLeagues.length > 0 && (
           <div className="rounded-2xl border border-gray-800 p-4 bg-gray-900/50">
