@@ -105,13 +105,14 @@ function snakeOrder(teamCount: number, round: number): number[] {
 }
 
 type ScenarioMultipliers = {
+  adpMul: number
   needMul: number
   tendencyMul: number
   newsMul: number
   rookieMul: number
 }
 
-const DEFAULT_MULS: ScenarioMultipliers = { needMul: 1, tendencyMul: 1, newsMul: 1, rookieMul: 1 }
+const DEFAULT_MULS: ScenarioMultipliers = { adpMul: 1, needMul: 1, tendencyMul: 1, newsMul: 1, rookieMul: 1 }
 
 function scorePlayerForManager(
   player: ADPEntry,
@@ -135,12 +136,12 @@ function scorePlayerForManager(
     panicMod = (managerProfile.panicScore || 0.3) * 0.35
   }
 
-  const adpComponent = adpDelta * 0.18
+  const adpComponent = adpDelta * 0.18 * muls.adpMul
   const needComponent = needBoost * 0.25 * muls.needMul
   const tendencyComponent = (tendencyBoost * 0.22 + reachMod + panicMod) * muls.tendencyMul
   const newsComponent = (newsAdjustment || 0) * 0.02 * muls.newsMul
   const rookieComponent = (rookieBoost || 0) * 0.03 * muls.rookieMul
-  const baseValue = valueBoost * 0.14
+  const baseValue = valueBoost * 0.14 * muls.adpMul
 
   const coreScore = 1 + needComponent + tendencyComponent + adpComponent + baseValue
 
@@ -306,7 +307,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const scenarioMuls: ScenarioMultipliers = { needMul: 1, tendencyMul: 1, newsMul: 1, rookieMul: 1 }
+    const calibration = await prisma.leagueDraftCalibration.findUnique({
+      where: { leagueId_season: { leagueId, season: league.season || new Date().getFullYear() } },
+    }).catch(() => null)
+
+    const scenarioMuls: ScenarioMultipliers = {
+      adpMul: calibration?.adpWeight ?? 1,
+      needMul: calibration?.needWeight ?? 1,
+      tendencyMul: calibration?.tendencyWeight ?? 1,
+      newsMul: calibration?.newsWeight ?? 1,
+      rookieMul: calibration?.rookieWeight ?? 1,
+    }
     const posTargets = { ...POSITION_TARGETS }
     for (const sId of activeScenarios) {
       const preset = SCENARIO_PRESETS[sId]
@@ -527,6 +538,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let snapshotId: string | null = null
+    if (activeScenarios.length === 0 && !assistantMode) {
+      try {
+        const snapshot = await prisma.draftPredictionSnapshot.create({
+          data: {
+            leagueId,
+            userId: session.user.id,
+            season: league.season || new Date().getFullYear(),
+            rounds,
+            simulations,
+            scenarios: [] as any,
+            snapshotJson: forecasts as unknown as any,
+          },
+        })
+        snapshotId = snapshot.id
+      } catch (e) {
+        console.error('[predict-board] snapshot save failed', e)
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       simulations,
@@ -536,6 +567,8 @@ export async function POST(req: NextRequest) {
       userGuidance,
       adpAdjustments: adjusted.adjustments.slice(0, 20),
       signalSources: adjusted.sourcesUsed,
+      ...(snapshotId ? { snapshotId } : {}),
+      ...(calibration ? { calibration: { adp: calibration.adpWeight, need: calibration.needWeight, tendency: calibration.tendencyWeight, news: calibration.newsWeight, rookie: calibration.rookieWeight, sampleSize: calibration.sampleSize } } : {}),
       ...(activeScenarios.length > 0 ? { scenarioLabels: activeScenarios.map(s => SCENARIO_PRESETS[s]?.label || s) } : {}),
       ...(assistantData ? { assistant: assistantData } : {}),
     })

@@ -2572,3 +2572,62 @@ model RankingsBacktestResult {
   @@index([createdAt])
   @@map("rankings_backtest_results")
 }
+
+model DraftPredictionSnapshot {
+  id            String   @id @default(uuid())
+  leagueId      String
+  userId        String
+  season        Int
+  draftId       String?
+  rounds        Int      @default(2)
+  simulations   Int      @default(250)
+  scenarios     Json     @default("[]")
+  snapshotJson  Json
+  createdAt     DateTime @default(now())
+
+  retrospectives DraftRetrospective[]
+
+  @@index([leagueId, season])
+  @@index([userId, createdAt])
+  @@map("draft_prediction_snapshots")
+}
+
+model DraftRetrospective {
+  id                   String   @id @default(uuid())
+  leagueId             String
+  userId               String
+  season               Int
+  draftId              String
+  snapshotId           String
+  actualDraftJson      Json
+  managerAccuracyJson  Json
+  biggestMissesJson    Json
+  calibrationDeltaJson Json     @default("{}")
+  overallAccuracy      Float    @default(0)
+  top3HitRate          Float    @default(0)
+  createdAt            DateTime @default(now())
+
+  snapshot DraftPredictionSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([leagueId, season])
+  @@index([snapshotId])
+  @@map("draft_retrospectives")
+}
+
+model LeagueDraftCalibration {
+  id            String   @id @default(uuid())
+  leagueId      String
+  season        Int
+  adpWeight     Float    @default(1.0)
+  needWeight    Float    @default(1.0)
+  tendencyWeight Float   @default(1.0)
+  newsWeight    Float    @default(1.0)
+  rookieWeight  Float    @default(1.0)
+  sampleSize    Int      @default(0)
+  lastUpdatedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@unique([leagueId, season])
+  @@index([leagueId])
+  @@map("league_draft_calibrations")
+}

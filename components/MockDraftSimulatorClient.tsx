@@ -264,6 +264,10 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [assistantOpen, setAssistantOpen] = useState(false)
   const [assistantLoading, setAssistantLoading] = useState(false)
   const [assistantData, setAssistantData] = useState<any>(null)
+  const [retroOpen, setRetroOpen] = useState(false)
+  const [retroLoading, setRetroLoading] = useState(false)
+  const [retroData, setRetroData] = useState<any>(null)
+  const [retroCalibration, setRetroCalibration] = useState<any>(null)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -695,6 +699,39 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
+  const loadRetrospective = async () => {
+    if (!selectedLeagueId) return
+    setRetroLoading(true)
+    try {
+      const checkRes = await fetch(`/api/mock-draft/retrospective?leagueId=${selectedLeagueId}`)
+      const checkData = await checkRes.json().catch(() => ({}))
+
+      if (checkData.hasRetrospective) {
+        setRetroData(checkData.retrospective)
+        setRetroCalibration(checkData.calibration)
+        setRetroOpen(true)
+        return
+      }
+
+      const res = await fetch('/api/mock-draft/retrospective', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to run retrospective')
+
+      setRetroData(data.retrospective)
+      setRetroCalibration(data.calibration)
+      setRetroOpen(true)
+      toast.success('Post-Draft Retrospective complete!')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load retrospective')
+    } finally {
+      setRetroLoading(false)
+    }
+  }
+
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -866,6 +903,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             </Button>
             <Button onClick={runScenarioLab} disabled={scenarioLabLoading || !selectedLeagueId} variant="outline" className="h-10 border-violet-700/40 text-violet-300 hover:text-violet-200">
               {scenarioLabLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Running</> : <><Beaker className="mr-2 h-4 w-4" /> Scenario Lab</>}
+            </Button>
+            <Button onClick={loadRetrospective} disabled={retroLoading || !selectedLeagueId} variant="outline" className="h-10 border-amber-700/40 text-amber-300 hover:text-amber-200">
+              {retroLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Analyzing</> : <><Check className="mr-2 h-4 w-4" /> Post-Draft Review</>}
             </Button>
           </div>
         </div>
@@ -2329,6 +2369,135 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
               )}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={retroOpen} onOpenChange={setRetroOpen}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto bg-gray-950 border-amber-800/50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl text-amber-300">
+              <Check className="h-5 w-5" /> Post-Draft Retrospective — AI vs Reality
+            </DialogTitle>
+          </DialogHeader>
+
+          {retroData ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-black/40 rounded-xl p-4 border border-amber-900/40 text-center">
+                  <p className="text-3xl font-bold text-amber-300">{retroData.overallAccuracy}%</p>
+                  <p className="text-xs text-gray-400 mt-1">Exact Hit Rate</p>
+                </div>
+                <div className="bg-black/40 rounded-xl p-4 border border-cyan-900/40 text-center">
+                  <p className="text-3xl font-bold text-cyan-300">{retroData.top3HitRate}%</p>
+                  <p className="text-xs text-gray-400 mt-1">Top-3 Hit Rate</p>
+                </div>
+                <div className="bg-black/40 rounded-xl p-4 border border-gray-800 text-center">
+                  <p className="text-3xl font-bold text-white">{retroData.totalPicks}</p>
+                  <p className="text-xs text-gray-400 mt-1">Total Picks Analyzed</p>
+                </div>
+              </div>
+
+              {retroCalibration && (
+                <div className="bg-black/40 rounded-xl p-4 border border-violet-900/40">
+                  <h3 className="text-sm font-semibold text-violet-300 mb-3">League Calibration Weights (Auto-Learned)</h3>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { label: 'ADP', value: retroCalibration.adp, color: 'text-blue-300' },
+                      { label: 'Need', value: retroCalibration.need, color: 'text-green-300' },
+                      { label: 'Tendency', value: retroCalibration.tendency, color: 'text-orange-300' },
+                      { label: 'News', value: retroCalibration.news, color: 'text-pink-300' },
+                      { label: 'Rookie', value: retroCalibration.rookie, color: 'text-yellow-300' },
+                    ].map(w => (
+                      <div key={w.label} className="text-center">
+                        <p className={`text-lg font-bold ${w.color}`}>{(w.value || 1).toFixed(2)}x</p>
+                        <p className="text-xs text-gray-500">{w.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 text-center">
+                    Based on {retroCalibration.sampleSize || 0} draft picks — future predictions will use these weights
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <h3 className="text-sm font-semibold text-cyan-300 mb-3">Manager Prediction Accuracy</h3>
+                <div className="space-y-2">
+                  {(retroData.managerAccuracy || []).map((m: any) => {
+                    const hitColor: Record<string, string> = {
+                      high: 'bg-green-500',
+                      medium: 'bg-yellow-500',
+                      low: 'bg-red-500',
+                    }
+                    const tier = m.exactHitRate >= 40 ? 'high' : m.exactHitRate >= 20 ? 'medium' : 'low'
+                    return (
+                      <div key={m.manager} className="bg-black/30 rounded-lg p-3 border border-gray-800">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-white">{m.manager}</span>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-400">{m.exactHits}/{m.totalPicks} exact</span>
+                            <span className="text-xs text-cyan-400">{m.top3Hits}/{m.totalPicks} top-3</span>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-800 rounded-full h-2">
+                          <div
+                            className={`${hitColor[tier]} h-2 rounded-full transition-all`}
+                            style={{ width: `${Math.min(100, m.top3HitRate)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-1">
+                          <span className="text-xs text-gray-500">Exact: {m.exactHitRate}%</span>
+                          <span className="text-xs text-gray-500">Top-3: {m.top3HitRate}%</span>
+                        </div>
+                        {m.bestPrediction && (
+                          <p className="text-xs text-green-400 mt-1">
+                            Best: Pick #{m.bestPrediction.overall} — {m.bestPrediction.player} ({m.bestPrediction.probability}% confidence)
+                          </p>
+                        )}
+                        {m.worstMiss && (
+                          <p className="text-xs text-red-400 mt-1">
+                            Worst: Pick #{m.worstMiss.overall} — predicted {m.worstMiss.predicted} ({m.worstMiss.predictedProb}%), actual: {m.worstMiss.actual}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {(retroData.biggestMisses || []).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-red-300 mb-3">Biggest Misses & Why</h3>
+                  <div className="space-y-2">
+                    {(retroData.biggestMisses || []).map((miss: any, idx: number) => (
+                      <div key={idx} className="bg-black/30 rounded-lg p-3 border border-red-900/30">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-white">
+                            Pick #{miss.overall} ({miss.manager})
+                          </span>
+                          <Badge variant="outline" className="text-xs border-red-800 text-red-300">
+                            {miss.predictedProb}% miss
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs mb-2">
+                          <span className="text-red-400">Predicted: {miss.predicted} ({miss.predictedPosition})</span>
+                          <span className="text-gray-500">&rarr;</span>
+                          <span className="text-green-400">Actual: {miss.actual} ({miss.actualPosition})</span>
+                        </div>
+                        <p className="text-xs text-yellow-300">{miss.reason}</p>
+                        <p className="text-xs text-gray-500 mt-1">{miss.scorecardInsight}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <p>No retrospective data available yet.</p>
+              <p className="text-xs mt-2">Run Predict Board first, then import the real draft to compare.</p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
