@@ -31,28 +31,13 @@ export default function LegacyLeagueIdeaForm() {
     setError(null);
 
     try {
+      const body = new FormData();
+      Object.entries(form).forEach(([key, value]) => body.append(key, value));
+      if (documentFile) body.append('document', documentFile);
+
       const response = await fetch('/api/submit-league', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leagueTypeName: form.leagueTypeName.trim(),
-          tagline: form.description.trim().slice(0, 120) || form.leagueTypeName.trim(),
-          description: form.description.trim(),
-          sports: [form.sport],
-          recommendedSize: form.teamSize,
-          seasonFormat: 'Redraft',
-          draftType: form.draftType === 'snake' ? 'Snake' : form.draftType === 'auction' ? 'Auction' : form.draftType === 'linear' ? 'Linear' : 'Snake',
-          winCondition: 'Points',
-          hasSpecialScoring: !!form.scoringRules.trim(),
-          scoringRules: form.scoringRules.trim() || null,
-          specialMechanics: ['Other'],
-          weeklyFlow: form.rulesSettings.trim() || form.description.trim(),
-          creditName: form.creditName.trim(),
-          email: form.email.trim().toLowerCase(),
-          permissionConsent: true,
-          rightsConsent: true,
-          canContact: true,
-        }),
+        body,
       });
 
       const data = await response.json().catch(() => ({}));
