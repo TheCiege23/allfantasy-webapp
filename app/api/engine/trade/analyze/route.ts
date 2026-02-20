@@ -43,8 +43,8 @@ export async function POST(req: Request) {
             const assetIdsB = new Set(body.assetsB.map((a: any) => String(a.playerId || a.id || a.name).toLowerCase()))
 
             for (const team of leagueCtx.teams) {
-              const rosterPlayerIds = new Set(team.roster.map(p => String(p.playerId).toLowerCase()))
-              const rosterPlayerNames = new Set(team.roster.map(p => (p.name || '').toLowerCase()))
+              const rosterPlayerIds = new Set((team as any).roster?.map((p: any) => String(p.playerId).toLowerCase()) || [])
+              const rosterPlayerNames = new Set((team as any).roster?.map((p: any) => (p.name || '').toLowerCase()) || [])
 
               const matchesA = [...assetIdsA].filter(id => rosterPlayerIds.has(id) || rosterPlayerNames.has(id)).length
               const matchesB = [...assetIdsB].filter(id => rosterPlayerIds.has(id) || rosterPlayerNames.has(id)).length
@@ -69,8 +69,8 @@ export async function POST(req: Request) {
                 leagueCtx,
                 teamA.teamId,
                 teamB.teamId,
-                body.assetsA,
-                body.assetsB
+                body.assetsA as any,
+                body.assetsB as any
               ),
               leagueContextId: leagueCtx.contextId,
             }
@@ -81,17 +81,18 @@ export async function POST(req: Request) {
           console.warn('[engine/trade] League context assembly failed, falling back:', e?.message)
         }
 
+        const lc = body.leagueContext as any
         const fallbackCtx = await assembleTradeDecisionContext(
-          { name: teamAName, assets: body.assetsA },
-          { name: teamBName, assets: body.assetsB },
+          { name: teamAName, assets: body.assetsA as any },
+          { name: teamBName, assets: body.assetsB as any },
           {
             leagueId,
-            platform: body.leagueContext?.platform || undefined,
-            scoringType: body.leagueContext?.scoringType || undefined,
-            numTeams: body.leagueContext?.numTeams || undefined,
-            isSF: body.leagueContext?.isSF || undefined,
-            isTEP: body.leagueContext?.isTEP || undefined,
-            scoringSettings: body.leagueContext?.scoringSettings || {},
+            platform: lc?.platform || undefined,
+            scoringType: lc?.scoringType || lc?.scoring?.type || undefined,
+            numTeams: lc?.numTeams || undefined,
+            isSF: lc?.isSF || undefined,
+            isTEP: lc?.isTEP || undefined,
+            scoringSettings: lc?.scoringSettings || lc?.scoring || {},
           },
         )
         return { ctx: fallbackCtx, leagueContextId: null }

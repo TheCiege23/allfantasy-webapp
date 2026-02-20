@@ -33,6 +33,8 @@ export interface TradeLeagueContext {
   week?: number
   phase?: string
   numTeams?: number
+  username?: string
+  platform?: string
   scoring?: LeagueScoringSettings
   roster?: LeagueRosterSettings
   trade?: {
