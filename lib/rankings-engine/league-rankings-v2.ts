@@ -1279,7 +1279,7 @@ function computeTeamDataQuality(
     stalenessHours: {
       injury: injuryHours,
       valuation: valuationHours,
-      sleeperSync: sleeperHours,
+      sleeperSync: sleeperHours ?? 0,
     },
     signals,
   }
