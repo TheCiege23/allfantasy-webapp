@@ -30,6 +30,74 @@ import { AdminTabsBar } from "./AdminTabsBar";
 
 export type AdminTab = "overview" | "signups" | "questionnaire" | "ideas" | "feedback" | "email" | "blog" | "tools" | "analytics" | "ai_issues" | "share_rewards" | "calibration" | "model_drift";
 
+const TAB_SUMMARY: Record<AdminTab, { title: string; description: string; focus: string }> = {
+  overview: {
+    title: "Overview",
+    description: "At-a-glance health, traffic, and operational KPIs.",
+    focus: "Use this first for daily pulse checks.",
+  },
+  signups: {
+    title: "Signups",
+    description: "Who is joining, where they came from, and conversion quality.",
+    focus: "Filter by source and export lists for outreach.",
+  },
+  questionnaire: {
+    title: "Questionnaire",
+    description: "User preferences and intent signals in a readable format.",
+    focus: "Look for repeated requests and segmentation opportunities.",
+  },
+  ideas: {
+    title: "League Ideas",
+    description: "Feature requests and league concept submissions.",
+    focus: "Prioritize by frequency and clarity.",
+  },
+  feedback: {
+    title: "Feedback",
+    description: "Product sentiment and issue reports from users.",
+    focus: "Review unresolved feedback weekly.",
+  },
+  email: {
+    title: "Email",
+    description: "Campaign sends, replies, and communication performance.",
+    focus: "Track deliverability and engagement before each send.",
+  },
+  blog: {
+    title: "Blog",
+    description: "Editorial workflow and publishing status.",
+    focus: "Keep drafts moving and monitor publish cadence.",
+  },
+  tools: {
+    title: "Tools",
+    description: "Admin utilities, backfills, and internal controls.",
+    focus: "Use carefully and verify logs after actions.",
+  },
+  analytics: {
+    title: "Analytics",
+    description: "Legacy tool usage, unique/returning users, and retention.",
+    focus: "Start with Executive Snapshot for non-technical readout.",
+  },
+  ai_issues: {
+    title: "AI Learning",
+    description: "AI issue backlog, triage status, and quality trends.",
+    focus: "Sort by severity and aging first.",
+  },
+  share_rewards: {
+    title: "Share Rewards",
+    description: "Referral tracking and reward redemption state.",
+    focus: "Watch pending and unredeemed balances.",
+  },
+  calibration: {
+    title: "Calibration",
+    description: "Model calibration quality and drift over time.",
+    focus: "Use quick filters at the top to change segment/mode views.",
+  },
+  model_drift: {
+    title: "Model Drift",
+    description: "Monitoring for feature and outcome drift in production.",
+    focus: "Address critical segments first.",
+  },
+};
+
 const NAV: Array<{
   tab: AdminTab;
   label: string;
@@ -110,6 +178,7 @@ export default function AdminLayout({
   };
 
   const activeMeta = useMemo(() => NAV.find((n) => n.tab === activeTab), [activeTab]);
+  const activeSummary = TAB_SUMMARY[activeTab];
 
   const tabBarItems = useMemo(() => NAV.map((n) => ({ key: n.tab, label: n.label })), []);
   const handleMobileTabChange = (t: AdminTab) => {
@@ -219,7 +288,7 @@ export default function AdminLayout({
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
-      <div className="fixed inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-cyan-950/20 pointer-events-none" />
+      <div className="fixed inset-0 bg-gradient-to-br from-slate-900/10 via-transparent to-blue-900/10 pointer-events-none" />
       
       <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 lg:px-6">
@@ -341,11 +410,23 @@ export default function AdminLayout({
           </div>
         </aside>
 
-        <main className="min-w-0 relative">
+        <main className="min-w-0 relative space-y-4">
           <div className="block lg:hidden">
             <AdminTabsBar tab={activeTab} setTab={handleMobileTabChange} items={tabBarItems} />
           </div>
-          {children}
+          <section className="rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-sm px-4 py-4 md:px-6 md:py-5">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-white/45">Admin Workspace</p>
+                <h1 className="text-xl md:text-2xl font-semibold tracking-tight mt-1">{activeSummary.title}</h1>
+                <p className="text-sm text-white/70 mt-1">{activeSummary.description}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70 max-w-sm">
+                <span className="font-semibold text-white/90">Focus:</span> {activeSummary.focus}
+              </div>
+            </div>
+          </section>
+          <section className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur-sm">{children}</section>
         </main>
       </div>
 
