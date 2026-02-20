@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "qa:legacy-report": "node scripts/legacy-qa-report.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
