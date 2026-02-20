@@ -82,10 +82,8 @@ import {
   ChevronDown,
   History,
   X,
-  LayoutGrid,
-  Layers
+  LayoutGrid
 } from "lucide-react"
-import MockDraftBoard from "./components/mock-draft/MockDraftBoard"
 import { useAnalytics } from "@/app/hooks/useAnalytics"
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -4181,7 +4179,7 @@ function AFLegacyContent() {
   const mainTabGroups: Record<MainTab, Tab[]> = {
     home: ['overview'],
     trade: ['trade', 'finder', 'player-finder', 'waiver'],
-    strategy: ['strategy', 'rankings', 'pulse', 'compare', 'mock-draft'],
+    strategy: ['strategy', 'rankings', 'pulse', 'compare'],
     alerts: [],
     profile: ['chat', 'mock-draft', 'share', 'transfer', 'shop'],
   }
@@ -4199,7 +4197,6 @@ function AFLegacyContent() {
       { id: 'rankings', label: 'Rankings', icon: <Trophy className="w-3.5 h-3.5" /> },
       { id: 'pulse', label: 'Pulse', icon: <Radio className="w-3.5 h-3.5" /> },
       { id: 'compare', label: 'Compare', icon: <Swords className="w-3.5 h-3.5" /> },
-      { id: 'mock-draft', label: 'Draft', icon: <Layers className="w-3.5 h-3.5" />, badge: 'AI' },
     ],
     alerts: [],
     profile: [
@@ -6637,6 +6634,31 @@ function AFLegacyContent() {
                             accent="purple"
                           />
                           <p className="text-center text-sm sm:text-base text-white/60 -mt-4 mb-2">Your entire fantasy career — analyzed, graded, and explained.</p>
+
+                          <div className="rounded-2xl bg-black/30 border border-cyan-500/20 p-4 sm:p-5">
+                            <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                              <h4 className="text-sm font-bold text-cyan-300">AI System Sync</h4>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] border ${
+                                rankingsData?.rankingSource === 'live'
+                                  ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
+                                  : rankingsData?.rankingSource === 'snapshot'
+                                    ? 'bg-blue-500/15 border-blue-400/30 text-blue-300'
+                                    : 'bg-amber-500/15 border-amber-400/30 text-amber-300'
+                              }`}>
+                                Rankings Source: {rankingsData?.rankingSource === 'live' ? 'Live' : rankingsData?.rankingSource === 'snapshot' ? 'Snapshot' : 'Preseason/Idle'}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-white/65">
+                              <div className="rounded-lg bg-black/25 border border-white/10 p-2">
+                                <span className="text-white/45">Coach:</span>{' '}
+                                {aiCoach?.headline || aiCoachError || 'Ask AI Coach to generate format-specific guidance.'}
+                              </div>
+                              <div className="rounded-lg bg-black/25 border border-white/10 p-2">
+                                <span className="text-white/45">Rankings AI:</span>{' '}
+                                {rankingsData?.aiAnalysis || 'Run League Rankings to inject league-aware AI insight into your overview workflow.'}
+                              </div>
+                            </div>
+                          </div>
 
                           <OverviewReportCard
                             profile={compositeProfile}
@@ -12755,44 +12777,53 @@ function AFLegacyContent() {
                         <p className="text-xs sm:text-sm text-gray-400">See where you rank in your dynasty leagues</p>
                       </div>
                       {rankingsSelectedLeague && rankingsData && (
-                        <button
-                          onClick={() => {
-                            const leagueName = rankingsDynastyLeagues.find(l => l.league_id === rankingsSelectedLeague)?.name || 'my league'
-                            const url = `${window.location.origin}/af-legacy?tab=rankings&league=${rankingsSelectedLeague}`
-                            const shareMessage = `Check out where you rank in ${leagueName} on AllFantasy!\n\n${url}\n\nEnter your Sleeper username to see your league rankings instantly.`
-                            navigator.clipboard.writeText(shareMessage).then(() => {
-                              gtagEvent('share_text_copied', { type: 'rankings_link' })
-                              setRankingsShareCopied(true)
-                              setTimeout(() => setRankingsShareCopied(false), 3000)
-                            }).catch(() => {
-                              const ta = document.createElement('textarea')
-                              ta.value = shareMessage
-                              document.body.appendChild(ta)
-                              ta.select()
-                              document.execCommand('copy')
-                              document.body.removeChild(ta)
-                              setRankingsShareCopied(true)
-                              setTimeout(() => setRankingsShareCopied(false), 3000)
-                            })
-                          }}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition flex-shrink-0 ${
-                            rankingsShareCopied
-                              ? 'bg-emerald-500/20 border border-emerald-400/30 text-emerald-300'
-                              : 'bg-cyan-500/15 border border-cyan-400/20 text-cyan-300 hover:bg-cyan-500/25'
-                          }`}
-                        >
-                          {rankingsShareCopied ? (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                              Copied!
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-                              Share to League
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={prepareRankingsSharePost}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition flex-shrink-0 bg-purple-500/15 border border-purple-400/20 text-purple-300 hover:bg-purple-500/25"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            AI Post
+                          </button>
+                          <button
+                            onClick={() => {
+                              const leagueName = rankingsDynastyLeagues.find(l => l.league_id === rankingsSelectedLeague)?.name || 'my league'
+                              const url = `${window.location.origin}/af-legacy?tab=rankings&league=${rankingsSelectedLeague}`
+                              const shareMessage = `Check out where you rank in ${leagueName} on AllFantasy!\n\n${url}\n\nEnter your Sleeper username to see your league rankings instantly.`
+                              navigator.clipboard.writeText(shareMessage).then(() => {
+                                gtagEvent('share_text_copied', { type: 'rankings_link' })
+                                setRankingsShareCopied(true)
+                                setTimeout(() => setRankingsShareCopied(false), 3000)
+                              }).catch(() => {
+                                const ta = document.createElement('textarea')
+                                ta.value = shareMessage
+                                document.body.appendChild(ta)
+                                ta.select()
+                                document.execCommand('copy')
+                                document.body.removeChild(ta)
+                                setRankingsShareCopied(true)
+                                setTimeout(() => setRankingsShareCopied(false), 3000)
+                              })
+                            }}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition flex-shrink-0 ${
+                              rankingsShareCopied
+                                ? 'bg-emerald-500/20 border border-emerald-400/30 text-emerald-300'
+                                : 'bg-cyan-500/15 border border-cyan-400/20 text-cyan-300 hover:bg-cyan-500/25'
+                            }`}
+                          >
+                            {rankingsShareCopied ? (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+                                Share to League
+                              </>
+                            )}
+                          </button>
+                        </div>
                       )}
                     </div>
 
@@ -17065,17 +17096,198 @@ function AFLegacyContent() {
 
                 {activeTab === 'mock-draft' && (
                   <>
-                  <HeroMetric
-                    value={String(leagues.length)}
-                    label="Mock Draft Simulator"
-                    helper="AI-powered draft predictions & scouting"
+                  <HeroMetric 
+                    value={mockDraftStartedAt ? 'Live' : 'Setup'}
+                    label="Mock Draft Room"
+                    helper="Sleeper-style board with private AI chat context"
                     accent="purple"
                   />
-                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4 sm:p-6">
-                    <MockDraftBoard
-                      leagues={leagues.map(l => ({ id: l.league_id, name: l.name, isDynasty: l.type?.toLowerCase() === 'dynasty', leagueSize: l.team_count, teams: l.roster?.starters || [] }))}
-                      username={username}
-                    />
+                  <p className="text-center text-sm sm:text-base text-white/60 mb-4">League-specific mock drafts with draft type rules, clock, OTC alerts, and private AI recommendations.</p>
+                  <div className="bg-black/30 border border-cyan-500/20 rounded-2xl p-3 sm:p-5">
+                    {(() => {
+                      const selectedLeague = leagues.find(l => l.league_id === mockDraftLeagueId) || leagues[0]
+                      const teamCount = Math.max(8, Math.min(14, selectedLeague?.team_count || mockManagers.length || 12))
+                      const sortedManagers = (mockManagers.length > 0 ? [...mockManagers] : Array.from({ length: teamCount }, (_, i) => ({ id: String(i + 1), displayName: i === 0 ? (username || 'You') : `Team ${i + 1}`, draftSlot: i + 1 }))).sort((a, b) => (a.draftSlot ?? 999) - (b.draftSlot ?? 999))
+                      const managers = sortedManagers.length > 0 ? sortedManagers : Array.from({ length: teamCount }, (_, i) => ({ id: String(i + 1), displayName: i === 0 ? (username || 'You') : `Team ${i + 1}`, draftSlot: i + 1 }))
+                      const elapsed = mockDraftStartedAt ? Math.floor((mockTimerNow - mockDraftStartedAt) / 1000) : 0
+                      const secondsLeft = mockDraftStartedAt ? Math.max(0, mockSecondsPerPick - (elapsed % mockSecondsPerPick)) : mockSecondsPerPick
+                      const onClockPickOverall = mockDraftPicks.length + 1
+                      const currentRound = Math.floor((onClockPickOverall - 1) / teamCount) + 1
+                      const roundPickIdx = (onClockPickOverall - 1) % teamCount
+                      const isSnakeRound = mockDraftFormat === 'snake' && currentRound % 2 === 0
+                      const is3rrRound = mockEnable3RR && currentRound >= 3 && currentRound % 2 === 1
+                      const slotIndex = mockDraftFormat === 'auction'
+                        ? 0
+                        : is3rrRound
+                          ? [...Array(teamCount).keys()].reverse()[roundPickIdx]
+                          : isSnakeRound
+                            ? [...Array(teamCount).keys()].reverse()[roundPickIdx]
+                            : roundPickIdx
+                      const otcManager = managers[slotIndex] || managers[0]
+                      const rounds = Math.max(2, Math.min(20, mockDraftRounds))
+                      const draftedNames = new Set(mockDraftPicks.map(p => p.playerName.toLowerCase()))
+                      const rookiePool = (c2cDevyRoster || []).map((p: any) => ({ name: p.name, position: p.position, team: p.team || 'C2C' }))
+                      const nflPoolFiltered = mockNflPool.filter(p => !draftedNames.has((p.name || '').toLowerCase()))
+                      const rookiePoolFiltered = rookiePool.filter(p => !draftedNames.has((p.name || '').toLowerCase()))
+                      const availablePool = mockDraftType === 'rookie' ? rookiePoolFiltered : mockDraftType === 'vet' ? nflPoolFiltered : [...nflPoolFiltered, ...rookiePoolFiltered]
+
+                      const autoPickOtc = () => {
+                        const next = availablePool[0]
+                        if (!next) return
+                        setMockDraftPicks(prev => [...prev, {
+                          overall: onClockPickOverall,
+                          round: currentRound,
+                          slot: slotIndex + 1,
+                          manager: otcManager?.displayName || 'Team',
+                          playerName: next.name,
+                          position: next.position,
+                          pickedAt: new Date().toISOString(),
+                        }])
+                      }
+
+                      const randomizeOrder = () => {
+                        const shuffled = [...managers]
+                        for (let i = shuffled.length - 1; i > 0; i--) {
+                          const j = Math.floor(Math.random() * (i + 1))
+                          ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+                        }
+                        setMockManagers(shuffled.map((m, idx) => ({ ...m, draftSlot: idx + 1 })))
+                      }
+
+                      return (
+                        <>
+                          <div className="rounded-xl border border-white/10 bg-slate-900/80 p-3 sm:p-4 mb-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <h3 className="text-sm sm:text-base font-bold text-white">{selectedLeague?.name || 'Mock Draft Room'}</h3>
+                                <p className="text-[11px] text-white/50">{mockSecondsPerPick}s/pick • {teamCount} teams • {rounds} rounds • {mockDraftType.toUpperCase()} • {mockDraftFormat.toUpperCase()}</p>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-[10px] text-cyan-300 uppercase tracking-wider">Logged in as</div>
+                                <div className="text-sm font-bold text-cyan-200">{username || 'Guest User'}</div>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 rounded-lg border border-yellow-400/30 bg-yellow-500/10 px-3 py-2 text-xs text-yellow-200">
+                              OTC: <span className="font-bold">{otcManager?.displayName || 'Team'}</span> • Pick {currentRound}.{roundPickIdx + 1} • {secondsLeft}s left
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+                              <div>{renderLeagueDropdown('mock-draft', leagues, mockDraftLeagueId, (v) => setMockDraftLeagueId(v), 'Select league', true, 'w-full')}</div>
+                              <select value={mockDraftType} onChange={(e) => setMockDraftType(e.target.value as 'rookie' | 'vet' | 'both')} className="px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-xs text-white">
+                                <option value="rookie">Rookie Only</option>
+                                <option value="vet">Veteran Only</option>
+                                <option value="both">Rookie + Veteran</option>
+                              </select>
+                              <select value={mockDraftFormat} onChange={(e) => setMockDraftFormat(e.target.value as 'snake' | 'linear' | 'auction')} className="px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-xs text-white">
+                                <option value="snake">Snake</option>
+                                <option value="linear">Linear</option>
+                                <option value="auction">Auction</option>
+                              </select>
+                              <select value={mockDraftRounds} onChange={(e) => setMockDraftRounds(Number(e.target.value))} className="px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-xs text-white">
+                                {[2,3,4,5,6,7,8,10,12,15,18,20].map(r => <option key={r} value={r}>{r} Rounds</option>)}
+                              </select>
+                              <select value={mockSecondsPerPick} onChange={(e) => setMockSecondsPerPick(Number(e.target.value))} className="px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-xs text-white">
+                                {[15,30,45,60,90,120,180].map(sec => <option key={sec} value={sec}>{sec}s Clock</option>)}
+                              </select>
+                              <select value={mockTimezone} onChange={(e) => setMockTimezone(e.target.value)} className="px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-xs text-white">
+                                {['America/New_York','America/Chicago','America/Denver','America/Los_Angeles','America/Phoenix','America/Anchorage','America/Halifax','America/St_Johns','America/Toronto','America/Vancouver','America/Winnipeg','America/Edmonton','America/Regina'].map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                              </select>
+                              <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-xs text-white/80">
+                                <input type="checkbox" checked={mockEnable3RR} onChange={(e) => setMockEnable3RR(e.target.checked)} />
+                                Enable 3RR (redraft + linear)
+                              </label>
+                              <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-xs text-white/80">
+                                <input type="checkbox" checked={mockAllowAiTrades} onChange={(e) => setMockAllowAiTrades(e.target.checked)} />
+                                AI Team Trades
+                              </label>
+                              <label className="flex items-center gap-2 px-3 py-2 rounded-lg bg-black/30 border border-white/10 text-xs text-white/80">
+                                <input type="checkbox" checked={mockAllowFuturePickTrades} onChange={(e) => setMockAllowFuturePickTrades(e.target.checked)} />
+                                Future Pick Trading (Dynasty)
+                              </label>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <button onClick={() => { setMockDraftStartedAt(Date.now()); setMockDraftPicks([]) }} className="px-4 py-2 rounded-lg bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 text-xs font-semibold">{mockDraftStartedAt ? 'Restart Draft' : 'Start Draft'}</button>
+                              <button onClick={autoPickOtc} className="px-4 py-2 rounded-lg bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-xs font-semibold">Auto Pick OTC</button>
+                              <button onClick={randomizeOrder} className="px-4 py-2 rounded-lg bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-semibold">Randomize Draft Order</button>
+                            </div>
+                          </div>
+
+                          <div className="rounded-xl border border-white/10 bg-[#0f172a] p-2 sm:p-3 overflow-x-auto">
+                            <div className="min-w-[980px]">
+                              <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${teamCount}, minmax(110px, 1fr))` }}>
+                                {managers.map((m, idx) => (
+                                  <div key={m.id} className={`rounded-lg p-2 border ${idx === slotIndex && mockDraftStartedAt ? 'border-cyan-400/60 bg-cyan-500/10' : 'border-white/10 bg-white/5'}`}>
+                                    <div className="flex items-center gap-2">
+                                      {m.avatar ? <img src={m.avatar} alt={m.displayName} className="w-5 h-5 rounded-full" /> : <div className="w-5 h-5 rounded-full bg-purple-500/30" />}
+                                      <div className="text-[10px] text-white/50">{m.draftSlot || idx + 1}.01</div>
+                                    </div>
+                                    <div className="text-xs font-semibold text-white truncate mt-1">{m.displayName}</div>
+                                    {idx === slotIndex && mockDraftStartedAt && <div className="text-[10px] text-cyan-300 mt-1">OTC • {secondsLeft}s</div>}
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${teamCount}, minmax(110px, 1fr))` }}>
+                                {Array.from({ length: rounds }).flatMap((_, roundIdx) => {
+                                  const isSnake = mockDraftFormat === 'snake' && (roundIdx + 1) % 2 === 0
+                                  const isR3 = mockEnable3RR && (roundIdx + 1) >= 3 && (roundIdx + 1) % 2 === 1
+                                  const order = mockDraftFormat === 'auction'
+                                    ? [...Array(teamCount).keys()]
+                                    : isR3
+                                      ? [...Array(teamCount).keys()].reverse()
+                                      : isSnake
+                                        ? [...Array(teamCount).keys()].reverse()
+                                        : [...Array(teamCount).keys()]
+                                  return order.map((teamIndex, pickIdx) => {
+                                    const overall = roundIdx * teamCount + pickIdx + 1
+                                    const pickLabel = `${roundIdx + 1}.${pickIdx + 1}`
+                                    const pickData = mockDraftPicks.find(p => p.overall === overall)
+                                    return (
+                                      <div key={`${roundIdx}-${teamIndex}-${pickIdx}`} className="rounded-md p-2 min-h-[58px] border border-white/10 bg-slate-800/70">
+                                        <div className="text-[10px] text-white/40">{pickLabel}</div>
+                                        <div className="text-[11px] text-white/90 truncate">{pickData ? `${pickData.playerName} (${pickData.position})` : '\u2014'}</div>
+                                        <div className="text-[9px] text-white/50 truncate">{pickData ? `${pickData.manager} \u2022 ${new Date(pickData.pickedAt).toLocaleTimeString()}` : ''}</div>
+                                      </div>
+                                    )
+                                  })
+                                })}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
+                            <div className="rounded-xl border border-white/10 bg-black/25 p-3 lg:col-span-2">
+                              <div className="text-xs uppercase tracking-wider text-cyan-300 mb-2">Eligible Player Pool ({mockDraftType})</div>
+                              {mockNflPoolLoading ? <p className="text-xs text-white/60">Loading NFL player pool\u2026</p> : (
+                                <p className="text-xs text-white/60">NFL: {nflPoolFiltered.length} available \u2022 College/Rookie: {rookiePoolFiltered.length} available \u2022 Total eligible now: {availablePool.length}. Duplicate picks are blocked automatically.</p>
+                              )}
+                              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-white/70">
+                                <div className="rounded-lg bg-black/30 border border-white/10 p-2">Snake: reversal every round.</div>
+                                <div className="rounded-lg bg-black/30 border border-white/10 p-2">Linear: same order each round.</div>
+                                <div className="rounded-lg bg-black/30 border border-white/10 p-2">Auction: nomination/price model (board tracking mode in this release).</div>
+                                <div className="rounded-lg bg-black/30 border border-white/10 p-2">3RR: third-round reversal (redraft + linear).</div>
+                              </div>
+                            </div>
+                            <div className="rounded-xl border border-white/10 bg-black/25 p-3">
+                              <div className="text-xs uppercase tracking-wider text-cyan-300 mb-2">Draft Log</div>
+                              <div className="space-y-1 max-h-60 overflow-y-auto">
+                                {mockDraftPicks.length === 0 && <p className="text-xs text-white/40">No picks yet.</p>}
+                                {[...mockDraftPicks].reverse().slice(0, 20).map(p => (
+                                  <div key={p.overall} className="flex items-center gap-2 text-[11px] text-white/70">
+                                    <span className="text-white/40 w-8">{p.round}.{p.slot}</span>
+                                    <span className="font-semibold text-white/90 truncate">{p.playerName}</span>
+                                    <span className="text-white/40">({p.position})</span>
+                                    <span className="ml-auto text-white/30 truncate max-w-[80px]">{p.manager}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
                   </>
                 )}
