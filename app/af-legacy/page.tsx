@@ -4204,12 +4204,12 @@ function AFLegacyContent() {
     ],
     alerts: [],
     profile: [
-      { id: 'chat', label: 'AI Chat', icon: <MessageCircle className="w-3.5 h-3.5" />, badge: 'AI' },
-      { id: 'mock-draft', label: 'Mock Draft', icon: <LayoutGrid className="w-3.5 h-3.5" />, badge: 'AI' },
+      { id: 'chat', label: 'AI', icon: <MessageCircle className="w-3.5 h-3.5" /> },
+      { id: 'mock-draft', label: 'Draft', icon: <LayoutGrid className="w-3.5 h-3.5" />, badge: 'AI' },
       { id: 'share', label: 'Share', icon: <Share2 className="w-3.5 h-3.5" /> },
       { id: 'transfer', label: 'Transfer', icon: <PackageOpen className="w-3.5 h-3.5" /> },
       { id: 'shop', label: 'Shop', icon: <ShoppingBag className="w-3.5 h-3.5" /> },
-      { id: 'ideas', label: 'Submit Ideas', icon: <Lightbulb className="w-3.5 h-3.5" /> },
+      { id: 'ideas', label: 'Ideas', icon: <Lightbulb className="w-3.5 h-3.5" /> },
     ],
   }
 
