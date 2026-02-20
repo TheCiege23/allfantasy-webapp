@@ -17212,6 +17212,27 @@ function AFLegacyContent() {
                               <button onClick={autoPickOtc} className="px-4 py-2 rounded-lg bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 text-xs font-semibold">Auto Pick OTC</button>
                               <button onClick={randomizeOrder} className="px-4 py-2 rounded-lg bg-cyan-500/30 border border-cyan-400/40 text-cyan-200 text-xs font-semibold">Randomize Draft Order</button>
                             </div>
+
+                            <details className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+                              <summary className="cursor-pointer text-xs sm:text-sm font-semibold text-cyan-200">Dynasty League Constitution (Scalable 4–32 Teams)</summary>
+                              <div className="mt-3 space-y-3 text-[11px] sm:text-xs text-white/75 leading-relaxed max-h-64 overflow-y-auto pr-1">
+                                <p><span className="font-semibold text-white">1. League Structure</span> — 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, or 32 teams. Divisions optional at 12+ teams.</p>
+                                <p><span className="font-semibold text-white">2. Roster Settings</span> — Scaled by team size. 1QB and Superflex lineup templates supported. Optional IDP blocks (DL/LB/DB/IDP Flex). Dynasty bench/taxi/IR guidance included.</p>
+                                <ul className="list-disc pl-5 space-y-1 text-white/65">
+                                  <li>Bench guide: 4–8 teams: 8–12 • 10–12: 12–16 • 14–16: 16–22 • 20+: 20–30</li>
+                                  <li>Taxi: 2–6 rookie slots, 1–3 year eligibility</li>
+                                  <li>IR: 2–5 spots</li>
+                                </ul>
+                                <p><span className="font-semibold text-white">3. Scoring</span> — Full PPR / Half PPR / Non-PPR. Optional TE Premium (+0.5). Optional balanced IDP scoring.</p>
+                                <p><span className="font-semibold text-white">4–5. Season + Playoffs</span> — 13–14 week regular season, avoid Week 18 title games. Playoff options: 6/8/10 and super-commish 7/9 with bye variants.</p>
+                                <p><span className="font-semibold text-white">6. Rookie Draft Order (Anti-Tank)</span> — Non-playoff teams ordered by reverse Max PF; playoff teams ordered by exit finish; champion last. Linear rookie draft default, 3RR optional.</p>
+                                <p><span className="font-semibold text-white">7. Integrity</span> — No intentional inactive starts; competitive lineups required weekly.</p>
+                                <p><span className="font-semibold text-white">8. Trades</span> — Picks tradable 2–3 years out; deadline before playoffs or Weeks 10–12. Veto only for collusion/extreme imbalance.</p>
+                                <p><span className="font-semibold text-white">9. Waivers</span> — FAAB recommended (rolling/reverse standings optional).</p>
+                                <p><span className="font-semibold text-white">10. Advanced</span> — Optional salary cap, contracts, devy slots, compensatory picks for 16+ team depth leagues.</p>
+                                <p className="text-cyan-200"><span className="font-semibold">Recommended Competitive Default (12-Team SF Dynasty):</span> SF • Full PPR • TEP +0.5 • 6-team playoffs • Reverse Max PF non-playoff • playoff exit order for playoff teams • 4-round rookie draft • FAAB.</p>
+                              </div>
+                            </details>
                           </div>
 
                           <div className="rounded-xl border border-white/10 bg-[#0f172a] p-2 sm:p-3 overflow-x-auto">
