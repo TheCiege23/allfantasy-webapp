@@ -15389,6 +15389,7 @@ function AFLegacyContent() {
                       <div className="mb-8">
                         <AIFeaturesPanel
                           leagueName={transferPreview.league?.name}
+                          leagueId={transferPreview.league?.id}
                           onNavigate={(tabId) => setActiveTab(tabId as Tab)}
                         />
                       </div>

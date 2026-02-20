@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 
 function cx(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(' ')
@@ -12,6 +12,7 @@ interface AIFeature {
   description: string
   route: string
   tabId: string
+  featureKey: string
   gradient: string
   glow: string
   accentText: string
@@ -26,6 +27,7 @@ const AI_FEATURES: AIFeature[] = [
     description: 'Context-aware evaluations using manager tendencies, league scoring, and competitive windows',
     route: '/af-legacy',
     tabId: 'trade',
+    featureKey: 'trade',
     gradient: 'from-red-500/20 to-orange-500/10',
     glow: 'neon-glow-red',
     accentText: 'text-red-400',
@@ -38,6 +40,7 @@ const AI_FEATURES: AIFeature[] = [
     description: 'AI-generated weekly narratives with rivalry scoring, revenge games, and trade tension tracking',
     route: '/af-legacy',
     tabId: 'transfer',
+    featureKey: 'rivalry',
     gradient: 'from-amber-500/20 to-yellow-500/10',
     glow: 'neon-glow-amber',
     accentText: 'text-amber-400',
@@ -50,6 +53,7 @@ const AI_FEATURES: AIFeature[] = [
     description: 'Real-time draft recommendations, value-based rankings, and trade-up/down strategies',
     route: '/af-legacy',
     tabId: 'draft',
+    featureKey: 'draft',
     gradient: 'from-emerald-500/20 to-teal-500/10',
     glow: 'neon-glow-emerald',
     accentText: 'text-emerald-400',
@@ -62,6 +66,7 @@ const AI_FEATURES: AIFeature[] = [
     description: 'Weekly waiver priority with one high-impact recommendation tailored to your team needs',
     route: '/af-legacy',
     tabId: 'finder',
+    featureKey: 'waiver',
     gradient: 'from-purple-500/20 to-violet-500/10',
     glow: 'neon-glow-purple',
     accentText: 'text-purple-400',
@@ -74,6 +79,7 @@ const AI_FEATURES: AIFeature[] = [
     description: 'Luck-adjusted power rankings with 5-score composite, win probability, and Monte Carlo projections',
     route: '/af-legacy',
     tabId: 'rankings',
+    featureKey: 'rankings',
     gradient: 'from-cyan-500/20 to-blue-500/10',
     glow: 'neon-glow-cyan',
     accentText: 'text-cyan-400',
@@ -86,6 +92,7 @@ const AI_FEATURES: AIFeature[] = [
     description: 'Scans every roster in your league to surface mutually beneficial trade proposals with acceptance odds',
     route: '/af-legacy',
     tabId: 'finder',
+    featureKey: 'finder',
     gradient: 'from-pink-500/20 to-rose-500/10',
     glow: 'neon-glow-red',
     accentText: 'text-pink-400',
@@ -94,45 +101,150 @@ const AI_FEATURES: AIFeature[] = [
   },
 ]
 
-function FeatureCard({ feature, index, onNavigate }: { feature: AIFeature; index: number; onNavigate: (tabId: string) => void }) {
+function FeatureCard({
+  feature,
+  index,
+  onNavigate,
+  leagueId,
+}: {
+  feature: AIFeature
+  index: number
+  onNavigate: (tabId: string) => void
+  leagueId?: string
+}) {
   const [visible, setVisible] = useState(false)
-  useEffect(() => { const t = setTimeout(() => setVisible(true), 100 + index * 80); return () => clearTimeout(t) }, [index])
+  const [expanded, setExpanded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [insight, setInsight] = useState<string | null>(null)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 100 + index * 80)
+    return () => clearTimeout(t)
+  }, [index])
+
+  const fetchInsight = useCallback(async () => {
+    if (insight || loading) return
+    setLoading(true)
+    setError(false)
+    try {
+      const res = await fetch('/api/ai-features', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ featureId: feature.featureKey, leagueId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(true)
+        return
+      }
+      setInsight(data.insight || 'AI insight unavailable.')
+    } catch {
+      setError(true)
+    } finally {
+      setLoading(false)
+    }
+  }, [feature.featureKey, leagueId, insight, loading])
+
+  function handleClick() {
+    if (expanded) {
+      onNavigate(feature.tabId)
+      return
+    }
+    setExpanded(true)
+    fetchInsight()
+  }
 
   return (
-    <button
-      onClick={() => onNavigate(feature.tabId)}
+    <div
       className={cx(
         'group relative w-full text-left rounded-xl glass-card overflow-hidden transition-all duration-300',
-        'hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]',
+        expanded ? 'sm:col-span-2 ring-1 ring-white/10' : 'hover:scale-[1.02] hover:shadow-lg active:scale-[0.98]',
         feature.glow,
         visible ? 'animate-slide-up' : 'opacity-0'
       )}
       style={{ animationDelay: `${index * 80}ms` }}
     >
-      <div className={cx('absolute inset-0 bg-gradient-to-br pointer-events-none rounded-xl opacity-80 group-hover:opacity-100 transition-opacity -z-10', feature.gradient)} />
-      <div className="relative p-3.5 flex items-start gap-3">
-        <div className="text-xl shrink-0 mt-0.5 group-hover:animate-rival-pulse">{feature.icon}</div>
+      <div className={cx('absolute inset-0 bg-gradient-to-br pointer-events-none rounded-xl transition-opacity -z-10', feature.gradient, expanded ? 'opacity-100' : 'opacity-80 group-hover:opacity-100')} />
+
+      <button
+        onClick={handleClick}
+        className="relative w-full text-left p-3.5 flex items-start gap-3"
+      >
+        <div className={cx('text-xl shrink-0 mt-0.5', expanded ? 'animate-rival-pulse' : 'group-hover:animate-rival-pulse')}>{feature.icon}</div>
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-bold text-white group-hover:text-white transition-colors">{feature.title}</span>
-            <span className={cx('text-[7px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0',
-              feature.tagClasses,
-            )}>{feature.tag}</span>
+            <span className="text-[11px] font-bold text-white">{feature.title}</span>
+            <span className={cx('text-[7px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0', feature.tagClasses)}>{feature.tag}</span>
           </div>
           <p className="text-[9px] text-white/35 leading-relaxed line-clamp-2 group-hover:text-white/45 transition-colors">{feature.description}</p>
         </div>
-        <svg className="w-4 h-4 text-white/15 shrink-0 mt-1 group-hover:text-white/40 group-hover:translate-x-0.5 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-      </div>
-    </button>
+        <svg
+          className={cx(
+            'w-4 h-4 shrink-0 mt-1 transition-all',
+            expanded
+              ? 'text-white/40 rotate-90'
+              : 'text-white/15 group-hover:text-white/40 group-hover:translate-x-0.5'
+          )}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="px-3.5 pb-3.5 space-y-2.5 animate-slide-up">
+          <div className="border-t border-white/[0.06] pt-2.5">
+            {loading && (
+              <div className="flex items-center gap-2 py-2">
+                <div className="w-3 h-3 rounded-full border-2 border-white/20 border-t-white/60 animate-spin" />
+                <span className="text-[10px] text-white/40">Generating personalized insight...</span>
+              </div>
+            )}
+            {error && (
+              <div className="text-[10px] text-red-300/70 py-1">
+                Could not load AI insight. Try again later.
+              </div>
+            )}
+            {insight && !loading && (
+              <div className="space-y-2.5">
+                <div className="flex items-start gap-2">
+                  <div className={cx('w-4 h-4 rounded-md flex items-center justify-center shrink-0 mt-0.5 text-[8px] font-black', feature.tagClasses)}>AI</div>
+                  <p className="text-[10px] text-white/60 leading-relaxed">{insight}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded(false) }}
+              className="text-[9px] text-white/25 hover:text-white/50 transition-colors"
+            >
+              Collapse
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onNavigate(feature.tabId) }}
+              className={cx('text-[9px] font-bold px-3 py-1.5 rounded-lg border transition-all hover:scale-105', feature.tagClasses)}
+            >
+              Open {feature.title} &rarr;
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
 interface AIFeaturesPanelProps {
   leagueName?: string
+  leagueId?: string
   onNavigate: (tabId: string) => void
 }
 
-export default function AIFeaturesPanel({ leagueName, onNavigate }: AIFeaturesPanelProps) {
+export default function AIFeaturesPanel({ leagueName, leagueId, onNavigate }: AIFeaturesPanelProps) {
   return (
     <div className="w-full space-y-5">
       <div className="rounded-2xl glass-card-vivid neon-glow-cyan overflow-hidden animate-neon-border">
@@ -168,7 +280,7 @@ export default function AIFeaturesPanel({ leagueName, onNavigate }: AIFeaturesPa
         <div className="relative p-4">
           <div className="grid gap-2.5 sm:grid-cols-2 stagger-children">
             {AI_FEATURES.map((feature, i) => (
-              <FeatureCard key={feature.tabId + i} feature={feature} index={i} onNavigate={onNavigate} />
+              <FeatureCard key={feature.featureKey} feature={feature} index={i} onNavigate={onNavigate} leagueId={leagueId} />
             ))}
           </div>
 
