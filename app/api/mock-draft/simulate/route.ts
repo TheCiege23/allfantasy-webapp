@@ -3,7 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
-import { getLiveADP, formatADPForPrompt } from '@/lib/adp-data'
+import { getLiveADP } from '@/lib/adp-data'
+import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 
 const openai = new OpenAI()
 
