@@ -35,6 +35,9 @@ import RivalryWeekCards from "@/components/RivalryWeekCards"
 import AIFeaturesPanel from "@/components/AIFeaturesPanel"
 import PlayoffBracketPreview from "@/components/PlayoffBracketPreview"
 import DataFreshnessBanner from "@/components/DataFreshnessBanner"
+import ConfidenceFreshnessLabel from "@/components/ConfidenceFreshnessLabel"
+import ActionHandoffButtons, { parseAIHandoffs } from "@/components/ActionHandoffButtons"
+import RankChangeDrivers from "@/components/RankChangeDrivers"
 import OverviewLanes from "@/app/af-legacy/components/OverviewLanes"
 import OverviewReportCard from "@/app/af-legacy/components/OverviewReportCard"
 import OverviewInsights from "@/app/af-legacy/components/OverviewInsights"
@@ -914,6 +917,12 @@ function AFLegacyContent() {
   const [aiCoachError, setAiCoachError] = useState('')
   const [showAiExplain, setShowAiExplain] = useState(false)
   const [insightExpanded, setInsightExpanded] = useState(false)
+  const [rankLastRefreshed, setRankLastRefreshed] = useState<number>(0)
+  const [autoHydrateTriggered, setAutoHydrateTriggered] = useState(false)
+  const [rankChangeDrivers, setRankChangeDrivers] = useState<any[]>([])
+  const [aiCoachTimestamp, setAiCoachTimestamp] = useState<string | null>(null)
+  const [rankConfidence, setRankConfidence] = useState<number | null>(null)
+  const [rankTimestamp, setRankTimestamp] = useState<string | null>(null)
 
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false)
   const [careerStatsLoading, setCareerStatsLoading] = useState(false)
@@ -2832,6 +2841,35 @@ function AFLegacyContent() {
     }
   }, [activeTab, username, quizChecked]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (activeTab !== 'overview' || !username || importStatus !== 'complete') return
+    if (autoHydrateTriggered || rankRefreshLoading) return
+
+    const STALE_HOURS = 6
+    const isStale = !rankLastRefreshed || (Date.now() - rankLastRefreshed) > STALE_HOURS * 3600000
+    if (!isStale) return
+
+    setAutoHydrateTriggered(true)
+
+    fetch(`/api/legacy/rank/refresh?sleeper_username=${encodeURIComponent(username)}`, { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ranking_preview) {
+          setRankingPreview(data.ranking_preview)
+          setRankLastRefreshed(Date.now())
+          setRankTimestamp(new Date().toISOString())
+          if (data.ranking_preview?.confidence?.score != null) {
+            setRankConfidence(data.ranking_preview.confidence.score)
+          }
+          if (data.ranking_preview?.rank_change_drivers) {
+            setRankChangeDrivers(data.ranking_preview.rank_change_drivers)
+          }
+          setRankRemaining(data.rate_limit?.remaining ?? null)
+        }
+      })
+      .catch(() => {})
+  }, [activeTab, username, importStatus, autoHydrateTriggered, rankRefreshLoading, rankLastRefreshed]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleImport = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!username.trim()) return
@@ -2983,6 +3021,15 @@ function AFLegacyContent() {
       }
     }
   }, [importStatus, username, leagues.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const logShareEngagement = (platform: string, action: string) => {
+    if (!username) return
+    fetch('/api/legacy/share/engagement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sleeper_username: username, share_type: shareType, platform, action, style: shareStyle }),
+    }).catch(() => {})
+  }
 
   const generateShareText = async (style: 'balanced' | 'humble' | 'trash_talk', type?: 'legacy' | 'trade' | 'rankings' | 'exposure') => {
     if (!username) return
@@ -3518,6 +3565,14 @@ function AFLegacyContent() {
 
       setRankingPreview(data.ranking_preview)
       setRankRemaining(data.rate_limit?.remaining ?? null)
+      setRankLastRefreshed(Date.now())
+      setRankTimestamp(new Date().toISOString())
+      if (data.ranking_preview?.confidence?.score != null) {
+        setRankConfidence(data.ranking_preview.confidence.score)
+      }
+      if (data.ranking_preview?.rank_change_drivers) {
+        setRankChangeDrivers(data.ranking_preview.rank_change_drivers)
+      }
       setAiCoach(null)
     } catch {
       setRankRefreshError('Network error')
@@ -3561,6 +3616,7 @@ function AFLegacyContent() {
       }
 
       setAiCoach(data.coach)
+      setAiCoachTimestamp(new Date().toISOString())
       setAiCoachRemaining(data.rate_limit?.remaining ?? null)
     } catch {
       setAiCoachError('Network error')
@@ -4002,7 +4058,15 @@ function AFLegacyContent() {
 
   useEffect(() => {
     if (activeTab === 'share' && importStatus === 'complete' && !shareText) {
-      generateShareText('balanced')
+      fetch(`/api/legacy/share/engagement?sleeper_username=${encodeURIComponent(username)}`)
+        .then(r => r.json())
+        .then(data => {
+          const preferred = data?.preferred_style as 'balanced' | 'humble' | 'trash_talk' | null
+          const style = preferred && ['balanced', 'humble', 'trash_talk'].includes(preferred) ? preferred : 'balanced'
+          setShareStyle(style)
+          generateShareText(style)
+        })
+        .catch(() => generateShareText('balanced'))
     }
   }, [activeTab, importStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -6598,6 +6662,19 @@ function AFLegacyContent() {
                               </div>
                             </div>
 
+                          <div className="mb-3">
+                            <ConfidenceFreshnessLabel
+                              confidence={rankConfidence}
+                              timestamp={rankTimestamp}
+                            />
+                          </div>
+
+                          {rankChangeDrivers.length > 0 && (
+                            <div className="mb-3">
+                              <RankChangeDrivers drivers={rankChangeDrivers} title="Why this changed" compact />
+                            </div>
+                          )}
+
                           {rankRefreshError && (
                             <div className="mb-3 px-3 py-2 rounded-xl bg-red-500/10 border border-red-400/25 text-sm text-red-300">{rankRefreshError}</div>
                           )}
@@ -6809,9 +6886,16 @@ function AFLegacyContent() {
 
                           {aiCoach && (
                             <div className="mt-4 bg-gradient-to-br from-purple-500/10 to-cyan-500/10 rounded-xl p-4 border border-purple-500/20">
-                              <h4 className="text-lg font-bold text-purple-300 mb-2">
-                                {aiCoach.headline || 'AI Coach Advice'}
-                              </h4>
+                              <div className="flex items-start justify-between gap-2 mb-2">
+                                <h4 className="text-lg font-bold text-purple-300">
+                                  {aiCoach.headline || 'AI Coach Advice'}
+                                </h4>
+                                <ConfidenceFreshnessLabel
+                                  confidence={aiCoach.confidence_score ?? 0.75}
+                                  timestamp={aiCoachTimestamp}
+                                  compact
+                                />
+                              </div>
                               {aiCoach.what_hurts_most && (
                                 <div className="mb-3">
                                   <span className="text-red-400 text-sm font-semibold">What Hurts Most:</span>
@@ -6852,6 +6936,13 @@ function AFLegacyContent() {
                                   </ul>
                                 </div>
                               )}
+                              <ActionHandoffButtons
+                                actions={parseAIHandoffs(
+                                  [aiCoach.headline, ...(aiCoach.what_hurts_most || []), ...(aiCoach.quick_wins || [])].join(' '),
+                                  aiCoach.weak_positions
+                                )}
+                                onNavigate={(tab) => setActiveTab(tab as Tab)}
+                              />
                             </div>
                           )}
 
@@ -15144,6 +15235,7 @@ function AFLegacyContent() {
                             if (!text) { alert('Generate a share post first!'); return }
                             navigator.clipboard.writeText(text)
                             gtagEvent('share_text_copied', { type: 'social_post' })
+                            logShareEngagement('clipboard', 'copied')
                             alert('Copied to clipboard!')
                           }}
                           className="flex items-center gap-2 px-4 py-2.5 bg-cyan-500/20 text-cyan-300 rounded-xl hover:bg-cyan-500/30 transition min-h-[44px]"
@@ -15156,6 +15248,7 @@ function AFLegacyContent() {
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={() => logShareEngagement('x', 'posted')}
                           className="flex items-center gap-2 px-4 py-2.5 bg-black/40 text-white rounded-xl hover:bg-white/10 transition border border-white/20 min-h-[44px]"
                         >
                           <span>𝕏</span> X / Twitter
@@ -15166,6 +15259,7 @@ function AFLegacyContent() {
                           )}`}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={() => logShareEngagement('facebook', 'posted')}
                           className="flex items-center gap-2 px-4 py-2.5 bg-blue-600/20 text-blue-300 rounded-xl hover:bg-blue-600/30 transition border border-blue-500/30 min-h-[44px]"
                         >
                           <span>📘</span> Facebook

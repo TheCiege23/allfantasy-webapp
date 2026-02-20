@@ -2631,3 +2631,18 @@ model LeagueDraftCalibration {
   @@index([leagueId])
   @@map("league_draft_calibrations")
 }
+
+model ShareEngagement {
+  id               String   @id @default(uuid())
+  sleeperUsername   String   @db.VarChar(64)
+  shareType        String   @db.VarChar(32)
+  platform         String   @db.VarChar(32)
+  action           String   @db.VarChar(16)
+  style            String?  @db.VarChar(32)
+  createdAt        DateTime @default(now())
+
+  @@index([sleeperUsername])
+  @@index([sleeperUsername, shareType])
+  @@index([createdAt])
+  @@map("share_engagements")
+}
