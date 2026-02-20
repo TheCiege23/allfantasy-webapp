@@ -268,6 +268,7 @@ export interface LeagueRankingsV2Output {
     weightVersion: string
     weightCalibratedAt: string
     learnedParams?: LearnedCompositeParams
+    adaptiveWeights?: Record<string, number>
     segmentKey?: string
     modelConfidence: {
       score: number
