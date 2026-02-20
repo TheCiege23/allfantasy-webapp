@@ -53,13 +53,14 @@ export default async function LeagueDetailPage({
   const allPicksByEntry: Record<string, Record<string, string | null>> = {}
   let nodesWithGame: any[] = []
 
-  if (userEntries.length > 0) {
-    const primaryEntry = userEntries[0]
+  if (league.entries.length > 0) {
+    const primaryEntry = userEntries[0] ?? league.entries[0]
     const bracketData = await getEntryBracketData(league.tournament.id, primaryEntry.id)
     nodesWithGame = bracketData.nodesWithGame
     allPicksByEntry[primaryEntry.id] = bracketData.pickMap
 
-    for (const entry of userEntries.slice(1)) {
+    const remainingEntries = league.entries.filter((e: any) => e.id !== primaryEntry.id)
+    for (const entry of remainingEntries) {
       const picks = await prisma.bracketPick.findMany({
         where: { entryId: entry.id },
         select: { nodeId: true, pickedTeamName: true },
@@ -86,45 +87,28 @@ export default async function LeagueDetailPage({
   const paymentConfirmedAt = rules.commissionerPaymentConfirmedAt as string | null
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
-        <div className="flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-b from-[#0a0e1a] to-[#111827] text-white">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-3">
+        <div className="flex items-center gap-3">
           <Link
             href="/brackets"
-            className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white transition"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-sm text-white/60 hover:text-white hover:bg-white/15 transition"
           >
-            &larr; Brackets
+            &larr;
           </Link>
-        </div>
-
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold">{league.name}</h1>
-            <p className="text-sm text-white/40 mt-0.5">
-              {league.tournament.name} &bull; {league.tournament.season}
-            </p>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-2xl">&#127936;</span>
+            <h1 className="text-lg sm:text-xl font-bold truncate">
+              {league.tournament.name === "March Madness" ? "March Madness" : league.name}
+            </h1>
+            <span className="text-2xl">&#127936;</span>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex -space-x-2">
-              {league.members.slice(0, 5).map((m: any) => (
-                <div
-                  key={m.id}
-                  className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 border-2 border-gray-950 flex items-center justify-center text-[10px] font-bold text-white"
-                  title={m.user.displayName || m.user.email}
-                >
-                  {(m.user.displayName || m.user.email || "?").slice(0, 2).toUpperCase()}
-                </div>
-              ))}
-              {league.members.length > 5 && (
-                <div className="w-8 h-8 rounded-full bg-white/10 border-2 border-gray-950 flex items-center justify-center text-[10px] font-medium text-white/60">
-                  +{league.members.length - 5}
-                </div>
-              )}
-            </div>
-            <div className="text-xs text-white/30">
-              {league.members.length}/{league.maxManagers}
-            </div>
-          </div>
+          <button className="p-2 hover:bg-white/10 rounded-full transition">
+            <svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
         </div>
 
         <LeagueHomeTabs

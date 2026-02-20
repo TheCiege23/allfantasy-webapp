@@ -32,7 +32,7 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 -   **Monte Carlo Simulation Engine**: Performs matchup, season, and championship delta simulations.
 -   **Acceptance Probability Model**: A logistic regression model with isotonic regression for real-outcome calibrated predictions.
 -   **Game Theory Counter Builder**: Mathematically optimized counter offers.
--   **NCAA Bracket Challenge**: A full March Madness bracket system with league creation, ESPN-style UI, live polling, and shareable invite links.
+-   **NCAA Bracket Challenge**: A full March Madness bracket system with league creation, ESPN March Madness-style UI (3-tab POOL/BRACKETS/GLOBAL layout), live game scores carousel, per-round standings with correct pick breakdown, expandable pool brackets per member, persistent chat bar, settings accordion, and shareable invite links.
 -   **Trade Improvement AI (Dual-Brain)**: Utilizes Agentic Grok and GPT-4o for parallel synthesis with a real-time thinking UI.
 -   **Unified Canonical Context (v1)**: All trade tools share a single `TradeDecisionContextV1` via `buildUnifiedTradeContext()`, bridging legacy data with a canonical schema and providing freshness, coverage, and quality metadata.
 -   **Data Quality Features**: Includes Source Freshness Scoring (5-tier grading), Data Coverage Tier Scoring (FULL, PARTIAL, MINIMAL), and Confidence Guard Gates (Injury Compound Risk Guard, Missing Roster/Team Data Guard).

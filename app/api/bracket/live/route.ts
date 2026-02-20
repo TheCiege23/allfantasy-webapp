@@ -94,15 +94,37 @@ export async function GET(request: NextRequest) {
         orderBy: { createdAt: "asc" },
       })
 
+      const nodeRoundMap = new Map<string, number>()
+      for (const n of nodes) nodeRoundMap.set(n.id, n.round)
+
+      const ROUND_MAX: Record<number, number> = { 1: 32, 2: 16, 3: 8, 4: 4, 5: 2, 6: 1 }
+      const ROUND_PTS: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32 }
+
       standings = entries.map((entry) => {
         let totalPoints = 0
         let correctPicks = 0
         let totalPicks = 0
+        const roundCorrect: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+
+        let championPick: string | null = null
+        let maxPossible = 0
 
         for (const pick of entry.picks) {
+          const round = nodeRoundMap.get(pick.nodeId) ?? 0
           totalPoints += pick.points ?? 0
-          if (pick.isCorrect === true) correctPicks++
+          if (pick.isCorrect === true) {
+            correctPicks++
+            if (round >= 1 && round <= 6) roundCorrect[round]++
+          }
           if (pick.isCorrect !== null) totalPicks++
+
+          if (pick.isCorrect !== false && round >= 1 && round <= 6) {
+            maxPossible += ROUND_PTS[round] ?? 0
+          }
+
+          if (round === 6 && pick.pickedTeamName) {
+            championPick = pick.pickedTeamName
+          }
         }
 
         return {
@@ -114,6 +136,9 @@ export async function GET(request: NextRequest) {
           totalPoints,
           correctPicks,
           totalPicks,
+          roundCorrect,
+          championPick,
+          maxPossible,
         }
       })
 
@@ -124,14 +149,27 @@ export async function GET(request: NextRequest) {
       (n) => n.liveGame?.status === "in_progress"
     )
 
+    const gamesFlat = games.map((g) => ({
+      id: g.id,
+      homeTeam: g.homeTeam,
+      awayTeam: g.awayTeam,
+      homeScore: g.homeScore,
+      awayScore: g.awayScore,
+      status: g.status,
+      startTime: g.startTime ? g.startTime.toISOString() : null,
+    }))
+
     return NextResponse.json(
       {
+        ok: true,
+        tournamentId: tournament.id,
         tournament: {
           id: tournament.id,
           name: tournament.name,
           season: tournament.season,
           sport: tournament.sport,
         },
+        games: gamesFlat,
         nodes: bracketNodes,
         standings,
         hasLiveGames,

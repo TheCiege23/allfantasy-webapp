@@ -17,8 +17,17 @@ type LivePayload = {
   standings: null | Array<{
     entryId: string
     entryName: string
-    ownerName: string
-    points: number
+    ownerName?: string
+    userId?: string
+    displayName?: string | null
+    avatarUrl?: string | null
+    points?: number
+    totalPoints?: number
+    correctPicks?: number
+    totalPicks?: number
+    roundCorrect?: Record<number, number>
+    championPick?: string | null
+    maxPossible?: number
   }>
 }
 
