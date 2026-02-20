@@ -1535,50 +1535,82 @@ export default function AdminCalibration() {
         <div>
           <h1 className="text-2xl font-bold">Calibration Dashboard</h1>
           <p className="text-sm text-white/50 mt-1">
-            Trade engine health monitoring &amp; drift detection
+            Easy-read health checks for model quality, drift, and recalibration
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
+        <div className="w-full sm:w-auto flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-1.5">
             <Filter className="h-4 w-4 text-white/40" />
+              <span className="text-xs text-white/50">Filters</span>
+            </div>
+
+            <label className="text-xs text-white/60">Mode</label>
+            <select
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+              className="rounded-lg bg-slate-900 border border-white/15 text-sm px-3 py-2 outline-none text-white"
+            >
+              {MODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+
+            <label className="text-xs text-white/60">Segment</label>
+            <select
+              value={segment}
+              onChange={(e) => setSegment(e.target.value)}
+              className="rounded-lg bg-slate-900 border border-white/15 text-sm px-3 py-2 outline-none text-white"
+            >
+              {SEGMENT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+
+            <label className="text-xs text-white/60">Window</label>
+            <select
+              value={daysBack}
+              onChange={(e) => setDaysBack(Number(e.target.value))}
+              className="rounded-lg bg-slate-900 border border-white/15 text-sm px-3 py-2 outline-none text-white"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={14}>Last 14 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={60}>Last 60 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+            <button
+              onClick={fetchData}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium transition disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
           </div>
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            className="rounded-lg bg-white/5 border border-white/10 text-sm px-3 py-2 outline-none"
-          >
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-white/50">Quick filters:</span>
             {MODE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <button
+                key={`m-${o.value || "all"}`}
+                type="button"
+                onClick={() => setMode(o.value)}
+                className={`rounded-full px-3 py-1.5 text-xs border transition ${mode === o.value ? "bg-violet-500/25 border-violet-400/60 text-violet-100" : "bg-white/[0.03] border-white/15 text-white/70 hover:bg-white/[0.07]"}`}
+              >
+                {o.label}
+              </button>
             ))}
-          </select>
-          <select
-            value={segment}
-            onChange={(e) => setSegment(e.target.value)}
-            className="rounded-lg bg-white/5 border border-white/10 text-sm px-3 py-2 outline-none"
-          >
             {SEGMENT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <button
+                key={`s-${o.value || "all"}`}
+                type="button"
+                onClick={() => setSegment(o.value)}
+                className={`rounded-full px-3 py-1.5 text-xs border transition ${segment === o.value ? "bg-cyan-500/20 border-cyan-400/60 text-cyan-100" : "bg-white/[0.03] border-white/15 text-white/70 hover:bg-white/[0.07]"}`}
+              >
+                {o.label}
+              </button>
             ))}
-          </select>
-          <select
-            value={daysBack}
-            onChange={(e) => setDaysBack(Number(e.target.value))}
-            className="rounded-lg bg-white/5 border border-white/10 text-sm px-3 py-2 outline-none"
-          >
-            <option value={7}>Last 7 days</option>
-            <option value={14}>Last 14 days</option>
-            <option value={30}>Last 30 days</option>
-            <option value={60}>Last 60 days</option>
-            <option value={90}>Last 90 days</option>
-          </select>
-          <button
-            onClick={fetchData}
-            disabled={loading}
-            className="flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium transition disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
+          </div>
         </div>
       </div>
 
