@@ -615,7 +615,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       const res = await fetch('/api/mock-draft/board-drift', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leagueId: selectedLeagueId, userSlot: draftPosition }),
+        body: JSON.stringify({ leagueId: selectedLeagueId, userSlot: 1 }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error || 'Failed to load Board Drift')
