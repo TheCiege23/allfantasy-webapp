@@ -1,14 +1,54 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import RosterLegacyReport from '@/app/components/RosterLegacyReport';
 import SyncedRosters from '@/app/components/SyncedRosters';
 import WaiverAI from '@/app/components/WaiverAI';
 import ChimmyChat from '@/app/components/ChimmyChat';
 import PersonalizedInsights from '@/app/components/PersonalizedInsights';
+import MockDraftSimulatorClient from '@/components/MockDraftSimulatorClient';
+import Link from 'next/link';
+
+type LeagueOption = {
+  id: string
+  name: string
+  platform: string
+  leagueSize: number
+  isDynasty: boolean
+  scoring: string | null
+}
 
 export default function LegacyOverview() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'trade' | 'waiver' | 'chat' | 'transfer'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'trade' | 'waiver' | 'chat' | 'mock-draft' | 'transfer'>('overview');
+  const [mockLeagues, setMockLeagues] = useState<LeagueOption[]>([]);
+  const [mockLoading, setMockLoading] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadLeagues = async () => {
+      setMockLoading(true);
+      try {
+        const res = await fetch('/api/league/list', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const leagues = Array.isArray(data?.leagues) ? data.leagues : [];
+        const mapped = leagues.map((l: any) => ({
+          id: String(l.id),
+          name: String(l.name || 'League'),
+          platform: String(l.platform || 'sleeper'),
+          leagueSize: Number(l.leagueSize || 12),
+          isDynasty: Boolean(l.isDynasty),
+          scoring: l.scoring ?? null,
+        }));
+        if (mounted) setMockLeagues(mapped);
+      } finally {
+        if (mounted) setMockLoading(false);
+      }
+    };
+
+    loadLeagues();
+    return () => { mounted = false; };
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-white">
@@ -63,6 +103,7 @@ export default function LegacyOverview() {
           { id: 'trade', label: 'AI Trade Hub', icon: '⚖️' },
           { id: 'waiver', label: 'Waiver AI', icon: '📈' },
           { id: 'chat', label: 'AI Chat', icon: '💬' },
+          { id: 'mock-draft', label: 'Mock Draft AI', icon: '🧠' },
           { id: 'transfer', label: 'Transfer', icon: '🔄' },
         ].map(tab => (
           <button
@@ -209,6 +250,29 @@ export default function LegacyOverview() {
         {activeTab === 'waiver' && <WaiverAI />}
 
         {activeTab === 'chat' && <ChimmyChat />}
+
+        {activeTab === 'mock-draft' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+              <h2 className="text-xl font-bold text-white">Legacy Mock Draft with AI</h2>
+              <p className="text-sm text-slate-300 mt-1">Run AI-powered mock drafts using your synced leagues and settings.</p>
+            </div>
+
+            {mockLoading ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-slate-300">Loading your leagues...</div>
+            ) : mockLeagues.length > 0 ? (
+              <MockDraftSimulatorClient leagues={mockLeagues} />
+            ) : (
+              <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-center space-y-3">
+                <p className="text-sm text-slate-300">No synced leagues found yet. Sync a league to unlock league-aware AI mock drafts.</p>
+                <div className="flex items-center justify-center gap-3">
+                  <Link href="/import" className="rounded-lg bg-white text-black px-4 py-2 text-sm font-medium hover:bg-slate-200">Sync League</Link>
+                  <Link href="/af-legacy" className="rounded-lg border border-white/20 px-4 py-2 text-sm hover:bg-white/10">Open Full Legacy</Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === 'transfer' && (
           <div className="py-16 text-center">
