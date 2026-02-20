@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+export const dynamic = "force-dynamic"
+
 type SessionUser = { id?: string; email?: string | null; name?: string | null }
 
 export default async function BracketsHomePage() {
@@ -17,6 +19,25 @@ export default async function BracketsHomePage() {
   }) as { id: string; name: string; season: number; sport: string }[]
 
   const user = session?.user as SessionUser | undefined
+  const userId = user?.id
+
+  const myLeagues = userId
+    ? await (prisma as any).bracketLeagueMember.findMany({
+        where: { userId },
+        include: {
+          league: {
+            select: {
+              id: true,
+              name: true,
+              tournament: { select: { name: true, season: true } },
+              _count: { select: { members: true, entries: true } },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      })
+    : []
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
@@ -61,6 +82,30 @@ export default async function BracketsHomePage() {
             </div>
           )}
         </div>
+
+        {myLeagues.length > 0 && (
+          <div className="rounded-2xl border border-gray-800 p-4 bg-gray-900/50">
+            <div className="text-sm font-semibold text-gray-300">My Leagues</div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {myLeagues.map((m: any) => (
+                <Link
+                  key={m.league.id}
+                  href={`/brackets/leagues/${m.league.id}`}
+                  className="rounded-xl border border-gray-800 bg-gray-900 p-4 hover:bg-gray-800/70 transition group"
+                >
+                  <div className="font-semibold group-hover:text-white transition">{m.league.name}</div>
+                  <div className="text-sm text-gray-400">
+                    {m.league.tournament.name} &bull; {m.league.tournament.season}
+                  </div>
+                  <div className="mt-2 flex gap-3 text-xs text-gray-500">
+                    <span>{m.league._count.members} members</span>
+                    <span>{m.league._count.entries} entries</span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-gray-800 p-4 bg-gray-900/50">
           <div className="text-sm font-semibold text-gray-300">Tournaments</div>
