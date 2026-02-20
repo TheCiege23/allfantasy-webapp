@@ -52,7 +52,11 @@ export default function LoginContent() {
       })
 
       if (result?.error) {
-        setError("Invalid email/username or password.")
+        if (result.error.includes("SLEEPER_ONLY_ACCOUNT")) {
+          setError("This account was created with Sleeper. Please use the Sleeper sign-in below instead.")
+        } else {
+          setError("Invalid email/username or password.")
+        }
       } else if (result?.url) {
         router.push(result.url)
       } else {

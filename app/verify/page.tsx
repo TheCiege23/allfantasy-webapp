@@ -24,6 +24,33 @@ function VerifyContent() {
   const [phoneVerifying, setPhoneVerifying] = useState(false)
   const [phoneResult, setPhoneResult] = useState<"verified" | "invalid" | "error" | "rate_limited" | null>(null)
 
+  const [ageConfirming, setAgeConfirming] = useState(false)
+  const [ageResult, setAgeResult] = useState<"confirmed" | "error" | null>(null)
+
+  async function handleConfirmAge() {
+    setAgeConfirming(true)
+    setAgeResult(null)
+    try {
+      const res = await fetch("/api/auth/confirm-age", { method: "POST" })
+      if (res.ok) {
+        setAgeResult("confirmed")
+        setTimeout(() => {
+          if (window.history.length > 1) {
+            router.back()
+          } else {
+            router.push("/dashboard")
+          }
+        }, 1500)
+      } else {
+        setAgeResult("error")
+      }
+    } catch {
+      setAgeResult("error")
+    } finally {
+      setAgeConfirming(false)
+    }
+  }
+
   async function handleSendVerification() {
     setSending(true)
     setSendResult(null)
@@ -144,7 +171,7 @@ function VerifyContent() {
     age_required: {
       icon: <AlertTriangle className="h-8 w-8 text-amber-400" />,
       title: "Age confirmation required",
-      message: "You must confirm you are 18 or older to access this feature. This is done during signup.",
+      message: "You must confirm you are 18 or older to access this feature.",
       color: "border-amber-500/20 bg-amber-500/10",
     },
     verification_required: {
@@ -185,6 +212,40 @@ function VerifyContent() {
             >
               Go to Dashboard
             </Link>
+          )}
+
+          {state === "age_required" && (
+            <div className="space-y-3 pt-2">
+              {ageResult === "confirmed" && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+                  <div className="flex items-center justify-center gap-2">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Age confirmed! Redirecting back...
+                  </div>
+                </div>
+              )}
+              {ageResult === "error" && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                  Something went wrong. Please try again.
+                </div>
+              )}
+              {ageResult !== "confirmed" && (
+                <button
+                  onClick={handleConfirmAge}
+                  disabled={ageConfirming}
+                  className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-6 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+                >
+                  {ageConfirming ? (
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Confirming...
+                    </span>
+                  ) : (
+                    "I confirm I am 18 or older"
+                  )}
+                </button>
+              )}
+            </div>
           )}
         </div>
 

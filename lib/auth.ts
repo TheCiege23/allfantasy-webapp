@@ -72,8 +72,12 @@ export const authOptions: NextAuthOptions = {
           },
         })
 
-        if (!user || !user.passwordHash) return null
+        if (!user) return null
         if (!user.username) return null
+
+        if (!user.passwordHash) {
+          throw new Error("SLEEPER_ONLY_ACCOUNT")
+        }
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash)
         if (!valid) return null
