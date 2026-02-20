@@ -18,6 +18,7 @@ import { getPlayerAnalyticsBatch } from '@/lib/player-analytics'
 import { getCompositeWeightConfig, resolveWeightProfile, computeCompositeFromWeights, type CompositeWeightConfig } from './composite-weights'
 import { getActiveCompositeParams, type LearnedCompositeParams } from './composite-param-learning'
 import { getActiveWeightsForSegment } from './weekly-weight-learning'
+import type { ComponentWeights } from './adaptive-weight-learning'
 import { applyAntiGamingConstraints, type AntiGamingInput } from './anti-gaming'
 import { getPreviousWeekSnapshots, getLeagueSparklines, type SnapshotMetrics } from './snapshots'
 import { type TeamProjection } from '../monte-carlo'
@@ -268,7 +269,7 @@ export interface LeagueRankingsV2Output {
     weightVersion: string
     weightCalibratedAt: string
     learnedParams?: LearnedCompositeParams
-    adaptiveWeights?: Record<string, number>
+    adaptiveWeights?: ComponentWeights
     segmentKey?: string
     modelConfidence: {
       score: number
@@ -3382,7 +3383,7 @@ export async function computeLeagueRankingsV2(
       weightVersion: weightConfig.version,
       weightCalibratedAt: weightConfig.calibratedAt,
       learnedParams: learnedParams ?? undefined,
-      adaptiveWeights: adaptiveComponentWeights ? (adaptiveComponentWeights as unknown as Record<string, number>) : undefined,
+      adaptiveWeights: adaptiveComponentWeights ?? undefined,
       segmentKey,
       modelConfidence: computeModelConfidence(teams),
       dataFreshness: computeDataFreshness(teams),
