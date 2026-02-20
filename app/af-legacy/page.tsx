@@ -80,8 +80,10 @@ import {
   ChevronRight,
   ChevronDown,
   History,
-  X
+  X,
+  Layers
 } from "lucide-react"
+import MockDraftBoard from "./components/mock-draft/MockDraftBoard"
 import { useAnalytics } from "@/app/hooks/useAnalytics"
 
 function cx(...classes: Array<string | false | null | undefined>) {
@@ -117,7 +119,7 @@ const tier_xp_thresholds = TIERS
     minXp: t.minLevel * XP_PER_LEVEL,
   }))
 
-type Tab = 'overview' | 'trade' | 'finder' | 'player-finder' | 'waiver' | 'rankings' | 'pulse' | 'compare' | 'chat' | 'share' | 'transfer' | 'strategy' | 'shop'
+type Tab = 'overview' | 'trade' | 'finder' | 'player-finder' | 'waiver' | 'rankings' | 'pulse' | 'compare' | 'chat' | 'share' | 'transfer' | 'strategy' | 'shop' | 'mock-draft'
 
 interface ProfileStats {
   seasons_imported?: number
@@ -4084,6 +4086,7 @@ function AFLegacyContent() {
     { id: 'transfer' as Tab, label: 'Transfer', icon: <PackageOpen className="w-4 h-4" /> },
     { id: 'strategy' as Tab, label: 'Strategy', icon: <Target className="w-4 h-4" />, badge: 'AI' },
     { id: 'shop' as Tab, label: 'Shop', icon: <ShoppingBag className="w-4 h-4" /> },
+    { id: 'mock-draft' as Tab, label: 'Mock Draft', icon: <Layers className="w-4 h-4" />, badge: 'AI' },
   ]
 
   const isShareLocked = shareCooldownMs > 0
@@ -4093,7 +4096,7 @@ function AFLegacyContent() {
   const mainTabGroups: Record<MainTab, Tab[]> = {
     home: ['overview'],
     trade: ['trade', 'finder', 'player-finder', 'waiver'],
-    strategy: ['strategy', 'rankings', 'pulse', 'compare'],
+    strategy: ['strategy', 'rankings', 'pulse', 'compare', 'mock-draft'],
     alerts: [],
     profile: ['chat', 'share', 'transfer', 'shop'],
   }
@@ -4111,6 +4114,7 @@ function AFLegacyContent() {
       { id: 'rankings', label: 'Rankings', icon: <Trophy className="w-3.5 h-3.5" /> },
       { id: 'pulse', label: 'Pulse', icon: <Radio className="w-3.5 h-3.5" /> },
       { id: 'compare', label: 'Compare', icon: <Swords className="w-3.5 h-3.5" /> },
+      { id: 'mock-draft', label: 'Draft', icon: <Layers className="w-3.5 h-3.5" />, badge: 'AI' },
     ],
     alerts: [],
     profile: [
@@ -16941,6 +16945,23 @@ function AFLegacyContent() {
                   </div>
                   </>
                 )}
+
+                {activeTab === 'mock-draft' && (
+                  <>
+                  <HeroMetric
+                    value={String(leagues.length)}
+                    label="Mock Draft Simulator"
+                    helper="AI-powered draft predictions & scouting"
+                    accent="purple"
+                  />
+                  <div className="bg-black/30 border border-white/10 rounded-2xl p-4 sm:p-6">
+                    <MockDraftBoard
+                      leagues={leagues.map(l => ({ id: l.league_id, name: l.name, isDynasty: l.type?.toLowerCase() === 'dynasty', leagueSize: l.team_count, teams: l.roster?.starters || [] }))}
+                      username={username}
+                    />
+                  </div>
+                  </>
+                )}
                 </div>
               </>
             )
@@ -16993,6 +17014,7 @@ function AFLegacyContent() {
           activeTab === 'transfer' ? 'League Transfer' :
           activeTab === 'strategy' ? 'Season Strategy' :
           activeTab === 'shop' ? 'AF Merch Shop' :
+          activeTab === 'mock-draft' ? 'Mock Draft Simulator' :
           undefined
         }
       />

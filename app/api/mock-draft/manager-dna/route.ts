@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     if (!leagueId) return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
 
     const league = await prisma.league.findFirst({
-      where: { id: leagueId, userId: session.user.id },
+      where: { userId: session.user.id, OR: [{ id: leagueId }, { platformLeagueId: leagueId }] },
       include: {
         teams: {
           include: { performances: { orderBy: { week: 'desc' }, take: 12 } },
