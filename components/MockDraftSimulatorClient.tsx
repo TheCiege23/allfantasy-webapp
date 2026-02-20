@@ -55,7 +55,7 @@ const POSITION_COLORS: Record<string, string> = {
 }
 
 export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueOption[] }) {
-  const { callAI, loading } = useAI<{ draftResults: DraftPick[] }>()
+  const { callAI, loading } = useAI<{ draftResults: DraftPick[]; updatedDraft?: DraftPick[] }>()
   const [selectedLeagueId, setSelectedLeagueId] = useState('')
   const [draftResults, setDraftResults] = useState<DraftPick[]>([])
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null)
