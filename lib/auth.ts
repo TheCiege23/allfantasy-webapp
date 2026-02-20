@@ -9,6 +9,7 @@ function customPrismaAdapter() {
       const user = await prisma.appUser.create({
         data: {
           email: data.email,
+          username: data.email.split('@')[0] + '_' + Date.now().toString(36),
           emailVerified: data.emailVerified,
           displayName: data.name,
           avatarUrl: data.image,
