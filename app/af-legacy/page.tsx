@@ -1252,6 +1252,16 @@ function AFLegacyContent() {
   const [mockSecondsPerPick, setMockSecondsPerPick] = useState(30)
   const [mockDraftStartedAt, setMockDraftStartedAt] = useState<number | null>(null)
   const [mockTimerNow, setMockTimerNow] = useState<number>(Date.now())
+  const [mockDraftFormat, setMockDraftFormat] = useState<'snake' | 'linear' | 'auction'>('snake')
+  const [mockEnable3RR, setMockEnable3RR] = useState(false)
+  const [mockAllowAiTrades, setMockAllowAiTrades] = useState(true)
+  const [mockAllowFuturePickTrades, setMockAllowFuturePickTrades] = useState(true)
+  const [mockTimezone, setMockTimezone] = useState('America/New_York')
+  const [mockManagers, setMockManagers] = useState<Array<{ id: string; displayName: string; avatar?: string; draftSlot?: number | null }>>([])
+  const [mockManagersLoading, setMockManagersLoading] = useState(false)
+  const [mockDraftPicks, setMockDraftPicks] = useState<Array<{ overall: number; round: number; slot: number; manager: string; playerName: string; position: string; pickedAt: string }>>([])
+  const [mockNflPool, setMockNflPool] = useState<Array<{ name: string; position: string; team?: string | null; adp?: number }>>([])
+  const [mockNflPoolLoading, setMockNflPoolLoading] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Feedback modal state
