@@ -25,7 +25,6 @@ import {
   Gift,
   Target,
 } from "lucide-react";
-import { ModeToggle } from "@/components/theme/ModeToggle";
 import { AdminTabsBar } from "./AdminTabsBar";
 
 export type AdminTab = "overview" | "signups" | "questionnaire" | "ideas" | "feedback" | "email" | "blog" | "tools" | "analytics" | "ai_issues" | "share_rewards" | "calibration" | "model_drift";
@@ -148,6 +147,15 @@ export default function AdminLayout({
   useEffect(() => {
     trackPageView(location.pathname + location.search);
   }, [activeTab, trackPageView]);
+
+  useEffect(() => {
+    const prev = document.documentElement.dataset.mode;
+    document.documentElement.dataset.mode = "dark";
+    return () => {
+      const saved = localStorage.getItem("af_mode");
+      document.documentElement.dataset.mode = saved || prev || "light";
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -338,7 +346,9 @@ export default function AdminLayout({
               </div>
             </div>
 
-            <ModeToggle className="hidden sm:inline-flex h-10 items-center justify-center rounded-xl bg-white/5 hover:bg-white/10 transition-colors border border-white/5 px-3 text-xs font-semibold" />
+            <span className="hidden sm:inline-flex h-10 items-center justify-center rounded-xl bg-white/5 border border-white/5 px-3 text-xs font-semibold text-white/50 select-none">
+              Admin
+            </span>
 
             <Link
               href="/"
