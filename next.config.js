@@ -8,15 +8,11 @@ const nextConfig = {
     ],
   },
   allowedDevOrigins: [
-    'http://127.0.0.1:5000',
-    'http://127.0.0.1',
-    'http://localhost:5000',
-    'http://localhost',
+    `https://${process.env.REPLIT_DEV_DOMAIN || '*.janeway.replit.dev'}`,
     'https://*.replit.dev',
-    'https://*.janeway.replit.dev',
     'https://*.replit.app',
-    'https://*.repl.co',
-    `https://${process.env.REPLIT_DEV_DOMAIN || ''}`,
+    'http://127.0.0.1:5000',
+    'http://localhost:5000',
   ],
   async headers() {
     return [

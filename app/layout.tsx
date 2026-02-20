@@ -53,20 +53,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${inter.variable}`} suppressHydrationWarning>
       <head>
 
-        <Script id="af-init-mode" strategy="beforeInteractive">
-          {`
-            try {
-              var m = localStorage.getItem('af_mode');
-              if (m === 'dark' || m === 'light' || m === 'legacy') {
-                document.documentElement.setAttribute('data-mode', m);
-              } else {
-                document.documentElement.setAttribute('data-mode', 'light');
-              }
-            } catch (e) {
-              document.documentElement.setAttribute('data-mode', 'light');
-            }
-          `}
-        </Script>
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
           strategy="afterInteractive"
@@ -143,7 +129,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `}
         </Script>
       </head>
-      <body className={`${inter.variable} antialiased min-h-screen`} style={{ background: "var(--bg)", color: "var(--text)" }}>
+      <body className={`${inter.variable} antialiased min-h-screen`} style={{ background: "var(--bg)", color: "var(--text)" }} suppressHydrationWarning>
+        <script
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html: `try{var m=localStorage.getItem('af_mode');if(m==='dark'||m==='light'||m==='legacy'){document.documentElement.setAttribute('data-mode',m)}else{document.documentElement.setAttribute('data-mode','light')}}catch(e){document.documentElement.setAttribute('data-mode','light')}`
+          }}
+        />
         <ThemeProvider>
           {children}
           <Toaster position="top-center" richColors closeButton />
