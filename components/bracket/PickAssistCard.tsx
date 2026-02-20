@@ -21,7 +21,7 @@ export function PickAssistCard({ entryId }: { entryId: string }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("/api/bracket/ai-assist", {
+      const res = await fetch("/api/bracket/ai/pick-assist", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ entryId }),
