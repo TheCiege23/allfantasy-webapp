@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Loader2, Trophy } from "lucide-react"
+import { ArrowLeft, Loader2, Trophy, AlertTriangle, CheckCircle2 } from "lucide-react"
 
 export default function NewBracketLeaguePage() {
   const [name, setName] = useState("")
@@ -14,12 +14,35 @@ export default function NewBracketLeaguePage() {
   const [fancredPaymentReference, setFancredPaymentReference] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showAgeConfirm, setShowAgeConfirm] = useState(false)
+  const [ageConfirming, setAgeConfirming] = useState(false)
+  const [ageConfirmed, setAgeConfirmed] = useState(false)
+  const [showVerificationRequired, setShowVerificationRequired] = useState(false)
   const router = useRouter()
 
-  async function createLeague(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
+  async function handleConfirmAge() {
+    setAgeConfirming(true)
+    try {
+      const res = await fetch("/api/auth/confirm-age", { method: "POST" })
+      if (res.ok) {
+        setAgeConfirmed(true)
+        setShowAgeConfirm(false)
+        setError(null)
+        setTimeout(() => submitLeague(), 500)
+      } else {
+        setError("Failed to confirm age. Please try again.")
+      }
+    } catch {
+      setError("Something went wrong. Please try again.")
+    } finally {
+      setAgeConfirming(false)
+    }
+  }
+
+  async function submitLeague() {
     setError(null)
+    setShowAgeConfirm(false)
+    setShowVerificationRequired(false)
     setLoading(true)
 
     try {
@@ -40,11 +63,11 @@ export default function NewBracketLeaguePage() {
       const data = await res.json()
       if (!res.ok) {
         if (data.error === "AGE_REQUIRED") {
-          router.push("/verify?error=AGE_REQUIRED")
+          setShowAgeConfirm(true)
           return
         }
         if (data.error === "VERIFICATION_REQUIRED") {
-          router.push("/verify?error=VERIFICATION_REQUIRED")
+          setShowVerificationRequired(true)
           return
         }
         setError(data.error ?? "Failed to create league")
@@ -56,6 +79,12 @@ export default function NewBracketLeaguePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function createLeague(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim()) return
+    await submitLeague()
   }
 
   return (
@@ -80,6 +109,64 @@ export default function NewBracketLeaguePage() {
             </p>
           </div>
         </div>
+
+        {ageConfirmed && (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4" />
+              Age confirmed! You can now create your league.
+            </div>
+          </div>
+        )}
+
+        {showAgeConfirm && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
+              <div>
+                <div className="text-sm font-medium text-amber-200">Age confirmation required</div>
+                <p className="text-sm text-white/60 mt-1">
+                  You must confirm you are 18 or older to create a bracket league.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleConfirmAge}
+              disabled={ageConfirming}
+              className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
+            >
+              {ageConfirming ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Confirming...
+                </span>
+              ) : (
+                "I confirm I am 18 or older"
+              )}
+            </button>
+          </div>
+        )}
+
+        {showVerificationRequired && (
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-cyan-400 mt-0.5 shrink-0" />
+              <div>
+                <div className="text-sm font-medium text-cyan-200">Email verification required</div>
+                <p className="text-sm text-white/60 mt-1">
+                  Please verify your email or phone number before creating a league.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/verify"
+              className="block w-full text-center rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 transition"
+            >
+              Go to verification
+            </Link>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">

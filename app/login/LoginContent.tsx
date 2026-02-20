@@ -54,6 +54,8 @@ export default function LoginContent() {
       if (result?.error) {
         if (result.error.includes("SLEEPER_ONLY_ACCOUNT")) {
           setError("This account was created with Sleeper. Please use the Sleeper sign-in below instead.")
+        } else if (result.error.includes("PASSWORD_NOT_SET")) {
+          setError("Your account doesn't have a password set yet. Use the 'Forgot password?' link above to create one.")
         } else {
           setError("Invalid email/username or password.")
         }

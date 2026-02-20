@@ -76,7 +76,11 @@ export const authOptions: NextAuthOptions = {
         if (!user.username) return null
 
         if (!user.passwordHash) {
-          throw new Error("SLEEPER_ONLY_ACCOUNT")
+          const isSleeperAccount = user.email?.endsWith("@sleeper.allfantasy.ai")
+          if (isSleeperAccount) {
+            throw new Error("SLEEPER_ONLY_ACCOUNT")
+          }
+          throw new Error("PASSWORD_NOT_SET")
         }
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash)
