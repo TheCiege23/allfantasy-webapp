@@ -64,6 +64,27 @@ function buildUserPrompt(input: {
   return lines.join("\n")
 }
 
+function estimateSignalConfidence(signal: string, reason?: string) {
+  let base = 62
+  if (signal === 'traded' || signal === 'released' || signal === 'injury') base += 18
+  if (signal === 'mixed') base -= 10
+  const text = (reason || '').toLowerCase()
+  if (text.includes('confirmed') || text.includes('official')) base += 8
+  if (text.includes('rumor') || text.includes('speculation')) base -= 12
+  return Math.max(30, Math.min(98, base))
+}
+
+function estimateImpactScore(signal: string, reason?: string) {
+  let score = 45
+  if (signal === 'injury') score += 25
+  if (signal === 'traded' || signal === 'released') score += 30
+  if (signal === 'up' || signal === 'down' || signal === 'buy_low' || signal === 'sell_high') score += 12
+  const txt = (reason || '').toLowerCase()
+  if (txt.includes('starter') || txt.includes('depth chart')) score += 10
+  if (txt.includes('season') || txt.includes('ir')) score += 10
+  return Math.max(20, Math.min(100, score))
+}
+
 export const POST = withApiUsage({ endpoint: "/api/legacy/social-pulse", tool: "LegacySocialPulse" })(async (req: NextRequest) => {
   try {
     const body = await req.json()
@@ -154,9 +175,24 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/social-pulse", tool: "
       })
     }
 
+    const enrichedMarket = (out.data.market || []).map((m) => ({
+      ...m,
+      confidence: m.confidence ?? estimateSignalConfidence(m.signal, m.reason),
+      impactScore: m.impactScore ?? estimateImpactScore(m.signal, m.reason),
+      recencyHours: m.recencyHours ?? 24,
+    }))
+
+    const pulseScore = enrichedMarket.length > 0
+      ? Math.round(enrichedMarket.reduce((sum, m) => sum + (m.impactScore || 50) * ((m.confidence || 50) / 100), 0) / enrichedMarket.length)
+      : 50
+
     return NextResponse.json({
       success: true,
-      data: out.data,
+      data: {
+        ...out.data,
+        market: enrichedMarket,
+        pulseScore: out.data.pulseScore ?? pulseScore,
+      },
       validated: true,
       rate_limit: { remaining: rl.remaining, retryAfterSec: rl.retryAfterSec },
     })
