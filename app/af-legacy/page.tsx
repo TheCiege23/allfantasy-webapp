@@ -28,6 +28,7 @@ import EnhancedRankingsPanel from "@/components/EnhancedRankingsPanel"
 import LeagueRankingsV2Panel from "@/components/LeagueRankingsV2Panel"
 import StrategyPlanner from "@/components/StrategyPlanner"
 import EtsyShop from "@/components/EtsyShop"
+import LegacyLeagueIdeaForm from '@/app/components/LegacyLeagueIdeaForm'
 import ExploitMyLeague from "@/components/ExploitMyLeague"
 import { DraftGradesSection } from "@/components/rankings/DraftGradesSection"
 import { HallOfFameSection } from "@/components/rankings/HallOfFameSection"
@@ -82,7 +83,8 @@ import {
   ChevronDown,
   History,
   X,
-  LayoutGrid
+  LayoutGrid,
+  Lightbulb
 } from "lucide-react"
 import { useAnalytics } from "@/app/hooks/useAnalytics"
 
@@ -119,7 +121,7 @@ const tier_xp_thresholds = TIERS
     minXp: t.minLevel * XP_PER_LEVEL,
   }))
 
-type Tab = 'overview' | 'trade' | 'finder' | 'player-finder' | 'waiver' | 'rankings' | 'pulse' | 'compare' | 'chat' | 'mock-draft' | 'share' | 'transfer' | 'strategy' | 'shop'
+type Tab = 'overview' | 'trade' | 'finder' | 'player-finder' | 'waiver' | 'rankings' | 'pulse' | 'compare' | 'chat' | 'mock-draft' | 'share' | 'transfer' | 'strategy' | 'shop' | 'ideas'
 
 interface ProfileStats {
   seasons_imported?: number
@@ -1444,6 +1446,7 @@ function AFLegacyContent() {
       'strategy': 'Season Strategy Planner | AI-Powered Fantasy Football Roadmap',
       'shop': 'Official AllFantasy Merch | Shop AF Gear on Etsy',
       'mock-draft': 'AI Mock Draft Simulator & Predict Board | AllFantasy',
+      'ideas': 'Submit League Ideas | AllFantasy Community',
     }
     document.title = seoTitles[activeTab] || 'AF Legacy | AllFantasy'
   }, [activeTab])
@@ -4170,6 +4173,7 @@ function AFLegacyContent() {
     { id: 'transfer' as Tab, label: 'Transfer', icon: <PackageOpen className="w-4 h-4" /> },
     { id: 'strategy' as Tab, label: 'Strategy', icon: <Target className="w-4 h-4" />, badge: 'AI' },
     { id: 'shop' as Tab, label: 'Shop', icon: <ShoppingBag className="w-4 h-4" /> },
+    { id: 'ideas' as Tab, label: 'Submit Ideas', icon: <Lightbulb className="w-4 h-4" /> },
   ]
 
   const isShareLocked = shareCooldownMs > 0
@@ -4181,7 +4185,7 @@ function AFLegacyContent() {
     trade: ['trade', 'finder', 'player-finder', 'waiver'],
     strategy: ['strategy', 'rankings', 'pulse', 'compare'],
     alerts: [],
-    profile: ['chat', 'mock-draft', 'share', 'transfer', 'shop'],
+    profile: ['chat', 'mock-draft', 'share', 'transfer', 'shop', 'ideas'],
   }
 
   const subTabConfigs: Record<MainTab, Array<{ id: string; label: string; icon?: React.ReactNode; badge?: string }>> = {
@@ -4205,6 +4209,7 @@ function AFLegacyContent() {
       { id: 'share', label: 'Share', icon: <Share2 className="w-3.5 h-3.5" /> },
       { id: 'transfer', label: 'Transfer', icon: <PackageOpen className="w-3.5 h-3.5" /> },
       { id: 'shop', label: 'Shop', icon: <ShoppingBag className="w-3.5 h-3.5" /> },
+      { id: 'ideas', label: 'Submit Ideas', icon: <Lightbulb className="w-3.5 h-3.5" /> },
     ],
   }
 
@@ -17094,6 +17099,19 @@ function AFLegacyContent() {
                   </>
                 )}
 
+                {activeTab === 'ideas' && (
+                  <>
+                  <HeroMetric 
+                    value="💡"
+                    label="Submit League Ideas"
+                    helper="Share your unique league format with the community"
+                    accent="cyan"
+                  />
+                  <p className="text-center text-sm sm:text-base text-white/60 mb-4">Got a creative league format? Submit it here — accepted ideas get built into AllFantasy with full credit.</p>
+                  <LegacyLeagueIdeaForm />
+                  </>
+                )}
+
                 {activeTab === 'mock-draft' && (
                   <>
                   <HeroMetric 
@@ -17365,6 +17383,7 @@ function AFLegacyContent() {
           activeTab === 'transfer' ? 'League Transfer' :
           activeTab === 'strategy' ? 'Season Strategy' :
           activeTab === 'shop' ? 'AF Merch Shop' :
+          activeTab === 'ideas' ? 'Submit League Ideas' :
           activeTab === 'mock-draft' ? 'Mock Draft Simulator' :
           undefined
         }
