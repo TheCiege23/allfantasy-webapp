@@ -17107,8 +17107,8 @@ function AFLegacyContent() {
                     {(() => {
                       const selectedLeague = leagues.find(l => l.league_id === mockDraftLeagueId) || leagues[0]
                       const teamCount = Math.max(8, Math.min(14, selectedLeague?.team_count || mockManagers.length || 12))
-                      const sortedManagers = (mockManagers.length > 0 ? [...mockManagers] : Array.from({ length: teamCount }, (_, i) => ({ id: String(i + 1), displayName: i === 0 ? (username || 'You') : `Team ${i + 1}`, draftSlot: i + 1 }))).sort((a, b) => (a.draftSlot ?? 999) - (b.draftSlot ?? 999))
-                      const managers = sortedManagers.length > 0 ? sortedManagers : Array.from({ length: teamCount }, (_, i) => ({ id: String(i + 1), displayName: i === 0 ? (username || 'You') : `Team ${i + 1}`, draftSlot: i + 1 }))
+                      const sortedManagers = (mockManagers.length > 0 ? [...mockManagers] : Array.from({ length: teamCount }, (_, i) => ({ id: String(i + 1), displayName: i === 0 ? (username || 'You') : `Team ${i + 1}`, avatar: undefined as string | undefined, draftSlot: i + 1 }))).sort((a, b) => (a.draftSlot ?? 999) - (b.draftSlot ?? 999))
+                      const managers = sortedManagers.length > 0 ? sortedManagers : Array.from({ length: teamCount }, (_, i) => ({ id: String(i + 1), displayName: i === 0 ? (username || 'You') : `Team ${i + 1}`, avatar: undefined as string | undefined, draftSlot: i + 1 }))
                       const elapsed = mockDraftStartedAt ? Math.floor((mockTimerNow - mockDraftStartedAt) / 1000) : 0
                       const secondsLeft = mockDraftStartedAt ? Math.max(0, mockSecondsPerPick - (elapsed % mockSecondsPerPick)) : mockSecondsPerPick
                       const onClockPickOverall = mockDraftPicks.length + 1
