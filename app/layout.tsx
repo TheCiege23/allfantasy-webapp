@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     title: 'AllFantasy \u2014 Your League\'s Secret Weapon',
     description: 'AI that actually understands modern fantasy. Join the waitlist.',
   },
-  icons: { icon: '/af-crest.png' },
+  icons: { icon: '/af-crest.jpg' },
   robots: {
     index: true,
     follow: true,
