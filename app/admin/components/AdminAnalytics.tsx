@@ -274,9 +274,51 @@ function RetentionPanel() {
   useEffect(() => { if (activeTab === "sources" && !sourceQuality) loadSourceQuality(); }, [activeTab, sourceQuality, loadSourceQuality]);
 
   const eventOptions = stickiness?.eventTypeBreakdown?.map((e) => e.eventType) || [];
+  const executive = retention?.overall
+    ? {
+        uniqueUsers: retention.overall.totalUsers,
+        returningUsers: retention.overall.returnedUsers,
+        returningRate: retention.overall.retentionRate,
+        valueReturningUsers: retention.overall.valueReturnedUsers,
+        valueReturningRate: retention.overall.valueRetentionRate,
+      }
+    : null;
 
   return (
     <div className="mb-8">
+      {executive && (
+        <div className="rounded-xl border p-4 mb-4" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 4%, transparent)" }}>
+          <div className="text-sm font-semibold mb-3" style={{ color: "var(--text)" }}>
+            Executive Snapshot (Legacy Tools)
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>Unique users</div>
+              <div className="text-xl font-semibold tabular-nums">{executive.uniqueUsers.toLocaleString()}</div>
+            </div>
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>Returning users</div>
+              <div className="text-xl font-semibold tabular-nums">{executive.returningUsers.toLocaleString()}</div>
+            </div>
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>Returning rate</div>
+              <div className="text-xl font-semibold tabular-nums">{executive.returningRate}%</div>
+            </div>
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>Returning + completed core action</div>
+              <div className="text-xl font-semibold tabular-nums">{executive.valueReturningUsers.toLocaleString()}</div>
+            </div>
+            <div className="rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>Value return rate</div>
+              <div className="text-xl font-semibold tabular-nums">{executive.valueReturningRate}%</div>
+            </div>
+          </div>
+          <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>
+            Use this block for a quick non-technical read: how many people used legacy tools, how many came back, and how many came back and completed a meaningful action.
+          </p>
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-4">
         <h2 className="text-base sm:text-xl font-semibold" style={{ color: "var(--text)" }}>
           Retention & Stickiness
@@ -1300,7 +1342,7 @@ export default function AdminAnalytics() {
           <div>
             <h2 className="text-base sm:text-xl font-semibold" style={{ color: "var(--text)" }}>Legacy Tool Usage</h2>
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Track which AF Legacy tools users are engaging with
+              Simple usage view: which legacy tools are used most and by how many unique users
             </p>
           </div>
           <button
