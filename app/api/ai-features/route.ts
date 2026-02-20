@@ -75,8 +75,10 @@ export async function POST(req: Request) {
       })
 
       if (league) {
+        const userProfile = await prisma.userProfile.findUnique({ where: { userId: session.user.id } })
+        const sleeperUsername = userProfile?.sleeperUsername || ""
         const userTeam = league.teams.find(
-          (t) => t.ownerName?.toLowerCase() === league.sleeperUsername?.toLowerCase()
+          (t) => t.ownerName?.toLowerCase() === sleeperUsername.toLowerCase()
         ) || league.teams[0]
 
         ctx = {
