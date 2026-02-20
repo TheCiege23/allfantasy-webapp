@@ -341,7 +341,6 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       if (data?.updatedDraft) {
         setDraftResults(data.updatedDraft)
         setOnClockPick(null)
-        setRoundNeeds({})
         setTradeResult({
           direction,
           pickNumber,
