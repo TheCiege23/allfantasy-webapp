@@ -149,11 +149,19 @@ export default function AdminLayout({
   }, [activeTab, trackPageView]);
 
   useEffect(() => {
-    const prev = document.documentElement.dataset.mode;
+    const saved = localStorage.getItem("af_mode");
     document.documentElement.dataset.mode = "dark";
+
+    const observer = new MutationObserver(() => {
+      if (document.documentElement.dataset.mode !== "dark") {
+        document.documentElement.dataset.mode = "dark";
+      }
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode"] });
+
     return () => {
-      const saved = localStorage.getItem("af_mode");
-      document.documentElement.dataset.mode = saved || prev || "light";
+      observer.disconnect();
+      document.documentElement.dataset.mode = saved || "light";
     };
   }, []);
 
