@@ -10,9 +10,14 @@ export default async function TournamentPage({
 }: {
   params: { tournamentId: string }
 }) {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: { id?: string }
-  } | null
+  let session: { user?: { id?: string } } | null = null
+  try {
+    session = (await getServerSession(authOptions as any)) as {
+      user?: { id?: string }
+    } | null
+  } catch (e) {
+    console.error("[brackets/tournament] session error:", e)
+  }
 
   const t = await (prisma as any).bracketTournament.findUnique({
     where: { id: params.tournamentId },

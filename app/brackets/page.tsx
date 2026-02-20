@@ -9,9 +9,14 @@ export const dynamic = "force-dynamic"
 type SessionUser = { id?: string; email?: string | null; name?: string | null }
 
 export default async function BracketsHomePage() {
-  const session = (await getServerSession(authOptions as any)) as {
-    user?: SessionUser
-  } | null
+  let session: { user?: SessionUser } | null = null
+  try {
+    session = (await getServerSession(authOptions as any)) as {
+      user?: SessionUser
+    } | null
+  } catch (e) {
+    console.error("[brackets] session error:", e)
+  }
 
   const tournaments = await (prisma as any).bracketTournament.findMany({
     orderBy: [{ season: "desc" }],
