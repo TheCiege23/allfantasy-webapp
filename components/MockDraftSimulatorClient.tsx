@@ -48,6 +48,42 @@ interface BoardForecast {
   volatility: VolatilityMeter
 }
 
+interface SnipeAlert {
+  player: string
+  position: string
+  adp: number
+  value: number
+  snipeProbability: number
+  snipedByManagers: Array<{ manager: string; probability: number }>
+  expectedValueLost: number
+  urgencyLevel: 'critical' | 'warning' | 'watch'
+}
+
+interface SnipeRadarEntry {
+  userPickOverall: number
+  round: number
+  pick: number
+  picksBefore: number
+  alerts: SnipeAlert[]
+  topAvailableIfNoSnipe: Array<{ player: string; position: string; probability: number }>
+}
+
+interface TradeOffer {
+  rank: number
+  direction: 'up' | 'down'
+  partnerManager: string
+  userGives: Array<{ pickOverall: number; round: number; pick: number; value: number }>
+  userGets: Array<{ pickOverall: number; round: number; pick: number; value: number }>
+  netEV: number
+  grossEV: number
+  acceptanceOdds: number
+  riskAdjustedEV: number
+  minimumAsk: { pickOverall: number; round: number; value: number }
+  walkAwayThreshold: number
+  topPlayerGain: string | null
+  verdict: string
+}
+
 interface AdpMover {
   name: string
   adjustedAdp: number
@@ -200,6 +236,13 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [dnaLoading, setDnaLoading] = useState(false)
   const [dnaCards, setDnaCards] = useState<any[]>([])
   const [dnaExpandedIdx, setDnaExpandedIdx] = useState<number | null>(null)
+  const [snipeRadarOpen, setSnipeRadarOpen] = useState(false)
+  const [snipeRadarLoading, setSnipeRadarLoading] = useState(false)
+  const [snipeRadarData, setSnipeRadarData] = useState<SnipeRadarEntry[]>([])
+  const [tradeOptimizerOpen, setTradeOptimizerOpen] = useState(false)
+  const [tradeOptimizerLoading, setTradeOptimizerLoading] = useState(false)
+  const [tradeUpOffers, setTradeUpOffers] = useState<TradeOffer[]>([])
+  const [tradeDownOffers, setTradeDownOffers] = useState<TradeOffer[]>([])
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -497,6 +540,49 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
+  const loadSnipeRadar = async () => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    setSnipeRadarLoading(true)
+    try {
+      const res = await fetch('/api/mock-draft/snipe-radar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, rounds: 3, simulations: 300 }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load Snipe Radar')
+      setSnipeRadarData(data.snipeRadar || [])
+      setSnipeRadarOpen(true)
+      toast.success(`Snipe Radar active — ${(data.snipeRadar || []).reduce((s: number, r: any) => s + (r.alerts?.length || 0), 0)} threats detected.`)
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load Snipe Radar')
+    } finally {
+      setSnipeRadarLoading(false)
+    }
+  }
+
+  const loadTradeOptimizer = async () => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    setTradeOptimizerLoading(true)
+    try {
+      const res = await fetch('/api/mock-draft/trade-optimizer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, rounds: 3, simulations: 200 }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load Trade Optimizer')
+      setTradeUpOffers(data.tradeUpOffers || [])
+      setTradeDownOffers(data.tradeDownOffers || [])
+      setTradeOptimizerOpen(true)
+      toast.success(`Trade Optimizer ready — ${(data.tradeUpOffers?.length || 0) + (data.tradeDownOffers?.length || 0)} offers evaluated.`)
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load Trade Optimizer')
+    } finally {
+      setTradeOptimizerLoading(false)
+    }
+  }
+
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -626,6 +712,12 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             </Button>
             <Button onClick={loadManagerDNA} disabled={dnaLoading || !selectedLeagueId} variant="outline" className="h-10 border-amber-700/40 text-amber-300 hover:text-amber-200">
               {dnaLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scouting</> : <><Users className="mr-2 h-4 w-4" /> Manager DNA</>}
+            </Button>
+            <Button onClick={loadSnipeRadar} disabled={snipeRadarLoading || !selectedLeagueId} variant="outline" className="h-10 border-red-700/40 text-red-300 hover:text-red-200">
+              {snipeRadarLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Scanning</> : <><TrendingDown className="mr-2 h-4 w-4" /> Snipe Radar</>}
+            </Button>
+            <Button onClick={loadTradeOptimizer} disabled={tradeOptimizerLoading || !selectedLeagueId} variant="outline" className="h-10 border-green-700/40 text-green-300 hover:text-green-200">
+              {tradeOptimizerLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Optimizing</> : <><Handshake className="mr-2 h-4 w-4" /> Trade Optimizer</>}
             </Button>
           </div>
         </div>
@@ -1413,6 +1505,207 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 </div>
               )
             })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={snipeRadarOpen} onOpenChange={setSnipeRadarOpen}>
+        <DialogContent className="max-w-4xl bg-black/95 border-red-900/40">
+          <DialogHeader>
+            <DialogTitle className="text-red-300">Snipe Radar — Threat Detection</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto space-y-4 pr-1">
+            {snipeRadarData.length === 0 && <p className="text-sm text-gray-500 text-center py-4">No snipe radar data available</p>}
+            {snipeRadarData.map((entry) => (
+              <div key={entry.userPickOverall} className="rounded-xl border border-red-900/30 bg-red-500/[0.03] p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold text-white">
+                    Your Pick: Round {entry.round} · Pick {entry.pick} (#{entry.userPickOverall})
+                  </div>
+                  <span className="text-[10px] text-gray-500">{entry.picksBefore} picks before yours</span>
+                </div>
+
+                {entry.alerts.length === 0 ? (
+                  <div className="text-sm text-emerald-400 bg-emerald-500/10 rounded-lg p-2">No major snipe threats detected — your targets look safe.</div>
+                ) : (
+                  <div className="space-y-2">
+                    {entry.alerts.map((alert) => {
+                      const urgencyStyles: Record<string, { border: string; bg: string; text: string; icon: string }> = {
+                        critical: { border: 'border-red-500/40', bg: 'bg-red-500/10', text: 'text-red-400', icon: '!!' },
+                        warning: { border: 'border-amber-500/30', bg: 'bg-amber-500/10', text: 'text-amber-400', icon: '!' },
+                        watch: { border: 'border-blue-500/20', bg: 'bg-blue-500/5', text: 'text-blue-400', icon: '~' },
+                      }
+                      const s = urgencyStyles[alert.urgencyLevel]
+                      return (
+                        <div key={alert.player} className={`rounded-lg border ${s.border} ${s.bg} p-3`}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded ${s.bg} ${s.text}`}>{alert.urgencyLevel}</span>
+                              <span className="font-semibold text-white text-sm">{alert.player}</span>
+                              <span className="text-xs text-gray-400">{alert.position} · ADP {alert.adp.toFixed(1)}</span>
+                            </div>
+                            <span className={`text-sm font-bold tabular-nums ${s.text}`}>{alert.snipeProbability}%</span>
+                          </div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] text-gray-500">Snipe probability</span>
+                            <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${alert.urgencyLevel === 'critical' ? 'bg-red-500/70' : alert.urgencyLevel === 'warning' ? 'bg-amber-500/70' : 'bg-blue-500/60'}`} style={{ width: `${alert.snipeProbability}%` }} />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-gray-500">
+                              Likely sniped by: {alert.snipedByManagers.slice(0, 2).map(m => `${m.manager} (${m.probability}%)`).join(', ')}
+                            </span>
+                            <span className="text-red-400 font-semibold">EV lost if sniped: {alert.expectedValueLost > 0 ? `−${alert.expectedValueLost}` : '0'}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {entry.topAvailableIfNoSnipe.length > 0 && (
+                  <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/20 p-2">
+                    <div className="text-[10px] font-semibold text-emerald-400 mb-1">Most likely available at your pick</div>
+                    <div className="flex flex-wrap gap-2">
+                      {entry.topAvailableIfNoSnipe.map((p) => (
+                        <span key={p.player} className="text-xs text-gray-300 bg-white/5 rounded px-2 py-0.5">
+                          {p.player} <span className="text-gray-500">{p.position}</span> <span className="text-emerald-400">{p.probability}%</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tradeOptimizerOpen} onOpenChange={setTradeOptimizerOpen}>
+        <DialogContent className="max-w-4xl bg-black/95 border-green-900/40">
+          <DialogHeader>
+            <DialogTitle className="text-green-300">Trade-Window Optimizer — Best Offers by EV</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto space-y-4 pr-1">
+            {tradeUpOffers.length === 0 && tradeDownOffers.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">No trade opportunities found</p>
+            )}
+
+            {tradeUpOffers.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-green-400 uppercase tracking-wider">Trade Up Opportunities</div>
+                {tradeUpOffers.map((offer, idx) => (
+                  <div key={`up-${idx}`} className="rounded-xl border border-green-500/20 bg-green-500/[0.03] p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-green-400 bg-green-500/15 px-2 py-0.5 rounded">#{offer.rank}</span>
+                        <ArrowUp className="h-3.5 w-3.5 text-green-400" />
+                        <span className="font-semibold text-white text-sm">Trade with {offer.partnerManager}</span>
+                      </div>
+                      <span className={`text-sm font-bold tabular-nums ${offer.riskAdjustedEV > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {offer.riskAdjustedEV > 0 ? '+' : ''}{offer.riskAdjustedEV} risk-adj EV
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-red-500/5 border border-red-500/15 p-2">
+                        <div className="text-[10px] text-red-400 font-semibold mb-1">YOU GIVE</div>
+                        {offer.userGives.map(g => (
+                          <div key={g.pickOverall} className="text-xs text-gray-300">
+                            Pick #{g.pickOverall} <span className="text-gray-500">(R{g.round}P{g.pick} · val {g.value})</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="rounded-lg bg-green-500/5 border border-green-500/15 p-2">
+                        <div className="text-[10px] text-green-400 font-semibold mb-1">YOU GET</div>
+                        {offer.userGets.map(g => (
+                          <div key={g.pickOverall} className="text-xs text-gray-300">
+                            Pick #{g.pickOverall} <span className="text-gray-500">(R{g.round}P{g.pick} · val {g.value})</span>
+                          </div>
+                        ))}
+                        {offer.topPlayerGain && (
+                          <div className="text-[10px] text-cyan-400 mt-1">Top target: {offer.topPlayerGain}</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-white/5 p-2 text-center">
+                        <div className="text-[10px] text-gray-500">Acceptance Odds</div>
+                        <div className={`text-sm font-bold tabular-nums ${offer.acceptanceOdds >= 50 ? 'text-green-400' : offer.acceptanceOdds >= 30 ? 'text-amber-400' : 'text-red-400'}`}>{offer.acceptanceOdds}%</div>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-2 text-center">
+                        <div className="text-[10px] text-gray-500">Minimum Ask</div>
+                        <div className="text-sm font-semibold text-gray-300">R{offer.minimumAsk.round} (val {offer.minimumAsk.value})</div>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-2 text-center">
+                        <div className="text-[10px] text-gray-500">Walk Away If</div>
+                        <div className="text-sm font-semibold text-orange-400">{'>'}{offer.walkAwayThreshold} cost</div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-gray-400 italic">{offer.verdict}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {tradeDownOffers.length > 0 && (
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Trade Down Opportunities</div>
+                {tradeDownOffers.map((offer, idx) => (
+                  <div key={`down-${idx}`} className="rounded-xl border border-blue-500/20 bg-blue-500/[0.03] p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-blue-400 bg-blue-500/15 px-2 py-0.5 rounded">#{offer.rank}</span>
+                        <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                        <span className="font-semibold text-white text-sm">Trade with {offer.partnerManager}</span>
+                      </div>
+                      <span className={`text-sm font-bold tabular-nums ${offer.riskAdjustedEV > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {offer.riskAdjustedEV > 0 ? '+' : ''}{offer.riskAdjustedEV} risk-adj EV
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-red-500/5 border border-red-500/15 p-2">
+                        <div className="text-[10px] text-red-400 font-semibold mb-1">YOU GIVE</div>
+                        {offer.userGives.map(g => (
+                          <div key={g.pickOverall} className="text-xs text-gray-300">
+                            Pick #{g.pickOverall} <span className="text-gray-500">(R{g.round}P{g.pick} · val {g.value})</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="rounded-lg bg-blue-500/5 border border-blue-500/15 p-2">
+                        <div className="text-[10px] text-blue-400 font-semibold mb-1">YOU GET</div>
+                        {offer.userGets.map(g => (
+                          <div key={g.pickOverall} className="text-xs text-gray-300">
+                            Pick #{g.pickOverall} <span className="text-gray-500">(R{g.round}P{g.pick} · val {g.value})</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-white/5 p-2 text-center">
+                        <div className="text-[10px] text-gray-500">Acceptance Odds</div>
+                        <div className={`text-sm font-bold tabular-nums ${offer.acceptanceOdds >= 50 ? 'text-green-400' : offer.acceptanceOdds >= 30 ? 'text-amber-400' : 'text-red-400'}`}>{offer.acceptanceOdds}%</div>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-2 text-center">
+                        <div className="text-[10px] text-gray-500">Minimum Ask</div>
+                        <div className="text-sm font-semibold text-gray-300">R{offer.minimumAsk.round} (val {offer.minimumAsk.value})</div>
+                      </div>
+                      <div className="rounded-lg bg-white/5 p-2 text-center">
+                        <div className="text-[10px] text-gray-500">Walk Away If</div>
+                        <div className="text-sm font-semibold text-orange-400">{'>'}{offer.walkAwayThreshold} cost</div>
+                      </div>
+                    </div>
+
+                    <div className="text-xs text-gray-400 italic">{offer.verdict}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
