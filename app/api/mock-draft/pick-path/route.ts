@@ -1,0 +1,299 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
+import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n))
+}
+
+function snakeOrder(teamCount: number, round: number): number[] {
+  const arr = Array.from({ length: teamCount }, (_, i) => i)
+  return round % 2 === 1 ? arr : arr.reverse()
+}
+
+function getUserPickOveralls(teamCount: number, userIdx: number, rounds: number): number[] {
+  const picks: number[] = []
+  for (let r = 1; r <= rounds; r++) {
+    const order = snakeOrder(teamCount, r)
+    const slot = order.indexOf(userIdx)
+    if (slot >= 0) picks.push((r - 1) * teamCount + slot + 1)
+  }
+  return picks
+}
+
+const POSITION_TARGETS: Record<string, number> = { QB: 2, RB: 5, WR: 5, TE: 2 }
+
+function scorePlayer(
+  player: ADPEntry,
+  profile: { tendency: Record<string, number>; rosterCounts: Record<string, number> },
+  overall: number
+): number {
+  const pos = player.position
+  const needBoost = clamp((POSITION_TARGETS[pos] ?? 2) - (profile.rosterCounts[pos] ?? 0), -2, 4)
+  const tendencyBoost = profile.tendency[pos] ?? 1
+  const adpDelta = clamp((player.adp - overall) / 20, -2, 2)
+  const valueBoost = clamp((player.value ?? 2500) / 2500, 0.6, 2)
+  return 1 + needBoost * 0.28 + tendencyBoost * 0.22 + adpDelta * 0.2 + valueBoost * 0.16
+}
+
+function pickWeighted(candidates: ADPEntry[], weights: number[]): ADPEntry {
+  const total = weights.reduce((a, b) => a + b, 0)
+  let r = Math.random() * total
+  for (let i = 0; i < candidates.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return candidates[i]
+  }
+  return candidates[candidates.length - 1]
+}
+
+type ScenarioResult = {
+  player: string
+  position: string
+  probability: number
+  why: string
+}
+
+type PickPathEntry = {
+  overall: number
+  round: number
+  pick: number
+  baseline: ScenarioResult[]
+  playerGone: { removedPlayer: string; fallbacks: ScenarioResult[] } | null
+  rbRun: { pivot: ScenarioResult[]; narrative: string }
+  qbRun: { recommendation: ScenarioResult[]; narrative: string }
+}
+
+function runScenarioSims(
+  pool: ADPEntry[],
+  managerProfiles: Array<{ manager: string; tendency: Record<string, number>; rosterCounts: Record<string, number> }>,
+  teamCount: number,
+  rounds: number,
+  userPickOveralls: Set<number>,
+  simulations: number,
+  scenarioMod?: {
+    removePlayer?: string
+    rbRunBefore?: number
+    qbRunBefore?: number
+  }
+): Map<number, Map<string, number>> {
+  const pickOutcomes: Map<number, Map<string, number>> = new Map()
+
+  for (let s = 0; s < simulations; s++) {
+    let available = [...pool]
+
+    if (scenarioMod?.removePlayer) {
+      const norm = scenarioMod.removePlayer.toLowerCase()
+      available = available.filter(p => p.name.toLowerCase() !== norm)
+    }
+
+    const counts = managerProfiles.map(m => ({
+      ...m,
+      rosterCounts: { QB: 0, RB: 0, WR: 0, TE: 0 },
+    }))
+
+    let overall = 1
+    for (let round = 1; round <= rounds; round++) {
+      const order = snakeOrder(teamCount, round)
+      for (let pick = 1; pick <= teamCount; pick++) {
+        const managerIdx = order[pick - 1]
+        const profile = counts[managerIdx]
+
+        if (scenarioMod?.rbRunBefore && overall < scenarioMod.rbRunBefore && overall >= scenarioMod.rbRunBefore - 3) {
+          const rbs = available.filter(p => p.position === 'RB').slice(0, 5)
+          if (rbs.length > 0) {
+            const chosen = rbs[Math.floor(Math.random() * Math.min(3, rbs.length))]
+            const avIdx = available.findIndex(p => p.name === chosen.name)
+            if (avIdx >= 0) available.splice(avIdx, 1)
+            if (chosen.position in profile.rosterCounts) {
+              profile.rosterCounts[chosen.position as keyof typeof profile.rosterCounts]++
+            }
+            overall++
+            continue
+          }
+        }
+
+        if (scenarioMod?.qbRunBefore && overall < scenarioMod.qbRunBefore && overall >= scenarioMod.qbRunBefore - 3) {
+          const qbs = available.filter(p => p.position === 'QB').slice(0, 5)
+          if (qbs.length > 0) {
+            const chosen = qbs[Math.floor(Math.random() * Math.min(3, qbs.length))]
+            const avIdx = available.findIndex(p => p.name === chosen.name)
+            if (avIdx >= 0) available.splice(avIdx, 1)
+            if (chosen.position in profile.rosterCounts) {
+              profile.rosterCounts[chosen.position as keyof typeof profile.rosterCounts]++
+            }
+            overall++
+            continue
+          }
+        }
+
+        const candidateSlice = available.slice(0, 40)
+        const weights = candidateSlice.map(p => Math.max(0.05, scorePlayer(p, profile, overall)))
+        const chosen = pickWeighted(candidateSlice, weights)
+
+        const avIdx = available.findIndex(p => p.name === chosen.name)
+        if (avIdx >= 0) available.splice(avIdx, 1)
+
+        if (chosen.position in profile.rosterCounts) {
+          profile.rosterCounts[chosen.position as keyof typeof profile.rosterCounts]++
+        }
+
+        if (userPickOveralls.has(overall)) {
+          if (!pickOutcomes.has(overall)) pickOutcomes.set(overall, new Map())
+          const map = pickOutcomes.get(overall)!
+          const key = `${chosen.name}|${chosen.position}`
+          map.set(key, (map.get(key) || 0) + 1)
+        }
+
+        overall++
+      }
+    }
+  }
+
+  return pickOutcomes
+}
+
+function extractTop(outcomes: Map<string, number> | undefined, sims: number, count = 3): ScenarioResult[] {
+  if (!outcomes) return []
+  return Array.from(outcomes.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, count)
+    .map(([key, cnt]) => {
+      const [player, position] = key.split('|')
+      const probability = Math.round((cnt / sims) * 100)
+      const why = position === 'RB'
+        ? 'Scarcity pressure and roster need point here.'
+        : position === 'WR'
+          ? 'ADP value and board depth favor this pick.'
+          : position === 'QB'
+            ? 'QB window timing aligns with draft flow.'
+            : 'Positional leverage opportunity at TE.'
+      return { player, position, probability, why }
+    })
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions as any) as { user?: { id?: string } } | null
+    if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const body = await req.json().catch(() => ({}))
+    const leagueId = String(body?.leagueId || '')
+    const rounds = clamp(Number(body?.rounds || 3), 1, 4)
+    const simulations = clamp(Number(body?.simulations || 200), 80, 400)
+    const targetPlayer = String(body?.targetPlayer || '').trim()
+
+    if (!leagueId) return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
+
+    const league = await prisma.league.findFirst({
+      where: { id: leagueId, userId: session.user.id },
+      include: {
+        teams: {
+          include: { performances: { orderBy: { week: 'desc' }, take: 8 } },
+          orderBy: { currentRank: 'asc' },
+          take: 20,
+        },
+      },
+    })
+
+    if (!league) return NextResponse.json({ error: 'League not found' }, { status: 404 })
+
+    const adp = await getLiveADP(league.isDynasty ? 'dynasty' : 'redraft', 220)
+    const adjusted = await applyRealtimeAdpAdjustments(adp, { isDynasty: league.isDynasty })
+    const pool = adjusted.entries.filter(p => ['QB', 'RB', 'WR', 'TE'].includes(p.position)).slice(0, 180)
+
+    const teamCount = Math.max(league.leagueSize || 0, league.teams.length || 0, 12)
+    const baseNames = league.teams.length
+      ? league.teams.map(t => t.teamName || t.ownerName || 'Manager')
+      : []
+    const teamNames = Array.from({ length: teamCount }, (_, i) => baseNames[i] || `Manager ${i + 1}`)
+
+    let userIdx = 0
+    if (league.teams.length > 0) {
+      const ownerIdx = league.teams.findIndex((t: any) =>
+        t.platformUserId === (league as any).platformUserId ||
+        t.ownerName?.toLowerCase().includes('you') ||
+        t.isOwner === true
+      )
+      if (ownerIdx >= 0) userIdx = ownerIdx
+    }
+    const requestedIdx = Number(body?.draftSlot)
+    if (!isNaN(requestedIdx) && requestedIdx >= 0 && requestedIdx < teamCount) userIdx = requestedIdx
+
+    const managerProfiles = teamNames.map((name, i) => {
+      const team = league.teams[i]
+      const perf = team?.performances || []
+      const avgPts = perf.length ? perf.reduce((s, p) => s + p.points, 0) / perf.length : 100
+      const winRate = team ? (team.wins / Math.max(1, team.wins + team.losses + team.ties)) : 0.5
+
+      return {
+        manager: name,
+        tendency: {
+          QB: clamp(0.9 + (avgPts > 120 ? 0.2 : 0) + (winRate > 0.6 ? 0.08 : 0), 0.7, 1.3),
+          RB: clamp(1 + (winRate < 0.45 ? 0.18 : -0.02), 0.75, 1.4),
+          WR: clamp(1 + (avgPts < 108 ? 0.16 : 0.04), 0.75, 1.4),
+          TE: clamp(0.88 + (league.isDynasty ? 0.12 : 0.05), 0.7, 1.35),
+        },
+        rosterCounts: { QB: 0, RB: 0, WR: 0, TE: 0 },
+      }
+    })
+
+    const userPickOveralls = getUserPickOveralls(teamCount, userIdx, rounds)
+    const userPickSet = new Set(userPickOveralls)
+
+    const playerToRemove = targetPlayer || pool[0]?.name || ''
+
+    const [baselineOutcomes, playerGoneOutcomes, rbRunOutcomes, qbRunOutcomes] = await Promise.all([
+      Promise.resolve(runScenarioSims(pool, managerProfiles, teamCount, rounds, userPickSet, simulations)),
+      Promise.resolve(runScenarioSims(pool, managerProfiles, teamCount, rounds, userPickSet, simulations, {
+        removePlayer: playerToRemove,
+      })),
+      Promise.resolve(runScenarioSims(pool, managerProfiles, teamCount, rounds, userPickSet, simulations, {
+        rbRunBefore: userPickOveralls[0],
+      })),
+      Promise.resolve(runScenarioSims(pool, managerProfiles, teamCount, rounds, userPickSet, simulations, {
+        qbRunBefore: userPickOveralls[0],
+      })),
+    ])
+
+    const pickPaths: PickPathEntry[] = userPickOveralls.map(overall => {
+      const round = Math.ceil(overall / teamCount)
+      const pick = ((overall - 1) % teamCount) + 1
+
+      return {
+        overall,
+        round,
+        pick,
+        baseline: extractTop(baselineOutcomes.get(overall), simulations),
+        playerGone: {
+          removedPlayer: playerToRemove,
+          fallbacks: extractTop(playerGoneOutcomes.get(overall), simulations),
+        },
+        rbRun: {
+          pivot: extractTop(rbRunOutcomes.get(overall), simulations),
+          narrative: 'If 2+ RBs go off the board before your pick, pivot to best available WR/TE value.',
+        },
+        qbRun: {
+          recommendation: extractTop(qbRunOutcomes.get(overall), simulations),
+          narrative: 'If a QB run starts, consider sniping the next-tier QB or holding for positional value.',
+        },
+      }
+    })
+
+    return NextResponse.json({
+      ok: true,
+      simulations,
+      rounds,
+      league: { id: league.id, name: league.name, size: teamCount },
+      userManager: teamNames[userIdx],
+      userDraftSlot: userIdx + 1,
+      targetPlayer: playerToRemove,
+      pickPaths,
+    })
+  } catch (err: any) {
+    console.error('[mock-draft/pick-path] error', err)
+    return NextResponse.json({ error: err?.message || 'Failed to generate pick paths' }, { status: 500 })
+  }
+}

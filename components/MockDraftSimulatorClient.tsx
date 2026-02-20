@@ -92,6 +92,10 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [boardForecasts, setBoardForecasts] = useState<BoardForecast[]>([])
   const [forecastMeta, setForecastMeta] = useState<{ simulations: number; rounds: number } | null>(null)
   const [forecastMovers, setForecastMovers] = useState<AdpMover[]>([])
+  const [pickPathOpen, setPickPathOpen] = useState(false)
+  const [pickPathLoading, setPickPathLoading] = useState(false)
+  const [pickPathData, setPickPathData] = useState<any[]>([])
+  const [pickPathTarget, setPickPathTarget] = useState('')
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -344,6 +348,29 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
+  const generatePickPath = async () => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    setPickPathLoading(true)
+    try {
+      const target = bestAvailableTop[0]?.name || ''
+      const res = await fetch('/api/mock-draft/pick-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, rounds: 3, simulations: 200, targetPlayer: target }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to generate pick path')
+      setPickPathData(data.pickPaths || [])
+      setPickPathTarget(data.targetPlayer || target)
+      setPickPathOpen(true)
+      toast.success('Pick Path generated with contingency strategies.')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to generate pick path')
+    } finally {
+      setPickPathLoading(false)
+    }
+  }
+
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -467,6 +494,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             </Button>
             <Button onClick={predictDraftBoard} disabled={predictingBoard || !selectedLeagueId} variant="outline" className="h-10 border-cyan-700/40 text-cyan-300 hover:text-cyan-200">
               {predictingBoard ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Predicting</> : 'Predict Board'}
+            </Button>
+            <Button onClick={generatePickPath} disabled={pickPathLoading || !selectedLeagueId} variant="outline" className="h-10 border-purple-700/40 text-purple-300 hover:text-purple-200">
+              {pickPathLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Mapping</> : 'Pick Path'}
             </Button>
           </div>
         </div>
@@ -1059,6 +1089,69 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                         <div className="text-xs text-gray-500">{t.why}</div>
                       </div>
                       <div className="text-cyan-300 font-semibold tabular-nums">{t.probability}%</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={pickPathOpen} onOpenChange={setPickPathOpen}>
+        <DialogContent className="max-w-4xl bg-black/95 border-purple-900/40">
+          <DialogHeader>
+            <DialogTitle>Pick Path — Contingency Tree{pickPathTarget ? ` (targeting ${pickPathTarget})` : ''}</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto space-y-5 pr-1">
+            {pickPathData.length === 0 && <p className="text-sm text-gray-500 text-center py-4">No pick paths available</p>}
+            {pickPathData.map((pp: any) => (
+              <div key={pp.overall} className="rounded-xl border border-purple-900/30 bg-purple-500/5 p-4 space-y-3">
+                <div className="text-sm font-semibold text-purple-300">Round {pp.round} · Pick {pp.pick} (#{pp.overall})</div>
+
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-cyan-300">Baseline Projection</div>
+                  {pp.baseline?.map((t: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span><span className="font-medium text-white">{t.player}</span> <span className="text-gray-400">· {t.position}</span></span>
+                      <span className="text-cyan-400 tabular-nums">{t.probability}%</span>
+                    </div>
+                  ))}
+                </div>
+
+                {pp.playerGone && (
+                  <div className="space-y-2 border-t border-white/10 pt-2">
+                    <div className="text-xs font-semibold text-red-400">If {pp.playerGone.removedPlayer} is gone</div>
+                    {pp.playerGone.fallbacks?.map((t: any, i: number) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <span><span className="font-medium text-white">{t.player}</span> <span className="text-gray-400">· {t.position}</span></span>
+                        <span className="text-amber-400 tabular-nums">{t.probability}%</span>
+                      </div>
+                    ))}
+                    {(!pp.playerGone.fallbacks || pp.playerGone.fallbacks.length === 0) && (
+                      <div className="text-xs text-gray-500">No fallback data</div>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-2 border-t border-white/10 pt-2">
+                  <div className="text-xs font-semibold text-green-400">If 2+ RBs run before your pick</div>
+                  <div className="text-xs text-gray-400 italic">{pp.rbRun?.narrative}</div>
+                  {pp.rbRun?.pivot?.map((t: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span><span className="font-medium text-white">{t.player}</span> <span className="text-gray-400">· {t.position}</span></span>
+                      <span className="text-green-400 tabular-nums">{t.probability}%</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2 border-t border-white/10 pt-2">
+                  <div className="text-xs font-semibold text-yellow-400">If QB run starts</div>
+                  <div className="text-xs text-gray-400 italic">{pp.qbRun?.narrative}</div>
+                  {pp.qbRun?.recommendation?.map((t: any, i: number) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span><span className="font-medium text-white">{t.player}</span> <span className="text-gray-400">· {t.position}</span></span>
+                      <span className="text-yellow-400 tabular-nums">{t.probability}%</span>
                     </div>
                   ))}
                 </div>
