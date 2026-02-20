@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
+import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 
 type PickForecast = {
   overall: number
@@ -74,7 +75,8 @@ export async function POST(req: NextRequest) {
     if (!league) return NextResponse.json({ error: 'League not found' }, { status: 404 })
 
     const adp = await getLiveADP(league.isDynasty ? 'dynasty' : 'redraft', 220)
-    const pool = adp.filter(p => ['QB', 'RB', 'WR', 'TE'].includes(p.position)).slice(0, 180)
+    const adjusted = await applyRealtimeAdpAdjustments(adp, { isDynasty: league.isDynasty })
+    const pool = adjusted.entries.filter(p => ['QB', 'RB', 'WR', 'TE'].includes(p.position)).slice(0, 180)
 
     const teamCount = Math.max(league.leagueSize || 0, league.teams.length || 0, 12)
     const teamNames = league.teams.length
@@ -182,6 +184,8 @@ export async function POST(req: NextRequest) {
       league: { id: league.id, name: league.name, size: teamCount },
       forecasts,
       userGuidance,
+      adpAdjustments: adjusted.adjustments.slice(0, 20),
+      signalSources: adjusted.sourcesUsed,
     })
   } catch (err: any) {
     console.error('[mock-draft/predict-board] error', err)
