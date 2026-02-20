@@ -50,6 +50,7 @@ function customPrismaAdapter() {
 }
 
 export const authOptions: NextAuthOptions = {
+  secret: process.env.NEXTAUTH_SECRET,
   adapter: customPrismaAdapter() as any,
   providers: [
     CredentialsProvider({
