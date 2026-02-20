@@ -68,20 +68,25 @@ export function computeManagerDNA(
   const rosterAdpDeltas: number[] = []
   let rookieCount = 0
 
+  const matchedPlayers: Array<{ adp: number; position: string; team: string | null; age: number | null }> = []
   for (const pid of rosterPlayerIds) {
     const norm = pid.toLowerCase().replace(/[.\-']/g, '').trim()
     const match = adpMap.get(norm)
     if (match) {
+      matchedPlayers.push({ adp: match.adp, position: match.position, team: match.team, age: match.age })
       rosterPositions.push(match.position)
       if (match.team) rosterTeams.push(match.team)
       if (match.age != null) {
         rosterAges.push(match.age)
         if (match.age <= 23) rookieCount++
       }
-      const expectedRank = rosterPlayerIds.indexOf(pid) + 1
-      const adpDelta = match.adp - expectedRank
-      rosterAdpDeltas.push(adpDelta)
     }
+  }
+  const sortedByAdp = [...matchedPlayers].sort((a, b) => a.adp - b.adp)
+  for (let i = 0; i < sortedByAdp.length; i++) {
+    const draftSlotEstimate = Math.round((i + 1) * (leagueSize / Math.max(1, sortedByAdp.length)) * (leagueSize > 8 ? 1.2 : 1))
+    const adpDelta = draftSlotEstimate - sortedByAdp[i].adp
+    rosterAdpDeltas.push(adpDelta)
   }
 
   const reachFrequency = computeReachFrequency(rosterAdpDeltas, winRate, ptsRatio)

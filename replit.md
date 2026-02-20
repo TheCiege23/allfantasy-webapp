@@ -41,6 +41,7 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 -   **Rivalry Week Mode**: A deterministic rivalry scoring engine that computes head-to-head records, trade friction, and matchup impact, producing narrative cards with AI-generated hype text.
 -   **Migration Proof**: Split-screen "Before → After" comparison showing Sleeper raw snapshot vs AF AI-enhanced intelligence.
 -   **League Sync System**: A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage.
+-   **Manager DNA Cards**: Opponent-specific draft behavior profiling system computing 5 behavioral signals (reach frequency, positional aggression by round, rookie appetite, stack tendency, panic response) per manager from roster/performance data. Derives archetypes (e.g., "The Calculator", "Dynasty Architect") and feeds DNA-informed tendencies into predict-board and pick-path simulations. Located in `lib/mock-draft/manager-dna.ts` with API at `/api/mock-draft/manager-dna`.
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.
