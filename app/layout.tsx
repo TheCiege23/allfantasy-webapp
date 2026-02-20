@@ -47,6 +47,8 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-LY788DCM6K'
+
   return (
     <html lang="en" className={`${inter.variable}`} suppressHydrationWarning>
       <head>
@@ -66,18 +68,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `}
         </Script>
         <Script
-          src="https://www.googletagmanager.com/gtag/js?id=AW-17768764414"
+          src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
           strategy="afterInteractive"
         />
         <Script id="google-gtag" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
+            window.gtag = window.gtag || function(){window.dataLayer.push(arguments);};
+            var gtag = window.gtag;
             gtag('js', new Date());
+            gtag('config', '${gaMeasurementId}', { send_page_view: true });
             gtag('config', 'AW-17768764414');
-            gtag('config', 'G-LY788DCM6K');
           `}
         </Script>
+
         <Script id="analytics-healthcheck" strategy="afterInteractive">
           {`
             (function() {
@@ -93,7 +97,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   var hasGtag = typeof window.gtag === 'function';
 
                   console.group('[AF Analytics Health]');
-                  console.info('GA Measurement ID:', 'G-LY788DCM6K');
+                  console.info('GA Measurement ID:', '${gaMeasurementId}');
                   console.info('window.gtag ready:', hasGtag);
                   console.info('window.dataLayer ready:', hasDataLayer);
                   console.info('dataLayer length:', hasDataLayer ? window.dataLayer.length : 0);

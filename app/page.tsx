@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, Sparkles, Shield, Zap, Brain, Trophy, BarChart3, Search, FileText } from 'lucide-react'
 import { ModeToggle } from '@/components/theme/ModeToggle'
 import { BracketsNavLinks } from '@/components/bracket/BracketsNavLinks'
@@ -51,10 +51,16 @@ const scaleIn = {
 
 function HomeContent() {
   const searchParams = useSearchParams()
+  const [showCrestIntro, setShowCrestIntro] = useState(true)
 
   useEffect(() => {
     fetch('/api/track-visitor', { method: 'POST' }).catch(() => {})
   }, [searchParams])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setShowCrestIntro(false), 2400)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   const jsonLd = useMemo(
     () => ({
@@ -73,6 +79,34 @@ function HomeContent() {
 
   return (
     <main className="min-h-screen relative overflow-x-hidden" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
+      <AnimatePresence>
+        {showCrestIntro && (
+          <motion.div
+            className="crest-intro-overlay"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.35, ease: 'easeOut' } }}
+          >
+            <div className="crest-impact-flash" />
+            <div className="crest-crack-overlay" />
+            <motion.img
+              src="/af-crest.jpg"
+              alt="AllFantasy Crest"
+              className="crest-intro-image"
+              initial={{ x: '-120vw', y: '-40vh', rotate: -24, scale: 0.55, opacity: 0 }}
+              animate={{
+                x: ['-120vw', '-5vw', '0vw', '2vw', '0vw', '45vw'],
+                y: ['-40vh', '-5vh', '0vh', '-1vh', '0vh', '-20vh'],
+                rotate: [-24, -5, 0, 2, -2, 18],
+                scale: [0.55, 1.05, 1.2, 1.1, 1.12, 0.75],
+                opacity: [0, 1, 1, 1, 1, 0],
+              }}
+              transition={{ duration: 2.1, ease: 'easeInOut', times: [0, 0.42, 0.55, 0.62, 0.74, 1] }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
