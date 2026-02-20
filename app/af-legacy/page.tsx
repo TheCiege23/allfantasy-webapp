@@ -4118,6 +4118,45 @@ function AFLegacyContent() {
     return () => window.clearInterval(id)
   }, [mockDraftStartedAt])
 
+  useEffect(() => {
+    if (!username || !mockDraftLeagueId) return
+    const loadManagers = async () => {
+      setMockManagersLoading(true)
+      try {
+        const res = await fetch(`/api/legacy/trade/league-managers?league_id=${encodeURIComponent(mockDraftLeagueId)}&sport=nfl`)
+        const data = await res.json()
+        if (res.ok && Array.isArray(data.managers)) {
+          setMockManagers(data.managers.map((m: any, idx: number) => ({
+            id: String(m.userId || m.rosterId || idx),
+            displayName: m.displayName || m.username || `Team ${idx + 1}`,
+            avatar: m.avatar || m.avatarUrl || undefined,
+            draftSlot: m.draftSlot ?? null,
+          })))
+        }
+      } catch {}
+      finally { setMockManagersLoading(false) }
+    }
+    loadManagers()
+  }, [username, mockDraftLeagueId])
+
+  useEffect(() => {
+    const selectedLeague = leagues.find(l => l.league_id === mockDraftLeagueId)
+    if (!selectedLeague) return
+
+    const type = selectedLeague.type?.toLowerCase().includes('dynasty') ? 'dynasty' : 'redraft'
+    setMockNflPoolLoading(true)
+    fetch(`/api/mock-draft/adp?type=${type}&limit=300`)
+      .then(r => r.json())
+      .then(data => setMockNflPool((data?.entries || []).map((p: any) => ({
+        name: p.name,
+        position: p.position,
+        team: p.team,
+        adp: p.adp,
+      }))))
+      .catch(() => setMockNflPool([]))
+      .finally(() => setMockNflPoolLoading(false))
+  }, [mockDraftLeagueId, leagues])
+
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode; badge?: string }> = [
     { id: 'overview' as Tab, label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'trade' as Tab, label: 'AI Trade Hub', icon: <ArrowLeftRight className="w-4 h-4" />, badge: 'AI' },
