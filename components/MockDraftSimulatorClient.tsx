@@ -38,6 +38,13 @@ interface BoardForecast {
   topTargets: Array<{ player: string; position: string; probability: number; why: string }>
 }
 
+interface AdpMover {
+  name: string
+  adjustedAdp: number
+  delta: number
+  reasons: string[]
+}
+
 interface DraftPick {
   round: number
   pick: number
@@ -84,6 +91,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [forecastOpen, setForecastOpen] = useState(false)
   const [boardForecasts, setBoardForecasts] = useState<BoardForecast[]>([])
   const [forecastMeta, setForecastMeta] = useState<{ simulations: number; rounds: number } | null>(null)
+  const [forecastMovers, setForecastMovers] = useState<AdpMover[]>([])
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -326,6 +334,7 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       if (!res.ok) throw new Error(data.error || 'Failed to predict board')
       setBoardForecasts(data.forecasts || [])
       setForecastMeta({ simulations: data.simulations || 0, rounds: data.rounds || 2 })
+      setForecastMovers(data.adpAdjustments || [])
       setForecastOpen(true)
       toast.success('Predicted draft board generated.')
     } catch (err: any) {
@@ -1023,22 +1032,38 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             <DialogTitle>AI Predicted Draft Board ({forecastMeta?.rounds || 2} rounds · {forecastMeta?.simulations || 0} sims)</DialogTitle>
           </DialogHeader>
           <div className="max-h-[70vh] overflow-y-auto space-y-3 pr-1">
+            {forecastMovers.length > 0 && (
+              <div className="rounded-xl border border-cyan-900/40 bg-cyan-500/5 p-3">
+                <div className="text-xs font-semibold text-cyan-300 mb-2">Real-time ADP Movers (rookies/news/ESPN updates)</div>
+                <div className="grid gap-1">
+                  {forecastMovers.slice(0, 8).map((m) => (
+                    <div key={m.name} className="text-xs text-gray-300 flex items-center justify-between gap-3">
+                      <span className="truncate">{m.name} · {m.delta < 0 ? 'UP' : 'DOWN'} {Math.abs(m.delta)} ({m.reasons?.[0] || 'signal update'})</span>
+                      <span className="text-cyan-300">ADP {m.adjustedAdp.toFixed(1)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {boardForecasts.slice(0, 36).map((f) => (
               <div key={`${f.overall}-${f.manager}`} className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-xs text-gray-400 mb-1">Round {f.round} · Pick {f.pick} (#{f.overall}) · {f.manager}</div>
                 <div className="space-y-1.5">
-                  {f.topTargets.map((t, j) => (
-                    <div key={j} className="flex items-center gap-2 text-sm">
-                      <span className={`px-1.5 py-0.5 rounded text-xs border ${POSITION_COLORS[t.position] || 'text-gray-400 bg-gray-500/15 border-gray-500/30'}`}>{t.position}</span>
-                      <span className="font-medium">{t.player}</span>
-                      <span className="text-cyan-400 text-xs ml-auto">{t.probability}%</span>
+                  {f.topTargets.length === 0 ? (
+                    <div className="text-sm text-gray-500">No projection available</div>
+                  ) : f.topTargets.map((t, idx) => (
+                    <div key={`${t.player}-${idx}`} className="flex items-start justify-between gap-3 text-sm">
+                      <div>
+                        <span className="font-semibold text-white">{t.player}</span>
+                        <span className="text-gray-400"> · {t.position}</span>
+                        <div className="text-xs text-gray-500">{t.why}</div>
+                      </div>
+                      <div className="text-cyan-300 font-semibold tabular-nums">{t.probability}%</div>
                     </div>
                   ))}
-                  {f.topTargets.length === 0 && <div className="text-xs text-gray-500">No data</div>}
                 </div>
               </div>
             ))}
-            {boardForecasts.length === 0 && <p className="text-sm text-gray-500 text-center py-4">No forecasts available</p>}
           </div>
         </DialogContent>
       </Dialog>
