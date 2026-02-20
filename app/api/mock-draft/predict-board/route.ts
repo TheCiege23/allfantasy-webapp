@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
+import { buildManagerDNAFromLeague, type ManagerDNA } from '@/lib/mock-draft/manager-dna'
 
 type PickForecast = {
   overall: number
@@ -26,8 +27,9 @@ function snakeOrder(teamCount: number, round: number): number[] {
 
 function scorePlayerForManager(
   player: ADPEntry,
-  managerProfile: { tendency: Record<string, number>; rosterCounts: Record<string, number> },
-  overall: number
+  managerProfile: { tendency: Record<string, number>; rosterCounts: Record<string, number>; panicScore?: number; reachFrequency?: number },
+  overall: number,
+  recentPositionRun?: string
 ): number {
   const pos = player.position
   const needBoost = clamp((POSITION_TARGETS[pos] ?? 2) - (managerProfile.rosterCounts[pos] ?? 0), -2, 4)
@@ -35,7 +37,13 @@ function scorePlayerForManager(
   const adpDelta = clamp((player.adp - overall) / 20, -2, 2)
   const valueBoost = clamp((player.value ?? 2500) / 2500, 0.6, 2)
 
-  return 1 + needBoost * 0.28 + tendencyBoost * 0.22 + adpDelta * 0.2 + valueBoost * 0.16
+  const reachMod = (managerProfile.reachFrequency || 0.3) > 0.5 ? adpDelta * 0.15 : 0
+  let panicMod = 0
+  if (recentPositionRun && recentPositionRun === pos) {
+    panicMod = (managerProfile.panicScore || 0.3) * 0.35
+  }
+
+  return 1 + needBoost * 0.25 + tendencyBoost * 0.22 + adpDelta * 0.18 + valueBoost * 0.14 + reachMod + panicMod
 }
 
 function pickWeighted(candidates: ADPEntry[], weights: number[]): ADPEntry {
@@ -79,27 +87,39 @@ export async function POST(req: NextRequest) {
     const pool = adjusted.entries.filter(p => ['QB', 'RB', 'WR', 'TE'].includes(p.position)).slice(0, 180)
 
     const teamCount = Math.max(league.leagueSize || 0, league.teams.length || 0, 12)
-    const teamNames = league.teams.length
-      ? league.teams.map(t => t.teamName || t.ownerName || 'Manager')
-      : Array.from({ length: teamCount }, (_, i) => `Manager ${i + 1}`)
 
-    const managerProfiles = teamNames.map((name, i) => {
-      const team = league.teams[i]
-      const perf = team?.performances || []
-      const avgPts = perf.length ? perf.reduce((s, p) => s + p.points, 0) / perf.length : 100
-      const winRate = team ? (team.wins / Math.max(1, team.wins + team.losses + team.ties)) : 0.5
+    const dnaCards: ManagerDNA[] = league.teams.length
+      ? buildManagerDNAFromLeague(
+          league.teams.map(t => ({
+            teamName: t.teamName,
+            ownerName: t.ownerName,
+            wins: t.wins,
+            losses: t.losses,
+            ties: t.ties,
+            pointsFor: t.pointsFor,
+            currentRank: t.currentRank,
+            performances: t.performances.map(p => ({ week: p.week, points: p.points })),
+            platformUserId: (t as any).platformUserId || t.externalId,
+          })),
+          league.rosters || [],
+          pool,
+          league.isDynasty,
+          teamCount
+        )
+      : []
 
-      const tendency = {
-        QB: clamp(0.9 + (avgPts > 120 ? 0.2 : 0) + (winRate > 0.6 ? 0.08 : 0), 0.7, 1.3),
-        RB: clamp(1 + (winRate < 0.45 ? 0.18 : -0.02), 0.75, 1.4),
-        WR: clamp(1 + (avgPts < 108 ? 0.16 : 0.04), 0.75, 1.4),
-        TE: clamp(0.88 + (league.isDynasty ? 0.12 : 0.05), 0.7, 1.35),
-      }
+    const teamNames = Array.from({ length: teamCount }, (_, i) =>
+      dnaCards[i]?.manager || `Manager ${i + 1}`
+    )
 
+    const managerProfiles = Array.from({ length: teamCount }, (_, i) => {
+      const dna = dnaCards[i]
       return {
-        manager: name,
-        tendency,
+        manager: teamNames[i],
+        tendency: dna?.tendency || { QB: 1, RB: 1, WR: 1, TE: 1 },
         rosterCounts: { QB: 0, RB: 0, WR: 0, TE: 0 },
+        panicScore: dna?.panicScore || 0.3,
+        reachFrequency: dna?.reachFrequency || 0.3,
       }
     })
 
@@ -109,6 +129,7 @@ export async function POST(req: NextRequest) {
     for (let s = 0; s < simulations; s++) {
       const available = [...pool]
       const counts = managerProfiles.map(m => ({ ...m, rosterCounts: { QB: 0, RB: 0, WR: 0, TE: 0 } }))
+      const recentPicks: string[] = []
 
       let overall = 1
       for (let round = 1; round <= rounds; round++) {
@@ -117,8 +138,13 @@ export async function POST(req: NextRequest) {
           const managerIdx = order[pick - 1]
           const profile = counts[managerIdx]
 
+          const last3 = recentPicks.slice(-3)
+          const posRunCounts: Record<string, number> = {}
+          for (const p of last3) posRunCounts[p] = (posRunCounts[p] || 0) + 1
+          const recentRun = Object.entries(posRunCounts).find(([, c]) => c >= 2)?.[0]
+
           const candidateSlice = available.slice(0, 40)
-          const weights = candidateSlice.map((p) => Math.max(0.05, scorePlayerForManager(p, profile, overall)))
+          const weights = candidateSlice.map((p) => Math.max(0.05, scorePlayerForManager(p, profile, overall, recentRun)))
           const chosen = pickWeighted(candidateSlice, weights)
 
           const avIdx = available.findIndex(p => p.name === chosen.name)
@@ -128,6 +154,7 @@ export async function POST(req: NextRequest) {
             const key = chosen.position as keyof typeof profile.rosterCounts
             profile.rosterCounts[key] = (profile.rosterCounts[key] || 0) + 1
           }
+          recentPicks.push(chosen.position)
 
           if (!pickOutcomes.has(overall)) pickOutcomes.set(overall, new Map())
           const map = pickOutcomes.get(overall)!
