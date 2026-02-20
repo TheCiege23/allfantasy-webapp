@@ -6,12 +6,22 @@ import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 import { buildManagerDNAFromLeague, type ManagerDNA } from '@/lib/mock-draft/manager-dna'
 
+type VolatilityMeter = {
+  chaosLevel: 'low' | 'medium' | 'high'
+  chaosScore: number
+  confidenceBands: { high: number; mid: number; low: number }
+  tierStability: 'stable' | 'fragile'
+  tierSpread: number
+  topConcentration: number
+}
+
 type PickForecast = {
   overall: number
   round: number
   pick: number
   manager: string
   topTargets: Array<{ player: string; position: string; probability: number; why: string }>
+  volatility: VolatilityMeter
 }
 
 const POSITION_TARGETS: Record<string, number> = { QB: 2, RB: 5, WR: 5, TE: 2 }
@@ -54,6 +64,53 @@ function pickWeighted(candidates: ADPEntry[], weights: number[]): ADPEntry {
     if (r <= 0) return candidates[i]
   }
   return candidates[candidates.length - 1]
+}
+
+function computeVolatility(outcomeMap: Map<string, number>, simulations: number, managerName: string): VolatilityMeter {
+  const entries = Array.from(outcomeMap.entries())
+    .filter(([k]) => k.endsWith(`|${managerName}`))
+    .sort((a, b) => b[1] - a[1])
+
+  if (entries.length === 0) {
+    return { chaosLevel: 'high' as const, chaosScore: 100, confidenceBands: { high: 0, mid: 0, low: 0 }, tierStability: 'fragile' as const, tierSpread: 0, topConcentration: 0 }
+  }
+
+  const total = entries.reduce((s, [, c]) => s + c, 0) || simulations
+  const probs = entries.map(([, c]) => c / total)
+  const uniqueOutcomes = entries.length
+
+  const topProb = probs[0] || 0
+  const top3Sum = probs.slice(0, 3).reduce((s, p) => s + p, 0)
+  const topConcentration = Math.round(topProb * 100)
+
+  let entropy = 0
+  for (const p of probs) {
+    if (p > 0) entropy -= p * Math.log2(p)
+  }
+  const maxEntropy = uniqueOutcomes > 1 ? Math.log2(uniqueOutcomes) : 1
+  const normalizedEntropy = maxEntropy > 0 ? entropy / maxEntropy : 0
+
+  const chaosScore = Math.round(clamp(normalizedEntropy * 100, 0, 100))
+  const chaosLevel: 'low' | 'medium' | 'high' =
+    chaosScore <= 35 ? 'low' : chaosScore <= 65 ? 'medium' : 'high'
+
+  const highBand = Math.round(topProb * 100)
+  const midBand = Math.round(top3Sum * 100)
+  const lowBand = Math.round(clamp(probs.slice(0, Math.min(6, probs.length)).reduce((s, p) => s + p, 0) * 100, 0, 100))
+
+  const positionCounts: Record<string, number> = {}
+  for (const [key, count] of entries) {
+    const parts = key.split('|')
+    const pos = parts[1] || 'UNK'
+    positionCounts[pos] = (positionCounts[pos] || 0) + count
+  }
+  const posProbs = Object.values(positionCounts).map(c => c / total).sort((a, b) => b - a)
+  const tierSpread = posProbs.length > 1 ? Math.round((posProbs[0] - posProbs[1]) * 100) : 100
+
+  const tierStability: 'stable' | 'fragile' =
+    topConcentration >= 40 && tierSpread >= 20 ? 'stable' : 'fragile'
+
+  return { chaosLevel, chaosScore, confidenceBands: { high: highBand, mid: midBand, low: lowBand }, tierStability, tierSpread, topConcentration }
 }
 
 export async function POST(req: NextRequest) {
@@ -189,7 +246,10 @@ export async function POST(req: NextRequest) {
             return { player, position, probability, why }
           })
 
-        forecasts.push({ overall, round, pick, manager, topTargets: results })
+        const outcomeMap = pickOutcomes.get(overall) || new Map()
+        const volatility = computeVolatility(outcomeMap, simulations, manager)
+
+        forecasts.push({ overall, round, pick, manager, topTargets: results, volatility })
         overall++
       }
     }

@@ -42,6 +42,7 @@ The core architecture is built upon three pillars: One Scoring Core, One Narrati
 -   **Migration Proof**: Split-screen "Before → After" comparison showing Sleeper raw snapshot vs AF AI-enhanced intelligence.
 -   **League Sync System**: A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage.
 -   **Manager DNA Cards**: Opponent-specific draft behavior profiling system computing 5 behavioral signals (reach frequency, positional aggression by round, rookie appetite, stack tendency, panic response) per manager from roster/performance data. Derives archetypes (e.g., "The Calculator", "Dynasty Architect") and feeds DNA-informed tendencies into predict-board and pick-path simulations. Located in `lib/mock-draft/manager-dna.ts` with API at `/api/mock-draft/manager-dna`.
+-   **Live Board Volatility Meter**: Per-pick decision-risk overlay on the predicted draft board. Uses normalized Shannon entropy to classify each pick window as low/medium/high chaos, computes confidence bands (top pick, top 3, top 6 probability coverage), and identifies stable vs fragile tier moments based on concentration and positional spread. Includes a board-level volatility summary bar.
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.

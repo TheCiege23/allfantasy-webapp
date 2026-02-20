@@ -30,12 +30,22 @@ interface LeagueOption {
   scoring: string | null
 }
 
+interface VolatilityMeter {
+  chaosLevel: 'low' | 'medium' | 'high'
+  chaosScore: number
+  confidenceBands: { high: number; mid: number; low: number }
+  tierStability: 'stable' | 'fragile'
+  tierSpread: number
+  topConcentration: number
+}
+
 interface BoardForecast {
   overall: number
   round: number
   pick: number
   manager: string
   topTargets: Array<{ player: string; position: string; probability: number; why: string }>
+  volatility: VolatilityMeter
 }
 
 interface AdpMover {
@@ -105,6 +115,56 @@ function AggBar({ label, value, color }: { label: string; value: number; color: 
         <div className={`h-full rounded-full ${bgMap[color] || 'bg-gray-500/60'}`} style={{ width: `${Math.min(100, value)}%` }} />
       </div>
       <span className="text-[9px] text-gray-400 w-6 text-right tabular-nums">{value}</span>
+    </div>
+  )
+}
+
+function VolatilityBadge({ v }: { v: VolatilityMeter }) {
+  const chaosColors: Record<string, { bg: string; text: string; ring: string; glow: string }> = {
+    low: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', ring: 'ring-emerald-500/30', glow: 'shadow-emerald-500/10' },
+    medium: { bg: 'bg-amber-500/15', text: 'text-amber-400', ring: 'ring-amber-500/30', glow: 'shadow-amber-500/10' },
+    high: { bg: 'bg-red-500/15', text: 'text-red-400', ring: 'ring-red-500/30', glow: 'shadow-red-500/10' },
+  }
+  const tierColors: Record<string, { bg: string; text: string }> = {
+    stable: { bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+    fragile: { bg: 'bg-orange-500/10', text: 'text-orange-400' },
+  }
+  const c = chaosColors[v.chaosLevel]
+  const t = tierColors[v.tierStability]
+  return (
+    <div className={`rounded-lg p-2.5 ${c.bg} ring-1 ${c.ring} shadow-sm ${c.glow} space-y-2`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <span className={`text-[10px] font-bold uppercase tracking-wider ${c.text}`}>{v.chaosLevel} chaos</span>
+          <span className="text-[9px] text-gray-500">({v.chaosScore}%)</span>
+        </div>
+        <div className={`px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase ${t.bg} ${t.text}`}>
+          {v.tierStability} tier
+        </div>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] text-gray-500 w-12 shrink-0">Top pick</span>
+          <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className="h-full rounded-full bg-cyan-500/70" style={{ width: `${v.confidenceBands.high}%` }} />
+          </div>
+          <span className="text-[9px] text-cyan-400 w-7 text-right tabular-nums">{v.confidenceBands.high}%</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] text-gray-500 w-12 shrink-0">Top 3</span>
+          <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className="h-full rounded-full bg-blue-500/60" style={{ width: `${v.confidenceBands.mid}%` }} />
+          </div>
+          <span className="text-[9px] text-blue-400 w-7 text-right tabular-nums">{v.confidenceBands.mid}%</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] text-gray-500 w-12 shrink-0">Top 6</span>
+          <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div className="h-full rounded-full bg-indigo-500/50" style={{ width: `${v.confidenceBands.low}%` }} />
+          </div>
+          <span className="text-[9px] text-indigo-400 w-7 text-right tabular-nums">{v.confidenceBands.low}%</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1131,6 +1191,34 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             <DialogTitle>AI Predicted Draft Board ({forecastMeta?.rounds || 2} rounds · {forecastMeta?.simulations || 0} sims)</DialogTitle>
           </DialogHeader>
           <div className="max-h-[70vh] overflow-y-auto space-y-3 pr-1">
+            {boardForecasts.length > 0 && (() => {
+              const vols = boardForecasts.filter(f => f.volatility).map(f => f.volatility)
+              const lowCount = vols.filter(v => v.chaosLevel === 'low').length
+              const medCount = vols.filter(v => v.chaosLevel === 'medium').length
+              const highCount = vols.filter(v => v.chaosLevel === 'high').length
+              const fragileCount = vols.filter(v => v.tierStability === 'fragile').length
+              const total = vols.length || 1
+              const avgChaos = Math.round(vols.reduce((s, v) => s + v.chaosScore, 0) / total)
+              return (
+                <div className="rounded-xl border border-white/10 bg-gradient-to-r from-emerald-500/5 via-amber-500/5 to-red-500/5 p-3">
+                  <div className="text-xs font-semibold text-white mb-2">Board Volatility Overview</div>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden flex">
+                      <div className="h-full bg-emerald-500/70" style={{ width: `${(lowCount / total) * 100}%` }} />
+                      <div className="h-full bg-amber-500/70" style={{ width: `${(medCount / total) * 100}%` }} />
+                      <div className="h-full bg-red-500/70" style={{ width: `${(highCount / total) * 100}%` }} />
+                    </div>
+                    <span className="text-[10px] text-gray-400 tabular-nums shrink-0">avg {avgChaos}%</span>
+                  </div>
+                  <div className="flex gap-4 text-[10px]">
+                    <span className="text-emerald-400">{lowCount} low</span>
+                    <span className="text-amber-400">{medCount} medium</span>
+                    <span className="text-red-400">{highCount} high</span>
+                    <span className="text-orange-400">{fragileCount} fragile tiers</span>
+                  </div>
+                </div>
+              )
+            })()}
             {forecastMovers.length > 0 && (
               <div className="rounded-xl border border-cyan-900/40 bg-cyan-500/5 p-3">
                 <div className="text-xs font-semibold text-cyan-300 mb-2">Real-time ADP Movers (rookies/news/ESPN updates)</div>
@@ -1145,8 +1233,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
               </div>
             )}
             {boardForecasts.slice(0, 36).map((f) => (
-              <div key={`${f.overall}-${f.manager}`} className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div key={`${f.overall}-${f.manager}`} className="rounded-xl border border-white/10 bg-white/5 p-3 space-y-2">
                 <div className="text-xs text-gray-400 mb-1">Round {f.round} · Pick {f.pick} (#{f.overall}) · {f.manager}</div>
+                {f.volatility && <VolatilityBadge v={f.volatility} />}
                 <div className="space-y-1.5">
                   {f.topTargets.length === 0 ? (
                     <div className="text-sm text-gray-500">No projection available</div>
