@@ -143,6 +143,34 @@ const DataQualitySchema = z.object({
   warnings: z.array(z.string()),
 }).strict()
 
+export const FreshnessGradeEnum = z.enum(['fresh', 'aging', 'stale', 'expired', 'unavailable'])
+
+const SingleSourceFreshnessSchema = z.object({
+  source: z.string(),
+  fetchedAt: z.string().nullable(),
+  ageMs: z.number(),
+  ageLabel: z.string(),
+  grade: FreshnessGradeEnum,
+  confidencePenalty: z.number(),
+}).strict()
+
+export const SourceFreshnessSchema = z.object({
+  rosters: SingleSourceFreshnessSchema,
+  valuations: SingleSourceFreshnessSchema,
+  injuries: SingleSourceFreshnessSchema,
+  adp: SingleSourceFreshnessSchema,
+  analytics: SingleSourceFreshnessSchema,
+  tradeHistory: SingleSourceFreshnessSchema,
+  compositeScore: z.number().min(0).max(100),
+  compositeGrade: FreshnessGradeEnum,
+  totalConfidencePenalty: z.number(),
+  warnings: z.array(z.string()),
+}).strict()
+
+export type FreshnessGrade = z.infer<typeof FreshnessGradeEnum>
+export type SingleSourceFreshness = z.infer<typeof SingleSourceFreshnessSchema>
+export type SourceFreshness = z.infer<typeof SourceFreshnessSchema>
+
 export const TradeDecisionContextV1Schema = z.object({
   version: z.literal(TRADE_DECISION_CONTEXT_VERSION),
   assembledAt: z.string(),
@@ -204,34 +232,6 @@ const LeagueTeamSnapshotSchema = TeamSnapshotSchema.extend({
   avatar: z.string().nullable().optional(),
   tradeCount: z.number().int(),
 })
-
-export const FreshnessGradeEnum = z.enum(['fresh', 'aging', 'stale', 'expired', 'unavailable'])
-
-const SingleSourceFreshnessSchema = z.object({
-  source: z.string(),
-  fetchedAt: z.string().nullable(),
-  ageMs: z.number(),
-  ageLabel: z.string(),
-  grade: FreshnessGradeEnum,
-  confidencePenalty: z.number(),
-}).strict()
-
-export const SourceFreshnessSchema = z.object({
-  rosters: SingleSourceFreshnessSchema,
-  valuations: SingleSourceFreshnessSchema,
-  injuries: SingleSourceFreshnessSchema,
-  adp: SingleSourceFreshnessSchema,
-  analytics: SingleSourceFreshnessSchema,
-  tradeHistory: SingleSourceFreshnessSchema,
-  compositeScore: z.number().min(0).max(100),
-  compositeGrade: FreshnessGradeEnum,
-  totalConfidencePenalty: z.number(),
-  warnings: z.array(z.string()),
-}).strict()
-
-export type FreshnessGrade = z.infer<typeof FreshnessGradeEnum>
-export type SingleSourceFreshness = z.infer<typeof SingleSourceFreshnessSchema>
-export type SourceFreshness = z.infer<typeof SourceFreshnessSchema>
 
 export type DataCoverageTier = 'FULL' | 'PARTIAL' | 'MINIMAL'
 

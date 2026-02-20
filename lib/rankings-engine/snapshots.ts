@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma"
+import { Prisma } from "@prisma/client"
 
 export interface SnapshotMetrics {
   starterValuePercentile: number
@@ -47,7 +48,7 @@ export async function saveRankingsSnapshot(args: {
           composite: t.composite,
           expectedWins: t.expectedWins ?? null,
           luckDelta: t.luckDelta ?? null,
-          metricsJson: t.metricsJson ?? undefined,
+          metricsJson: t.metricsJson ? (t.metricsJson as unknown as Prisma.InputJsonValue) : undefined,
         },
         create: {
           leagueId,
@@ -58,7 +59,7 @@ export async function saveRankingsSnapshot(args: {
           composite: t.composite,
           expectedWins: t.expectedWins ?? null,
           luckDelta: t.luckDelta ?? null,
-          metricsJson: t.metricsJson ?? undefined,
+          metricsJson: t.metricsJson ? (t.metricsJson as unknown as Prisma.InputJsonValue) : undefined,
         }
       })
     )

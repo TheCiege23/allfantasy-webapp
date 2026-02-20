@@ -463,7 +463,7 @@ export async function assembleTradeDecisionContext(
       type: isPick ? 'PICK' : 'PLAYER',
       pos: priced?.position || 'UNKNOWN',
       value: priced?.value || 0,
-      age: priced?.age || null,
+      age: priced?.age ?? undefined,
     }
 
     const classified = classifyCornerstone(asset, leagueSettings, DEFAULT_THRESHOLDS)
@@ -472,7 +472,7 @@ export async function assembleTradeDecisionContext(
       name: assetName.trim(),
       type: isPick ? 'PICK' : 'PLAYER',
       position: priced?.position || 'UNKNOWN',
-      age: priced?.age || null,
+      age: priced?.age ?? null,
       team: (priced as any)?.team || null,
       marketValue: priced?.assetValue?.marketValue || 0,
       impactValue: priced?.assetValue?.impactValue || 0,

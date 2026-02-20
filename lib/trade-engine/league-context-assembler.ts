@@ -1,5 +1,5 @@
 import { prisma } from '../prisma'
-import { pricePlayer, type ValuationContext, type PricedPlayer } from '../hybrid-valuation'
+import { pricePlayer, type ValuationContext } from '../hybrid-valuation'
 import { getPlayerAnalyticsBatch, type PlayerAnalytics } from '../player-analytics'
 import { fetchFantasyCalcValues } from '../fantasycalc'
 import { buildManagerProfile, type ManagerTendencyProfile } from './manager-tendency-engine'
@@ -444,15 +444,16 @@ export async function buildLeagueDecisionContext(
       type: 'PLAYER',
       pos: fc?.position || 'UNKNOWN',
       value: fc?.value || 0,
-      age: fc?.age || null,
+      age: fc?.age ?? undefined,
     }
     const classified = classifyCornerstone(asset, leagueSettingsObj, DEFAULT_THRESHOLDS)
+
 
     return {
       name: name.trim(),
       type: 'PLAYER',
       position: fc?.position || 'UNKNOWN',
-      age: fc?.age || null,
+      age: fc?.age ?? null,
       team: fc?.team || null,
       marketValue: fc?.marketValue || 0,
       impactValue: fc?.impactValue || 0,
@@ -766,7 +767,7 @@ export function leagueContextToIntelligence(
       impactValue: a.impactValue,
       vorpValue: a.vorpValue,
       volatility: a.volatility,
-      age: a.age,
+      age: a.age ?? undefined,
       team: a.team || undefined,
       isCornerstone: a.isCornerstone,
       cornerstoneReason: a.cornerstoneReason,
