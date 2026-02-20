@@ -19,7 +19,6 @@ import { gtagEvent } from '@/lib/gtag'
 import InsightsPanel from "@/components/InsightsPanel"
 import BadgeDisplay from "@/components/BadgeDisplay"
 import CommunityInsights from "@/components/CommunityInsights"
-import CrestImpactAnimation from "@/app/af-legacy/components/CrestImpactAnimation"
 import MarketTimingAlerts from "@/components/MarketTimingAlerts"
 import TradeAlternatives from "@/components/TradeAlternatives"
 import TradeCounterSuggestions from "@/components/TradeCounterSuggestions"
@@ -17058,7 +17057,6 @@ function AFLegacyContent() {
 export default function AFLegacyPage() {
   return (
     <>
-      <CrestImpactAnimation />
       <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/20 to-slate-900 flex items-center justify-center"><div className="text-white">Loading...</div></div>}>
         <AFLegacyContent />
       </Suspense>
