@@ -187,15 +187,25 @@ export async function POST(req: NextRequest) {
     let adpContext = ''
     try {
       const adpType = league.isDynasty ? 'dynasty' : 'redraft'
-      const liveADP = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
+      const rawADP = await getLiveADP(adpType as 'dynasty' | 'redraft', 200)
+      const adjusted = await applyRealtimeAdpAdjustments(rawADP, { isDynasty: league.isDynasty })
+      const liveADP = adjusted.entries
       if (liveADP.length > 0) {
         const adpSummary = liveADP.slice(0, 200).map(p =>
           `${p.name} (${p.position}, ${p.team || 'FA'}) - ADP: ${p.adp?.toFixed(1) || 'N/A'} • Value: ${p.value?.toFixed(0) || 'N/A'}`
         ).join('\n')
-        adpContext = `\n\n=== REAL-TIME ADP & DYNASTY VALUE DATA (${liveADP.length} players) ===
+
+        const adjustmentNotes = adjusted.adjustments.slice(0, 15).map(a =>
+          `${a.name}: ${a.delta > 0 ? '+' : ''}${a.delta.toFixed(1)} ADP (${a.reasons.join(', ')})`
+        ).join('\n')
+
+        adpContext = `\n\n=== REAL-TIME ADP & DYNASTY VALUE DATA (${liveADP.length} players, adjusted for news/injuries) ===
 Use this real-time ADP and dynasty value data to guide picks. Players MUST be drafted in realistic ADP order with slight variance for team needs and individual draft style. Do NOT invent players — only draft players from this list or well-known NFL starters.
 
-${adpSummary}`
+${adpSummary}
+
+=== RECENT ADP ADJUSTMENTS (injuries, news, momentum) ===
+${adjustmentNotes || 'No significant adjustments'}`
       }
     } catch (adpErr) {
       console.log('[mock-draft] ADP fetch failed, AI will use internal knowledge:', adpErr)
