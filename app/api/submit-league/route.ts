@@ -32,6 +32,8 @@ const submissionSchema = z.object({
   canContact: z.boolean().optional(),
 });
 
+type SubmissionData = z.infer<typeof submissionSchema>
+
 function getConfirmationEmailHtml(data: {
   creditName: string;
   leagueTypeName: string;
@@ -43,67 +45,14 @@ function getConfirmationEmailHtml(data: {
 <html>
 <head>
   <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-    .container { max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; padding: 32px; border: 1px solid #334155; }
-    .header { text-align: center; margin-bottom: 24px; }
-    .logo { font-size: 28px; font-weight: bold; background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .check { display: inline-block; width: 64px; height: 64px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); border-radius: 50%; line-height: 64px; text-align: center; font-size: 32px; margin: 16px 0; }
-    .message { text-align: center; color: #f1f5f9; font-size: 18px; margin: 16px 0; }
-    .summary-box { background: rgba(34, 211, 238, 0.1); border-left: 3px solid #22d3ee; padding: 16px; margin: 24px 0; border-radius: 0 8px 8px 0; }
-    .summary-item { margin: 8px 0; }
-    .summary-label { color: #94a3b8; font-size: 12px; text-transform: uppercase; }
-    .summary-value { color: #f1f5f9; font-size: 14px; margin-top: 2px; }
-    .notice { background: rgba(168, 85, 247, 0.1); border-left: 3px solid #a855f7; padding: 16px; margin: 24px 0; border-radius: 0 8px 8px 0; font-size: 14px; color: #e2e8f0; }
-    .footer { text-align: center; margin-top: 24px; font-size: 12px; color: #64748b; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="logo">AllFantasy.ai</div>
-    </div>
-    
-    <div style="text-align: center;">
-      <div class="check">✓</div>
-      <h2 style="margin: 8px 0; color: #4ade80;">Submission Received!</h2>
-    </div>
-    
-    <p class="message">Hi ${data.creditName},</p>
-    <p style="text-align: center; color: #94a3b8; margin-top: -8px;">
-      Thanks for submitting your league idea to AllFantasy — we've received it successfully.
-    </p>
-    
-    <div class="summary-box">
-      <h3 style="margin: 0 0 16px 0; color: #22d3ee; font-size: 14px;">Submission Summary</h3>
-      <div class="summary-item">
-        <div class="summary-label">League Name</div>
-        <div class="summary-value">${data.leagueTypeName}</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">Sport(s)</div>
-        <div class="summary-value">${data.sports.join(", ")}</div>
-      </div>
-      <div class="summary-item">
-        <div class="summary-label">Submitted</div>
-        <div class="summary-value">${data.submittedAt}</div>
-      </div>
-    </div>
-    
-    <div class="notice">
-      <strong style="color: #a855f7;">What happens next?</strong>
-      <p style="margin: 8px 0 0 0;">
-        Our team will review your idea. If we want to feature it, we may reach out for clarifications.
-      </p>
-      <p style="margin: 8px 0 0 0;">
-        <strong>Important:</strong> We will not use your idea unless you agreed to the submission permissions during checkout of this form. If accepted, your creator credit will appear in the app as: <strong>${data.creditName}</strong>
-      </p>
-    </div>
-    
-    <div class="footer">
-      <p>Thanks again,</p>
-      <p style="color: #22d3ee;">AllFantasy Team</p>
-    </div>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#0f172a; color:#e2e8f0; padding:20px;">
+  <div style="max-width:600px; margin:0 auto; background:#111827; border-radius:14px; border:1px solid #334155; padding:24px;">
+    <h2 style="margin:0 0 12px; color:#4ade80;">Submission Received \u2705</h2>
+    <p>Hi ${data.creditName},</p>
+    <p>Thanks for submitting your league idea to AllFantasy.</p>
+    <p><strong>League:</strong> ${data.leagueTypeName}<br/><strong>Sports:</strong> ${data.sports.join(", ")}<br/><strong>Submitted:</strong> ${data.submittedAt}</p>
+    <p>Our team will review this and follow up if needed.</p>
   </div>
 </body>
 </html>
@@ -119,88 +68,104 @@ function getAdminNotificationHtml(data: {
   permissionConsent: boolean;
   rightsConsent: boolean;
   canContact: boolean;
+  documentMeta?: string | null;
 }) {
   return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; margin: 0; padding: 20px; }
-    .container { max-width: 600px; margin: 0 auto; background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 16px; padding: 32px; border: 1px solid #334155; }
-    .header { text-align: center; margin-bottom: 24px; }
-    .logo { font-size: 24px; font-weight: bold; background: linear-gradient(90deg, #22d3ee, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-    .info-box { background: rgba(0, 0, 0, 0.3); border-radius: 12px; padding: 16px; margin: 16px 0; }
-    .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); }
-    .info-row:last-child { border-bottom: none; }
-    .info-label { color: #94a3b8; }
-    .info-value { color: #f1f5f9; text-align: right; }
-    .cta { display: block; text-align: center; background: linear-gradient(90deg, #22d3ee, #a855f7); color: white; text-decoration: none; padding: 14px 24px; border-radius: 12px; font-weight: 600; margin-top: 24px; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="logo">AllFantasy Admin</div>
-      <h2 style="margin: 8px 0; color: #f1f5f9;">New League Type Submission</h2>
-    </div>
-    
-    <div class="info-box">
-      <div class="info-row">
-        <span class="info-label">League Name</span>
-        <span class="info-value">${data.leagueTypeName}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Creator Credit</span>
-        <span class="info-value">${data.creditName}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Email</span>
-        <span class="info-value">${data.email}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Sports</span>
-        <span class="info-value">${data.sports.join(", ")}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Special Scoring</span>
-        <span class="info-value">${data.hasSpecialScoring ? "Yes" : "No"}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Permission Consent</span>
-        <span class="info-value" style="color: ${data.permissionConsent ? "#4ade80" : "#f87171"};">${data.permissionConsent ? "Yes" : "No"}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Rights Consent</span>
-        <span class="info-value" style="color: ${data.rightsConsent ? "#4ade80" : "#f87171"};">${data.rightsConsent ? "Yes" : "No"}</span>
-      </div>
-      <div class="info-row">
-        <span class="info-label">Can Contact</span>
-        <span class="info-value">${data.canContact ? "Yes" : "No"}</span>
-      </div>
-    </div>
-    
-    <a href="https://allfantasy.ai/admin?tab=ideas" class="cta">Review in Admin Panel</a>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#0f172a; color:#e2e8f0; padding:20px;">
+  <div style="max-width:620px; margin:0 auto; background:#111827; border-radius:14px; border:1px solid #334155; padding:24px;">
+    <h2 style="margin:0 0 14px; color:#f8fafc;">New League Type Submission</h2>
+    <p><strong>League Name:</strong> ${data.leagueTypeName}</p>
+    <p><strong>Creator:</strong> ${data.creditName}</p>
+    <p><strong>Email:</strong> ${data.email}</p>
+    <p><strong>Sports:</strong> ${data.sports.join(", ")}</p>
+    <p><strong>Special Scoring:</strong> ${data.hasSpecialScoring ? "Yes" : "No"}</p>
+    <p><strong>Permission:</strong> ${data.permissionConsent ? "Yes" : "No"} | <strong>Rights:</strong> ${data.rightsConsent ? "Yes" : "No"}</p>
+    <p><strong>Can Contact:</strong> ${data.canContact ? "Yes" : "No"}</p>
+    <p><strong>Attached document:</strong> ${data.documentMeta || "None"}</p>
+    <a href="https://allfantasy.ai/admin?tab=ideas" style="display:inline-block; margin-top:8px; background:#22d3ee; color:#001018; padding:10px 14px; border-radius:10px; text-decoration:none; font-weight:600;">Review in Admin Ideas</a>
   </div>
 </body>
 </html>
 `;
 }
 
+async function parseSubmissionRequest(request: NextRequest): Promise<{ payload: SubmissionData | null; error?: string; documentMeta?: string | null }> {
+  const contentType = request.headers.get("content-type") || "";
+
+  if (contentType.includes("multipart/form-data")) {
+    const form = await request.formData();
+    const leagueTypeName = String(form.get("leagueTypeName") || "").trim();
+    const description = String(form.get("description") || "").trim();
+    const scoringRules = String(form.get("scoringRules") || "").trim();
+    const rulesSettings = String(form.get("rulesSettings") || "").trim();
+    const draftType = String(form.get("draftType") || "snake").trim();
+    const sport = String(form.get("sport") || "NFL").trim();
+    const creditName = String(form.get("creditName") || "").trim();
+    const email = String(form.get("email") || "").trim();
+    const teamSize = String(form.get("teamSize") || "12").trim();
+
+    const document = form.get("document") as File | null;
+    const documentMeta = document && document.size > 0
+      ? `${document.name} (${document.type || "unknown"}, ${Math.round(document.size / 1024)}KB)`
+      : null;
+
+    const payloadCandidate: SubmissionData = {
+      leagueTypeName,
+      tagline: `${sport} ${draftType} custom format`,
+      description,
+      sports: [sport],
+      recommendedSize: teamSize || "12",
+      seasonFormat: "Regular Season + Playoffs",
+      draftType: draftType || "snake",
+      winCondition: "Most points and playoff wins based on submitted rules",
+      hasSpecialScoring: Boolean(scoringRules),
+      scoringRules: scoringRules || null,
+      positionsImpacted: null,
+      specialMechanics: ["Legacy user-submitted format"],
+      weeklyFlow: rulesSettings || description,
+      edgeCases: null,
+      rosterSetup: rulesSettings ? rulesSettings.slice(0, 450) : null,
+      waiverSystem: null,
+      tradeRules: null,
+      playoffSetup: null,
+      commissionerTools: documentMeta ? `Attached document: ${documentMeta}` : null,
+      creditName,
+      email,
+      socialHandle: null,
+      permissionConsent: true,
+      rightsConsent: true,
+      canContact: true,
+    };
+
+    const parsed = submissionSchema.safeParse(payloadCandidate);
+    if (!parsed.success) {
+      return { payload: null, error: parsed.error.errors[0]?.message || "Invalid submission data", documentMeta };
+    }
+    return { payload: parsed.data, documentMeta };
+  }
+
+  const body = await request.json();
+  const parsed = submissionSchema.safeParse(body);
+  if (!parsed.success) {
+    return { payload: null, error: parsed.error.errors[0]?.message || "Invalid submission data", documentMeta: null };
+  }
+  return { payload: parsed.data, documentMeta: null };
+}
+
 export const POST = withApiUsage({ endpoint: "/api/submit-league", tool: "SubmitLeague" })(async (request: NextRequest) => {
   try {
-    const body = await request.json();
-    const parsed = submissionSchema.safeParse(body);
+    const { payload, error, documentMeta } = await parseSubmissionRequest(request);
 
-    if (!parsed.success) {
-      const firstError = parsed.error.errors[0];
-      return NextResponse.json(
-        { error: firstError?.message || "Invalid submission data" },
-        { status: 400 }
-      );
+    if (!payload) {
+      return NextResponse.json({ error: error || "Invalid submission data" }, { status: 400 });
     }
 
-    const data = parsed.data;
+    const data = payload;
 
     const submission = await prisma.leagueTypeSubmission.create({
       data: {
@@ -274,6 +239,7 @@ export const POST = withApiUsage({ endpoint: "/api/submit-league", tool: "Submit
             permissionConsent: data.permissionConsent,
             rightsConsent: data.rightsConsent,
             canContact: data.canContact || false,
+            documentMeta,
           }),
         });
       }
@@ -284,9 +250,6 @@ export const POST = withApiUsage({ endpoint: "/api/submit-league", tool: "Submit
     return NextResponse.json({ success: true, id: submission.id });
   } catch (err) {
     console.error("League submission error:", err);
-    return NextResponse.json(
-      { error: "Failed to submit league idea" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to submit league idea" }, { status: 500 });
   }
 })
