@@ -2,7 +2,7 @@ import { redirect } from "next/navigation"
 import { getSessionAndProfile, isUserVerified, isAgeConfirmed } from "@/lib/auth-guard"
 
 export async function requireVerifiedSession() {
-  const { userId, emailVerified, profile } = await getSessionAndProfile()
+  const { userId, email, emailVerified, profile } = await getSessionAndProfile()
 
   if (!userId) redirect("/login")
 
@@ -14,5 +14,5 @@ export async function requireVerifiedSession() {
     redirect("/verify?error=VERIFICATION_REQUIRED")
   }
 
-  return { userId, emailVerified, profile }
+  return { userId, email, emailVerified, profile }
 }
