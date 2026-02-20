@@ -476,19 +476,16 @@ export async function POST(req: NextRequest) {
       if (top3[0] && futurePick) {
         const topPlayer = top3[0].player
         const futureTargets = futurePick.topTargets || []
-        const takenProbFuture = futureTargets.find(t => t.player === topPlayer)
-        const isStillAvailable = !takenProbFuture
-        const allFutureOutcomes = Array.from((pickOutcomes.get(focusPickOverall + 1) || new Map()).keys())
-          .concat(Array.from((pickOutcomes.get(focusPickOverall + 2) || new Map()).keys()))
-          .concat(Array.from((pickOutcomes.get(focusPickOverall + 3) || new Map()).keys()))
-
         let snipeCount = 0
-        for (const key of allFutureOutcomes) {
-          if (key.startsWith(`${topPlayer}|`)) snipeCount++
+        for (let offset = 1; offset <= 3; offset++) {
+          const interveningMap = pickOutcomes.get(focusPickOverall + offset)
+          if (!interveningMap) continue
+          for (const [key, count] of interveningMap.entries()) {
+            if (key.startsWith(`${topPlayer}|`)) snipeCount += count
+          }
         }
 
-        const totalIntervening = Math.min(4, pickCount - focusPickOverall)
-        const snipePct = totalIntervening > 0 ? Math.round((snipeCount / (totalIntervening * simulations)) * 100) : 100
+        const snipePct = simulations > 0 ? Math.round((snipeCount / simulations) * 100) : 100
         const availPct = 100 - Math.min(100, snipePct)
 
         if (availPct >= 55) {
