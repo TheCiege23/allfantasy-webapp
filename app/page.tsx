@@ -88,7 +88,61 @@ function HomeContent() {
             exit={{ opacity: 0, transition: { duration: 0.35, ease: 'easeOut' } }}
           >
             <div className="crest-impact-flash" />
-            <div className="crest-crack-overlay" />
+            <div className="crest-crack-overlay">
+              <svg viewBox="0 0 1000 900" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                  <radialGradient id="crack-glow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stopColor="rgba(255,255,255,0.9)" />
+                    <stop offset="40%" stopColor="rgba(200,220,255,0.6)" />
+                    <stop offset="100%" stopColor="rgba(200,220,255,0)" />
+                  </radialGradient>
+                  <filter id="crack-blur">
+                    <feGaussianBlur stdDeviation="0.8" />
+                  </filter>
+                </defs>
+                {/* Central impact point */}
+                <circle cx="500" cy="450" r="18" fill="rgba(255,255,255,0.25)" />
+                <circle cx="500" cy="450" r="8" fill="rgba(255,255,255,0.5)" />
+                {/* Main crack lines radiating from center - jagged paths like real cracked glass */}
+                {/* Crack 1 - upper right */}
+                <path d="M500 450 L518 430 L525 415 L540 400 L548 378 L560 355 L555 338 L570 310 L582 285 L590 260 L585 240 L598 210 L610 180 L605 155 L618 120" stroke="rgba(255,255,255,0.82)" strokeWidth="2.2" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M540 400 L558 395 L575 382 L598 370 L620 358 L645 345 L670 330" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" strokeLinecap="round" />
+                <path d="M570 310 L588 305 L610 298 L635 288 L660 275 L690 260" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" strokeLinecap="round" />
+                {/* Crack 2 - upper left */}
+                <path d="M500 450 L478 428 L465 412 L450 395 L435 375 L420 358 L408 335 L395 312 L385 288 L375 260 L368 235 L360 205 L355 175" stroke="rgba(255,255,255,0.78)" strokeWidth="2" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M450 395 L432 388 L415 378 L395 372 L370 365 L345 355 L318 348" stroke="rgba(255,255,255,0.5)" strokeWidth="1.4" strokeLinecap="round" />
+                <path d="M408 335 L390 328 L372 325 L348 318 L320 310" stroke="rgba(255,255,255,0.35)" strokeWidth="1.1" strokeLinecap="round" />
+                {/* Crack 3 - right */}
+                <path d="M500 450 L525 455 L548 458 L575 462 L600 468 L628 470 L658 475 L690 478 L722 482 L755 485 L788 490 L820 492 L855 495" stroke="rgba(255,255,255,0.72)" strokeWidth="2" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M628 470 L645 488 L665 505 L688 518 L715 532" stroke="rgba(255,255,255,0.42)" strokeWidth="1.3" strokeLinecap="round" />
+                <path d="M690 478 L708 465 L728 452 L752 438 L778 425" stroke="rgba(255,255,255,0.38)" strokeWidth="1.2" strokeLinecap="round" />
+                {/* Crack 4 - left */}
+                <path d="M500 450 L472 448 L445 445 L415 442 L385 438 L352 435 L318 432 L282 430 L245 428 L208 425 L170 422" stroke="rgba(255,255,255,0.7)" strokeWidth="1.8" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M385 438 L368 422 L348 408 L325 395 L300 382" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" strokeLinecap="round" />
+                {/* Crack 5 - lower right */}
+                <path d="M500 450 L522 472 L535 492 L548 515 L558 540 L565 568 L572 598 L578 630 L585 665 L590 700 L595 738 L600 775" stroke="rgba(255,255,255,0.75)" strokeWidth="2" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M548 515 L572 525 L598 535 L625 542 L655 548 L688 555" stroke="rgba(255,255,255,0.45)" strokeWidth="1.3" strokeLinecap="round" />
+                <path d="M565 568 L545 582 L528 598 L510 618 L495 642" stroke="rgba(255,255,255,0.35)" strokeWidth="1.1" strokeLinecap="round" />
+                {/* Crack 6 - lower left */}
+                <path d="M500 450 L478 475 L462 498 L448 525 L435 555 L425 585 L418 618 L412 652 L408 688 L405 725" stroke="rgba(255,255,255,0.68)" strokeWidth="1.8" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M448 525 L425 532 L400 538 L372 545 L342 552" stroke="rgba(255,255,255,0.4)" strokeWidth="1.2" strokeLinecap="round" />
+                {/* Crack 7 - straight up */}
+                <path d="M500 450 L502 420 L498 392 L503 360 L497 328 L502 295 L498 260 L503 225 L500 188 L502 150 L498 110" stroke="rgba(255,255,255,0.65)" strokeWidth="1.6" strokeLinecap="round" filter="url(#crack-blur)" />
+                <path d="M498 328 L480 315 L460 305 L438 295" stroke="rgba(255,255,255,0.35)" strokeWidth="1" strokeLinecap="round" />
+                {/* Crack 8 - straight down */}
+                <path d="M500 450 L498 482 L502 515 L497 548 L503 582 L498 618 L502 655 L497 692 L500 730 L498 768 L502 808" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" strokeLinecap="round" filter="url(#crack-blur)" />
+                {/* Fine spider web cracks near center */}
+                <path d="M500 450 L515 440 L528 425 L518 438" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M500 450 L488 462 L475 470 L485 460" stroke="rgba(255,255,255,0.5)" strokeWidth="0.8" strokeLinecap="round" />
+                <path d="M500 450 L512 462 L520 478" stroke="rgba(255,255,255,0.45)" strokeWidth="0.7" strokeLinecap="round" />
+                <path d="M500 450 L486 438 L478 422" stroke="rgba(255,255,255,0.45)" strokeWidth="0.7" strokeLinecap="round" />
+                {/* Circular stress fractures around impact */}
+                <path d="M468 418 Q480 408 500 410 Q520 408 532 418" stroke="rgba(255,255,255,0.25)" strokeWidth="0.7" fill="none" strokeLinecap="round" />
+                <path d="M468 482 Q480 492 500 490 Q520 492 532 482" stroke="rgba(255,255,255,0.25)" strokeWidth="0.7" fill="none" strokeLinecap="round" />
+                <path d="M445 395 Q470 375 500 378 Q530 375 555 395" stroke="rgba(255,255,255,0.18)" strokeWidth="0.6" fill="none" strokeLinecap="round" />
+                <path d="M445 505 Q470 525 500 522 Q530 525 555 505" stroke="rgba(255,255,255,0.18)" strokeWidth="0.6" fill="none" strokeLinecap="round" />
+              </svg>
+            </div>
             <motion.img
               src="/af-crest.jpg"
               alt="AllFantasy Crest"
