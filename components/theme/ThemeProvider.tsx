@@ -15,21 +15,16 @@ const Ctx = createContext<ThemeCtx | null>(null)
 const STORAGE_KEY = "af_mode"
 
 export function ThemeProvider(props: { children: React.ReactNode }) {
-  const [mode, setModeState] = useState<AppMode>(() => {
-    if (typeof document !== "undefined") {
-      const current = document.documentElement.dataset.mode as AppMode | undefined
-      if (current === "dark" || current === "light" || current === "legacy") return current
-    }
-    return "light"
-  })
+  const [mode, setModeState] = useState<AppMode>("light")
 
   useEffect(() => {
-    const saved = (typeof window !== "undefined" && window.localStorage.getItem(STORAGE_KEY)) as AppMode | null
-    if (saved === "dark" || saved === "light" || saved === "legacy") setModeState(saved)
+    const saved = window.localStorage.getItem(STORAGE_KEY) as AppMode | null
+    if (saved === "dark" || saved === "light" || saved === "legacy") {
+      setModeState(saved)
+    }
   }, [])
 
   useEffect(() => {
-    if (typeof document === "undefined") return
     document.documentElement.dataset.mode = mode
     try {
       window.localStorage.setItem(STORAGE_KEY, mode)
