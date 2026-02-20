@@ -31,7 +31,7 @@ export async function getLiveADP(
   try {
     const cached = await prisma.sportsDataCache.findUnique({ where: { key: dbCacheKey } });
     if (cached && new Date(cached.expiresAt) > new Date()) {
-      const data = cached.data as ADPEntry[];
+      const data = cached.data as unknown as ADPEntry[];
       adpCache = { data, ts: Date.now(), type };
       return data.slice(0, limit);
     }
