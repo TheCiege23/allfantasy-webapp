@@ -100,7 +100,7 @@ export default function DemandHeatmap({ leagueId, week, compact = false }: Deman
         setData(json)
       }
     } catch (e) {
-      console.error('Failed to load heatmap', e)
+      console.error('Failed to load heatmap', String(e))
     }
     setLoading(false)
   }, [leagueId, week])

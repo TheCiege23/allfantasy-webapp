@@ -51,7 +51,7 @@ export default function CommunityInsights() {
       }
     } catch (err) {
       setError('Failed to connect — please try again')
-      console.warn('Failed to fetch community insights:', err)
+      console.warn('Failed to fetch community insights:', String(err))
     } finally {
       setLoading(false)
       setSummarizing(false)

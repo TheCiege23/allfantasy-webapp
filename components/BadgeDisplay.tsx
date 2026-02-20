@@ -50,7 +50,7 @@ export default function BadgeDisplay({ username }: { username: string }) {
           setTotalXP(data.totalXP || 0)
         }
       } catch (err) {
-        console.warn('Failed to fetch badges:', err)
+        console.warn('Failed to fetch badges:', String(err))
       } finally {
         setLoading(false)
       }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { fetchFantasyCalcValues, type FantasyCalcPlayer } from '@/lib/fantasycalc'
 import { prisma } from '@/lib/prisma'
 import { computeAllDevyIntelMetrics } from '@/lib/devy-intel'
+import { getCFBPlayerStats } from '@/lib/cfb-player-data'
 import OpenAI from 'openai'
 import type { MarketSignal, MarketAlert, MarketAlertResponse } from '@/lib/types/market-alerts'
 
@@ -9,6 +10,46 @@ const openai = new OpenAI()
 
 let narrativeCache: { data: Map<string, { headline: string; reasoning: string }>; ts: number } | null = null
 const NARRATIVE_CACHE_TTL = 1000 * 60 * 15
+
+let cfbdStatsCache: { data: Map<string, { passingYards: number; passingTDs: number; rushingYards: number; rushingTDs: number; receivingYards: number; receivingTDs: number; receptions: number }>; ts: number } | null = null
+const CFBD_CACHE_TTL = 1000 * 60 * 60 * 6
+
+async function fetchCFBDStatsForDevyPlayers(schools: string[]): Promise<Map<string, { passingYards: number; passingTDs: number; rushingYards: number; rushingTDs: number; receivingYards: number; receivingTDs: number; receptions: number }>> {
+  if (cfbdStatsCache && Date.now() - cfbdStatsCache.ts < CFBD_CACHE_TTL) {
+    return cfbdStatsCache.data
+  }
+
+  const statsMap = new Map<string, { passingYards: number; passingTDs: number; rushingYards: number; rushingTDs: number; receivingYards: number; receivingTDs: number; receptions: number }>()
+
+  if (!process.env.CFBD_KEY) return statsMap
+
+  const season = new Date().getFullYear() - 1
+  const uniqueSchools = [...new Set(schools)].slice(0, 30)
+
+  for (const school of uniqueSchools) {
+    try {
+      const stats = await getCFBPlayerStats(season, school)
+      for (const s of stats) {
+        if (!s.playerName) continue
+        const key = s.playerName.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim()
+        statsMap.set(key, {
+          passingYards: s.passingYards,
+          passingTDs: s.passingTDs,
+          rushingYards: s.rushingYards,
+          rushingTDs: s.rushingTDs,
+          receivingYards: s.receivingYards,
+          receivingTDs: s.receivingTDs,
+          receptions: s.receptions,
+        })
+      }
+      await new Promise(r => setTimeout(r, 100))
+    } catch {
+    }
+  }
+
+  cfbdStatsCache = { data: statsMap, ts: Date.now() }
+  return statsMap
+}
 
 function computeNFLSignal(p: FantasyCalcPlayer): { signal: MarketSignal; strength: number; tags: string[] } {
   const trend = p.trend30Day
@@ -64,7 +105,12 @@ function computeNFLSignal(p: FantasyCalcPlayer): { signal: MarketSignal; strengt
   return { signal, strength: Math.min(100, absScore * 2.5), tags }
 }
 
-function computeDevySignal(player: any): { signal: MarketSignal; strength: number; tags: string[]; projectedRound: number; volatility: number } {
+interface CFBDStatLine {
+  passingYards: number; passingTDs: number; rushingYards: number; rushingTDs: number
+  receivingYards: number; receivingTDs: number; receptions: number
+}
+
+function computeDevySignal(player: any, cfbdStats?: CFBDStatLine): { signal: MarketSignal; strength: number; tags: string[]; projectedRound: number; volatility: number; cfbdStats?: CFBDStatLine } {
   const metrics = computeAllDevyIntelMetrics(player)
   const projectedRound = metrics.projectedDraftRound
   const dps = metrics.draftProjectionScore
@@ -108,6 +154,34 @@ function computeDevySignal(player: any): { signal: MarketSignal; strength: numbe
     score *= 0.8
   }
 
+  if (cfbdStats) {
+    tags.push('CFBD Stats')
+    const pos = player.position
+    if (pos === 'QB' && cfbdStats.passingYards >= 3000) {
+      score += 8
+      tags.push(`${cfbdStats.passingYards} Pass Yds`)
+    } else if (pos === 'QB' && cfbdStats.passingYards >= 2000) {
+      score += 4
+    }
+    if (pos === 'RB' && cfbdStats.rushingYards >= 1000) {
+      score += 8
+      tags.push(`${cfbdStats.rushingYards} Rush Yds`)
+    } else if (pos === 'RB' && cfbdStats.rushingYards >= 600) {
+      score += 4
+    }
+    if ((pos === 'WR' || pos === 'TE') && cfbdStats.receivingYards >= 800) {
+      score += 8
+      tags.push(`${cfbdStats.receivingYards} Rec Yds`)
+    } else if ((pos === 'WR' || pos === 'TE') && cfbdStats.receivingYards >= 500) {
+      score += 4
+    }
+    const totalTDs = (cfbdStats.passingTDs || 0) + (cfbdStats.rushingTDs || 0) + (cfbdStats.receivingTDs || 0)
+    if (totalTDs >= 15) {
+      score += 5
+      tags.push(`${totalTDs} TDs`)
+    }
+  }
+
   let signal: MarketSignal
   if (score >= 20) signal = 'STRONG_BUY'
   else if (score >= 10) signal = 'BUY'
@@ -115,7 +189,7 @@ function computeDevySignal(player: any): { signal: MarketSignal; strength: numbe
   else if (score <= -8) signal = 'SELL'
   else signal = 'HOLD'
 
-  return { signal, strength: Math.min(100, Math.abs(score) * 3), tags, projectedRound, volatility }
+  return { signal, strength: Math.min(100, Math.abs(score) * 3), tags, projectedRound, volatility, cfbdStats }
 }
 
 async function generateAlertNarratives(alerts: MarketAlert[]): Promise<MarketAlert[]> {
@@ -251,10 +325,33 @@ export async function GET(req: Request) {
           orderBy: { name: 'asc' },
         })
 
+        const schools = [...new Set(devyPlayers.map(dp => dp.school).filter(Boolean))]
+        let cfbdStatsMap = new Map<string, CFBDStatLine>()
+        try {
+          cfbdStatsMap = await fetchCFBDStatsForDevyPlayers(schools)
+        } catch {
+        }
+
         for (const dp of devyPlayers) {
-          const { signal, strength, tags, projectedRound, volatility } = computeDevySignal(dp)
+          const normalizedName = dp.name.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim()
+          const playerCfbdStats = cfbdStatsMap.get(normalizedName)
+
+          const { signal, strength, tags, projectedRound, volatility } = computeDevySignal(dp, playerCfbdStats)
 
           if (signal === 'HOLD' && strength < 15) continue
+
+          const devyValue = dp.devyValue || 0
+          let statLine = ''
+          if (playerCfbdStats) {
+            const pos = dp.position
+            if (pos === 'QB' && playerCfbdStats.passingYards > 0) {
+              statLine = `${playerCfbdStats.passingYards} pass yds, ${playerCfbdStats.passingTDs} TDs`
+            } else if (pos === 'RB' && playerCfbdStats.rushingYards > 0) {
+              statLine = `${playerCfbdStats.rushingYards} rush yds, ${playerCfbdStats.rushingTDs} TDs`
+            } else if ((pos === 'WR' || pos === 'TE') && playerCfbdStats.receivingYards > 0) {
+              statLine = `${playerCfbdStats.receptions} rec, ${playerCfbdStats.receivingYards} yds, ${playerCfbdStats.receivingTDs} TDs`
+            }
+          }
 
           alerts.push({
             id: `devy-${dp.id}`,
@@ -264,7 +361,7 @@ export async function GET(req: Request) {
             signal,
             signalStrength: strength,
             category: 'devy',
-            dynastyValue: 0,
+            dynastyValue: devyValue,
             trend30Day: 0,
             trendPercent: 0,
             rank: 0,
@@ -277,13 +374,15 @@ export async function GET(req: Request) {
             headline: signal === 'STRONG_BUY' ? `${dp.name} is a must-stash devy target` :
                       signal === 'BUY' ? `${dp.name} draft stock rising — acquire now` :
                       `${dp.name} — monitor draft position`,
-            reasoning: `Projected Rd ${projectedRound}. ${dp.school}${dp.classYear ? ` (Yr ${dp.classYear})` : ''}.`,
+            reasoning: statLine
+              ? `Projected Rd ${projectedRound}. ${dp.school}${dp.classYear ? ` (Yr ${dp.classYear})` : ''}. ${statLine}.`
+              : `Projected Rd ${projectedRound}. ${dp.school}${dp.classYear ? ` (Yr ${dp.classYear})` : ''}.`,
             tags,
             updatedAt: new Date().toISOString(),
           })
         }
       } catch (e) {
-        console.error('[Market Alerts] Devy player fetch failed:', e)
+        console.error('[Market Alerts] Devy player fetch failed:', String(e))
       }
     }
 

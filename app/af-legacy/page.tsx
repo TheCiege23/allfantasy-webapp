@@ -1453,7 +1453,7 @@ function AFLegacyContent() {
           setTradeAnalytics(analyticsData)
         }
       } catch (err) {
-        console.error('Analytics refetch error:', err)
+        console.error('Analytics refetch error:', String(err))
       } finally {
         setAnalyticsLoading(false)
       }
@@ -1510,7 +1510,7 @@ function AFLegacyContent() {
         setFantraxLeagues(data.leagues)
       }
     } catch (err) {
-      console.error('Failed to fetch Fantrax leagues:', err)
+      console.error('Failed to fetch Fantrax leagues:', String(err))
     } finally {
       setFantraxLoading(false)
     }
@@ -1929,7 +1929,7 @@ function AFLegacyContent() {
         setTradeHubFaabB(0)
       }
     } catch (e) {
-      console.error('Failed to load league managers:', e)
+      console.error('Failed to load league managers:', String(e))
     } finally {
       setTradeHubLoading(false)
     }
@@ -2018,7 +2018,7 @@ function AFLegacyContent() {
           if (data.success) setTradeHubLivePreview(data)
         }
       } catch (e: any) {
-        if (e?.name !== 'AbortError') console.error('quick-evaluate error:', e)
+        if (e?.name !== 'AbortError') console.error('quick-evaluate error:', String(e))
       } finally {
         setTradeHubLiveLoading(false)
       }
@@ -2433,7 +2433,7 @@ function AFLegacyContent() {
               allGradedTrades.push(gradedTrade)
             }
           } catch (e) {
-            console.error('Failed to grade trade:', e)
+            console.error('Failed to grade trade:', String(e))
             const failedTrade = { ...trade, grade: 'N/A', verdict: 'Unable to grade' }
             gradedTradesByYear[year].push(failedTrade)
             allGradedTrades.push(failedTrade)
@@ -2525,13 +2525,13 @@ function AFLegacyContent() {
           setTradeAnalytics(analyticsData)
         }
       } catch (analyticsErr) {
-        console.error('Trade analytics error:', analyticsErr)
+        console.error('Trade analytics error:', String(analyticsErr))
       } finally {
         setAnalyticsLoading(false)
       }
       
     } catch (e) {
-      console.error('Trade history report card error:', e)
+      console.error('Trade history report card error:', String(e))
     } finally {
       setReportCardLoading(false)
     }
@@ -2562,7 +2562,7 @@ function AFLegacyContent() {
         setTradeHubIdeas(data.ideas)
       }
     } catch (e) {
-      console.error('Failed to generate trade ideas:', e)
+      console.error('Failed to generate trade ideas:', String(e))
     } finally {
       setTradeHubIdeasLoading(false)
     }
@@ -2687,7 +2687,7 @@ function AFLegacyContent() {
           setC2cDevyLeague(data.league)
         }
       } catch (error) {
-        console.error('Failed to fetch CFB devy roster:', error)
+        console.error('Failed to fetch CFB devy roster:', String(error))
       } finally {
         setC2cDevyLoading(false)
       }
@@ -2938,7 +2938,7 @@ function AFLegacyContent() {
     const data = await res.json()
 
     if (res.ok && data.profile) {
-      console.log('LEGACY PROFILE DATA', data?.stats)
+      
       setProfile(data.profile)
       setStats(data.standard_stats ?? data.stats ?? null)
       setSpecialtyStats(data.specialty_stats ?? null)
@@ -3186,7 +3186,7 @@ function AFLegacyContent() {
         setShareTradeError(data.error || 'Failed to analyze trade')
       }
     } catch (e) {
-      console.error('Failed to analyze trade:', e)
+      console.error('Failed to analyze trade:', String(e))
       setShareTradeError('Network error - please try again')
     } finally {
       setShareTradeLoading(false)
@@ -3223,7 +3223,7 @@ function AFLegacyContent() {
         setSharePlayerError(data.error || 'Player not found')
       }
     } catch (e) {
-      console.error('Failed to lookup player stock:', e)
+      console.error('Failed to lookup player stock:', String(e))
       setSharePlayerError('Network error - please try again')
     } finally {
       setSharePlayerLoading(false)
@@ -3248,7 +3248,7 @@ function AFLegacyContent() {
         }
       }
     } catch (e) {
-      console.error('Failed to check trades:', e)
+      console.error('Failed to check trades:', String(e))
     } finally {
       setTradeNotifLoading(false)
     }
@@ -3294,7 +3294,7 @@ function AFLegacyContent() {
         setQuizTrades(data.quizTrades)
       }
     } catch (e) {
-      console.error('Failed to check quiz status:', e)
+      console.error('Failed to check quiz status:', String(e))
       setQuizChecked(true)
       setQuizCompleted(true) // Fallback to skip quiz on error
     } finally {
@@ -3324,7 +3324,7 @@ function AFLegacyContent() {
         setQuizCompleted(true)
       }
     } catch (e) {
-      console.error('Failed to submit quiz:', e)
+      console.error('Failed to submit quiz:', String(e))
     } finally {
       setQuizLoading(false)
     }
@@ -3382,7 +3382,7 @@ function AFLegacyContent() {
         }
       }
     } catch (e) {
-      console.error('Failed to load trade history:', e)
+      console.error('Failed to load trade history:', String(e))
       setTradeHistoryStatus(prev => ({
         ...prev,
         [leagueId]: { status: 'error', tradesLoaded: 0, message: 'Failed to load' }
@@ -3474,7 +3474,7 @@ function AFLegacyContent() {
         setTradeFeedback((prev) => ({ ...prev, [feedbackKey]: rating }))
       }
     } catch (e) {
-      console.error('Failed to submit feedback', e)
+      console.error('Failed to submit feedback', String(e))
     } finally {
       setFeedbackLoading((prev) => ({ ...prev, [feedbackKey]: false }))
     }
@@ -3816,7 +3816,7 @@ function AFLegacyContent() {
       const data = await res.json()
       if (!res.ok) {
         if (retryCount === 0) {
-          console.warn('[Rankings] First attempt failed, retrying...', data.error)
+          console.warn('[Rankings] First attempt failed, retrying...', String(data.error || ''))
           setRankingsLoading(false)
           return runRankingsAnalysis(targetLeague, 1)
         }
@@ -3830,7 +3830,7 @@ function AFLegacyContent() {
       fetchLeagueFormat()
     } catch (e: any) {
       if (retryCount === 0) {
-        console.warn('[Rankings] Network error, retrying once...', e?.message)
+        console.warn('[Rankings] Network error, retrying once...', String(e?.message || ''))
         setRankingsLoading(false)
         return runRankingsAnalysis(targetLeague, 1)
       }
@@ -3903,7 +3903,7 @@ function AFLegacyContent() {
         setPlayoffForecastData(data)
       }
     } catch (err) {
-      console.error('Playoff forecast error:', err)
+      console.error('Playoff forecast error:', String(err))
     } finally {
       setPlayoffForecastLoading(false)
     }
@@ -3927,7 +3927,7 @@ function AFLegacyContent() {
         setHistoricalRatingsData(data)
       }
     } catch (err) {
-      console.error('Historical ratings error:', err)
+      console.error('Historical ratings error:', String(err))
     } finally {
       setHistoricalRatingsLoading(false)
     }
@@ -3950,7 +3950,7 @@ function AFLegacyContent() {
         setLeagueFormatData(data)
       }
     } catch (err) {
-      console.error('League format error:', err)
+      console.error('League format error:', String(err))
     } finally {
       setLeagueFormatLoading(false)
     }
@@ -7346,7 +7346,7 @@ function AFLegacyContent() {
                         username={username}
                         leagueId={tradeSelectedLeague || leagues[0]?.league_id || ''}
                         onReady={(cache) => {
-                          console.log('AI GM ready with cache:', cache)
+                          
                         }}
                       />
                     )}

@@ -48,7 +48,7 @@ export default function InsightsPanel({
         setInsights(data.insights || [])
       }
     } catch (err) {
-      console.warn('Failed to fetch insights:', err)
+      console.warn('Failed to fetch insights:', String(err))
     } finally {
       setLoading(false)
     }
@@ -67,7 +67,7 @@ export default function InsightsPanel({
         setInsights(data.insights || [])
       }
     } catch (err) {
-      console.warn('Failed to generate insights:', err)
+      console.warn('Failed to generate insights:', String(err))
     } finally {
       setGenerating(false)
     }
@@ -82,7 +82,7 @@ export default function InsightsPanel({
       })
       setInsights(prev => prev.filter(i => i.id !== id))
     } catch (err) {
-      console.warn('Failed to dismiss insight:', err)
+      console.warn('Failed to dismiss insight:', String(err))
     }
   }
 
