@@ -82,6 +82,7 @@ import {
   ChevronDown,
   History,
   X,
+  LayoutGrid,
   Layers
 } from "lucide-react"
 import MockDraftBoard from "./components/mock-draft/MockDraftBoard"
@@ -120,7 +121,7 @@ const tier_xp_thresholds = TIERS
     minXp: t.minLevel * XP_PER_LEVEL,
   }))
 
-type Tab = 'overview' | 'trade' | 'finder' | 'player-finder' | 'waiver' | 'rankings' | 'pulse' | 'compare' | 'chat' | 'share' | 'transfer' | 'strategy' | 'shop' | 'mock-draft'
+type Tab = 'overview' | 'trade' | 'finder' | 'player-finder' | 'waiver' | 'rankings' | 'pulse' | 'compare' | 'chat' | 'mock-draft' | 'share' | 'transfer' | 'strategy' | 'shop'
 
 interface ProfileStats {
   seasons_imported?: number
@@ -888,6 +889,7 @@ function AFLegacyContent() {
   const [aiLoading, setAiLoading] = useState(false)
   const [shareText, setShareText] = useState('')
   const [shareStyle, setShareStyle] = useState<'balanced' | 'humble' | 'trash_talk'>('balanced')
+  const [sharePlatform, setSharePlatform] = useState<'x' | 'threads' | 'instagram' | 'tiktok'>('x')
   const [shareLoading, setShareLoading] = useState(false)
   const [shareType, setShareType] = useState<'legacy' | 'trade' | 'rankings' | 'exposure'>('legacy')
   const [lastTradeResult, setLastTradeResult] = useState<{ sideA?: { name: string }[]; sideB?: { name: string }[]; grade?: string; verdict?: string; leagueType?: string } | null>(null)
@@ -1244,6 +1246,12 @@ function AFLegacyContent() {
   const [chatError, setChatError] = useState('')
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null)
   const [chatLeagueId, setChatLeagueId] = useState<string>('')
+  const [mockDraftLeagueId, setMockDraftLeagueId] = useState<string>('')
+  const [mockDraftType, setMockDraftType] = useState<'rookie' | 'vet' | 'both'>('both')
+  const [mockDraftRounds, setMockDraftRounds] = useState(4)
+  const [mockSecondsPerPick, setMockSecondsPerPick] = useState(30)
+  const [mockDraftStartedAt, setMockDraftStartedAt] = useState<number | null>(null)
+  const [mockTimerNow, setMockTimerNow] = useState<number>(Date.now())
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Feedback modal state
@@ -2633,7 +2641,7 @@ function AFLegacyContent() {
     } else if (tab === 'rankings' && sharedLeague) {
       handleActiveTabChange('rankings')
       setPendingShareLeague(sharedLeague)
-    } else if (tab && ['overview', 'trade', 'finder', 'waiver', 'compare', 'chat', 'share', 'rankings'].includes(tab)) {
+    } else if (tab && ['overview', 'trade', 'finder', 'waiver', 'compare', 'chat', 'mock-draft', 'share', 'rankings'].includes(tab)) {
       handleActiveTabChange(tab as Tab)
     }
   }, [searchParams])
@@ -3067,7 +3075,7 @@ function AFLegacyContent() {
         sleeper_user_id: profile?.sleeper_user_id,
         style,
         share_type: currentShareType,
-        platform: 'x',
+        platform: sharePlatform,
       }
 
       if (currentShareType === 'legacy') {
@@ -3151,6 +3159,18 @@ function AFLegacyContent() {
     } finally {
       setShareLoading(false)
     }
+  }
+
+  const prepareRankingsSharePost = async () => {
+    if (rankingsDynastyLeagues.length === 0) {
+      setShareText('Run a Rankings analysis first so AI has league context to post.')
+      setActiveTab('share')
+      return
+    }
+
+    setShareType('rankings')
+    setActiveTab('share')
+    await generateShareText('balanced', 'rankings')
   }
 
   // Analyze trade for Share tab Trade Vote
@@ -3728,6 +3748,8 @@ function AFLegacyContent() {
           fantraxUsername: fantraxUsername || undefined,
           mflUsername: mflUsername || undefined,
           leagueId: chatLeagueId || undefined,
+          privateMode: true,
+          targetUsername: username || undefined,
         }),
       })
       const data = await res.json()
@@ -4074,6 +4096,18 @@ function AFLegacyContent() {
     }
   }, [activeTab, importStatus]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    if (!mockDraftLeagueId && leagues.length > 0) {
+      setMockDraftLeagueId(leagues[0].league_id)
+    }
+  }, [leagues, mockDraftLeagueId])
+
+  useEffect(() => {
+    if (!mockDraftStartedAt) return
+    const id = window.setInterval(() => setMockTimerNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [mockDraftStartedAt])
+
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode; badge?: string }> = [
     { id: 'overview' as Tab, label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'trade' as Tab, label: 'AI Trade Hub', icon: <ArrowLeftRight className="w-4 h-4" />, badge: 'AI' },
@@ -4084,11 +4118,11 @@ function AFLegacyContent() {
     { id: 'pulse' as Tab, label: 'Pulse', icon: <Radio className="w-4 h-4" />, badge: 'Beta' },
     { id: 'compare' as Tab, label: 'Compare', icon: <Swords className="w-4 h-4" /> },
     { id: 'chat' as Tab, label: 'AI Chat', icon: <MessageCircle className="w-4 h-4" />, badge: 'AI' },
+    { id: 'mock-draft' as Tab, label: 'Mock Draft', icon: <LayoutGrid className="w-4 h-4" />, badge: 'AI' },
     { id: 'share' as Tab, label: 'Share', icon: <Share2 className="w-4 h-4" /> },
     { id: 'transfer' as Tab, label: 'Transfer', icon: <PackageOpen className="w-4 h-4" /> },
     { id: 'strategy' as Tab, label: 'Strategy', icon: <Target className="w-4 h-4" />, badge: 'AI' },
     { id: 'shop' as Tab, label: 'Shop', icon: <ShoppingBag className="w-4 h-4" /> },
-    { id: 'mock-draft' as Tab, label: 'Mock Draft', icon: <Layers className="w-4 h-4" />, badge: 'AI' },
   ]
 
   const isShareLocked = shareCooldownMs > 0
@@ -4100,7 +4134,7 @@ function AFLegacyContent() {
     trade: ['trade', 'finder', 'player-finder', 'waiver'],
     strategy: ['strategy', 'rankings', 'pulse', 'compare', 'mock-draft'],
     alerts: [],
-    profile: ['chat', 'share', 'transfer', 'shop'],
+    profile: ['chat', 'mock-draft', 'share', 'transfer', 'shop'],
   }
 
   const subTabConfigs: Record<MainTab, Array<{ id: string; label: string; icon?: React.ReactNode; badge?: string }>> = {
@@ -4121,6 +4155,7 @@ function AFLegacyContent() {
     alerts: [],
     profile: [
       { id: 'chat', label: 'AI Chat', icon: <MessageCircle className="w-3.5 h-3.5" />, badge: 'AI' },
+      { id: 'mock-draft', label: 'Mock Draft', icon: <LayoutGrid className="w-3.5 h-3.5" />, badge: 'AI' },
       { id: 'share', label: 'Share', icon: <Share2 className="w-3.5 h-3.5" /> },
       { id: 'transfer', label: 'Transfer', icon: <PackageOpen className="w-3.5 h-3.5" /> },
       { id: 'shop', label: 'Shop', icon: <ShoppingBag className="w-3.5 h-3.5" /> },
@@ -15136,6 +15171,38 @@ function AFLegacyContent() {
                       </div>
                     )}
 
+                    <div className="mb-4">
+                      <div className="text-xs text-gray-400 mb-2">Platform</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                        {([
+                          { id: 'x', label: '𝕏 / Twitter', hint: 'short + punchy' },
+                          { id: 'threads', label: 'Threads', hint: 'conversation prompt' },
+                          { id: 'instagram', label: 'Instagram', hint: 'story style caption' },
+                          { id: 'tiktok', label: 'TikTok', hint: 'hook-first caption' },
+                        ] as const).map((platform) => (
+                          <button
+                            key={platform.id}
+                            onClick={() => setSharePlatform(platform.id)}
+                            className={`p-2.5 rounded-lg border text-left transition ${
+                              sharePlatform === platform.id
+                                ? 'bg-cyan-500/20 border-cyan-400/50 text-cyan-200'
+                                : 'bg-black/30 border-white/10 text-gray-300 hover:border-white/20'
+                            }`}
+                          >
+                            <div className="text-xs font-semibold">{platform.label}</div>
+                            <div className="text-[10px] text-gray-400">{platform.hint}</div>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-gray-400">
+                        <div className="rounded-lg bg-black/30 border border-white/10 p-2">1) AI reads your selected share type and key stats.</div>
+                        <div className="rounded-lg bg-black/30 border border-white/10 p-2">2) Tone is applied from your style choice (Balanced, Humble, Trash Talk).</div>
+                        <div className="rounded-lg bg-black/30 border border-white/10 p-2">3) Copy is rewritten to fit {sharePlatform === 'x' ? 'X character limits' : sharePlatform === 'threads' ? 'Threads conversation style' : sharePlatform === 'instagram' ? 'Instagram caption flow' : 'TikTok hook/caption style'}.</div>
+                        <div className="rounded-lg bg-black/30 border border-white/10 p-2">4) You review, then post via quick links or copy text anywhere.</div>
+                      </div>
+                    </div>
+
                     {/* Style Selection */}
                     <div className="flex gap-2 mb-3 flex-wrap">
                       {(['balanced', 'humble', 'trash_talk'] as const).map((style) => (
@@ -15196,7 +15263,7 @@ function AFLegacyContent() {
                       </div>
 
                       {shareLoading ? (
-                        <div className="text-gray-400 text-sm animate-pulse">Generating with Grok...</div>
+                        <div className="text-gray-400 text-sm animate-pulse">Generating for {sharePlatform === 'x' ? 'X' : sharePlatform === 'threads' ? 'Threads' : sharePlatform === 'instagram' ? 'Instagram' : 'TikTok'} with Grok...</div>
                       ) : shareText ? (
                         <p className="text-gray-300 text-sm whitespace-pre-wrap">{shareText}</p>
                       ) : (
@@ -17000,6 +17067,7 @@ function AFLegacyContent() {
           activeTab === 'pulse' ? 'Social Pulse' :
           activeTab === 'compare' ? 'Rankings / Percentiles' :
           activeTab === 'chat' ? 'AI Chat' :
+          activeTab === 'mock-draft' ? 'Mock Draft Room' :
           activeTab === 'share' ? 'Share / Social Cards' :
           activeTab === 'transfer' ? 'League Transfer' :
           activeTab === 'strategy' ? 'Season Strategy' :
