@@ -161,6 +161,8 @@ export interface TradeEngineRequest {
   marketContext?: MarketContext
   nflContext?: NflContext
 
+  teamAName?: string
+  teamBName?: string
   tradeGoal?: string
   numTeams?: number
 
