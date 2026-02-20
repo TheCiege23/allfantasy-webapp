@@ -12,6 +12,7 @@
     "seed": "tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "qa:legacy-smoke": "node scripts/legacy-feature-smoke-test.mjs",
     "qa:legacy-report": "node scripts/legacy-qa-report.mjs"
   },
   "dependencies": {
