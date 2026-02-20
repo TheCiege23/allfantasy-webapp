@@ -14843,6 +14843,17 @@ function AFLegacyContent() {
                       </div>
                       {username && leagues.length > 0 && renderLeagueDropdown('chat', leagues, chatLeagueId, (val) => setChatLeagueId(val), 'All leagues', true, 'max-w-[200px] sm:max-w-[240px]')}
                     </div>
+
+                    {username && (
+                      <div className="mb-3 rounded-xl border border-cyan-400/25 bg-cyan-500/10 p-3 text-xs text-cyan-200">
+                        🔒 Private to <span className="font-bold">{username}</span>{chatLeagueId ? ` in ${leagues.find(l => l.league_id === chatLeagueId)?.name || 'selected league'}` : ''}. Your AI chat + recommendations are scoped to your account context.
+                        {aiCoach?.quick_wins?.length ? (
+                          <div className="mt-2 text-[11px] text-cyan-100/90">
+                            <span className="font-semibold">Personal AI recommendations:</span> {aiCoach.quick_wins.slice(0, 2).join(' • ')}
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                     
                     <div 
                       ref={chatContainerRef}
