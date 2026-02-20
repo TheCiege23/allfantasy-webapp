@@ -1022,15 +1022,27 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                   <div className="text-cyan-400 text-sm font-mono mb-4 pl-4">ROUND {round + 1}</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12 gap-4">
                     <AnimatePresence>
-                      {roundPicks.map((pick, i) => (
+                      {roundPicks.map((pick, i) => {
+                        const isOnClockUserPick = onClockPick === pick.overall && pick.isUser
+                        return (
                         <motion.div
                           key={pick.overall}
-                          initial={{ opacity: 0, y: 30, scale: 0.9 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          transition={{ delay: (round * 12 + i) * 0.35, type: 'spring', stiffness: 180 }}
+                          initial={{ opacity: 0, y: 34, scale: 0.84, rotateX: 10 }}
+                          animate={{
+                            opacity: 1,
+                            y: 0,
+                            scale: [0.84, 1.06, 1],
+                            rotateX: 0,
+                            boxShadow: [
+                              '0 0 0px rgba(34,211,238,0)',
+                              '0 0 24px rgba(147,51,234,0.28)',
+                              isOnClockUserPick ? '0 0 28px rgba(234,179,8,0.38)' : '0 0 0px rgba(34,211,238,0)',
+                            ],
+                          }}
+                          transition={{ delay: (round * 12 + i) * 0.18, duration: 0.58, type: 'spring', stiffness: 210, damping: 20 }}
                           className={`rounded-2xl p-5 group transition-all relative ${
-                            onClockPick === pick.overall && pick.isUser
-                              ? 'border-2 border-yellow-500/70 bg-gradient-to-br from-yellow-950/30 to-black animate-pulse'
+                            isOnClockUserPick
+                              ? 'border-2 border-yellow-500/70 bg-gradient-to-br from-yellow-950/30 to-black mock-on-clock-pulse'
                               : pick.isUser
                                 ? 'bg-cyan-950/30 border-2 border-cyan-500/40 hover:border-cyan-400/60'
                                 : 'bg-gray-950 border border-gray-800 hover:border-purple-500/60'
@@ -1184,7 +1196,8 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                             </motion.div>
                           )}
                         </motion.div>
-                      ))}
+                        )
+                      })}
                     </AnimatePresence>
                   </div>
 
