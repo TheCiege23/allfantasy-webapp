@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, Handshake, Check } from 'lucide-react'
+import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, Handshake, Check, Newspaper } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
@@ -243,6 +243,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [tradeOptimizerLoading, setTradeOptimizerLoading] = useState(false)
   const [tradeUpOffers, setTradeUpOffers] = useState<TradeOffer[]>([])
   const [tradeDownOffers, setTradeDownOffers] = useState<TradeOffer[]>([])
+  const [boardDriftOpen, setBoardDriftOpen] = useState(false)
+  const [boardDriftLoading, setBoardDriftLoading] = useState(false)
+  const [boardDriftReport, setBoardDriftReport] = useState<any>(null)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -583,6 +586,28 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
+  const loadBoardDrift = async () => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    setBoardDriftLoading(true)
+    try {
+      const res = await fetch('/api/mock-draft/board-drift', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, userSlot: draftPosition }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load Board Drift')
+      setBoardDriftReport(data)
+      setBoardDriftOpen(true)
+      const movers = (data.topRisers?.length || 0) + (data.topFallers?.length || 0)
+      toast.success(movers > 0 ? `Board Drift: ${movers} players moved this week.` : 'Baseline snapshot saved — check back next week!')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load Board Drift')
+    } finally {
+      setBoardDriftLoading(false)
+    }
+  }
+
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -718,6 +743,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             </Button>
             <Button onClick={loadTradeOptimizer} disabled={tradeOptimizerLoading || !selectedLeagueId} variant="outline" className="h-10 border-green-700/40 text-green-300 hover:text-green-200">
               {tradeOptimizerLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Optimizing</> : <><Handshake className="mr-2 h-4 w-4" /> Trade Optimizer</>}
+            </Button>
+            <Button onClick={loadBoardDrift} disabled={boardDriftLoading || !selectedLeagueId} variant="outline" className="h-10 border-sky-700/40 text-sky-300 hover:text-sky-200">
+              {boardDriftLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading</> : <><Newspaper className="mr-2 h-4 w-4" /> Board Drift</>}
             </Button>
           </div>
         </div>
@@ -1705,6 +1733,190 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={boardDriftOpen} onOpenChange={setBoardDriftOpen}>
+        <DialogContent className="max-w-4xl bg-black/95 border-sky-900/40">
+          <DialogHeader>
+            <DialogTitle className="text-sky-300">Weekly Board Drift Report</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto space-y-5 pr-1">
+            {!boardDriftReport ? (
+              <p className="text-sm text-gray-500 text-center py-4">No report data available</p>
+            ) : boardDriftReport.topRisers?.length === 0 && boardDriftReport.topFallers?.length === 0 ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-6 text-center space-y-2">
+                  <Newspaper className="h-8 w-8 text-sky-400 mx-auto" />
+                  <div className="text-sm text-sky-300 font-semibold">Baseline Snapshot Saved</div>
+                  <p className="text-xs text-gray-400">Your current board has been recorded. Come back next week to see who moved, why, and what it means for your draft.</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
+                  <div className="text-sm text-sky-300 font-semibold mb-1">{boardDriftReport.weekLabel} vs {boardDriftReport.previousWeekLabel}</div>
+                  <p className="text-sm text-gray-300">{boardDriftReport.headline}</p>
+                  <div className="flex gap-4 mt-2 text-[10px] text-gray-500">
+                    <span>{boardDriftReport.totalPlayersTracked} players tracked</span>
+                    <span>Avg drift: {boardDriftReport.averageDrift} spots</span>
+                  </div>
+                </div>
+
+                {boardDriftReport.topRisers?.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5" /> Biggest Risers (ADP Down = More Valuable)
+                    </div>
+                    {boardDriftReport.topRisers.map((p: any) => {
+                      const magStyles: Record<string, string> = {
+                        major: 'border-emerald-500/30 bg-emerald-500/10',
+                        moderate: 'border-emerald-500/20 bg-emerald-500/5',
+                        minor: 'border-emerald-500/10 bg-emerald-500/[0.02]',
+                      }
+                      return (
+                        <div key={p.name} className={`rounded-lg border p-3 ${magStyles[p.driftMagnitude] || magStyles.minor}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-white text-sm">{p.name}</span>
+                              <span className="text-xs text-gray-400">{p.position} · {p.team || '—'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-500">ADP {p.previousAdp} → {p.currentAdp}</span>
+                              <span className="text-sm font-bold text-emerald-400 tabular-nums">{p.drift > 0 ? '' : '+'}{Math.abs(p.drift)}</span>
+                              <ArrowUp className="h-3.5 w-3.5 text-emerald-400" />
+                            </div>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {p.reasons.map((r: string, i: number) => (
+                              <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300">{r}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {boardDriftReport.topFallers?.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <TrendingDown className="h-3.5 w-3.5" /> Biggest Fallers (ADP Up = Less Valuable)
+                    </div>
+                    {boardDriftReport.topFallers.map((p: any) => {
+                      const magStyles: Record<string, string> = {
+                        major: 'border-red-500/30 bg-red-500/10',
+                        moderate: 'border-red-500/20 bg-red-500/5',
+                        minor: 'border-red-500/10 bg-red-500/[0.02]',
+                      }
+                      return (
+                        <div key={p.name} className={`rounded-lg border p-3 ${magStyles[p.driftMagnitude] || magStyles.minor}`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-white text-sm">{p.name}</span>
+                              <span className="text-xs text-gray-400">{p.position} · {p.team || '—'}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-gray-500">ADP {p.previousAdp} → {p.currentAdp}</span>
+                              <span className="text-sm font-bold text-red-400 tabular-nums">-{Math.abs(p.drift)}</span>
+                              <ArrowDown className="h-3.5 w-3.5 text-red-400" />
+                            </div>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {p.reasons.map((r: string, i: number) => (
+                              <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-red-500/10 text-red-300">{r}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {boardDriftReport.managerChanges?.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" /> Manager Tendency Shifts
+                    </div>
+                    {boardDriftReport.managerChanges.map((mc: any) => (
+                      <div key={mc.manager} className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="font-semibold text-white text-sm">{mc.manager}</span>
+                          <div className="flex items-center gap-1.5 text-xs">
+                            {mc.previousArchetype && mc.previousArchetype !== mc.archetype ? (
+                              <>
+                                <span className="text-gray-500">{mc.previousArchetype}</span>
+                                <span className="text-gray-600">→</span>
+                                <span className="text-amber-300 font-semibold">{mc.archetype}</span>
+                              </>
+                            ) : (
+                              <span className="text-amber-300">{mc.archetype}</span>
+                            )}
+                          </div>
+                        </div>
+                        {mc.changedSignals.length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {mc.changedSignals.map((cs: any, i: number) => (
+                              <span key={i} className={`text-[10px] px-2 py-0.5 rounded ${cs.direction === 'up' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'}`}>
+                                {cs.signal}: {cs.previous} → {cs.current} {cs.direction === 'up' ? '↑' : '↓'}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {boardDriftReport.nextRoundsImpact?.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">What This Means For Your Next Rounds</div>
+                    {boardDriftReport.nextRoundsImpact.map((nri: any) => (
+                      <div key={nri.round} className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-white">Round {nri.round}</span>
+                          <span className="text-[10px] text-gray-500">{nri.summary}</span>
+                        </div>
+
+                        {nri.risersInWindow.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] text-emerald-400 font-semibold">Rising in:</span>
+                            {nri.risersInWindow.map((p: any) => (
+                              <span key={p.name} className="text-[10px] bg-emerald-500/10 text-emerald-300 px-1.5 py-0.5 rounded">
+                                {p.name} <span className="text-emerald-400">+{Math.abs(p.drift)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {nri.fallersInWindow.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] text-red-400 font-semibold">Falling in:</span>
+                            {nri.fallersInWindow.map((p: any) => (
+                              <span key={p.name} className="text-[10px] bg-red-500/10 text-red-300 px-1.5 py-0.5 rounded">
+                                {p.name} <span className="text-red-400">-{Math.abs(p.drift)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {nri.newEntrants.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            <span className="text-[10px] text-sky-400 font-semibold">New to window:</span>
+                            {nri.newEntrants.map((p: any) => (
+                              <span key={p.name} className="text-[10px] bg-sky-500/10 text-sky-300 px-1.5 py-0.5 rounded">
+                                {p.name} ({p.position}, ADP {p.adp})
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </DialogContent>
