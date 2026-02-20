@@ -6,6 +6,60 @@ import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 import { buildManagerDNAFromLeague, type ManagerDNA } from '@/lib/mock-draft/manager-dna'
 
+type ScenarioPreset = {
+  id: string
+  label: string
+  positionTargetDeltas: Record<string, number>
+  needMultiplier: number
+  tendencyMultiplier: number
+  newsMultiplier: number
+  rookieMultiplier: number
+  adpShiftMap: Record<string, number>
+}
+
+const SCENARIO_PRESETS: Record<string, ScenarioPreset> = {
+  heavy_rookie_hype: {
+    id: 'heavy_rookie_hype',
+    label: 'Heavy Rookie Hype',
+    positionTargetDeltas: {},
+    needMultiplier: 1.0,
+    tendencyMultiplier: 1.0,
+    newsMultiplier: 1.0,
+    rookieMultiplier: 3.5,
+    adpShiftMap: {},
+  },
+  rb_scarcity_spike: {
+    id: 'rb_scarcity_spike',
+    label: 'RB Scarcity Spike',
+    positionTargetDeltas: { RB: 2 },
+    needMultiplier: 1.3,
+    tendencyMultiplier: 1.0,
+    newsMultiplier: 1.0,
+    rookieMultiplier: 1.0,
+    adpShiftMap: { RB: -8 },
+  },
+  injury_risk_conservative: {
+    id: 'injury_risk_conservative',
+    label: 'Injury Risk Conservative',
+    positionTargetDeltas: {},
+    needMultiplier: 1.0,
+    tendencyMultiplier: 0.8,
+    newsMultiplier: 3.0,
+    rookieMultiplier: 0.7,
+    adpShiftMap: {},
+  },
+  league_overvalues_qbs: {
+    id: 'league_overvalues_qbs',
+    label: 'League Overvalues QBs',
+    positionTargetDeltas: { QB: 2 },
+    needMultiplier: 1.0,
+    tendencyMultiplier: 1.2,
+    newsMultiplier: 1.0,
+    rookieMultiplier: 1.0,
+    adpShiftMap: { QB: -12 },
+  },
+}
+
 type VolatilityMeter = {
   chaosLevel: 'low' | 'medium' | 'high'
   chaosScore: number
@@ -50,16 +104,27 @@ function snakeOrder(teamCount: number, round: number): number[] {
   return round % 2 === 1 ? arr : arr.reverse()
 }
 
+type ScenarioMultipliers = {
+  needMul: number
+  tendencyMul: number
+  newsMul: number
+  rookieMul: number
+}
+
+const DEFAULT_MULS: ScenarioMultipliers = { needMul: 1, tendencyMul: 1, newsMul: 1, rookieMul: 1 }
+
 function scorePlayerForManager(
   player: ADPEntry,
   managerProfile: { tendency: Record<string, number>; rosterCounts: Record<string, number>; panicScore?: number; reachFrequency?: number },
   overall: number,
+  posTargets: Record<string, number>,
   recentPositionRun?: string,
   newsAdjustment?: number,
-  rookieBoost?: number
+  rookieBoost?: number,
+  muls: ScenarioMultipliers = DEFAULT_MULS
 ): { score: number; breakdown: ScoreBreakdown } {
   const pos = player.position
-  const needBoost = clamp((POSITION_TARGETS[pos] ?? 2) - (managerProfile.rosterCounts[pos] ?? 0), -2, 4)
+  const needBoost = clamp((posTargets[pos] ?? 2) - (managerProfile.rosterCounts[pos] ?? 0), -2, 4)
   const tendencyBoost = managerProfile.tendency[pos] ?? 1
   const adpDelta = clamp((player.adp - overall) / 20, -2, 2)
   const valueBoost = clamp((player.value ?? 2500) / 2500, 0.6, 2)
@@ -71,10 +136,10 @@ function scorePlayerForManager(
   }
 
   const adpComponent = adpDelta * 0.18
-  const needComponent = needBoost * 0.25
-  const tendencyComponent = tendencyBoost * 0.22 + reachMod + panicMod
-  const newsComponent = (newsAdjustment || 0) * 0.02
-  const rookieComponent = (rookieBoost || 0) * 0.03
+  const needComponent = needBoost * 0.25 * muls.needMul
+  const tendencyComponent = (tendencyBoost * 0.22 + reachMod + panicMod) * muls.tendencyMul
+  const newsComponent = (newsAdjustment || 0) * 0.02 * muls.newsMul
+  const rookieComponent = (rookieBoost || 0) * 0.03 * muls.rookieMul
   const baseValue = valueBoost * 0.14
 
   const coreScore = 1 + needComponent + tendencyComponent + adpComponent + baseValue
@@ -165,6 +230,9 @@ export async function POST(req: NextRequest) {
     const leagueId = String(body?.leagueId || '')
     const rounds = clamp(Number(body?.rounds || 2), 1, 4)
     const simulations = clamp(Number(body?.simulations || 250), 80, 600)
+    const activeScenarios: string[] = Array.isArray(body?.scenarios) ? body.scenarios.filter((s: any) => typeof s === 'string' && SCENARIO_PRESETS[s]) : []
+    const assistantMode: boolean = body?.assistantMode === true
+    const focusPickOverall: number | null = typeof body?.focusPickOverall === 'number' ? body.focusPickOverall : null
 
     if (!leagueId) return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
 
@@ -238,12 +306,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const scenarioMuls: ScenarioMultipliers = { needMul: 1, tendencyMul: 1, newsMul: 1, rookieMul: 1 }
+    const posTargets = { ...POSITION_TARGETS }
+    for (const sId of activeScenarios) {
+      const preset = SCENARIO_PRESETS[sId]
+      if (!preset) continue
+      scenarioMuls.needMul *= preset.needMultiplier
+      scenarioMuls.tendencyMul *= preset.tendencyMultiplier
+      scenarioMuls.newsMul *= preset.newsMultiplier
+      scenarioMuls.rookieMul *= preset.rookieMultiplier
+      for (const [pos, delta] of Object.entries(preset.positionTargetDeltas)) {
+        posTargets[pos] = (posTargets[pos] ?? 2) + delta
+      }
+    }
+
+    const scenarioAdpPool = activeScenarios.length > 0
+      ? pool.map(p => {
+          const shift = activeScenarios.reduce((sum, sId) => {
+            const preset = SCENARIO_PRESETS[sId]
+            return sum + (preset?.adpShiftMap[p.position] || 0)
+          }, 0)
+          return shift !== 0 ? { ...p, adp: p.adp + shift } : p
+        }).sort((a, b) => a.adp - b.adp)
+      : pool
+
     const pickCount = rounds * teamCount
     const pickOutcomes: Map<number, Map<string, number>> = new Map()
     const pickBreakdowns: Map<number, Map<string, { sum: ScoreBreakdown; count: number }>> = new Map()
 
     for (let s = 0; s < simulations; s++) {
-      const available = [...pool]
+      const available = [...scenarioAdpPool]
       const counts = managerProfiles.map(m => ({ ...m, rosterCounts: { QB: 0, RB: 0, WR: 0, TE: 0 } }))
       const recentPicks: string[] = []
 
@@ -262,7 +354,7 @@ export async function POST(req: NextRequest) {
           const candidateSlice = available.slice(0, 40)
           const scored = candidateSlice.map((p) => {
             const pKey = normName(p.name)
-            return scorePlayerForManager(p, profile, overall, recentRun, newsAdjMap.get(pKey), rookieBoostMap.get(pKey))
+            return scorePlayerForManager(p, profile, overall, posTargets, recentRun, newsAdjMap.get(pKey), rookieBoostMap.get(pKey), scenarioMuls)
           })
           const weights = scored.map(s => Math.max(0.05, s.score))
           const chosenIdx = pickWeightedIdx(weights)
@@ -358,6 +450,86 @@ export async function POST(req: NextRequest) {
         topName: f.topTargets[0]?.player || 'TBD',
       }))
 
+    let assistantData: any = null
+    if (assistantMode && focusPickOverall) {
+      const userPick = forecasts.find(f => f.overall === focusPickOverall)
+      const futurePick = forecasts.find(f => f.overall === focusPickOverall + 4)
+
+      const top3 = (userPick?.topTargets || []).slice(0, 3).map((t, i) => ({
+        ...t,
+        rank: i + 1,
+        confidence: t.probability,
+      }))
+
+      const fallback = (userPick?.topTargets || []).slice(3, 4).map(t => ({
+        player: t.player,
+        position: t.position,
+        probability: t.probability,
+      }))[0] || null
+
+      let waitAdvice: { canWait: boolean; reason: string; availabilityAt4: number } = {
+        canWait: false,
+        reason: 'No future pick data available to evaluate.',
+        availabilityAt4: 0,
+      }
+
+      if (top3[0] && futurePick) {
+        const topPlayer = top3[0].player
+        const futureTargets = futurePick.topTargets || []
+        const takenProbFuture = futureTargets.find(t => t.player === topPlayer)
+        const isStillAvailable = !takenProbFuture
+        const allFutureOutcomes = Array.from((pickOutcomes.get(focusPickOverall + 1) || new Map()).keys())
+          .concat(Array.from((pickOutcomes.get(focusPickOverall + 2) || new Map()).keys()))
+          .concat(Array.from((pickOutcomes.get(focusPickOverall + 3) || new Map()).keys()))
+
+        let snipeCount = 0
+        for (const key of allFutureOutcomes) {
+          if (key.startsWith(`${topPlayer}|`)) snipeCount++
+        }
+
+        const totalIntervening = Math.min(4, pickCount - focusPickOverall)
+        const snipePct = totalIntervening > 0 ? Math.round((snipeCount / (totalIntervening * simulations)) * 100) : 100
+        const availPct = 100 - Math.min(100, snipePct)
+
+        if (availPct >= 55) {
+          waitAdvice = {
+            canWait: true,
+            reason: `${topPlayer} has ~${availPct}% chance of still being available at pick +4. Safe to wait if you want to explore trades.`,
+            availabilityAt4: availPct,
+          }
+        } else {
+          waitAdvice = {
+            canWait: false,
+            reason: `${topPlayer} only has ~${availPct}% chance of lasting to pick +4. Take now or risk losing them.`,
+            availabilityAt4: availPct,
+          }
+        }
+      }
+
+      const upcomingUserPicks = forecasts
+        .filter(f => f.overall > focusPickOverall && f.overall <= focusPickOverall + (teamCount * 2))
+      const seenPlayers = new Set<string>()
+      const queue: Array<{ player: string; position: string; probability: number; pickOverall: number }> = []
+      for (const f of upcomingUserPicks) {
+        for (const t of f.topTargets) {
+          if (!seenPlayers.has(t.player)) {
+            seenPlayers.add(t.player)
+            queue.push({ player: t.player, position: t.position, probability: t.probability, pickOverall: f.overall })
+          }
+        }
+      }
+      queue.sort((a, b) => b.probability - a.probability)
+
+      assistantData = {
+        focusPick: focusPickOverall,
+        top3,
+        fallback,
+        waitAdvice,
+        queue: queue.slice(0, 6),
+        volatility: userPick?.volatility || null,
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       simulations,
@@ -367,6 +539,8 @@ export async function POST(req: NextRequest) {
       userGuidance,
       adpAdjustments: adjusted.adjustments.slice(0, 20),
       signalSources: adjusted.sourcesUsed,
+      ...(activeScenarios.length > 0 ? { scenarioLabels: activeScenarios.map(s => SCENARIO_PRESETS[s]?.label || s) } : {}),
+      ...(assistantData ? { assistant: assistantData } : {}),
     })
   } catch (err: any) {
     console.error('[mock-draft/predict-board] error', err)

@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, Handshake, Check, Newspaper } from 'lucide-react'
+import { Play, RefreshCw, Download, RotateCcw, Users, Loader2, Link, ArrowUp, ArrowDown, X, TrendingUp, TrendingDown, Minus, Star, Handshake, Check, Newspaper, Beaker, Zap } from 'lucide-react'
 import { useAI } from '@/hooks/useAI'
 import { toast } from 'sonner'
 import html2canvas from 'html2canvas'
@@ -255,6 +255,15 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [boardDriftOpen, setBoardDriftOpen] = useState(false)
   const [boardDriftLoading, setBoardDriftLoading] = useState(false)
   const [boardDriftReport, setBoardDriftReport] = useState<any>(null)
+  const [scenarioLabOpen, setScenarioLabOpen] = useState(false)
+  const [scenarioLabLoading, setScenarioLabLoading] = useState(false)
+  const [activeScenarios, setActiveScenarios] = useState<Set<string>>(new Set())
+  const [scenarioBaseline, setScenarioBaseline] = useState<BoardForecast[]>([])
+  const [scenarioResults, setScenarioResults] = useState<BoardForecast[]>([])
+  const [scenarioLabels, setScenarioLabels] = useState<string[]>([])
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantLoading, setAssistantLoading] = useState(false)
+  const [assistantData, setAssistantData] = useState<any>(null)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -617,6 +626,75 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     }
   }
 
+  const toggleScenario = (id: string) => {
+    setActiveScenarios(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const runScenarioLab = async () => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    if (activeScenarios.size === 0) return toast.error('Toggle at least one scenario')
+    setScenarioLabLoading(true)
+    try {
+      const [baseRes, scenRes] = await Promise.all([
+        fetch('/api/mock-draft/predict-board', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leagueId: selectedLeagueId, rounds: 2, simulations: 200 }),
+        }),
+        fetch('/api/mock-draft/predict-board', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ leagueId: selectedLeagueId, rounds: 2, simulations: 200, scenarios: Array.from(activeScenarios) }),
+        }),
+      ])
+      const baseData = await baseRes.json().catch(() => ({}))
+      const scenData = await scenRes.json().catch(() => ({}))
+      if (!baseRes.ok) throw new Error(baseData.error || 'Failed baseline')
+      if (!scenRes.ok) throw new Error(scenData.error || 'Failed scenario')
+      setScenarioBaseline(baseData.forecasts || [])
+      setScenarioResults(scenData.forecasts || [])
+      setScenarioLabels(scenData.scenarioLabels || Array.from(activeScenarios))
+      setScenarioLabOpen(true)
+      toast.success('Scenario comparison ready!')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to run scenarios')
+    } finally {
+      setScenarioLabLoading(false)
+    }
+  }
+
+  const loadAssistant = async (pickOverall: number) => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    setAssistantLoading(true)
+    try {
+      const res = await fetch('/api/mock-draft/predict-board', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leagueId: selectedLeagueId,
+          rounds: 2,
+          simulations: 100,
+          assistantMode: true,
+          focusPickOverall: pickOverall,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to load assistant')
+      setAssistantData(data.assistant || null)
+      setAssistantOpen(true)
+      toast.success('Draft-Day Assistant ready!')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load assistant')
+    } finally {
+      setAssistantLoading(false)
+    }
+  }
+
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -730,6 +808,36 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
               </SelectContent>
             </Select>
           </div>
+          <div className="md:col-span-3">
+            <label className="block text-sm text-gray-400 mb-2">Scenario Assumptions</label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'heavy_rookie_hype', label: 'Heavy Rookie Hype', color: 'violet' },
+                { id: 'rb_scarcity_spike', label: 'RB Scarcity Spike', color: 'cyan' },
+                { id: 'injury_risk_conservative', label: 'Injury Risk Conservative', color: 'amber' },
+                { id: 'league_overvalues_qbs', label: 'League Overvalues QBs', color: 'red' },
+              ].map(s => {
+                const isActive = activeScenarios.has(s.id)
+                const toggleBg: Record<string, string> = {
+                  violet: 'bg-violet-500/20 border-violet-500/40 text-violet-300',
+                  cyan: 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300',
+                  amber: 'bg-amber-500/20 border-amber-500/40 text-amber-300',
+                  red: 'bg-red-500/20 border-red-500/40 text-red-300',
+                }
+                const inactiveBg = 'bg-white/5 border-gray-700 text-gray-400 hover:border-gray-600'
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => toggleScenario(s.id)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${isActive ? toggleBg[s.color] : inactiveBg}`}
+                  >
+                    {isActive && <Check className="inline h-3 w-3 mr-1" />}
+                    {s.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <div className="flex items-end gap-3">
             <Button onClick={startMockDraft} disabled={isSimulating || loading || !selectedLeagueId} className="flex-1 h-10 bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700">
               {isSimulating || loading ? (
@@ -755,6 +863,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
             </Button>
             <Button onClick={loadBoardDrift} disabled={boardDriftLoading || !selectedLeagueId} variant="outline" className="h-10 border-sky-700/40 text-sky-300 hover:text-sky-200">
               {boardDriftLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading</> : <><Newspaper className="mr-2 h-4 w-4" /> Board Drift</>}
+            </Button>
+            <Button onClick={runScenarioLab} disabled={scenarioLabLoading || !selectedLeagueId} variant="outline" className="h-10 border-violet-700/40 text-violet-300 hover:text-violet-200">
+              {scenarioLabLoading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Running</> : <><Beaker className="mr-2 h-4 w-4" /> Scenario Lab</>}
             </Button>
           </div>
         </div>
@@ -982,6 +1093,16 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                               >
                                 {isTrading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ArrowDown className="mr-1 h-3 w-3" />}
                                 Trade Down
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); loadAssistant(pick.overall) }}
+                                disabled={assistantLoading}
+                                className="border-yellow-500/50 text-yellow-400 hover:bg-yellow-950/40 text-xs"
+                              >
+                                {assistantLoading ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Zap className="mr-1 h-3 w-3" />}
+                                Assistant
                               </Button>
                             </div>
                           )}
@@ -1971,6 +2092,197 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 )}
               </>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={assistantOpen} onOpenChange={setAssistantOpen}>
+        <DialogContent className="max-w-2xl bg-black/95 border-yellow-900/40">
+          <DialogHeader>
+            <DialogTitle className="text-yellow-300 flex items-center gap-2">
+              <Zap className="h-5 w-5" /> Draft-Day Assistant — Pick #{assistantData?.focusPick || '?'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto space-y-5 pr-1">
+            {!assistantData ? (
+              <p className="text-sm text-gray-500 text-center py-4">No data available</p>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div className="text-xs font-semibold text-yellow-400 uppercase tracking-wider">Top 3 Recommendations</div>
+                  {(assistantData.top3 || []).map((pick: any) => {
+                    const confColor: Record<string, string> = {
+                      high: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30',
+                      mid: 'text-amber-400 bg-amber-500/15 border-amber-500/30',
+                      low: 'text-red-400 bg-red-500/15 border-red-500/30',
+                    }
+                    const tier = pick.confidence >= 40 ? 'high' : pick.confidence >= 20 ? 'mid' : 'low'
+                    const posBg: Record<string, string> = { QB: 'text-red-400', RB: 'text-cyan-400', WR: 'text-green-400', TE: 'text-purple-400' }
+                    const rankBg: Record<string, string> = { '1': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30', '2': 'bg-gray-500/20 text-gray-300 border-gray-500/30', '3': 'bg-amber-800/20 text-amber-600 border-amber-700/30' }
+                    return (
+                      <div key={pick.rank} className={`rounded-xl border p-4 ${pick.rank === 1 ? 'border-yellow-500/30 bg-yellow-500/[0.03] ring-1 ring-yellow-500/10' : 'border-gray-800 bg-white/[0.02]'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold border ${rankBg[String(pick.rank)] || 'bg-gray-800 text-gray-400 border-gray-700'}`}>{pick.rank}</span>
+                            <div>
+                              <span className="text-sm font-semibold text-white">{pick.player}</span>
+                              <span className={`text-xs ml-2 ${posBg[pick.position] || 'text-gray-400'}`}>{pick.position}</span>
+                            </div>
+                          </div>
+                          <div className={`px-2 py-1 rounded-lg border text-xs font-bold tabular-nums ${confColor[tier]}`}>
+                            {pick.confidence}% conf
+                          </div>
+                        </div>
+                        {pick.why && <p className="text-[11px] text-gray-400 mt-2">{pick.why}</p>}
+                      </div>
+                    )
+                  })}
+
+                  {assistantData.fallback && (
+                    <div className="rounded-lg border border-gray-700 bg-gray-900/50 p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-gray-500 font-semibold uppercase">Fallback</span>
+                          <span className="text-sm text-gray-300">{assistantData.fallback.player}</span>
+                          <span className="text-[10px] text-gray-500">{assistantData.fallback.position}</span>
+                        </div>
+                        <span className="text-[10px] text-gray-500 tabular-nums">{assistantData.fallback.probability}%</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {assistantData.waitAdvice && (
+                  <div className={`rounded-xl border p-4 ${assistantData.waitAdvice.canWait ? 'border-emerald-500/30 bg-emerald-500/[0.03]' : 'border-red-500/30 bg-red-500/[0.03]'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className={`text-sm font-bold ${assistantData.waitAdvice.canWait ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {assistantData.waitAdvice.canWait ? 'SAFE TO WAIT' : 'TAKE NOW'}
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${assistantData.waitAdvice.canWait ? 'bg-emerald-500/15 text-emerald-300' : 'bg-red-500/15 text-red-300'}`}>
+                        {assistantData.waitAdvice.availabilityAt4}% availability at +4
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400">{assistantData.waitAdvice.reason}</p>
+                  </div>
+                )}
+
+                {assistantData.queue?.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Your Queue — Next 6 Targets</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {assistantData.queue.map((q: any, i: number) => {
+                        const posBg: Record<string, string> = { QB: 'bg-red-500/10 text-red-400 border-red-500/20', RB: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20', WR: 'bg-green-500/10 text-green-400 border-green-500/20', TE: 'bg-purple-500/10 text-purple-400 border-purple-500/20' }
+                        return (
+                          <div key={i} className="rounded-lg border border-gray-800 bg-white/[0.02] p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-500">{i + 1}.</span>
+                              <span className="text-sm text-white">{q.player}</span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded border ${posBg[q.position] || 'bg-gray-800 text-gray-400 border-gray-700'}`}>{q.position}</span>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-[10px] text-gray-400 tabular-nums">{q.probability}%</div>
+                              <div className="text-[9px] text-gray-600">Pick {q.pickOverall}</div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {assistantData.volatility && (
+                  <VolatilityBadge v={assistantData.volatility} />
+                )}
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={scenarioLabOpen} onOpenChange={setScenarioLabOpen}>
+        <DialogContent className="max-w-6xl bg-black/95 border-violet-900/40">
+          <DialogHeader>
+            <DialogTitle className="text-violet-300 flex items-center gap-2">
+              <Beaker className="h-5 w-5" /> Scenario Lab — Side-by-Side Comparison
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {scenarioLabels.map(l => (
+              <span key={l} className="text-[10px] px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 border border-violet-500/20">{l}</span>
+            ))}
+          </div>
+          <div className="max-h-[65vh] overflow-y-auto space-y-4 pr-1">
+            {scenarioBaseline.slice(0, 24).map((base, idx) => {
+              const scen = scenarioResults[idx]
+              if (!scen) return null
+              const baseTop = base.topTargets[0]
+              const scenTop = scen.topTargets[0]
+              const changed = baseTop?.player !== scenTop?.player
+              const probDelta = (scenTop?.probability || 0) - (baseTop?.probability || 0)
+              const borderStyle: Record<string, string> = {
+                yes: 'border-violet-500/30 bg-violet-500/[0.03]',
+                no: 'border-gray-800 bg-white/[0.01]',
+              }
+              return (
+                <div key={idx} className={`rounded-xl border p-4 ${borderStyle[changed ? 'yes' : 'no']}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-400">Pick {base.overall}</span>
+                      <span className="text-xs text-gray-500">R{base.round}P{base.pick}</span>
+                      <span className="text-xs text-gray-500">{base.manager}</span>
+                    </div>
+                    {changed && (
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-violet-500/15 text-violet-300 font-semibold">SHIFTED</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider mb-2">Baseline</div>
+                      {base.topTargets.slice(0, 3).map((t, i) => {
+                        const posBg: Record<string, string> = { QB: 'text-red-400', RB: 'text-cyan-400', WR: 'text-green-400', TE: 'text-purple-400' }
+                        return (
+                          <div key={i} className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-500 w-4">{i + 1}.</span>
+                              <span className="text-sm text-white">{t.player}</span>
+                              <span className={`text-[10px] ${posBg[t.position] || 'text-gray-400'}`}>{t.position}</span>
+                            </div>
+                            <span className="text-xs text-gray-400 tabular-nums">{t.probability}%</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-violet-400 font-semibold uppercase tracking-wider mb-2">Scenario</div>
+                      {scen.topTargets.slice(0, 3).map((t, i) => {
+                        const baseMatch = base.topTargets.find(b => b.player === t.player)
+                        const delta = baseMatch ? t.probability - baseMatch.probability : t.probability
+                        const posBg: Record<string, string> = { QB: 'text-red-400', RB: 'text-cyan-400', WR: 'text-green-400', TE: 'text-purple-400' }
+                        const deltaColor: Record<string, string> = { up: 'text-emerald-400', down: 'text-red-400', same: 'text-gray-500' }
+                        const dir = delta > 0 ? 'up' : delta < 0 ? 'down' : 'same'
+                        return (
+                          <div key={i} className="flex items-center justify-between py-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-500 w-4">{i + 1}.</span>
+                              <span className={`text-sm ${!baseMatch ? 'text-violet-300 font-semibold' : 'text-white'}`}>{t.player}</span>
+                              <span className={`text-[10px] ${posBg[t.position] || 'text-gray-400'}`}>{t.position}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-gray-400 tabular-nums">{t.probability}%</span>
+                              {delta !== 0 && (
+                                <span className={`text-[10px] font-bold tabular-nums ${deltaColor[dir]}`}>
+                                  {delta > 0 ? '+' : ''}{delta}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </DialogContent>
       </Dialog>
