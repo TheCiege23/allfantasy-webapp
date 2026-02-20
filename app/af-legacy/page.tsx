@@ -12785,10 +12785,10 @@ function AFLegacyContent() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
                             onClick={prepareRankingsSharePost}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition flex-shrink-0 bg-purple-500/15 border border-purple-400/20 text-purple-300 hover:bg-purple-500/25"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition flex-shrink-0 bg-purple-500/15 border border-purple-400/25 text-purple-200 hover:bg-purple-500/25"
                           >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            AI Post
+                            <span>✨</span>
+                            AI Share Post
                           </button>
                           <button
                             onClick={() => {
@@ -15267,8 +15267,13 @@ function AFLegacyContent() {
                       </div>
                     )}
 
-                    <div className="mb-4">
-                      <div className="text-xs text-gray-400 mb-2">Platform</div>
+
+                    <div className="mb-4 p-4 rounded-xl bg-black/25 border border-cyan-500/20">
+                      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                        <p className="text-xs text-gray-300 font-semibold">How AI prepares your social post</p>
+                        <div className="text-[11px] text-cyan-300">Target platform</div>
+                      </div>
+
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                         {([
                           { id: 'x', label: '𝕏 / Twitter', hint: 'short + punchy' },
