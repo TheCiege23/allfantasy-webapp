@@ -16,10 +16,14 @@ export const SocialPulseResponseSchema = z.object({
       player: z.string(),
       signal: z.enum(["up", "down", "mixed", "injury", "hype", "buy_low", "sell_high", "released", "traded", "idp_scarcity"]),
       reason: z.string().optional(),
+      confidence: z.number().min(0).max(100).optional(),
+      impactScore: z.number().min(0).max(100).optional(),
+      recencyHours: z.number().min(0).optional(),
     })
   ).max(20).optional(),
   connections: z.array(z.string()).optional(),
   lastUpdated: z.string().optional(),
+  pulseScore: z.number().min(0).max(100).optional(),
 })
 
 export type SocialPulseRequest = z.infer<typeof SocialPulseRequestSchema>
