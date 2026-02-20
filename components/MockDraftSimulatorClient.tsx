@@ -39,12 +39,21 @@ interface VolatilityMeter {
   topConcentration: number
 }
 
+interface AIScorecard {
+  adpWeight: number
+  teamNeedWeight: number
+  managerTendencyWeight: number
+  newsImpactWeight: number
+  rookieRankBoostWeight: number
+  total: number
+}
+
 interface BoardForecast {
   overall: number
   round: number
   pick: number
   manager: string
-  topTargets: Array<{ player: string; position: string; probability: number; why: string }>
+  topTargets: Array<{ player: string; position: string; probability: number; why: string; scorecard?: AIScorecard }>
   volatility: VolatilityMeter
 }
 
@@ -1359,16 +1368,60 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 <div className="space-y-1.5">
                   {f.topTargets.length === 0 ? (
                     <div className="text-sm text-gray-500">No projection available</div>
-                  ) : f.topTargets.map((t, idx) => (
-                    <div key={`${t.player}-${idx}`} className="flex items-start justify-between gap-3 text-sm">
-                      <div>
-                        <span className="font-semibold text-white">{t.player}</span>
-                        <span className="text-gray-400"> · {t.position}</span>
-                        <div className="text-xs text-gray-500">{t.why}</div>
+                  ) : f.topTargets.map((t, idx) => {
+                    const sc = t.scorecard
+                    const barColors: Record<string, string> = {
+                      'ADP Position': 'bg-cyan-500/70',
+                      'Team Need': 'bg-emerald-500/70',
+                      'Manager Style': 'bg-amber-500/70',
+                      'News Impact': 'bg-red-500/70',
+                      'Rookie Boost': 'bg-purple-500/70',
+                    }
+                    const dotColors: Record<string, string> = {
+                      'ADP Position': 'bg-cyan-500/70',
+                      'Team Need': 'bg-emerald-500/70',
+                      'Manager Style': 'bg-amber-500/70',
+                      'News Impact': 'bg-red-500/70',
+                      'Rookie Boost': 'bg-purple-500/70',
+                    }
+                    const factors = sc ? [
+                      { label: 'ADP Position', pct: sc.adpWeight },
+                      { label: 'Team Need', pct: sc.teamNeedWeight },
+                      { label: 'Manager Style', pct: sc.managerTendencyWeight },
+                      { label: 'News Impact', pct: sc.newsImpactWeight },
+                      { label: 'Rookie Boost', pct: sc.rookieRankBoostWeight },
+                    ] : []
+                    return (
+                      <div key={`${t.player}-${idx}`} className="rounded-lg bg-white/[0.03] border border-white/5 p-2.5 space-y-2">
+                        <div className="flex items-start justify-between gap-3 text-sm">
+                          <div>
+                            <span className="font-semibold text-white">{t.player}</span>
+                            <span className="text-gray-400"> · {t.position}</span>
+                            <div className="text-xs text-gray-500">{t.why}</div>
+                          </div>
+                          <div className="text-cyan-300 font-semibold tabular-nums">{t.probability}%</div>
+                        </div>
+                        {sc && (
+                          <div className="space-y-1">
+                            <div className="flex items-center h-2.5 rounded-full overflow-hidden bg-white/5">
+                              {factors.filter(fct => fct.pct > 0).map((fct) => (
+                                <div key={fct.label} className={`h-full ${barColors[fct.label]}`} style={{ width: `${fct.pct}%` }} title={`${fct.label}: ${fct.pct}%`} />
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                              {factors.map((fct) => (
+                                <div key={fct.label} className="flex items-center gap-1 text-[10px]">
+                                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotColors[fct.label]}`} />
+                                  <span className="text-gray-500">{fct.label}</span>
+                                  <span className="text-gray-400 font-semibold tabular-nums">{fct.pct}%</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-cyan-300 font-semibold tabular-nums">{t.probability}%</div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             ))}

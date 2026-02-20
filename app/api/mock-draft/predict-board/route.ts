@@ -15,12 +15,27 @@ type VolatilityMeter = {
   topConcentration: number
 }
 
+type ScoreBreakdown = {
+  adpWeight: number
+  teamNeedWeight: number
+  managerTendencyWeight: number
+  newsImpactWeight: number
+  rookieRankBoostWeight: number
+  total: number
+}
+
 type PickForecast = {
   overall: number
   round: number
   pick: number
   manager: string
-  topTargets: Array<{ player: string; position: string; probability: number; why: string }>
+  topTargets: Array<{
+    player: string
+    position: string
+    probability: number
+    why: string
+    scorecard: ScoreBreakdown
+  }>
   volatility: VolatilityMeter
 }
 
@@ -39,8 +54,10 @@ function scorePlayerForManager(
   player: ADPEntry,
   managerProfile: { tendency: Record<string, number>; rosterCounts: Record<string, number>; panicScore?: number; reachFrequency?: number },
   overall: number,
-  recentPositionRun?: string
-): number {
+  recentPositionRun?: string,
+  newsAdjustment?: number,
+  rookieBoost?: number
+): { score: number; breakdown: ScoreBreakdown } {
   const pos = player.position
   const needBoost = clamp((POSITION_TARGETS[pos] ?? 2) - (managerProfile.rosterCounts[pos] ?? 0), -2, 4)
   const tendencyBoost = managerProfile.tendency[pos] ?? 1
@@ -53,17 +70,43 @@ function scorePlayerForManager(
     panicMod = (managerProfile.panicScore || 0.3) * 0.35
   }
 
-  return 1 + needBoost * 0.25 + tendencyBoost * 0.22 + adpDelta * 0.18 + valueBoost * 0.14 + reachMod + panicMod
+  const adpComponent = adpDelta * 0.18
+  const needComponent = needBoost * 0.25
+  const tendencyComponent = tendencyBoost * 0.22 + reachMod + panicMod
+  const newsComponent = (newsAdjustment || 0) * 0.02
+  const rookieComponent = (rookieBoost || 0) * 0.03
+  const baseValue = valueBoost * 0.14
+
+  const coreScore = 1 + needComponent + tendencyComponent + adpComponent + baseValue
+
+  const rawSum = Math.abs(adpComponent) + Math.abs(needComponent) + Math.abs(tendencyComponent) + Math.abs(newsComponent) + Math.abs(rookieComponent) + Math.abs(baseValue)
+  const norm = rawSum > 0 ? 100 / rawSum : 0
+
+  return {
+    score: coreScore + newsComponent + rookieComponent,
+    breakdown: {
+      adpWeight: Math.round((Math.abs(adpComponent) + Math.abs(baseValue)) * norm),
+      teamNeedWeight: Math.round(Math.abs(needComponent) * norm),
+      managerTendencyWeight: Math.round(Math.abs(tendencyComponent) * norm),
+      newsImpactWeight: Math.round(Math.abs(newsComponent) * norm),
+      rookieRankBoostWeight: Math.round(Math.abs(rookieComponent) * norm),
+      total: Math.round((coreScore + newsComponent + rookieComponent) * 100) / 100,
+    },
+  }
+}
+
+function pickWeightedIdx(weights: number[]): number {
+  const total = weights.reduce((a, b) => a + b, 0)
+  let r = Math.random() * total
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i]
+    if (r <= 0) return i
+  }
+  return weights.length - 1
 }
 
 function pickWeighted(candidates: ADPEntry[], weights: number[]): ADPEntry {
-  const total = weights.reduce((a, b) => a + b, 0)
-  let r = Math.random() * total
-  for (let i = 0; i < candidates.length; i++) {
-    r -= weights[i]
-    if (r <= 0) return candidates[i]
-  }
-  return candidates[candidates.length - 1]
+  return candidates[pickWeightedIdx(weights)]
 }
 
 function computeVolatility(outcomeMap: Map<string, number>, simulations: number, managerName: string): VolatilityMeter {
@@ -180,8 +223,24 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    const normName = (n: string) => String(n || '').toLowerCase().replace(/[.'-]/g, '').replace(/\s+(jr|sr|ii|iii|iv|v)$/i, '').replace(/\s+/g, ' ').trim()
+
+    const newsAdjMap = new Map<string, number>()
+    const rookieBoostMap = new Map<string, number>()
+    for (const adj of adjusted.adjustments) {
+      const key = normName(adj.name)
+      const reasons = (adj.reasons || []).join(' ').toLowerCase()
+      if (reasons.includes('injury') || reasons.includes('risk') || reasons.includes('momentum') || reasons.includes('role') || reasons.includes('trade') || reasons.includes('news')) {
+        newsAdjMap.set(key, adj.delta)
+      }
+      if (reasons.includes('rookie')) {
+        rookieBoostMap.set(key, Math.abs(adj.delta))
+      }
+    }
+
     const pickCount = rounds * teamCount
     const pickOutcomes: Map<number, Map<string, number>> = new Map()
+    const pickBreakdowns: Map<number, Map<string, { sum: ScoreBreakdown; count: number }>> = new Map()
 
     for (let s = 0; s < simulations; s++) {
       const available = [...pool]
@@ -201,8 +260,14 @@ export async function POST(req: NextRequest) {
           const recentRun = Object.entries(posRunCounts).find(([, c]) => c >= 2)?.[0]
 
           const candidateSlice = available.slice(0, 40)
-          const weights = candidateSlice.map((p) => Math.max(0.05, scorePlayerForManager(p, profile, overall, recentRun)))
-          const chosen = pickWeighted(candidateSlice, weights)
+          const scored = candidateSlice.map((p) => {
+            const pKey = normName(p.name)
+            return scorePlayerForManager(p, profile, overall, recentRun, newsAdjMap.get(pKey), rookieBoostMap.get(pKey))
+          })
+          const weights = scored.map(s => Math.max(0.05, s.score))
+          const chosenIdx = pickWeightedIdx(weights)
+          const chosen = candidateSlice[chosenIdx]
+          const chosenBreakdown = scored[chosenIdx].breakdown
 
           const avIdx = available.findIndex(p => p.name === chosen.name)
           if (avIdx >= 0) available.splice(avIdx, 1)
@@ -215,7 +280,23 @@ export async function POST(req: NextRequest) {
 
           if (!pickOutcomes.has(overall)) pickOutcomes.set(overall, new Map())
           const map = pickOutcomes.get(overall)!
-          map.set(`${chosen.name}|${chosen.position}|${profile.manager}`, (map.get(`${chosen.name}|${chosen.position}|${profile.manager}`) || 0) + 1)
+          const outcomeKey = `${chosen.name}|${chosen.position}|${profile.manager}`
+          map.set(outcomeKey, (map.get(outcomeKey) || 0) + 1)
+
+          if (!pickBreakdowns.has(overall)) pickBreakdowns.set(overall, new Map())
+          const bdMap = pickBreakdowns.get(overall)!
+          const existing = bdMap.get(outcomeKey)
+          if (existing) {
+            existing.sum.adpWeight += chosenBreakdown.adpWeight
+            existing.sum.teamNeedWeight += chosenBreakdown.teamNeedWeight
+            existing.sum.managerTendencyWeight += chosenBreakdown.managerTendencyWeight
+            existing.sum.newsImpactWeight += chosenBreakdown.newsImpactWeight
+            existing.sum.rookieRankBoostWeight += chosenBreakdown.rookieRankBoostWeight
+            existing.sum.total += chosenBreakdown.total
+            existing.count++
+          } else {
+            bdMap.set(outcomeKey, { sum: { ...chosenBreakdown }, count: 1 })
+          }
 
           overall++
         }
@@ -228,6 +309,7 @@ export async function POST(req: NextRequest) {
       const order = snakeOrder(teamCount, round)
       for (let pick = 1; pick <= teamCount; pick++) {
         const manager = teamNames[order[pick - 1]] || `Manager ${order[pick - 1] + 1}`
+        const bdMap = pickBreakdowns.get(overall) || new Map()
         const results = Array.from((pickOutcomes.get(overall) || new Map()).entries())
           .filter(([k]) => k.endsWith(`|${manager}`))
           .sort((a, b) => b[1] - a[1])
@@ -243,7 +325,19 @@ export async function POST(req: NextRequest) {
                   ? 'QB timing window is open based on league and manager style.'
                   : 'TE leverage pick profile appears in this simulation cluster.'
 
-            return { player, position, probability, why }
+            const bd = bdMap.get(key)
+            const scorecard: ScoreBreakdown = bd && bd.count > 0
+              ? {
+                  adpWeight: Math.round(bd.sum.adpWeight / bd.count),
+                  teamNeedWeight: Math.round(bd.sum.teamNeedWeight / bd.count),
+                  managerTendencyWeight: Math.round(bd.sum.managerTendencyWeight / bd.count),
+                  newsImpactWeight: Math.round(bd.sum.newsImpactWeight / bd.count),
+                  rookieRankBoostWeight: Math.round(bd.sum.rookieRankBoostWeight / bd.count),
+                  total: Math.round((bd.sum.total / bd.count) * 100) / 100,
+                }
+              : { adpWeight: 40, teamNeedWeight: 30, managerTendencyWeight: 25, newsImpactWeight: 3, rookieRankBoostWeight: 2, total: 1 }
+
+            return { player, position, probability, why, scorecard }
           })
 
         const outcomeMap = pickOutcomes.get(overall) || new Map()
