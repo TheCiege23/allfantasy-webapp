@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google';
 import Script from 'next/script';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
+import { GlobalModeToggle } from '@/components/theme/GlobalModeToggle';
 import './globals.css';
 
 const inter = Inter({
@@ -47,8 +48,23 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} dark`} suppressHydrationWarning>
+    <html lang="en" className={`${inter.variable}`} suppressHydrationWarning>
       <head>
+
+        <Script id="af-init-mode" strategy="beforeInteractive">
+          {`
+            try {
+              var m = localStorage.getItem('af_mode');
+              if (m === 'dark' || m === 'light' || m === 'legacy') {
+                document.documentElement.setAttribute('data-mode', m);
+              } else {
+                document.documentElement.setAttribute('data-mode', 'light');
+              }
+            } catch (e) {
+              document.documentElement.setAttribute('data-mode', 'light');
+            }
+          `}
+        </Script>
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=AW-17768764414"
           strategy="afterInteractive"
@@ -77,10 +93,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           `}
         </Script>
       </head>
-      <body className={`${inter.variable} bg-[#0a0a0f] text-white antialiased min-h-screen`}>
+      <body className={`${inter.variable} antialiased min-h-screen`} style={{ background: "var(--bg)", color: "var(--text)" }}>
         <ThemeProvider>
           {children}
           <Toaster position="top-center" richColors closeButton />
+          <GlobalModeToggle />
         </ThemeProvider>
       </body>
     </html>
