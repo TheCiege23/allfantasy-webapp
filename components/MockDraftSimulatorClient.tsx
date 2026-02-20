@@ -30,6 +30,14 @@ interface LeagueOption {
   scoring: string | null
 }
 
+interface BoardForecast {
+  overall: number
+  round: number
+  pick: number
+  manager: string
+  topTargets: Array<{ player: string; position: string; probability: number; why: string }>
+}
+
 interface DraftPick {
   round: number
   pick: number
@@ -72,6 +80,10 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [comparisonOpen, setComparisonOpen] = useState(false)
   const [comparePlayer, setComparePlayer] = useState<any>(null)
   const [selectedFilter, setSelectedFilter] = useState('All')
+  const [predictingBoard, setPredictingBoard] = useState(false)
+  const [forecastOpen, setForecastOpen] = useState(false)
+  const [boardForecasts, setBoardForecasts] = useState<BoardForecast[]>([])
+  const [forecastMeta, setForecastMeta] = useState<{ simulations: number; rounds: number } | null>(null)
 
   const selectedLeague = leagues.find(l => l.id === selectedLeagueId)
 
@@ -301,6 +313,28 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
     setIsSimulating(false)
   }
 
+  const predictDraftBoard = async () => {
+    if (!selectedLeagueId) return toast.error('Select a league first')
+    setPredictingBoard(true)
+    try {
+      const res = await fetch('/api/mock-draft/predict-board', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leagueId: selectedLeagueId, rounds: 2, simulations: 300 }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || 'Failed to predict board')
+      setBoardForecasts(data.forecasts || [])
+      setForecastMeta({ simulations: data.simulations || 0, rounds: data.rounds || 2 })
+      setForecastOpen(true)
+      toast.success('Predicted draft board generated.')
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to predict board')
+    } finally {
+      setPredictingBoard(false)
+    }
+  }
+
   const exportImage = async () => {
     const element = document.getElementById('draft-board')
     if (!element) return
@@ -421,6 +455,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
               ) : (
                 <><Play className="mr-2 h-4 w-4" /> Run Mock Draft</>
               )}
+            </Button>
+            <Button onClick={predictDraftBoard} disabled={predictingBoard || !selectedLeagueId} variant="outline" className="h-10 border-cyan-700/40 text-cyan-300 hover:text-cyan-200">
+              {predictingBoard ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Predicting</> : 'Predict Board'}
             </Button>
           </div>
         </div>
@@ -979,6 +1016,32 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
           </div>
         </div>
       )}
+
+      <Dialog open={forecastOpen} onOpenChange={setForecastOpen}>
+        <DialogContent className="max-w-4xl bg-black/95 border-cyan-900/40">
+          <DialogHeader>
+            <DialogTitle>AI Predicted Draft Board ({forecastMeta?.rounds || 2} rounds · {forecastMeta?.simulations || 0} sims)</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[70vh] overflow-y-auto space-y-3 pr-1">
+            {boardForecasts.slice(0, 36).map((f) => (
+              <div key={`${f.overall}-${f.manager}`} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="text-xs text-gray-400 mb-1">Round {f.round} · Pick {f.pick} (#{f.overall}) · {f.manager}</div>
+                <div className="space-y-1.5">
+                  {f.topTargets.map((t, j) => (
+                    <div key={j} className="flex items-center gap-2 text-sm">
+                      <span className={`px-1.5 py-0.5 rounded text-xs border ${POSITION_COLORS[t.position] || 'text-gray-400 bg-gray-500/15 border-gray-500/30'}`}>{t.position}</span>
+                      <span className="font-medium">{t.player}</span>
+                      <span className="text-cyan-400 text-xs ml-auto">{t.probability}%</span>
+                    </div>
+                  ))}
+                  {f.topTargets.length === 0 && <div className="text-xs text-gray-500">No data</div>}
+                </div>
+              </div>
+            ))}
+            {boardForecasts.length === 0 && <p className="text-sm text-gray-500 text-center py-4">No forecasts available</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={comparisonOpen} onOpenChange={setComparisonOpen}>
         <DialogContent className="bg-black/90 border-purple-900/50 text-white max-w-3xl">
