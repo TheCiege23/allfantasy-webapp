@@ -110,7 +110,7 @@ export default function TradeFinderClient({ initialLeagues, sleeperUserId }: { i
 
     if (result.data?.recommendations?.length) {
       const candidates = result.data.candidates || [];
-      const mapped = result.data.recommendations.map((rec: any) => {
+      const mapped = result.data.recommendations.map((rec: any, i: number) => {
         const candidate = candidates.find((c: any) => c.tradeId === rec.tradeId);
         const conf = typeof rec.confidence === 'number' ? rec.confidence : rec.confidenceScore ?? null;
         const fScore = candidate?.finderScore ?? 50;
