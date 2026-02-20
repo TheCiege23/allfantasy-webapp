@@ -8,6 +8,7 @@ import ChimmyChat from '@/app/components/ChimmyChat';
 import PersonalizedInsights from '@/app/components/PersonalizedInsights';
 import MockDraftSimulatorClient from '@/components/MockDraftSimulatorClient';
 import Link from 'next/link';
+import LegacyLeagueIdeaForm from '@/app/components/LegacyLeagueIdeaForm';
 
 type LeagueOption = {
   id: string
@@ -19,7 +20,7 @@ type LeagueOption = {
 }
 
 export default function LegacyOverview() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'trade' | 'waiver' | 'chat' | 'mock-draft' | 'transfer'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'trade' | 'waiver' | 'chat' | 'mock-draft' | 'ideas' | 'transfer'>('overview');
   const [mockLeagues, setMockLeagues] = useState<LeagueOption[]>([]);
   const [mockLoading, setMockLoading] = useState(false);
 
@@ -104,6 +105,7 @@ export default function LegacyOverview() {
           { id: 'waiver', label: 'Waiver AI', icon: '📈' },
           { id: 'chat', label: 'AI Chat', icon: '💬' },
           { id: 'mock-draft', label: 'Mock Draft AI', icon: '🧠' },
+          { id: 'ideas', label: 'Submit Ideas', icon: '💡' },
           { id: 'transfer', label: 'Transfer', icon: '🔄' },
         ].map(tab => (
           <button
@@ -273,6 +275,8 @@ export default function LegacyOverview() {
             )}
           </div>
         )}
+
+        {activeTab === 'ideas' && <LegacyLeagueIdeaForm />}
 
         {activeTab === 'transfer' && (
           <div className="py-16 text-center">
