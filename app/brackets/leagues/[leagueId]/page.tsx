@@ -1,22 +1,16 @@
 import Link from "next/link"
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
-import { Trophy, Users, BarChart3, Shield } from "lucide-react"
-import CopyJoinCode from "./CopyJoinCode"
-import CreateEntryButton from "./CreateEntryButton"
-import ConfirmPaymentButton from "./ConfirmPaymentButton"
-import DevTestPanel from "./DevTestPanel"
 import { requireVerifiedSession } from "@/lib/require-verified"
-
-const isDev = process.env.NODE_ENV !== "production"
+import { getEntryBracketData } from "@/lib/brackets/getEntryBracketData"
+import { LeagueHomeTabs } from "@/components/bracket/LeagueHomeTabs"
 
 export default async function LeagueDetailPage({
   params,
 }: {
   params: { leagueId: string }
 }) {
-  const { userId, email } = await requireVerifiedSession()
-  const user = { id: userId, email: email || "" }
+  const { userId } = await requireVerifiedSession()
 
   const league = await (prisma as any).bracketLeague.findUnique({
     where: { id: params.leagueId },
@@ -40,30 +34,49 @@ export default async function LeagueDetailPage({
 
   if (!league) notFound()
 
-  const isMember = league.members.some(
-    (m: any) => m.userId === user?.id
-  )
+  const isMember = league.members.some((m: any) => m.userId === userId)
+  if (!isMember) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-white/60">You're not a member of this league.</p>
+          <Link href="/brackets" className="text-indigo-400 hover:underline text-sm">
+            Back to Brackets
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
-  const entryIds = league.entries.map((e: any) => e.id)
-  let topStandings: { entryId: string; entryName: string; ownerName: string; points: number }[] = []
+  const userEntries = league.entries.filter((e: any) => e.userId === userId)
 
-  if (entryIds.length > 0) {
-    const sums = await (prisma as any).bracketPick.groupBy({
-      by: ["entryId"],
-      where: { entryId: { in: entryIds } },
-      _sum: { points: true },
+  const allPicksByEntry: Record<string, Record<string, string | null>> = {}
+  let nodesWithGame: any[] = []
+
+  if (userEntries.length > 0) {
+    const primaryEntry = userEntries[0]
+    const bracketData = await getEntryBracketData(league.tournament.id, primaryEntry.id)
+    nodesWithGame = bracketData.nodesWithGame
+    allPicksByEntry[primaryEntry.id] = bracketData.pickMap
+
+    for (const entry of userEntries.slice(1)) {
+      const picks = await prisma.bracketPick.findMany({
+        where: { entryId: entry.id },
+        select: { nodeId: true, pickedTeamName: true },
+      })
+      const pickMap: Record<string, string | null> = {}
+      for (const p of picks) pickMap[p.nodeId] = p.pickedTeamName ?? null
+      allPicksByEntry[entry.id] = pickMap
+    }
+  } else {
+    const nodes = await prisma.bracketNode.findMany({
+      where: { tournamentId: league.tournament.id },
+      orderBy: [{ round: "asc" }, { region: "asc" }, { slot: "asc" }],
     })
-    const scoreBy = new Map(sums.map((s: any) => [s.entryId, s._sum.points ?? 0]))
-
-    topStandings = league.entries
-      .map((e: any) => ({
-        entryId: e.id,
-        entryName: e.name,
-        ownerName: e.user?.displayName || e.user?.email || "Unknown",
-        points: scoreBy.get(e.id) ?? 0,
-      }))
-      .sort((a: any, b: any) => b.points - a.points)
-      .slice(0, 5)
+    nodesWithGame = nodes.map((n) => ({
+      ...n,
+      game: null,
+    }))
   }
 
   const rules = (league.scoringRules || {}) as any
@@ -72,191 +85,65 @@ export default async function LeagueDetailPage({
   const isPaidLeague = Boolean(rules.isPaidLeague)
   const paymentConfirmedAt = rules.commissionerPaymentConfirmedAt as string | null
 
-  const pickCount = entryIds.length > 0
-    ? await (prisma as any).bracketPick.count({
-        where: { entryId: { in: entryIds }, pickedTeamName: { not: null } },
-      })
-    : 0
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
-      <div className="p-6 max-w-3xl mx-auto space-y-6">
-        <Link
-          href="/brackets"
-          className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition"
-        >
-          &larr; Back to Brackets
-        </Link>
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <Link
+            href="/brackets"
+            className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white transition"
+          >
+            &larr; Brackets
+          </Link>
+        </div>
 
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">{league.name}</h1>
-            <p className="text-sm text-gray-400 mt-1">
+            <h1 className="text-xl sm:text-2xl font-bold">{league.name}</h1>
+            <p className="text-sm text-white/40 mt-0.5">
               {league.tournament.name} &bull; {league.tournament.season}
             </p>
           </div>
-          <div className="text-right space-y-1">
-            <div className="text-xs text-gray-500">
-              Created by{" "}
-              <span className="text-gray-300">
-                {league.owner.displayName || league.owner.email || "Unknown"}
-              </span>
-            </div>
-            <div className="text-xs text-gray-500">
-              League ID: <span className="font-mono text-gray-300">{league.id}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{league.members.length}/{league.maxManagers}</div>
-            <div className="text-xs text-gray-500">Members</div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{league.entries.length}</div>
-            <div className="text-xs text-gray-500">Entries</div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{pickCount}</div>
-            <div className="text-xs text-gray-500">Picks Made</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{entriesPerUserFree}</div>
-            <div className="text-xs text-gray-500">Free Entries / User</div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{maxEntriesPerUser}</div>
-            <div className="text-xs text-gray-500">Max Entries / User</div>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
-            <div className="text-lg font-bold">{league.maxManagers}</div>
-            <div className="text-xs text-gray-500">League Capacity</div>
-          </div>
-        </div>
-
-        {isPaidLeague && (
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-2">
-            <div className="text-sm font-semibold text-emerald-300">Paid League (FanCred)</div>
-            <div className="text-xs text-gray-300">Commissioner must confirm payment to unlock paid extra entries.</div>
-            <div className="text-xs text-gray-400">
-              Status: {paymentConfirmedAt ? `Confirmed at ${new Date(paymentConfirmedAt).toLocaleString()}` : "Pending confirmation"}
-            </div>
-            {league.ownerId === user.id && !paymentConfirmedAt && <ConfirmPaymentButton leagueId={league.id} />}
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-            <Users className="h-4 w-4" />
-            Invite friends
-          </div>
-          <p className="text-sm text-gray-400">
-            Share this code with friends so they can join your league:
-          </p>
-          <CopyJoinCode joinCode={league.joinCode} />
-          <p className="text-xs text-gray-500 italic">
-            Picks lock at tip-off for each game.
-          </p>
-        </div>
-
-        {topStandings.length > 0 && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-              <BarChart3 className="h-4 w-4" />
-              Standings
-            </div>
-            <div className="space-y-1">
-              {topStandings.map((s, i) => (
+          <div className="flex items-center gap-4">
+            <div className="flex -space-x-2">
+              {league.members.slice(0, 5).map((m: any) => (
                 <div
-                  key={s.entryId}
-                  className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+                  key={m.id}
+                  className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 border-2 border-gray-950 flex items-center justify-center text-[10px] font-bold text-white"
+                  title={m.user.displayName || m.user.email}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-white/40 w-5 text-right">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <div className="text-sm font-medium">{s.entryName}</div>
-                      <div className="text-xs text-gray-500">{s.ownerName}</div>
-                    </div>
-                  </div>
-                  <div className="text-sm font-bold text-cyan-400">
-                    {s.points} <span className="text-xs font-normal text-white/40">pts</span>
-                  </div>
+                  {(m.user.displayName || m.user.email || "?").slice(0, 2).toUpperCase()}
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-              <Trophy className="h-4 w-4" />
-              Entries ({league.entries.length})
-            </div>
-            {user?.id && isMember && (
-              <CreateEntryButton leagueId={league.id} />
-            )}
-          </div>
-
-          {league.entries.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No entries yet. Be the first to fill out a bracket!
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {league.entries.map((entry: any) => (
-                <Link
-                  key={entry.id}
-                  href={`/bracket/${league.tournament.id}/entry/${entry.id}`}
-                  className="block rounded-xl border border-white/10 bg-black/20 p-3 hover:bg-white/5 transition"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-sm font-medium">{entry.name}</div>
-                      <div className="text-xs text-gray-500">
-                        by{" "}
-                        {entry.user.displayName || entry.user.email || "Unknown"}
-                      </div>
-                    </div>
-                    <div className="text-xs text-gray-600">
-                      {new Date(entry.createdAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
-            <Users className="h-4 w-4" />
-            Members ({league.members.length}/{league.maxManagers})
-          </div>
-          <div className="space-y-2">
-            {league.members.map((m: any) => (
-              <div
-                key={m.id}
-                className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 p-3"
-              >
-                <div className="text-sm">
-                  {m.user.displayName || m.user.email || "Unknown"}
+              {league.members.length > 5 && (
+                <div className="w-8 h-8 rounded-full bg-white/10 border-2 border-gray-950 flex items-center justify-center text-[10px] font-medium text-white/60">
+                  +{league.members.length - 5}
                 </div>
-                <div className="text-xs text-gray-500">{m.role}</div>
-              </div>
-            ))}
+              )}
+            </div>
+            <div className="text-xs text-white/30">
+              {league.members.length}/{league.maxManagers}
+            </div>
           </div>
         </div>
 
-        {isDev && (
-          <DevTestPanel season={league.tournament.season} />
-        )}
+        <LeagueHomeTabs
+          leagueId={league.id}
+          tournamentId={league.tournament.id}
+          currentUserId={userId}
+          isOwner={league.ownerId === userId}
+          members={league.members}
+          entries={league.entries}
+          userEntries={userEntries}
+          nodes={nodesWithGame}
+          initialPicks={allPicksByEntry}
+          joinCode={league.joinCode}
+          maxManagers={league.maxManagers}
+          isPaidLeague={isPaidLeague}
+          paymentConfirmedAt={paymentConfirmedAt}
+          entriesPerUserFree={entriesPerUserFree}
+          maxEntriesPerUser={maxEntriesPerUser}
+        />
       </div>
     </div>
   )
