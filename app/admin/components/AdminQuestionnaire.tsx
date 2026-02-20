@@ -401,64 +401,98 @@ export default function AdminQuestionnaire() {
               return (
                 <div
                   key={r.id}
-                  className="rounded-xl border border-white/5 bg-white/[0.02] overflow-hidden"
+                  className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden"
                 >
-                  <button
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleExpand(r.id)}
-                    className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition"
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleExpand(r.id); } }}
+                    className="w-full p-4 hover:bg-white/5 active:bg-white/10 transition cursor-pointer select-none"
                   >
-                    <div className="flex items-center gap-4">
-                      <span className="text-white font-medium">{r.email}</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-white font-medium text-sm truncate mr-2">{r.email}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-xs text-white/40">{fmtDate(r.createdAt)}</span>
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-white/50" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-white/50" />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 mb-3">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sportClass}`}>
                         {r.favoriteSport}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-300">
                         {r.favoriteLeagueType}
                       </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-amber-500/20 text-amber-300">
+                        {r.competitiveness}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300">
+                        {r.draftPreference}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-rose-500/20 text-rose-300">
+                        {r.painPoint}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-white/40">{fmtDate(r.createdAt)}</span>
-                      {isExpanded ? (
-                        <ChevronUp className="h-4 w-4 text-white/40" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 text-white/40" />
-                      )}
+
+                    <div className="flex flex-wrap gap-1">
+                      {(Array.isArray(r.experimentalInterest) ? r.experimentalInterest : []).map((interest, i) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded-full text-[11px] bg-cyan-500/15 text-cyan-300 border border-cyan-500/20"
+                        >
+                          {interest}
+                        </span>
+                      ))}
                     </div>
-                  </button>
+                  </div>
 
                   {isExpanded && (
-                    <div className="border-t border-white/5 p-4 space-y-3 bg-white/[0.01]">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs text-white/40 mb-1">Competitiveness</div>
-                          <div className="text-sm text-white/80">{r.competitiveness}</div>
+                    <div className="border-t border-white/10 p-4 space-y-3 bg-white/[0.04]">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3">
+                          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Sport</div>
+                          <div className="text-sm text-white font-medium">{r.favoriteSport}</div>
                         </div>
-                        <div>
-                          <div className="text-xs text-white/40 mb-1">Draft Preference</div>
-                          <div className="text-sm text-white/80">{r.draftPreference}</div>
+                        <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3">
+                          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">League Type</div>
+                          <div className="text-sm text-white font-medium">{r.favoriteLeagueType}</div>
                         </div>
-                        <div>
-                          <div className="text-xs text-white/40 mb-1">Pain Point</div>
-                          <div className="text-sm text-white/80">{r.painPoint}</div>
+                        <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3">
+                          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Competitiveness</div>
+                          <div className="text-sm text-white font-medium">{r.competitiveness}</div>
                         </div>
-                        <div>
-                          <div className="text-xs text-white/40 mb-1">Interested In</div>
-                          <div className="flex flex-wrap gap-1">
-                            {r.experimentalInterest.map((interest, i) => (
-                              <span
-                                key={i}
-                                className="px-2 py-0.5 rounded-full text-xs bg-cyan-500/20 text-cyan-300"
-                              >
-                                {interest}
-                              </span>
-                            ))}
-                          </div>
+                        <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3">
+                          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Draft Preference</div>
+                          <div className="text-sm text-white font-medium">{r.draftPreference}</div>
+                        </div>
+                        <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3 col-span-2">
+                          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Biggest Pain Point</div>
+                          <div className="text-sm text-white font-medium">{r.painPoint}</div>
+                        </div>
+                      </div>
+                      <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3">
+                        <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5">Interested In</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(Array.isArray(r.experimentalInterest) ? r.experimentalInterest : []).map((interest, i) => (
+                            <span
+                              key={i}
+                              className="px-2.5 py-1 rounded-full text-xs bg-cyan-500/20 text-cyan-300 border border-cyan-500/20"
+                            >
+                              {interest}
+                            </span>
+                          ))}
                         </div>
                       </div>
                       {r.freeText && (
-                        <div className="mt-3 pt-3 border-t border-white/5">
-                          <div className="text-xs text-white/40 mb-1">Additional Feedback</div>
-                          <div className="text-sm text-white/80 italic">&ldquo;{r.freeText}&rdquo;</div>
+                        <div className="rounded-lg bg-white/[0.04] border border-white/5 p-3">
+                          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Additional Feedback</div>
+                          <div className="text-sm text-white/90 italic">&ldquo;{r.freeText}&rdquo;</div>
                         </div>
                       )}
                     </div>
