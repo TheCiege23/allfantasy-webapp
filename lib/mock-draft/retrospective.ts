@@ -134,11 +134,9 @@ function computeCalibrationDeltas(
     if (!sc) continue
 
     const actualInList = pred.topTargets.find(t => normName(t.player) === normName(actual.playerName))
-    const wasHit = !!actualInList
+    if (actualInList) continue
 
-    if (wasHit) continue
-
-    const error = 1 - (actualInList?.probability || 0) / 100
+    const error = 1
     const totalWeight = sc.adpWeight + sc.teamNeedWeight + sc.managerTendencyWeight + sc.newsImpactWeight + sc.rookieRankBoostWeight || 100
 
     deltas.adp += error * (sc.adpWeight / totalWeight - 0.2)
