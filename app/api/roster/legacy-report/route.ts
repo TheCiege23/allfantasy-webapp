@@ -13,6 +13,13 @@ export async function POST(req: NextRequest) {
   const { leagueId } = await req.json().catch(() => ({}));
 
   try {
+    const profile = await (prisma as any).userProfile.findUnique({
+      where: { userId },
+      select: { sleeperUserId: true, sleeperUsername: true },
+    });
+
+    const sleeperUserId = profile?.sleeperUserId;
+
     let league: any;
     if (leagueId) {
       league = await (prisma as any).league.findUnique({
@@ -27,10 +34,17 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!league) throw new Error('No synced league found');
+    if (!league) {
+      return NextResponse.json({ overallScore: 0, insights: [], noLeague: true });
+    }
 
-    const roster = league.rosters.find((r: any) => r.platformUserId === userId);
-    if (!roster) throw new Error('Roster not found');
+    const roster = league.rosters.find((r: any) =>
+      r.platformUserId === sleeperUserId ||
+      r.platformUserId === userId
+    );
+    if (!roster) {
+      return NextResponse.json({ overallScore: 0, insights: [], noRoster: true });
+    }
 
     const players: any[] = roster.playerData || [];
 

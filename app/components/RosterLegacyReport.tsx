@@ -44,7 +44,6 @@ export default function RosterLegacyReport({ leagueId }: { leagueId?: string }) 
       } catch (err: any) {
         const msg = err.message || 'Failed to generate legacy report';
         setError(msg);
-        toast.error(msg);
       } finally {
         setLoading(false);
       }
