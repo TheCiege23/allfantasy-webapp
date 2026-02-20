@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useCallback } from "react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 
 type Game = {
@@ -23,6 +23,8 @@ type Node = {
   homeTeamName: string | null
   awayTeamName: string | null
   sportsGameId: string | null
+  nextNodeId: string | null
+  nextNodeSide: string | null
   game: Game | null
 }
 
@@ -52,11 +54,92 @@ function isPickLocked(node: Node) {
   return new Date(node.game.startTime) <= new Date()
 }
 
+function buildSeedMap(nodes: Node[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const n of nodes) {
+    if (n.round === 1) {
+      if (n.homeTeamName && n.seedHome != null) map.set(n.homeTeamName, n.seedHome)
+      if (n.awayTeamName && n.seedAway != null) map.set(n.awayTeamName, n.seedAway)
+    }
+  }
+  return map
+}
+
+function computeEffectiveTeams(
+  nodes: Node[],
+  picks: Record<string, string | null>
+): Map<string, { home: string | null; away: string | null }> {
+  const effective = new Map<string, { home: string | null; away: string | null }>()
+
+  for (const n of nodes) {
+    effective.set(n.id, {
+      home: n.homeTeamName,
+      away: n.awayTeamName,
+    })
+  }
+
+  const sorted = [...nodes].sort((a, b) => a.round - b.round)
+
+  for (const n of sorted) {
+    const picked = picks[n.id]
+    if (!picked || !n.nextNodeId || !n.nextNodeSide) continue
+
+    const current = effective.get(n.nextNodeId)
+    if (!current) continue
+
+    if (n.nextNodeSide === "home") {
+      effective.set(n.nextNodeId, { ...current, home: picked })
+    } else {
+      effective.set(n.nextNodeId, { ...current, away: picked })
+    }
+  }
+
+  return effective
+}
+
+function findInvalidDownstreamPicks(
+  nodes: Node[],
+  newPicks: Record<string, string | null>
+): string[] {
+  const newEffective = computeEffectiveTeams(nodes, newPicks)
+  const toClear: string[] = []
+
+  for (const n of nodes) {
+    const pick = newPicks[n.id]
+    if (!pick) continue
+
+    const eff = newEffective.get(n.id)
+    if (!eff) continue
+
+    if (pick !== eff.home && pick !== eff.away) {
+      toClear.push(n.id)
+    }
+  }
+
+  return toClear
+}
+
+function cascadeClearInvalidPicks(
+  nodes: Node[],
+  basePicks: Record<string, string | null>
+): Record<string, string | null> {
+  let current = { ...basePicks }
+  let maxIter = 10
+  while (maxIter-- > 0) {
+    const invalid = findInvalidDownstreamPicks(nodes, current)
+    if (invalid.length === 0) break
+    for (const id of invalid) current[id] = null
+  }
+  return current
+}
+
 export function BracketProView({ tournamentId, leagueId, entryId, nodes, initialPicks }: Props) {
   const { data: live } = useBracketLive({ tournamentId, leagueId, enabled: true, intervalMs: 12000 })
 
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks)
   const [savingNode, setSavingNode] = useState<string | null>(null)
+
+  const seedMap = useMemo(() => buildSeedMap(nodes), [nodes])
 
   const nodesWithLive = useMemo(() => {
     const gameById = new Map((live?.games ?? []).map((g) => [g.id, g]))
@@ -65,6 +148,11 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
       return { ...n, game: g ?? n.game ?? null }
     })
   }, [nodes, live?.games])
+
+  const effective = useMemo(
+    () => computeEffectiveTeams(nodesWithLive, picks),
+    [nodesWithLive, picks]
+  )
 
   const { firstFour, finals, byRegion } = useMemo(() => {
     const ff: Node[] = []
@@ -85,12 +173,15 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     return { firstFour: ff, finals: fin, byRegion: reg }
   }, [nodesWithLive])
 
-  async function submitPick(node: Node, teamName: string) {
+  const submitPick = useCallback(async (node: Node, teamName: string) => {
     if (!teamName) return
     if (isPickLocked(node)) return
 
     const prev = picks[node.id] ?? null
-    setPicks((p) => ({ ...p, [node.id]: teamName }))
+
+    const tentative = { ...picks, [node.id]: teamName }
+    const cleaned = cascadeClearInvalidPicks(nodesWithLive, tentative)
+    setPicks(cleaned)
     setSavingNode(node.id)
 
     const res = await fetch(`/api/bracket/entries/${entryId}/pick`, {
@@ -106,17 +197,23 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
       const j = await res.json().catch(() => ({}))
       alert(j.error ?? "Pick failed")
     }
-  }
+  }, [picks, nodesWithLive, effective, entryId])
 
   function GameCard({ node }: { node: Node }) {
     const picked = picks[node.id] ?? null
     const locked = isPickLocked(node)
 
-    const homeName = node.homeTeamName
-    const awayName = node.awayTeamName
+    const eff = effective.get(node.id)
+    const homeName = eff?.home ?? node.homeTeamName
+    const awayName = eff?.away ?? node.awayTeamName
+
+    const homeSeed = homeName ? (seedMap.get(homeName) ?? null) : node.seedHome
+    const awaySeed = awayName ? (seedMap.get(awayName) ?? null) : node.seedAway
 
     const homePicked = !!homeName && picked === homeName
     const awayPicked = !!awayName && picked === awayName
+
+    const isPropagated = node.round > 1 && (!node.homeTeamName || !node.awayTeamName)
 
     return (
       <div className="rounded-xl border border-white/10 bg-black/20 backdrop-blur p-3 shadow-sm">
@@ -135,12 +232,15 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
             onClick={() => homeName && submitPick(node, homeName)}
             className={[
               "w-full text-left rounded-lg border px-3 py-2 text-sm transition",
-              locked ? "opacity-60 cursor-not-allowed" : "hover:border-white/30",
+              locked ? "opacity-60 cursor-not-allowed" : homeName ? "hover:border-white/30 cursor-pointer" : "cursor-default",
               homePicked ? "border-yellow-400/70 bg-yellow-400/10" : "border-white/10",
+              !homeName && isPropagated ? "opacity-40" : "",
             ].join(" ")}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{teamLabel(homeName, node.seedHome)}</span>
+              <span className={`truncate ${!homeName ? "italic text-white/30" : ""}`}>
+                {teamLabel(homeName, homeSeed)}
+              </span>
               <span className="text-xs text-gray-200">{node.game?.homeScore ?? "-"}</span>
             </div>
           </button>
@@ -150,19 +250,22 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
             onClick={() => awayName && submitPick(node, awayName)}
             className={[
               "w-full text-left rounded-lg border px-3 py-2 text-sm transition",
-              locked ? "opacity-60 cursor-not-allowed" : "hover:border-white/30",
+              locked ? "opacity-60 cursor-not-allowed" : awayName ? "hover:border-white/30 cursor-pointer" : "cursor-default",
               awayPicked ? "border-yellow-400/70 bg-yellow-400/10" : "border-white/10",
+              !awayName && isPropagated ? "opacity-40" : "",
             ].join(" ")}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate">{teamLabel(awayName, node.seedAway)}</span>
+              <span className={`truncate ${!awayName ? "italic text-white/30" : ""}`}>
+                {teamLabel(awayName, awaySeed)}
+              </span>
               <span className="text-xs text-gray-200">{node.game?.awayScore ?? "-"}</span>
             </div>
           </button>
         </div>
 
         <div className="mt-2 flex items-center justify-between text-[11px] text-gray-400">
-          <span>{locked ? "Locked" : savingNode === node.id ? "Saving..." : "Pick winner"}</span>
+          <span>{locked ? "Locked" : savingNode === node.id ? "Saving..." : homeName && awayName ? "Pick winner" : "Waiting for picks"}</span>
           <span>{node.game?.startTime ? new Date(node.game.startTime).toLocaleString() : ""}</span>
         </div>
       </div>

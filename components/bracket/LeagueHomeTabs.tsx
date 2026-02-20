@@ -34,6 +34,8 @@ type BracketNode = {
   homeTeamName: string | null
   awayTeamName: string | null
   sportsGameId: string | null
+  nextNodeId: string | null
+  nextNodeSide: string | null
   game: any
 }
 

@@ -10,6 +10,8 @@ export type BracketNodeWithGame = {
   homeTeamName: string | null
   awayTeamName: string | null
   sportsGameId: string | null
+  nextNodeId: string | null
+  nextNodeSide: string | null
   game: {
     id: string
     homeTeam: string
@@ -63,6 +65,8 @@ export async function getEntryBracketData(tournamentId: string, entryId: string)
     homeTeamName: n.homeTeamName,
     awayTeamName: n.awayTeamName,
     sportsGameId: n.sportsGameId,
+    nextNodeId: n.nextNodeId,
+    nextNodeSide: n.nextNodeSide,
     game: n.sportsGameId && gameById[n.sportsGameId]
       ? {
           ...gameById[n.sportsGameId],
