@@ -1,10 +1,13 @@
 "use client"
 
-import React from "react"
+import React, { useState, useEffect } from "react"
 import { useThemeMode } from "./ThemeProvider"
 
 export function ModeToggle(props: { className?: string }) {
   const { mode, cycleMode } = useThemeMode()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => setMounted(true), [])
 
   const label = mode === "dark" ? "Dark" : mode === "light" ? "Light" : "AF Legacy"
   const icon = mode === "dark" ? "🌙" : mode === "light" ? "☀️" : "⚡"
@@ -22,8 +25,9 @@ export function ModeToggle(props: { className?: string }) {
         background: 'var(--panel)',
       }}
       title="Toggle theme mode"
+      suppressHydrationWarning
     >
-      {icon} {label}
+      {mounted ? `${icon} ${label}` : '\u00A0'}
     </button>
   )
 }
