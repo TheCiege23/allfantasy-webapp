@@ -200,7 +200,13 @@ export async function computeBoardDrift(
 
   let managerDna: ManagerDNA[] = []
   if (league) {
-    managerDna = buildManagerDNAFromLeague(league as any, currentPool)
+    managerDna = buildManagerDNAFromLeague(
+      league.teams as any,
+      league.rosters as any,
+      currentPool,
+      isDynasty,
+      teamCount
+    )
   }
 
   const currentWeek = getWeekKey()
