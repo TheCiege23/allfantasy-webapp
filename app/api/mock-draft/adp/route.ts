@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getLiveADP } from '@/lib/adp-data'
+import { resolveSleeperIds } from '@/lib/sleeper/players-cache'
 
 export async function GET(req: NextRequest) {
   try {
@@ -15,6 +16,11 @@ export async function GET(req: NextRequest) {
 
     const entries = await getLiveADP(type, limit)
 
+    let sleeperIdMap: Record<string, string> = {}
+    try {
+      sleeperIdMap = await resolveSleeperIds(entries.map(e => e.name))
+    } catch {}
+
     return NextResponse.json({
       entries: entries.map(e => ({
         name: e.name,
@@ -23,6 +29,7 @@ export async function GET(req: NextRequest) {
         adp: e.adp,
         adpTrend: e.adpTrend,
         value: e.value,
+        sleeperId: sleeperIdMap[e.name] || null,
       })),
       count: entries.length,
       type,

@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 import { buildManagerDNAFromLeague, type ManagerDNA } from '@/lib/mock-draft/manager-dna'
+import { resolveSleeperIds } from '@/lib/sleeper/players-cache'
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
@@ -310,6 +311,24 @@ export async function POST(req: NextRequest) {
         topAvailableIfNoSnipe,
       }
     })
+
+    let sleeperIdMap: Record<string, string> = {}
+    try {
+      const allAlertNames = Array.from(new Set(snipeRadar.flatMap(e => e.alerts.map(a => a.player))))
+      sleeperIdMap = await resolveSleeperIds(allAlertNames)
+    } catch {}
+
+    const playerTeamMap = new Map<string, string>()
+    for (const p of pool) {
+      playerTeamMap.set(p.name, p.team || '')
+    }
+
+    for (const entry of snipeRadar) {
+      for (const alert of entry.alerts) {
+        (alert as any).sleeperId = sleeperIdMap[alert.player] || null;
+        (alert as any).team = playerTeamMap.get(alert.player) || null
+      }
+    }
 
     return NextResponse.json({
       ok: true,

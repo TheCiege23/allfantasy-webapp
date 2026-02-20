@@ -5565,7 +5565,7 @@ function AFLegacyContent() {
                               <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-white/5">
                                 <div className="flex items-center gap-2">
                                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${p.pos === 'QB' ? 'bg-red-500/20 text-red-400' : p.pos === 'RB' ? 'bg-green-500/20 text-green-400' : p.pos === 'WR' ? 'bg-blue-500/20 text-blue-400' : 'bg-orange-500/20 text-orange-400'}`}>{p.pos}</span>
-                                  <MiniPlayerImg name={p.name} size={18} />
+                                  <MiniPlayerImg sleeperId={p.id || p.sleeperId} name={p.name} size={18} />
                                   <div><div className="text-[10px] font-semibold text-white">{p.name}</div><div className="text-[8px] text-white/40">{p.team}</div></div>
                                 </div>
                                 <div className="flex items-center gap-4"><span className="text-[10px] text-white/60">{p.own}</span><span className="text-[10px]">{p.ai}</span></div>
@@ -5631,7 +5631,7 @@ function AFLegacyContent() {
                               <div key={i} className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-white/5">
                                 <div className="flex items-center gap-2">
                                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded ${p.pos === 'WR' ? 'bg-blue-500/20 text-blue-400' : p.pos === 'TE' ? 'bg-orange-500/20 text-orange-400' : 'bg-green-500/20 text-green-400'}`}>{p.pos}</span>
-                                  <MiniPlayerImg name={p.name} size={18} />
+                                  <MiniPlayerImg sleeperId={p.id || p.sleeperId} name={p.name} size={18} />
                                   <div><div className="text-[10px] font-semibold text-white">{p.name}</div><div className="text-[8px] text-white/40">{p.team}</div></div>
                                 </div>
                                 <div className="flex items-center gap-3">
@@ -9456,7 +9456,7 @@ function AFLegacyContent() {
                                               <div className="space-y-1.5">
                                                 {(trade.receivedPlayers || []).map((p: any, pi: number) => (
                                                   <div key={pi} className="flex items-center gap-2">
-                                                    <MiniPlayerImg name={p.name} size={20} />
+                                                    <MiniPlayerImg sleeperId={p.id || p.sleeperId || p.playerId} name={p.name} size={20} />
                                                     <div className="min-w-0">
                                                       <div className="text-xs font-medium text-white truncate">{p.name}</div>
                                                       {p.position && <div className="text-[9px] text-white/40">{p.position}</div>}
@@ -9479,7 +9479,7 @@ function AFLegacyContent() {
                                               <div className="space-y-1.5">
                                                 {(trade.gavePlayers || []).map((p: any, pi: number) => (
                                                   <div key={pi} className="flex items-center gap-2">
-                                                    <MiniPlayerImg name={p.name} size={20} />
+                                                    <MiniPlayerImg sleeperId={p.id || p.sleeperId || p.playerId} name={p.name} size={20} />
                                                     <div className="min-w-0">
                                                       <div className="text-xs font-medium text-white truncate">{p.name}</div>
                                                       {p.position && <div className="text-[9px] text-white/40">{p.position}</div>}

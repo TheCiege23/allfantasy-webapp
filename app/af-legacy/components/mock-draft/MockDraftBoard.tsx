@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { Layers, Users, Zap, Target, AlertTriangle, ChevronDown, ChevronRight, BarChart3, Loader2 } from 'lucide-react'
+import MiniPlayerImg from '@/components/MiniPlayerImg'
+import { teamLogoUrl } from '@/lib/media-url'
 
 const POS_COLORS: Record<string, string> = {
   QB: 'bg-red-500/20 text-red-300 border-red-500/30',
@@ -21,6 +23,7 @@ type ADPPlayer = {
   adp: number
   adpTrend: number | null
   value: number | null
+  sleeperId?: string | null
 }
 
 type ManagerDNACard = {
@@ -38,6 +41,8 @@ type ManagerDNACard = {
   positionalAggression: Record<string, { early: number; mid: number; late: number }>
   tendency: Record<string, number>
   rosterCounts: Record<string, number>
+  avatarUrl?: string | null
+  platformUserId?: string | null
 }
 
 type PickTarget = {
@@ -45,6 +50,8 @@ type PickTarget = {
   position: string
   probability: number
   why: string
+  sleeperId?: string | null
+  team?: string | null
   scorecard: {
     adpWeight: number
     teamNeedWeight: number
@@ -74,6 +81,8 @@ type SnipeAlert = {
   snipedByManagers: Array<{ manager: string; probability: number }>
   urgencyLevel: 'critical' | 'warning' | 'watch'
   expectedValueLost: number
+  sleeperId?: string | null
+  team?: string | null
 }
 
 type SnipeRadarEntry = {
@@ -82,6 +91,23 @@ type SnipeRadarEntry = {
   pick: number
   picksBefore: number
   alerts: SnipeAlert[]
+}
+
+function TeamLogo({ team, size = 14 }: { team?: string | null; size?: number }) {
+  const [err, setErr] = useState(false)
+  const src = team ? teamLogoUrl(team) : ''
+  if (!src || err) return null
+  return (
+    <img
+      src={src}
+      alt={team || ''}
+      width={size}
+      height={size}
+      className="rounded-full bg-black/60 border border-white/10 flex-shrink-0"
+      onError={() => setErr(true)}
+      loading="lazy"
+    />
+  )
 }
 
 type League = {
@@ -333,14 +359,26 @@ export default function MockDraftBoard({ leagues, username }: Props) {
                                 {p.position}
                               </span>
                             </div>
-                            <div className="text-xs font-semibold truncate leading-tight">{p.name}</div>
-                            <div className="flex items-center justify-between mt-1">
-                              <span className="text-[9px] opacity-50">{p.team || '—'}</span>
-                              {p.adpTrend !== null && p.adpTrend !== 0 && (
-                                <span className={`text-[9px] font-medium ${p.adpTrend > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                  {p.adpTrend > 0 ? '↑' : '↓'}{Math.abs(p.adpTrend).toFixed(1)}
-                                </span>
-                              )}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <div className="relative flex-shrink-0">
+                                <MiniPlayerImg sleeperId={p.sleeperId || undefined} name={p.name} size={28} />
+                                {p.team && (
+                                  <div className="absolute -bottom-0.5 -right-0.5">
+                                    <TeamLogo team={p.team} size={12} />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-xs font-semibold truncate leading-tight">{p.name}</div>
+                                <div className="flex items-center justify-between mt-0.5">
+                                  <span className="text-[9px] opacity-50">{p.team || '—'}</span>
+                                  {p.adpTrend !== null && p.adpTrend !== 0 && (
+                                    <span className={`text-[9px] font-medium ${p.adpTrend > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      {p.adpTrend > 0 ? '↑' : '↓'}{Math.abs(p.adpTrend).toFixed(1)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )
@@ -423,8 +461,9 @@ export default function MockDraftBoard({ leagues, username }: Props) {
                         </div>
                         {top && (
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className={`w-1.5 h-1.5 rounded-full ${POS_DOT[top.position] || 'bg-gray-400'}`} />
+                            <MiniPlayerImg sleeperId={top.sleeperId || undefined} name={top.player} size={16} />
                             <span className="text-xs text-white/60">{top.player}</span>
+                            <TeamLogo team={top.team} size={12} />
                             <span className="text-[9px] text-cyan-400/70">{Math.round(top.probability * 100)}%</span>
                           </div>
                         )}
@@ -440,7 +479,14 @@ export default function MockDraftBoard({ leagues, username }: Props) {
                         {pick.topTargets.slice(0, 5).map((t, tIdx) => (
                           <div key={tIdx} className="flex items-center gap-3">
                             <span className="text-[9px] text-white/20 w-4 text-right">{tIdx + 1}.</span>
-                            <span className={`w-1.5 h-1.5 rounded-full ${POS_DOT[t.position] || 'bg-gray-400'}`} />
+                            <div className="relative flex-shrink-0">
+                              <MiniPlayerImg sleeperId={t.sleeperId || undefined} name={t.player} size={20} />
+                              {t.team && (
+                                <div className="absolute -bottom-0.5 -right-0.5">
+                                  <TeamLogo team={t.team} size={10} />
+                                </div>
+                              )}
+                            </div>
                             <span className="text-xs text-white/70 flex-1">{t.player}</span>
                             <span className="text-[10px] text-white/30">{t.position}</span>
                             <span className="text-[10px] text-cyan-400/80 font-medium">{Math.round(t.probability * 100)}%</span>
@@ -502,9 +548,7 @@ export default function MockDraftBoard({ leagues, username }: Props) {
                     onClick={() => setExpandedDna(isExpanded ? null : idx)}
                     className="w-full flex items-center gap-3 p-3 text-left hover:bg-white/[0.02] transition"
                   >
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500/15 to-cyan-500/15 flex items-center justify-center text-sm font-bold text-white/50">
-                      {idx + 1}
-                    </div>
+                    <MiniPlayerImg name={dna.manager} sleeperId={null} avatarUrl={dna.avatarUrl} size={36} className="rounded-xl" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-white/80 truncate">{dna.manager}</div>
                       <div className="text-[10px] text-purple-300/60 mt-0.5">{dna.overallArchetype}</div>
@@ -627,7 +671,14 @@ export default function MockDraftBoard({ leagues, username }: Props) {
                         <div key={aIdx} className={`rounded-xl border p-3 ${urgencyColors[alert.urgencyLevel]}`}>
                           <div className="flex items-center justify-between mb-1.5">
                             <div className="flex items-center gap-2">
-                              <span className={`w-1.5 h-1.5 rounded-full ${POS_DOT[alert.position] || 'bg-gray-400'}`} />
+                              <div className="relative flex-shrink-0">
+                                <MiniPlayerImg sleeperId={alert.sleeperId || undefined} name={alert.player} size={22} />
+                                {alert.team && (
+                                  <div className="absolute -bottom-0.5 -right-0.5">
+                                    <TeamLogo team={alert.team} size={10} />
+                                  </div>
+                                )}
+                              </div>
                               <span className="text-sm font-semibold text-white/80">{alert.player}</span>
                               <span className="text-[10px] text-white/30">{alert.position}</span>
                             </div>

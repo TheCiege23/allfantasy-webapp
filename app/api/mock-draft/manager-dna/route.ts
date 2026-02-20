@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getLiveADP } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 import { buildManagerDNAFromLeague } from '@/lib/mock-draft/manager-dna'
+import { sleeperAvatarUrl } from '@/lib/sleeper/players-cache'
 
 export async function POST(req: NextRequest) {
   try {
@@ -52,10 +53,34 @@ export async function POST(req: NextRequest) {
       league.leagueSize || league.teams.length
     )
 
+    let avatarMap: Record<string, string> = {}
+    try {
+      if (league.platformLeagueId) {
+        const usersRes = await fetch(
+          `https://api.sleeper.app/v1/league/${league.platformLeagueId}/users`,
+          { signal: AbortSignal.timeout(8000) }
+        )
+        if (usersRes.ok) {
+          const users: Array<{ user_id?: string; avatar?: string; display_name?: string }> = await usersRes.json()
+          for (const u of users) {
+            if (u.user_id && u.avatar) {
+              avatarMap[u.user_id] = sleeperAvatarUrl(u.avatar)
+            }
+          }
+        }
+      }
+    } catch {}
+
+    const enrichedCards = dnaCards.map((card: any) => {
+      const platformUserId = card.platformUserId || null
+      const avatarUrl = (platformUserId && avatarMap[platformUserId]) || null
+      return { ...card, avatarUrl }
+    })
+
     return NextResponse.json({
       ok: true,
       league: { id: league.id, name: league.name, size: league.leagueSize || league.teams.length },
-      dnaCards,
+      dnaCards: enrichedCards,
     })
   } catch (err: any) {
     console.error('[mock-draft/manager-dna] error', err)

@@ -4,17 +4,18 @@ import React, { useState } from 'react'
 import { resolveHeadshot, type PlayerMedia } from '@/lib/media-url'
 
 interface MiniPlayerImgProps {
-  sleeperId?: string
+  sleeperId?: string | null
   name?: string
   size?: number
   className?: string
   media?: PlayerMedia | null
+  avatarUrl?: string | null
 }
 
-export default function MiniPlayerImg({ sleeperId, name, size = 20, className = '', media }: MiniPlayerImgProps) {
+export default function MiniPlayerImg({ sleeperId, name, size = 20, className = '', media, avatarUrl }: MiniPlayerImgProps) {
   const [error, setError] = useState(false)
 
-  const src = resolveHeadshot(media, sleeperId)
+  const src = avatarUrl || resolveHeadshot(media, sleeperId || undefined)
 
   if (!src || error) {
     return (

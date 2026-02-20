@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getLiveADP, type ADPEntry } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 import { buildManagerDNAFromLeague, type ManagerDNA } from '@/lib/mock-draft/manager-dna'
+import { resolveSleeperIds } from '@/lib/sleeper/players-cache'
 
 type ScenarioPreset = {
   id: string
@@ -448,6 +449,24 @@ export async function POST(req: NextRequest) {
 
         forecasts.push({ overall, round, pick, manager, topTargets: results, volatility })
         overall++
+      }
+    }
+
+    let sleeperIdMap: Record<string, string> = {}
+    try {
+      const allPlayerNames = Array.from(new Set(forecasts.flatMap(f => f.topTargets.map(t => t.player))))
+      sleeperIdMap = await resolveSleeperIds(allPlayerNames)
+    } catch {}
+
+    const playerTeamMap = new Map<string, string>()
+    for (const p of pool) {
+      playerTeamMap.set(p.name, p.team || '')
+    }
+
+    for (const f of forecasts) {
+      for (const t of f.topTargets) {
+        (t as any).sleeperId = sleeperIdMap[t.player] || null;
+        (t as any).team = playerTeamMap.get(t.player) || null
       }
     }
 
