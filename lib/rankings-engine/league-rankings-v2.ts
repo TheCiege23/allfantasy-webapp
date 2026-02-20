@@ -3382,7 +3382,7 @@ export async function computeLeagueRankingsV2(
       weightVersion: weightConfig.version,
       weightCalibratedAt: weightConfig.calibratedAt,
       learnedParams: learnedParams ?? undefined,
-      adaptiveWeights: adaptiveComponentWeights ?? undefined,
+      adaptiveWeights: adaptiveComponentWeights ? (adaptiveComponentWeights as unknown as Record<string, number>) : undefined,
       segmentKey,
       modelConfidence: computeModelConfidence(teams),
       dataFreshness: computeDataFreshness(teams),
