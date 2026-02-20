@@ -2917,6 +2917,7 @@ export async function computeLeagueRankingsV2(
     playoffSeed: number | null
     isChampion: boolean
     portfolioRaw: { currentValue: number; year3Value: number; year5Value: number; volatilitySum: number; playerCount: number }
+    rosterInjuryImpact: RosterInjuryImpact
   }
 
   const teamIntermediates: TeamIntermediate[] = []
