@@ -10,6 +10,7 @@ export interface TradeAnalyzerIntelDeps {
   findPlayerByName: typeof findPlayerByName
   findLatestRookieClass: () => Promise<Awaited<ReturnType<typeof prisma.rookieClass.findFirst>>>
   findTopRookieRankings: () => Promise<Awaited<ReturnType<typeof prisma.rookieRanking.findMany>>>
+  findKtcCache: () => Promise<Awaited<ReturnType<typeof prisma.sportsDataCache.findUnique>> | null>
 }
 
 const defaultDeps: TradeAnalyzerIntelDeps = {
@@ -19,6 +20,7 @@ const defaultDeps: TradeAnalyzerIntelDeps = {
   findPlayerByName,
   findLatestRookieClass: () => prisma.rookieClass.findFirst({ orderBy: { year: 'desc' } }),
   findTopRookieRankings: () => prisma.rookieRanking.findMany({ orderBy: [{ year: 'desc' }, { rank: 'asc' }], take: 20 }),
+  findKtcCache: () => prisma.sportsDataCache.findUnique({ where: { key: 'ktc-dynasty-rankings' } }),
 }
 
 function toPlayerNames(ctx: TradeDecisionContextV1): string[] {
@@ -50,7 +52,7 @@ export async function buildTradeAnalyzerIntelPrompt(
   const playerNames = toPlayerNames(ctx).slice(0, 20)
   const teamAbbrevs = toTeamAbbrevs(ctx).slice(0, 12)
 
-  const [news, rolling, fantasyCalc, rookieClass, rookieRanks] = await Promise.all([
+  const [news, rolling, fantasyCalc, rookieClass, rookieRanks, ktcCache] = await Promise.all([
     deps.fetchNewsContext({ prisma, newsApiKey: process.env.NEWS_API_KEY }, {
       playerNames,
       teamAbbrevs,
@@ -72,6 +74,7 @@ export async function buildTradeAnalyzerIntelPrompt(
     }).catch(() => []),
     deps.findLatestRookieClass().catch(() => null),
     deps.findTopRookieRankings().catch(() => []),
+    deps.findKtcCache().catch(() => null),
   ])
 
   const fcLines = playerNames
@@ -83,6 +86,13 @@ export async function buildTradeAnalyzerIntelPrompt(
   const newsLines = (news?.items || []).slice(0, 10).map(n => `- [${n.relevance}] ${n.title} (${n.source}, ${n.publishedAt.slice(0, 10) || 'unknown'})`)
   const rollingLines = (rolling?.players || []).slice(0, 10).map(p => `- ${p.name} (${p.position || '?'}/${p.team || '?'}): status=${p.status || 'unknown'}, fpg=${p.fantasyPointsPerGame ?? 'n/a'}, games=${p.gamesPlayed ?? 'n/a'}`)
 
+  const ktcData = Array.isArray(ktcCache?.data) ? (ktcCache.data as Array<{ name: string; value: number; rank: number }>) : []
+  const ktcLines = playerNames
+    .map(n => ({ name: n, v: ktcData.find(k => k.name === n) }))
+    .filter(r => r.v)
+    .slice(0, 14)
+    .map(r => `- ${r.name}: value=${r.v!.value}, rank=#${r.v!.rank}`)
+
   const rookieLines = rookieRanks.slice(0, 10).map(r => `- ${r.year} #${r.rank}: ${r.name} (${r.position})${r.dynastyValue ? ` value=${r.dynastyValue}` : ''}`)
 
   const parts: string[] = []
@@ -93,6 +103,8 @@ export async function buildTradeAnalyzerIntelPrompt(
   if (rollingLines.length) parts.push(rollingLines.join('\n'))
   parts.push(`FantasyCalc matches: ${fcLines.length}/${playerNames.length}`)
   if (fcLines.length) parts.push(fcLines.join('\n'))
+  parts.push(`KTC matches: ${ktcLines.length}/${playerNames.length}`)
+  if (ktcLines.length) parts.push(ktcLines.join('\n'))
   if (rookieClass) {
     parts.push(`Rookie Class ${rookieClass.year}: strength=${rookieClass.strength.toFixed(2)}, QB=${rookieClass.qbDepth.toFixed(2)}, RB=${rookieClass.rbDepth.toFixed(2)}, WR=${rookieClass.wrDepth.toFixed(2)}, TE=${rookieClass.teDepth.toFixed(2)}`)
   }

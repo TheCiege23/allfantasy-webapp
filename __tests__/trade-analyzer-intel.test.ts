@@ -74,10 +74,11 @@ describe('buildTradeAnalyzerIntelPrompt', () => {
     const deps: TradeAnalyzerIntelDeps = {
       fetchNewsContext: vi.fn().mockResolvedValue({ items: [{ id: 'n1', title: 'Player X expected to start', source: 'NewsAPI', url: null, team: 'MIN', publishedAt: '2026-02-01T00:00:00Z', isInjury: false, relevance: 'direct' }], fetchedAt: '2026-02-01T00:00:00Z', sources: ['newsapi'], playerHits: 1, teamHits: 0 }),
       fetchRollingInsights: vi.fn().mockResolvedValue({ players: [{ playerId: '1', name: 'Justin Jefferson', team: 'MIN', position: 'WR', status: 'active', age: null, fantasyPointsPerGame: 18.7, gamesPlayed: 17, seasonStats: null }], teams: [], fetchedAt: '2026-02-01T00:00:00Z', source: 'db_cache' }),
-      fetchFantasyCalcValues: vi.fn().mockResolvedValue([{ player: { id: 1, name: 'Justin Jefferson', mflId: '', sleeperId: '', position: 'WR', maybeBirthday: null, maybeHeight: null, maybeWeight: null, maybeCollege: null, maybeTeam: 'MIN', maybeAge: 25, maybeYoe: null }, value: 10000, overallRank: 1, positionRank: 1, trend30Day: 50, redraftDynastyValueDifference: 0, redraftDynastyValuePercDifference: 0, redraftValue: 0, combinedValue: 0, maybeMovingStandardDeviation: null }]),
+      fetchFantasyCalcValues: vi.fn().mockResolvedValue([{ player: { id: 1, name: 'Justin Jefferson', mflId: '', sleeperId: '', position: 'WR', maybeBirthday: null, maybeHeight: null, maybeWeight: null, maybeCollege: null, maybeTeam: 'MIN', maybeAge: 25, maybeYoe: null }, value: 10000, overallRank: 1, positionRank: 1, trend30Day: 50, redraftDynastyValueDifference: 0, redraftDynastyValuePercDifference: 0, redraftValue: 0, combinedValue: 0, maybeMovingStandardDeviation: null, maybeMovingAverage: null }]),
       findPlayerByName: vi.fn((players, name) => players.find((p: any) => p.player.name === name) || null),
       findLatestRookieClass: vi.fn().mockResolvedValue({ year: 2026, strength: 0.88, qbDepth: 0.7, rbDepth: 0.9, wrDepth: 0.92, teDepth: 0.61, updatedAt: new Date() }),
       findTopRookieRankings: vi.fn().mockResolvedValue([{ id: '1', year: 2026, name: 'Rookie One', position: 'WR', team: 'MIN', rank: 1, dynastyValue: 7000, college: 'X', createdAt: new Date(), updatedAt: new Date() }]),
+      findKtcCache: vi.fn().mockResolvedValue({ key: 'ktc-dynasty-rankings', data: [{ name: 'Justin Jefferson', value: 9999, rank: 1 }], expiresAt: new Date(), createdAt: new Date() }),
     }
 
     const out = await buildTradeAnalyzerIntelPrompt(makeCtx(12), deps)
@@ -85,6 +86,7 @@ describe('buildTradeAnalyzerIntelPrompt', () => {
     expect(out).toContain('News: 1 items')
     expect(out).toContain('FantasyCalc matches:')
     expect(out).toContain('Rookie Class 2026')
+    expect(out).toContain('KTC matches:')
   })
 
   it('falls back to 12-team fantasycalc settings when league size unsupported', async () => {
@@ -95,6 +97,7 @@ describe('buildTradeAnalyzerIntelPrompt', () => {
       findPlayerByName: vi.fn().mockReturnValue(null),
       findLatestRookieClass: vi.fn().mockResolvedValue(null),
       findTopRookieRankings: vi.fn().mockResolvedValue([]),
+      findKtcCache: vi.fn().mockResolvedValue(null),
     }
 
     await buildTradeAnalyzerIntelPrompt(makeCtx(13), deps)
