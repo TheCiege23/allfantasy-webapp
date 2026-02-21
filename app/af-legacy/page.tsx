@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { XP_PER_LEVEL, TIERS } from "@/lib/ranking/config"
@@ -1246,6 +1246,8 @@ function AFLegacyContent() {
   const [chatLoading, setChatLoading] = useState(false)
   const [chatError, setChatError] = useState('')
   const [chatImagePreview, setChatImagePreview] = useState<string | null>(null)
+  const [chatDragActive, setChatDragActive] = useState(false)
+  const chatDragCounter = useRef(0)
   const [chatLeagueId, setChatLeagueId] = useState<string>('')
   const [mockDraftLeagueId, setMockDraftLeagueId] = useState<string>('')
   const [mockDraftType, setMockDraftType] = useState<'rookie' | 'vet' | 'both'>('both')
@@ -3790,19 +3792,71 @@ function AFLegacyContent() {
     }
   }
 
-  const handleChatImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const processChatImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setChatError('Only image files are supported')
+      return
+    }
     if (file.size > 10 * 1024 * 1024) {
       setChatError('Image must be under 10MB')
       return
     }
+    setChatError('')
     const reader = new FileReader()
     reader.onload = () => {
       setChatImagePreview(reader.result as string)
     }
     reader.readAsDataURL(file)
+  }, [])
+
+  const handleChatImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) processChatImageFile(file)
   }
+
+  const handleChatDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    chatDragCounter.current++
+    if (chatDragCounter.current === 1) setChatDragActive(true)
+  }, [])
+
+  const handleChatDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleChatDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    chatDragCounter.current--
+    if (chatDragCounter.current <= 0) {
+      chatDragCounter.current = 0
+      setChatDragActive(false)
+    }
+  }, [])
+
+  const handleChatDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    chatDragCounter.current = 0
+    setChatDragActive(false)
+    const file = e.dataTransfer?.files?.[0]
+    if (file) processChatImageFile(file)
+  }, [processChatImageFile])
+
+  const handleChatPaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault()
+        const file = items[i].getAsFile()
+        if (file) processChatImageFile(file)
+        return
+      }
+    }
+  }, [processChatImageFile])
 
   const runRankingsAnalysis = async (leagueId?: string, retryCount = 0) => {
     const targetLeague = leagueId || rankingsSelectedLeague
@@ -14877,7 +14931,23 @@ function AFLegacyContent() {
                   />
                   {/* Tab Headline */}
                   <p className="text-center text-sm sm:text-base text-white/60 mb-4">Ask your fantasy questions and get clear, contextual answers.</p>
-                  <div className="bg-black/30 border border-cyan-500/20 rounded-2xl p-4 sm:p-6 flex flex-col h-[600px] sm:h-[700px]">
+                  <div
+                    className={`bg-black/30 border rounded-2xl p-4 sm:p-6 flex flex-col h-[600px] sm:h-[700px] relative transition-colors ${chatDragActive ? 'border-cyan-400/60 bg-cyan-500/5' : 'border-cyan-500/20'}`}
+                    onDragEnter={handleChatDragEnter}
+                    onDragOver={handleChatDragOver}
+                    onDragLeave={handleChatDragLeave}
+                    onDrop={handleChatDrop}
+                    onPaste={handleChatPaste}
+                  >
+                    {chatDragActive && (
+                      <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-black/60 backdrop-blur-sm border-2 border-dashed border-cyan-400/50 pointer-events-none">
+                        <div className="text-center">
+                          <div className="text-4xl mb-2">📸</div>
+                          <p className="text-cyan-300 font-semibold text-lg">Drop your image here</p>
+                          <p className="text-cyan-400/60 text-sm mt-1">Screenshots, trade images, roster photos</p>
+                        </div>
+                      </div>
+                    )}
                     <div className="flex items-start sm:items-center gap-3 mb-4">
                       <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/30 to-purple-500/30 flex items-center justify-center text-xl flex-shrink-0">💬</div>
                       <div className="flex-1 min-w-0">
@@ -15064,7 +15134,8 @@ function AFLegacyContent() {
                         value={chatInput}
                         onChange={(e) => setChatInput(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() } }}
-                        placeholder={chatLeagueId ? `Ask about ${leagues.find(l => l.league_id === chatLeagueId)?.name || 'this league'}...` : 'Ask about trades, players, drafts...'}
+                        onPaste={handleChatPaste}
+                        placeholder={chatLeagueId ? `Ask about ${leagues.find(l => l.league_id === chatLeagueId)?.name || 'this league'}...` : 'Ask or paste/drop a screenshot...'}
                         className="flex-1 px-4 py-3 rounded-xl bg-black/40 border border-white/20 text-white placeholder:text-gray-500 focus:border-cyan-400/50 focus:outline-none text-sm sm:text-base"
                         disabled={chatLoading}
                       />
@@ -15078,7 +15149,7 @@ function AFLegacyContent() {
                     </div>
                     
                     <p className="mt-3 text-[10px] sm:text-xs text-gray-500 text-center">
-                      Sports and fantasy sports questions only. Upload trade screenshots for instant analysis.
+                      Sports and fantasy sports questions only. Drop, paste, or upload screenshots for instant analysis.
                     </p>
                   </div>
                   </>
