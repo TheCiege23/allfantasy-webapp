@@ -1,4 +1,5 @@
 // CFB Player Data - Integrates with CollegeFootballData.com API for devy player info
+import { prisma } from '@/lib/prisma'
 
 export interface CFBPlayer {
   id: number
@@ -461,4 +462,477 @@ export async function getTeamDevyRoster(team: string, year?: number): Promise<De
       trend: 'stable' as const,
       notes: null,
     }))
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2 Caching Layer
+// ──────────────────────────────────────────────────────────────────
+
+async function getCachedOrFetch<T>(cacheKey: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T | null> {
+  try {
+    const cached = await prisma.sportsDataCache.findUnique({ where: { key: cacheKey } })
+    if (cached && cached.expiresAt > new Date()) {
+      return cached.data as T
+    }
+  } catch {}
+
+  try {
+    const data = await fetcher()
+    if (data !== null && data !== undefined) {
+      const expiresAt = new Date(Date.now() + ttlMs)
+      await prisma.sportsDataCache.upsert({
+        where: { key: cacheKey },
+        create: { key: cacheKey, data: data as any, expiresAt },
+        update: { data: data as any, expiresAt },
+      })
+    }
+    return data
+  } catch (err) {
+    console.error(`[CFBD Cache] Fetch failed for ${cacheKey}:`, err)
+    return null
+  }
+}
+
+const ONE_HOUR = 3600_000
+const ONE_DAY = 86_400_000
+const SEVEN_DAYS = 7 * ONE_DAY
+const THIRTY_DAYS = 30 * ONE_DAY
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Recruiting Data
+// ──────────────────────────────────────────────────────────────────
+
+export interface CFBRecruit {
+  id: number | null
+  athleteId: number | null
+  recruitType: string
+  year: number
+  ranking: number | null
+  name: string
+  school: string | null
+  committedTo: string | null
+  position: string | null
+  height: number | null
+  weight: number | null
+  stars: number
+  rating: number
+  city: string | null
+  stateProvince: string | null
+  country: string | null
+}
+
+export async function getCFBRecruits(year: number, team?: string, position?: string): Promise<CFBRecruit[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-recruits-${year}-${team || 'all'}-${position || 'all'}`
+
+  const result = await getCachedOrFetch<CFBRecruit[]>(cacheKey, SEVEN_DAYS, async () => {
+    let url = `${CFBD_BASE}/recruiting/players?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+    if (position) url += `&position=${encodeURIComponent(position)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+
+    if (!response.ok) {
+      console.error('[CFBD] Recruiting fetch failed:', response.status)
+      return []
+    }
+
+    const data = await response.json()
+    return data.map((r: any) => ({
+      id: r.id ?? null,
+      athleteId: r.athleteId ?? null,
+      recruitType: r.recruitType || 'HighSchool',
+      year: r.year,
+      ranking: r.ranking ?? null,
+      name: r.name || '',
+      school: r.school ?? null,
+      committedTo: r.committedTo ?? null,
+      position: r.position ?? null,
+      height: r.height ?? null,
+      weight: r.weight ?? null,
+      stars: r.stars ?? 0,
+      rating: r.rating ?? 0,
+      city: r.city ?? null,
+      stateProvince: r.stateProvince ?? null,
+      country: r.country ?? null,
+    }))
+  })
+
+  return result || []
+}
+
+export async function getCFBTeamRecruitingRankings(year: number, team?: string): Promise<Array<{
+  year: number
+  team: string
+  rank: number
+  points: number
+}>> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-recruiting-team-${year}-${team || 'all'}`
+
+  const result = await getCachedOrFetch(cacheKey, THIRTY_DAYS, async () => {
+    let url = `${CFBD_BASE}/recruiting/teams?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((r: any) => ({
+      year: r.year,
+      team: r.team || '',
+      rank: r.rank ?? 999,
+      points: r.points ?? 0,
+    }))
+  })
+
+  return result || []
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Transfer Portal
+// ──────────────────────────────────────────────────────────────────
+
+export interface CFBTransferPortalEntry {
+  firstName: string
+  lastName: string
+  fullName: string
+  position: string
+  origin: string
+  destination: string | null
+  transferDate: string | null
+  rating: number | null
+  stars: number | null
+  eligibility: string | null
+  season: number
+}
+
+export async function getCFBTransferPortal(year: number): Promise<CFBTransferPortalEntry[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-transfer-portal-${year}`
+
+  const result = await getCachedOrFetch<CFBTransferPortalEntry[]>(cacheKey, ONE_DAY, async () => {
+    const response = await fetch(`${CFBD_BASE}/player/portal?year=${year}`, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+
+    if (!response.ok) {
+      console.error('[CFBD] Transfer portal fetch failed:', response.status)
+      return []
+    }
+
+    const data = await response.json()
+    return data.map((t: any) => ({
+      firstName: t.firstName || t.first_name || '',
+      lastName: t.lastName || t.last_name || '',
+      fullName: `${t.firstName || t.first_name || ''} ${t.lastName || t.last_name || ''}`.trim(),
+      position: t.position || '',
+      origin: t.origin || '',
+      destination: t.destination ?? null,
+      transferDate: t.transferDate ?? null,
+      rating: t.rating ?? null,
+      stars: t.stars ?? null,
+      eligibility: t.eligibility ?? null,
+      season: t.season || year,
+    }))
+  })
+
+  return result || []
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Returning Production
+// ──────────────────────────────────────────────────────────────────
+
+export interface CFBReturningProduction {
+  team: string
+  conference: string | null
+  season: number
+  totalPPA: number | null
+  totalPassingPPA: number | null
+  totalRushingPPA: number | null
+  totalReceivingPPA: number | null
+  percentPPA: number | null
+  percentPassingPPA: number | null
+  percentRushingPPA: number | null
+  percentReceivingPPA: number | null
+  usage: number | null
+  passingUsage: number | null
+  rushingUsage: number | null
+  receivingUsage: number | null
+}
+
+export async function getCFBReturningProduction(year: number, team?: string): Promise<CFBReturningProduction[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-returning-prod-${year}-${team || 'all'}`
+
+  const result = await getCachedOrFetch<CFBReturningProduction[]>(cacheKey, ONE_DAY, async () => {
+    let url = `${CFBD_BASE}/player/returning?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((r: any) => ({
+      team: r.team || '',
+      conference: r.conference ?? null,
+      season: r.season || year,
+      totalPPA: r.totalPPA ?? null,
+      totalPassingPPA: r.totalPassingPPA ?? null,
+      totalRushingPPA: r.totalRushingPPA ?? null,
+      totalReceivingPPA: r.totalReceivingPPA ?? null,
+      percentPPA: r.percentPPA ?? null,
+      percentPassingPPA: r.percentPassingPPA ?? null,
+      percentRushingPPA: r.percentRushingPPA ?? null,
+      percentReceivingPPA: r.percentReceivingPPA ?? null,
+      usage: r.usage ?? null,
+      passingUsage: r.passingUsage ?? null,
+      rushingUsage: r.rushingUsage ?? null,
+      receivingUsage: r.receivingUsage ?? null,
+    }))
+  })
+
+  return result || []
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Player Usage & PPA
+// ──────────────────────────────────────────────────────────────────
+
+export interface CFBPlayerUsage {
+  season: number
+  id: number | null
+  name: string
+  position: string
+  team: string
+  conference: string | null
+  upiOverall: number | null
+  upiPass: number | null
+  upiRush: number | null
+}
+
+export async function getCFBPlayerUsage(year: number, team?: string, position?: string): Promise<CFBPlayerUsage[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-player-usage-${year}-${team || 'all'}-${position || 'all'}`
+
+  const result = await getCachedOrFetch<CFBPlayerUsage[]>(cacheKey, ONE_DAY, async () => {
+    let url = `${CFBD_BASE}/player/usage?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+    if (position) url += `&position=${encodeURIComponent(position)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((u: any) => ({
+      season: u.season || year,
+      id: u.id ?? null,
+      name: u.name || '',
+      position: u.position || '',
+      team: u.team || '',
+      conference: u.conference ?? null,
+      upiOverall: u.usage?.overall ?? null,
+      upiPass: u.usage?.pass ?? null,
+      upiRush: u.usage?.rush ?? null,
+    }))
+  })
+
+  return result || []
+}
+
+export interface CFBPlayerPPA {
+  season: number
+  id: number | null
+  name: string
+  position: string
+  team: string
+  conference: string | null
+  countablePlays: number | null
+  averagePPAAll: number | null
+  averagePPAPass: number | null
+  averagePPARush: number | null
+  totalPPAAll: number | null
+  totalPPAPass: number | null
+  totalPPARush: number | null
+}
+
+export async function getCFBPlayerPPA(year: number, team?: string, position?: string): Promise<CFBPlayerPPA[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-player-ppa-${year}-${team || 'all'}-${position || 'all'}`
+
+  const result = await getCachedOrFetch<CFBPlayerPPA[]>(cacheKey, ONE_DAY, async () => {
+    let url = `${CFBD_BASE}/ppa/players/season?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+    if (position) url += `&position=${encodeURIComponent(position)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((p: any) => ({
+      season: p.season || year,
+      id: p.id ?? null,
+      name: p.name || '',
+      position: p.position || '',
+      team: p.team || '',
+      conference: p.conference ?? null,
+      countablePlays: p.countablePlays ?? null,
+      averagePPAAll: p.averagePPA?.all ?? null,
+      averagePPAPass: p.averagePPA?.pass ?? null,
+      averagePPARush: p.averagePPA?.rush ?? null,
+      totalPPAAll: p.totalPPA?.all ?? null,
+      totalPPAPass: p.totalPPA?.pass ?? null,
+      totalPPARush: p.totalPPA?.rush ?? null,
+    }))
+  })
+
+  return result || []
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: SP+ Team Ratings
+// ──────────────────────────────────────────────────────────────────
+
+export interface CFBTeamSPRating {
+  year: number
+  team: string
+  conference: string | null
+  rating: number | null
+  ranking: number | null
+  offenseRating: number | null
+  offenseRanking: number | null
+  defenseRating: number | null
+  defenseRanking: number | null
+}
+
+export async function getCFBSPRatings(year: number, team?: string): Promise<CFBTeamSPRating[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-sp-ratings-${year}-${team || 'all'}`
+
+  const result = await getCachedOrFetch<CFBTeamSPRating[]>(cacheKey, THIRTY_DAYS, async () => {
+    let url = `${CFBD_BASE}/ratings/sp?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((r: any) => ({
+      year: r.year || year,
+      team: r.team || '',
+      conference: r.conference ?? null,
+      rating: r.rating ?? null,
+      ranking: r.ranking ?? null,
+      offenseRating: r.offense?.rating ?? null,
+      offenseRanking: r.offense?.ranking ?? null,
+      defenseRating: r.defense?.rating ?? null,
+      defenseRanking: r.defense?.ranking ?? null,
+    }))
+  })
+
+  return result || []
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: WEPA (Adjusted Metrics)
+// ──────────────────────────────────────────────────────────────────
+
+export interface CFBPlayerWEPA {
+  season: number
+  playerId: number | null
+  playerName: string
+  team: string
+  position: string | null
+  weightedEPA: number | null
+  plays: number | null
+  epaPerPlay: number | null
+}
+
+export async function getCFBPlayerWEPAPassing(year: number, team?: string): Promise<CFBPlayerWEPA[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-wepa-passing-${year}-${team || 'all'}`
+
+  const result = await getCachedOrFetch<CFBPlayerWEPA[]>(cacheKey, ONE_DAY, async () => {
+    let url = `${CFBD_BASE}/wepa/players/passing?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((w: any) => ({
+      season: w.season || year,
+      playerId: w.playerId ?? w.id ?? null,
+      playerName: w.playerName ?? w.player ?? w.name ?? '',
+      team: w.team || '',
+      position: w.position ?? 'QB',
+      weightedEPA: w.weightedEPA ?? w.wepa ?? null,
+      plays: w.plays ?? w.attempts ?? null,
+      epaPerPlay: w.epaPerPlay ?? (w.weightedEPA && w.plays ? w.weightedEPA / w.plays : null),
+    }))
+  })
+
+  return result || []
+}
+
+export async function getCFBPlayerWEPARushing(year: number, team?: string): Promise<CFBPlayerWEPA[]> {
+  const apiKey = process.env.CFBD_KEY
+  if (!apiKey) return []
+
+  const cacheKey = `cfbd-wepa-rushing-${year}-${team || 'all'}`
+
+  const result = await getCachedOrFetch<CFBPlayerWEPA[]>(cacheKey, ONE_DAY, async () => {
+    let url = `${CFBD_BASE}/wepa/players/rushing?year=${year}`
+    if (team) url += `&team=${encodeURIComponent(team)}`
+
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+    })
+    if (!response.ok) return []
+
+    const data = await response.json()
+    return data.map((w: any) => ({
+      season: w.season || year,
+      playerId: w.playerId ?? w.id ?? null,
+      playerName: w.playerName ?? w.player ?? w.name ?? '',
+      team: w.team || '',
+      position: w.position ?? null,
+      weightedEPA: w.weightedEPA ?? w.wepa ?? null,
+      plays: w.plays ?? w.carries ?? null,
+      epaPerPlay: w.epaPerPlay ?? (w.weightedEPA && w.plays ? w.weightedEPA / w.plays : null),
+    }))
+  })
+
+  return result || []
 }

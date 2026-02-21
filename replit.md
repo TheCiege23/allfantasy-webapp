@@ -52,6 +52,7 @@ The core architecture uses a `One Engine API` integrating One Scoring Core, One 
 -   **Market Timing Alerts**: AI-powered buy/sell signal system based on dynasty values and trends for NFL and Devy players.
 -   **News-Driven Value Adjustments**: Real-time news sentiment analysis that modifies player values before deterministic trade calculations, with multipliers based on severity and sentiment.
 -   **Definitive Player Classification Engine**: Multi-source cross-referencing system that definitively classifies every devy player into statuses: `college`, `declared`, `drafted`, `nfl_active`, or `returning`.
+-   **CFBD v2 Enhanced Devy Intelligence**: Enriched devy valuations incorporating recruiting composite ratings (247/composite stars), transfer portal tracking (from/to schools, eligibility), player usage rates (UPI), Predicted Points Added (PPA), Wins-above-Expected Points Added (WEPA), SP+ team context ratings, and returning production percentages. New metrics feed into computeDraftProjectionScore, computeDevyDynastyValue, computeVolatilityScore, and computeDevyAcceptDrivers with weighted formulas (recruiting 20%, production 25%, PPA 10%, WEPA 5%, team context 5%, athletic 10%, breakout 10%, draft capital 15%).
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.
@@ -62,7 +63,7 @@ The core architecture uses a `One Engine API` integrating One Scoring Core, One 
 -   **API-Sports.io**: Secondary NFL data, primary for injuries.
 -   **TheSportsDB API**: Tertiary sports data fallback.
 -   **ESPN API**: Quaternary sports data fallback, primary for live scores and news.
--   **CollegeFootballData.com API (CFBD)**: College Football data.
+-   **CollegeFootballData.com API (CFBD v2)**: College Football data including rosters, stats, recruiting ratings (247/composite), transfer portal tracking, player usage/PPA, WEPA adjusted metrics, SP+ team ratings, returning production, and NFL draft picks. All endpoints cached via SportsDataCache with TTLs (7d recruiting, 1d usage/PPA/portal, 30d SP+/historical). Bulk fetch pattern to stay under 1,000 monthly API call limit.
 -   **Resend**: Email notifications.
 -   **Twilio Verify API**: Phone verification.
 -   **OpenWeatherMap API**: Game-day weather data.

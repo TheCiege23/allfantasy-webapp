@@ -1906,6 +1906,9 @@ model DevyPlayer {
   devyAdp                Float?
   redshirtStatus         Boolean  @default(false)
   transferStatus         Boolean  @default(false)
+  transferFromSchool     String?
+  transferToSchool       String?
+  transferEligibility    String?
   nilImpactScore         Float?
   injurySeverityScore    Float?
   athleticProfileScore   Float?
@@ -1913,6 +1916,20 @@ model DevyPlayer {
   volatilityScore        Float?
   nflDraftRound          Int?
   nflDraftPick           Int?
+
+  usageOverall           Float?
+  usagePass              Float?
+  usageRush              Float?
+  ppaTotal               Float?
+  ppaPass                Float?
+  ppaRush                Float?
+  wepaTotal              Float?
+  wepaPass               Float?
+  wepaRush               Float?
+  returningProdPct       Float?
+  teamSpRating           Float?
+  recruitingCity         String?
+  recruitingState        String?
 
   devyAdpHistory DevyAdp[]
 

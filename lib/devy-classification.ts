@@ -1,5 +1,13 @@
 import { prisma } from '@/lib/prisma'
-import { getCFBPlayerStats, getCFBTeamRoster, getCFBDraftPicks, type CFBPlayer, type CFBPlayerStats, type CFBDraftPick } from '@/lib/cfb-player-data'
+import {
+  getCFBPlayerStats, getCFBTeamRoster, getCFBDraftPicks,
+  getCFBRecruits, getCFBTransferPortal, getCFBReturningProduction,
+  getCFBPlayerUsage, getCFBPlayerPPA, getCFBSPRatings,
+  getCFBPlayerWEPAPassing, getCFBPlayerWEPARushing,
+  type CFBPlayer, type CFBPlayerStats, type CFBDraftPick,
+  type CFBRecruit, type CFBTransferPortalEntry, type CFBReturningProduction,
+  type CFBPlayerUsage, type CFBPlayerPPA, type CFBTeamSPRating, type CFBPlayerWEPA,
+} from '@/lib/cfb-player-data'
 import { computeAllDevyIntelMetrics } from '@/lib/devy-intel'
 
 export type DraftStatus = 'college' | 'declared' | 'drafted' | 'nfl_active' | 'returning'
@@ -539,6 +547,325 @@ export async function enrichDevyIntelMetrics(): Promise<{ updated: number; error
   return { updated, errors }
 }
 
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Recruiting Data Ingestion
+// ──────────────────────────────────────────────────────────────────
+
+export async function ingestCFBDRecruitingData(season?: number): Promise<{ updated: number; errors: string[] }> {
+  const currentYear = new Date().getFullYear()
+  let updated = 0
+  const errors: string[] = []
+
+  const recruitYears = season
+    ? [season]
+    : [currentYear, currentYear - 1, currentYear - 2, currentYear - 3]
+
+  for (const year of recruitYears) {
+    try {
+      const recruits = await getCFBRecruits(year)
+      if (!recruits.length) continue
+
+      const recruitMap = new Map<string, CFBRecruit>()
+      for (const r of recruits) {
+        if (!r.name || !r.committedTo) continue
+        const key = `${normalizeName(r.name)}|${r.committedTo}`
+        if (!recruitMap.has(key) || (r.rating > (recruitMap.get(key)?.rating || 0))) {
+          recruitMap.set(key, r)
+        }
+      }
+
+      for (const [, recruit] of recruitMap) {
+        const normalizedName = normalizeName(recruit.name)
+        if (!normalizedName || normalizedName.length < 3) continue
+
+        const pos = recruit.position ? normalizePosition(recruit.position) : null
+        if (!pos || !FANTASY_POSITIONS.has(pos)) continue
+
+        try {
+          const existing = await prisma.devyPlayer.findFirst({
+            where: {
+              normalizedName,
+              school: recruit.committedTo!,
+            },
+          })
+          if (!existing) continue
+
+          await prisma.devyPlayer.update({
+            where: { id: existing.id },
+            data: {
+              recruitingStars: recruit.stars || existing.recruitingStars,
+              recruitingComposite: recruit.rating || existing.recruitingComposite,
+              recruitingRanking: recruit.ranking || existing.recruitingRanking,
+              recruitingCity: recruit.city || existing.recruitingCity,
+              recruitingState: recruit.stateProvince || existing.recruitingState,
+              lastSyncedAt: new Date(),
+            },
+          })
+          updated++
+        } catch (dbErr: any) {
+          errors.push(`Recruiting update failed for ${recruit.name}: ${dbErr.message?.slice(0, 80)}`)
+        }
+      }
+
+      await new Promise(r => setTimeout(r, 200))
+    } catch (err: any) {
+      errors.push(`Recruiting year ${year} failed: ${err.message?.slice(0, 100)}`)
+    }
+  }
+
+  return { updated, errors }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Transfer Portal Ingestion
+// ──────────────────────────────────────────────────────────────────
+
+export async function ingestCFBDTransferPortal(season?: number): Promise<{ updated: number; errors: string[] }> {
+  const currentYear = new Date().getFullYear()
+  const year = season || currentYear
+  let updated = 0
+  const errors: string[] = []
+
+  try {
+    const transfers = await getCFBTransferPortal(year)
+    if (!transfers.length) {
+      console.log(`[DevySync] No transfer portal data for ${year}`)
+      return { updated, errors }
+    }
+
+    console.log(`[DevySync] Processing ${transfers.length} transfer portal entries for ${year}`)
+
+    for (const t of transfers) {
+      if (!t.fullName) continue
+      const normalizedName = normalizeName(t.fullName)
+      if (!normalizedName || normalizedName.length < 3) continue
+
+      try {
+        const existing = await prisma.devyPlayer.findFirst({
+          where: {
+            normalizedName,
+            OR: [
+              { school: t.origin },
+              { school: t.destination || '__none__' },
+            ],
+          },
+        })
+        if (!existing) continue
+
+        const updateData: any = {
+          transferStatus: true,
+          transferFromSchool: t.origin,
+          lastSyncedAt: new Date(),
+        }
+
+        if (t.destination) {
+          updateData.transferToSchool = t.destination
+          updateData.school = t.destination
+        }
+
+        if (t.eligibility) {
+          updateData.transferEligibility = t.eligibility
+        }
+
+        if (t.stars != null && t.stars > 0) {
+          updateData.recruitingStars = t.stars
+        }
+        if (t.rating != null && t.rating > 0) {
+          updateData.recruitingComposite = t.rating
+        }
+
+        await prisma.devyPlayer.update({
+          where: { id: existing.id },
+          data: updateData,
+        })
+        updated++
+      } catch (dbErr: any) {
+        errors.push(`Transfer update failed for ${t.fullName}: ${dbErr.message?.slice(0, 80)}`)
+      }
+    }
+  } catch (err: any) {
+    errors.push(`Transfer portal fetch failed: ${err.message?.slice(0, 100)}`)
+  }
+
+  return { updated, errors }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Player Usage & PPA Ingestion
+// ──────────────────────────────────────────────────────────────────
+
+export async function ingestCFBDUsageAndPPA(season?: number): Promise<{ updated: number; errors: string[] }> {
+  const year = season || new Date().getFullYear() - 1
+  let updated = 0
+  const errors: string[] = []
+
+  try {
+    const [usage, ppa, wepaPassing, wepaRushing] = await Promise.all([
+      getCFBPlayerUsage(year),
+      getCFBPlayerPPA(year),
+      getCFBPlayerWEPAPassing(year),
+      getCFBPlayerWEPARushing(year),
+    ])
+
+    const teamSet = new Set(TOP_CFB_TEAMS)
+
+    const usageByTeam = new Map<string, Map<string, CFBPlayerUsage>>()
+    for (const u of usage) {
+      if (!u.name || !u.team || !teamSet.has(u.team)) continue
+      if (!usageByTeam.has(u.team)) usageByTeam.set(u.team, new Map())
+      usageByTeam.get(u.team)!.set(normalizeName(u.name), u)
+    }
+
+    const ppaByTeam = new Map<string, Map<string, CFBPlayerPPA>>()
+    for (const p of ppa) {
+      if (!p.name || !p.team || !teamSet.has(p.team)) continue
+      if (!ppaByTeam.has(p.team)) ppaByTeam.set(p.team, new Map())
+      ppaByTeam.get(p.team)!.set(normalizeName(p.name), p)
+    }
+
+    const wepaPassByTeam = new Map<string, Map<string, CFBPlayerWEPA>>()
+    for (const w of wepaPassing) {
+      if (!w.playerName || !w.team || !teamSet.has(w.team)) continue
+      if (!wepaPassByTeam.has(w.team)) wepaPassByTeam.set(w.team, new Map())
+      wepaPassByTeam.get(w.team)!.set(normalizeName(w.playerName), w)
+    }
+
+    const wepaRushByTeam = new Map<string, Map<string, CFBPlayerWEPA>>()
+    for (const w of wepaRushing) {
+      if (!w.playerName || !w.team || !teamSet.has(w.team)) continue
+      if (!wepaRushByTeam.has(w.team)) wepaRushByTeam.set(w.team, new Map())
+      wepaRushByTeam.get(w.team)!.set(normalizeName(w.playerName), w)
+    }
+
+    for (const team of TOP_CFB_TEAMS) {
+      const usageMap = usageByTeam.get(team) || new Map()
+      const ppaMap = ppaByTeam.get(team) || new Map()
+      const wepaPassMap = wepaPassByTeam.get(team) || new Map()
+      const wepaRushMap = wepaRushByTeam.get(team) || new Map()
+
+      const allNames = new Set([
+        ...usageMap.keys(), ...ppaMap.keys(),
+        ...wepaPassMap.keys(), ...wepaRushMap.keys(),
+      ])
+
+      for (const name of allNames) {
+        try {
+          const existing = await prisma.devyPlayer.findFirst({
+            where: { normalizedName: name, school: team },
+          })
+          if (!existing) continue
+
+          const u = usageMap.get(name)
+          const p = ppaMap.get(name)
+          const wp = wepaPassMap.get(name)
+          const wr = wepaRushMap.get(name)
+
+          const updateData: any = { lastSyncedAt: new Date() }
+
+          if (u) {
+            if (u.upiOverall != null) updateData.usageOverall = u.upiOverall
+            if (u.upiPass != null) updateData.usagePass = u.upiPass
+            if (u.upiRush != null) updateData.usageRush = u.upiRush
+          }
+
+          if (p) {
+            if (p.averagePPAAll != null) updateData.ppaTotal = p.averagePPAAll
+            if (p.averagePPAPass != null) updateData.ppaPass = p.averagePPAPass
+            if (p.averagePPARush != null) updateData.ppaRush = p.averagePPARush
+          }
+
+          if (wp && wp.weightedEPA != null) {
+            updateData.wepaPass = wp.weightedEPA
+            if (!updateData.wepaTotal) updateData.wepaTotal = wp.weightedEPA
+          }
+          if (wr && wr.weightedEPA != null) {
+            updateData.wepaRush = wr.weightedEPA
+            updateData.wepaTotal = (updateData.wepaTotal || 0) + wr.weightedEPA
+          }
+
+          if (Object.keys(updateData).length > 1) {
+            await prisma.devyPlayer.update({
+              where: { id: existing.id },
+              data: updateData,
+            })
+            updated++
+          }
+        } catch (dbErr: any) {
+          errors.push(`Usage/PPA update failed for ${name}: ${dbErr.message?.slice(0, 80)}`)
+        }
+      }
+    }
+  } catch (err: any) {
+    errors.push(`Usage/PPA bulk fetch failed: ${err.message?.slice(0, 100)}`)
+  }
+
+  return { updated, errors }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CFBD v2: Returning Production & SP+ Team Context Ingestion
+// ──────────────────────────────────────────────────────────────────
+
+export async function ingestCFBDTeamContext(season?: number): Promise<{ updated: number; errors: string[] }> {
+  const year = season || new Date().getFullYear()
+  let updated = 0
+  const errors: string[] = []
+
+  try {
+    const [returningProd, spRatings] = await Promise.all([
+      getCFBReturningProduction(year),
+      getCFBSPRatings(year > 2024 ? year - 1 : year),
+    ])
+
+    const rpMap = new Map<string, CFBReturningProduction>()
+    for (const r of returningProd) {
+      if (r.team) rpMap.set(r.team, r)
+    }
+
+    const spMap = new Map<string, CFBTeamSPRating>()
+    for (const s of spRatings) {
+      if (s.team) spMap.set(s.team, s)
+    }
+
+    for (const team of TOP_CFB_TEAMS) {
+      const rp = rpMap.get(team)
+      const sp = spMap.get(team)
+      if (!rp && !sp) continue
+
+      try {
+        const updateData: any = { lastSyncedAt: new Date() }
+
+        if (rp && rp.percentPPA != null) {
+          updateData.returningProdPct = rp.percentPPA
+        }
+
+        if (sp && sp.rating != null) {
+          updateData.teamSpRating = sp.rating
+        }
+
+        const teamPlayers = await prisma.devyPlayer.findMany({
+          where: { school: team, devyEligible: true },
+          select: { id: true },
+        })
+
+        if (teamPlayers.length > 0) {
+          await prisma.devyPlayer.updateMany({
+            where: { id: { in: teamPlayers.map(p => p.id) } },
+            data: updateData,
+          })
+          updated += teamPlayers.length
+        }
+      } catch (dbErr: any) {
+        errors.push(`Team context update failed for ${team}: ${dbErr.message?.slice(0, 80)}`)
+      }
+    }
+  } catch (err: any) {
+    errors.push(`Team context fetch failed: ${err.message?.slice(0, 100)}`)
+  }
+
+  return { updated, errors }
+}
+
 export async function runFullDevySync(season?: number): Promise<DevySyncResult> {
   console.log('[DevySync] Starting full devy sync...')
 
@@ -547,6 +874,18 @@ export async function runFullDevySync(season?: number): Promise<DevySyncResult> 
 
   const stats = await ingestCFBDStats(season)
   console.log(`[DevySync] Updated stats for ${stats.updated} players`)
+
+  const recruiting = await ingestCFBDRecruitingData(season)
+  console.log(`[DevySync] Updated recruiting data for ${recruiting.updated} players`)
+
+  const portal = await ingestCFBDTransferPortal(season)
+  console.log(`[DevySync] Updated transfer portal data for ${portal.updated} players`)
+
+  const usagePpa = await ingestCFBDUsageAndPPA(season)
+  console.log(`[DevySync] Updated usage/PPA for ${usagePpa.updated} players`)
+
+  const teamCtx = await ingestCFBDTeamContext(season)
+  console.log(`[DevySync] Updated team context (SP+/returning prod) for ${teamCtx.updated} players`)
 
   const classification = await classifyDraftStatus(roster.rosterYear)
   console.log(`[DevySync] Classification complete: ${JSON.stringify({
@@ -571,7 +910,11 @@ export async function runFullDevySync(season?: number): Promise<DevySyncResult> 
       nfl_active: classification.nflActive,
       returning: classification.returning,
     },
-    errors: [...roster.errors, ...stats.errors, ...classification.errors, ...intel.errors],
+    errors: [
+      ...roster.errors, ...stats.errors, ...recruiting.errors,
+      ...portal.errors, ...usagePpa.errors, ...teamCtx.errors,
+      ...classification.errors, ...intel.errors,
+    ],
   }
 }
 

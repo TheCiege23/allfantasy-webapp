@@ -14,6 +14,11 @@ export interface DevyIntelMetrics {
   nilImpactScore: number
   injurySeverityScore: number
   volatilityScore: number
+  ppaScore: number
+  usageScore: number
+  wepaScore: number
+  teamContextBoost: number
+  transferRisk: number
 }
 
 export interface DevyFinalScore {
@@ -94,7 +99,96 @@ export function computeProductionIndex(player: DevyPlayer): number {
     score = recYards * 0.45 + recTds * 0.35 + recCount * 0.20
   }
 
+  const ppaBoost = computePPABoost(player)
+  const usageBoost = computeUsageBoost(player)
+  score = score * 0.70 + ppaBoost * 0.20 + usageBoost * 0.10
+
   return Math.round(Math.min(100, Math.max(0, score)) * 100) / 100
+}
+
+export function computePPABoost(player: DevyPlayer): number {
+  const ppa = (player as any).ppaTotal as number | null | undefined
+  if (ppa == null) return 50
+
+  if (ppa >= 0.4) return 95
+  if (ppa >= 0.3) return 88
+  if (ppa >= 0.2) return 78
+  if (ppa >= 0.1) return 68
+  if (ppa >= 0.0) return 55
+  if (ppa >= -0.1) return 40
+  return 25
+}
+
+export function computeUsageBoost(player: DevyPlayer): number {
+  const usage = (player as any).usageOverall as number | null | undefined
+  if (usage == null) return 50
+
+  if (usage >= 0.30) return 95
+  if (usage >= 0.25) return 85
+  if (usage >= 0.20) return 75
+  if (usage >= 0.15) return 65
+  if (usage >= 0.10) return 55
+  if (usage >= 0.05) return 40
+  return 25
+}
+
+export function computeWEPAScore(player: DevyPlayer): number {
+  const wepa = (player as any).wepaTotal as number | null | undefined
+  if (wepa == null) return 50
+
+  if (wepa >= 50) return 95
+  if (wepa >= 30) return 85
+  if (wepa >= 15) return 75
+  if (wepa >= 5) return 65
+  if (wepa >= 0) return 50
+  if (wepa >= -10) return 35
+  return 20
+}
+
+export function computeTeamContextBoost(player: DevyPlayer): number {
+  let boost = 0
+
+  const spRating = (player as any).teamSpRating as number | null | undefined
+  if (spRating != null) {
+    if (spRating >= 25) boost += 10
+    else if (spRating >= 15) boost += 7
+    else if (spRating >= 5) boost += 3
+    else if (spRating < -5) boost -= 5
+  }
+
+  const retProd = (player as any).returningProdPct as number | null | undefined
+  if (retProd != null) {
+    if (retProd >= 0.8) boost += 5
+    else if (retProd >= 0.6) boost += 3
+    else if (retProd < 0.4) boost -= 3
+  }
+
+  return boost
+}
+
+export function computeTransferRisk(player: DevyPlayer): number {
+  if (!player.transferStatus) return 0
+
+  let risk = 15
+
+  const fromSchool = (player as any).transferFromSchool as string | null | undefined
+  const toSchool = (player as any).transferToSchool as string | null | undefined
+  const eliteSchools = new Set([
+    'Alabama', 'Ohio State', 'Georgia', 'Texas', 'USC', 'Oregon',
+    'Michigan', 'Penn State', 'LSU', 'Clemson', 'Notre Dame',
+  ])
+
+  if (toSchool && eliteSchools.has(toSchool)) {
+    risk -= 10
+  } else if (fromSchool && eliteSchools.has(fromSchool) && toSchool && !eliteSchools.has(toSchool)) {
+    risk += 10
+  }
+
+  if (!toSchool) {
+    risk += 10
+  }
+
+  return Math.max(0, Math.min(40, risk))
 }
 
 export function computeBreakoutAge(player: DevyPlayer): number | null {
@@ -235,7 +329,9 @@ export function computeVolatilityScore(player: DevyPlayer): number {
 
   let volatility = 30
 
-  if (player.transferStatus) volatility += 15
+  const transferRisk = computeTransferRisk(player)
+  volatility += transferRisk
+
   if (player.redshirtStatus && player.classYear && player.classYear >= 3) volatility += 20
 
   const injuryScore = computeInjurySeverityScore(player)
@@ -256,13 +352,21 @@ export function computeDraftProjectionScore(player: DevyPlayer): number {
   const athleticScore = computeAthleticProfileScore(player)
   const projectedRound = estimateProjectedDraftRound(player)
   const draftCapital = computeDraftCapitalScore(projectedRound)
+  const ppaScore = computePPABoost(player)
+  const wepaScore = computeWEPAScore(player)
+  const teamCtx = computeTeamContextBoost(player)
+  const transferRisk = computeTransferRisk(player)
 
   const dps =
-    recruitingRaw * 0.25 +
-    productionRaw * 0.30 +
-    breakoutScore * 0.15 +
-    athleticScore * 0.15 +
-    draftCapital * 0.15
+    recruitingRaw * 0.20 +
+    productionRaw * 0.25 +
+    breakoutScore * 0.10 +
+    athleticScore * 0.10 +
+    draftCapital * 0.15 +
+    ppaScore * 0.10 +
+    wepaScore * 0.05 +
+    teamCtx * 0.05 -
+    transferRisk * 0.3
 
   return Math.round(Math.min(100, Math.max(0, dps)) * 100) / 100
 }
@@ -279,13 +383,22 @@ export function computeAllDevyIntelMetrics(player: DevyPlayer): DevyIntelMetrics
   const nil = computeNilImpactScore(player)
   const injury = computeInjurySeverityScore(player)
   const volatility = computeVolatilityScore(player)
+  const ppaScore = computePPABoost(player)
+  const usageScore = computeUsageBoost(player)
+  const wepaScore = computeWEPAScore(player)
+  const teamCtx = computeTeamContextBoost(player)
+  const transferRisk = computeTransferRisk(player)
 
   const dps =
-    (recruiting * 100) * 0.25 +
-    production * 0.30 +
-    breakoutScore * 0.15 +
-    athletic * 0.15 +
-    draftCapital * 0.15
+    (recruiting * 100) * 0.20 +
+    production * 0.25 +
+    breakoutScore * 0.10 +
+    athletic * 0.10 +
+    draftCapital * 0.15 +
+    ppaScore * 0.10 +
+    wepaScore * 0.05 +
+    teamCtx * 0.05 -
+    transferRisk * 0.3
 
   return {
     recruitingComposite: recruiting,
@@ -300,6 +413,11 @@ export function computeAllDevyIntelMetrics(player: DevyPlayer): DevyIntelMetrics
     nilImpactScore: nil,
     injurySeverityScore: injury,
     volatilityScore: volatility,
+    ppaScore,
+    usageScore,
+    wepaScore,
+    teamContextBoost: teamCtx,
+    transferRisk,
   }
 }
 
@@ -379,6 +497,21 @@ export function computeDevyDynastyValue(player: DevyPlayer, teamDirection: 'Cont
   if (metrics.volatilityScore > 60) dynastyValue *= 0.85
   if (metrics.injurySeverityScore > 50) dynastyValue *= 0.90
 
+  if (metrics.ppaScore >= 80) dynastyValue *= 1.08
+  else if (metrics.ppaScore >= 65) dynastyValue *= 1.04
+
+  if (metrics.wepaScore >= 80) dynastyValue *= 1.05
+  else if (metrics.wepaScore >= 65) dynastyValue *= 1.02
+
+  if (metrics.transferRisk > 20) dynastyValue *= 0.92
+  else if (metrics.transferRisk > 10) dynastyValue *= 0.96
+
+  if (metrics.teamContextBoost > 0) {
+    dynastyValue *= Math.min(1.10, 1 + metrics.teamContextBoost * 0.005)
+  } else if (metrics.teamContextBoost < 0) {
+    dynastyValue *= Math.max(0.92, 1 + metrics.teamContextBoost * 0.005)
+  }
+
   return Math.round(dynastyValue)
 }
 
@@ -417,6 +550,28 @@ export function computeDevyAcceptDrivers(
 
   if (metrics.volatilityScore > 70) {
     drivers.push({ driver: 'High volatility prospect', delta: 0.04, direction: 'penalty' })
+  }
+
+  if (metrics.ppaScore >= 80) {
+    drivers.push({ driver: 'Elite efficiency (PPA)', delta: 0.04, direction: 'boost' })
+  } else if (metrics.ppaScore >= 65) {
+    drivers.push({ driver: 'Above-average efficiency (PPA)', delta: 0.02, direction: 'boost' })
+  }
+
+  if (metrics.wepaScore >= 80) {
+    drivers.push({ driver: 'Strong opponent-adjusted production (WEPA)', delta: 0.03, direction: 'boost' })
+  }
+
+  if (metrics.transferRisk > 20) {
+    drivers.push({ driver: 'High transfer risk / uncertain landing spot', delta: 0.05, direction: 'penalty' })
+  } else if (metrics.transferRisk > 10) {
+    drivers.push({ driver: 'Transfer portal entrant', delta: 0.02, direction: 'penalty' })
+  }
+
+  if (metrics.teamContextBoost >= 8) {
+    drivers.push({ driver: 'Elite program context (SP+)', delta: 0.03, direction: 'boost' })
+  } else if (metrics.teamContextBoost <= -5) {
+    drivers.push({ driver: 'Weak program context', delta: 0.02, direction: 'penalty' })
   }
 
   return drivers
