@@ -11,8 +11,14 @@ type CrawlItem = {
   source?: string;
   url?: string | null;
   team?: string | null;
+  teams?: string[];
   timestamp: string;
   priority: number;
+  imageUrl?: string | null;
+  author?: string | null;
+  playerNames?: string[];
+  category?: string | null;
+  sentiment?: string | null;
 };
 
 let espnCache: { items: CrawlItem[]; fetchedAt: number } | null = null;
@@ -111,8 +117,13 @@ export const GET = withApiUsage({ endpoint: "/api/news-crawl", tool: "NewsCrawl"
           source: true,
           sourceUrl: true,
           team: true,
+          teams: true,
           publishedAt: true,
           category: true,
+          sentiment: true,
+          imageUrl: true,
+          author: true,
+          playerNames: true,
         },
       }),
       prisma.sportsInjury.findMany({
@@ -137,6 +148,7 @@ export const GET = withApiUsage({ endpoint: "/api/news-crawl", tool: "NewsCrawl"
     const items: CrawlItem[] = [];
 
     for (const n of news) {
+      const priority = n.sentiment === 'negative' ? 2 : (n.sentiment === 'trade' ? 2 : 1);
       items.push({
         id: n.id,
         type: 'news',
@@ -144,8 +156,14 @@ export const GET = withApiUsage({ endpoint: "/api/news-crawl", tool: "NewsCrawl"
         source: n.source === 'espn' ? 'ESPN' : n.category?.split(',')[0]?.trim() || 'News',
         url: n.sourceUrl,
         team: n.team,
+        teams: n.teams,
         timestamp: n.publishedAt?.toISOString() || '',
-        priority: 1,
+        priority,
+        imageUrl: n.imageUrl,
+        author: n.author,
+        playerNames: n.playerNames,
+        category: n.category,
+        sentiment: n.sentiment,
       });
     }
 

@@ -12,6 +12,8 @@ export const GET = withApiUsage({ endpoint: "/api/sports/news", tool: "SportsNew
     const team = searchParams.get('team');
     const category = searchParams.get('category');
     const source = searchParams.get('source');
+    const sentiment = searchParams.get('sentiment');
+    const player = searchParams.get('player');
     const refresh = searchParams.get('refresh') === 'true';
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
 
@@ -19,12 +21,20 @@ export const GET = withApiUsage({ endpoint: "/api/sports/news", tool: "SportsNew
       await syncNewsToDb(team || undefined);
     }
 
+    const andConditions: any[] = [];
+
     const where: Record<string, unknown> = {
       sport: 'NFL',
     };
 
     if (team) {
-      where.team = normalizeTeamAbbrev(team) || team;
+      const normalized = normalizeTeamAbbrev(team) || team;
+      andConditions.push({
+        OR: [
+          { team: normalized },
+          { teams: { has: normalized } },
+        ],
+      });
     }
 
     if (source) {
@@ -33,6 +43,24 @@ export const GET = withApiUsage({ endpoint: "/api/sports/news", tool: "SportsNew
 
     if (category) {
       where.category = { contains: category, mode: 'insensitive' };
+    }
+
+    if (sentiment) {
+      where.sentiment = sentiment;
+    }
+
+    if (player) {
+      andConditions.push({
+        OR: [
+          { playerName: { contains: player, mode: 'insensitive' } },
+          { playerNames: { has: player } },
+          { title: { contains: player, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
 
     let news = await prisma.sportsNews.findMany({
@@ -53,11 +81,15 @@ export const GET = withApiUsage({ endpoint: "/api/sports/news", tool: "SportsNew
     }
 
     const sources = [...new Set(news.map(n => n.source))];
+    const categories = [...new Set(news.map(n => n.category).filter(Boolean))];
+    const sentiments = [...new Set(news.map(n => n.sentiment).filter(Boolean))];
 
     return NextResponse.json({
       news,
       count: news.length,
       sources,
+      categories,
+      sentiments,
     });
   } catch (error) {
     console.error('[News API] Error:', error);

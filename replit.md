@@ -67,7 +67,7 @@ The core architecture uses a `One Engine API` integrating One Scoring Core, One 
 -   **Resend**: Email notifications.
 -   **Twilio Verify API**: Phone verification.
 -   **OpenWeatherMap API**: Game-day weather data.
--   **NewsAPI.org**: Secondary news source.
+-   **NewsAPI.org**: Comprehensive news intelligence using all 3 endpoints: `/v2/everything` (keyword searches with sports domain filtering), `/v2/top-headlines` (breaking sports headlines via `category=sports`), and source metadata. Full field capture: title, description, content body, author, imageUrl (urlToImage), source ID/name, publishedAt. Enhanced with auto-classification (injury/trade/waiver/draft/contract/fantasy_advice/game_recap/discipline/coaching/dynasty/college), sentiment detection (positive/negative/mixed/trade/neutral), player name extraction (prefetched identity map), multi-team tagging, and rotating multi-query sync patterns for maximum coverage.
 -   **Serper**: Web search for Trade Improvement AI.
 -   **xAI**: Keyword search for Trade Improvement AI.
 -   **Community Trade Value Data**: Locally stored historical NFL player and pick values.

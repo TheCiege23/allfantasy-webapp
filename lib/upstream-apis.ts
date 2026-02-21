@@ -200,18 +200,48 @@ export async function fetchNewsContext(
 
   if (newsItemCount === 0 && deps.newsApiKey) {
     try {
+      const headlinesUrl = `https://newsapi.org/v2/top-headlines?country=us&category=sports&pageSize=${limit}&apiKey=${deps.newsApiKey}`;
+      const headlinesRes = await fetch(headlinesUrl, { signal: AbortSignal.timeout(5000) });
+      if (headlinesRes.ok) {
+        const data = await headlinesRes.json();
+        for (const article of (data.articles || [])) {
+          if (!article.title || article.title === '[Removed]') continue;
+          const titleLower = (article.title || '').toLowerCase();
+          const isNflRelated = titleLower.includes('nfl') || titleLower.includes('football') ||
+            playerNames.some(n => titleLower.includes(n.toLowerCase())) ||
+            teamAbbrevs.some(t => titleLower.includes(t.toLowerCase()));
+          if (!isNflRelated && playerNames.length > 0) continue;
+
+          sources.add('newsapi_headlines');
+          items.push({
+            id: `newsapi-hl-${article.url || Math.random().toString(36).slice(2)}`,
+            title: article.title || '',
+            source: article.source?.name || 'NewsAPI Headlines',
+            url: article.url || null,
+            team: null,
+            publishedAt: article.publishedAt || new Date().toISOString(),
+            isInjury: false,
+            relevance: 'general',
+          });
+        }
+      }
+    } catch {
+    }
+
+    try {
       const q = playerNames.length > 0
         ? playerNames.slice(0, 3).join(' OR ')
         : teamAbbrevs.length > 0
           ? teamAbbrevs.slice(0, 5).join(' OR ') + ' NFL'
           : 'NFL fantasy football';
 
-      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&sortBy=publishedAt&pageSize=${limit}&apiKey=${deps.newsApiKey}`;
+      const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&sortBy=publishedAt&pageSize=${limit}&language=en&apiKey=${deps.newsApiKey}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
 
       if (res.ok) {
         const data = await res.json();
         for (const article of (data.articles || [])) {
+          if (!article.title || article.title === '[Removed]') continue;
           sources.add('newsapi');
           items.push({
             id: `newsapi-${article.url || Math.random().toString(36).slice(2)}`,

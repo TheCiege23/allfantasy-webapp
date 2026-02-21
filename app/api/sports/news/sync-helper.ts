@@ -18,6 +18,27 @@ const ABBREV_TO_FULL_NAME: Record<string, string> = {
   'TEN': 'Tennessee Titans', 'WAS': 'Washington Commanders',
 };
 
+const SPORTS_DOMAINS = [
+  'espn.com', 'bleacherreport.com', 'nfl.com', 'cbssports.com', 'foxsports.com',
+  'theathletic.com', 'si.com', 'profootballtalk.nbcsports.com', 'yahoo.com',
+  'rotoworld.com', 'fantasypros.com', 'rotowire.com', 'footballoutsiders.com',
+  'pff.com', 'nfltraderumors.co', 'sportingnews.com',
+].join(',');
+
+const EXCLUDE_DOMAINS = [
+  'reddit.com', 'twitter.com', 'facebook.com', 'tiktok.com',
+].join(',');
+
+const FANTASY_QUERY_PATTERNS = [
+  'NFL fantasy football trade',
+  'NFL waiver wire pickup',
+  'NFL injury report update',
+  'NFL draft prospect rookie',
+  'NFL free agent signing',
+  'NFL dynasty fantasy trade value',
+  'NFL start sit fantasy',
+];
+
 function stableArticleId(url: string, fallback: string): string {
   const input = url || fallback;
   return createHash('sha256').update(input).digest('hex').slice(0, 40);
@@ -26,60 +47,200 @@ function stableArticleId(url: string, fallback: string): string {
 interface NewsArticle {
   id: string;
   title: string;
-  content: string;
+  description: string | null;
+  content: string | null;
   url: string;
   published: string;
   team: string | null;
+  teams: string[];
   source: string;
-  categories?: string[];
+  sourceId: string | null;
+  author: string | null;
+  imageUrl: string | null;
+  playerNames: string[];
+  categories: string[];
+  sentiment: string | null;
 }
 
 const NFL_TEAM_KEYWORDS: Record<string, string> = {
-  'cardinals': 'ARI', 'arizona': 'ARI',
-  'falcons': 'ATL', 'atlanta': 'ATL',
-  'ravens': 'BAL', 'baltimore': 'BAL',
-  'bills': 'BUF', 'buffalo': 'BUF',
-  'panthers': 'CAR', 'carolina': 'CAR',
+  'cardinals': 'ARI', 'arizona cardinals': 'ARI',
+  'falcons': 'ATL', 'atlanta falcons': 'ATL',
+  'ravens': 'BAL', 'baltimore ravens': 'BAL',
+  'bills': 'BUF', 'buffalo bills': 'BUF',
+  'panthers': 'CAR', 'carolina panthers': 'CAR',
   'bears': 'CHI', 'chicago bears': 'CHI',
-  'bengals': 'CIN', 'cincinnati': 'CIN',
-  'browns': 'CLE', 'cleveland': 'CLE',
-  'cowboys': 'DAL', 'dallas': 'DAL',
-  'broncos': 'DEN', 'denver': 'DEN',
-  'lions': 'DET', 'detroit': 'DET',
-  'packers': 'GB', 'green bay': 'GB',
+  'bengals': 'CIN', 'cincinnati bengals': 'CIN',
+  'browns': 'CLE', 'cleveland browns': 'CLE',
+  'cowboys': 'DAL', 'dallas cowboys': 'DAL',
+  'broncos': 'DEN', 'denver broncos': 'DEN',
+  'lions': 'DET', 'detroit lions': 'DET',
+  'packers': 'GB', 'green bay packers': 'GB',
   'texans': 'HOU', 'houston texans': 'HOU',
-  'colts': 'IND', 'indianapolis': 'IND',
-  'jaguars': 'JAX', 'jacksonville': 'JAX',
-  'chiefs': 'KC', 'kansas city': 'KC',
-  'raiders': 'LV', 'las vegas': 'LV',
+  'colts': 'IND', 'indianapolis colts': 'IND',
+  'jaguars': 'JAX', 'jacksonville jaguars': 'JAX',
+  'chiefs': 'KC', 'kansas city chiefs': 'KC',
+  'raiders': 'LV', 'las vegas raiders': 'LV',
   'chargers': 'LAC', 'los angeles chargers': 'LAC',
   'rams': 'LAR', 'los angeles rams': 'LAR',
-  'dolphins': 'MIA', 'miami': 'MIA',
-  'vikings': 'MIN', 'minnesota': 'MIN',
-  'patriots': 'NE', 'new england': 'NE',
-  'saints': 'NO', 'new orleans': 'NO',
+  'dolphins': 'MIA', 'miami dolphins': 'MIA',
+  'vikings': 'MIN', 'minnesota vikings': 'MIN',
+  'patriots': 'NE', 'new england patriots': 'NE',
+  'saints': 'NO', 'new orleans saints': 'NO',
   'giants': 'NYG', 'new york giants': 'NYG',
   'jets': 'NYJ', 'new york jets': 'NYJ',
-  'eagles': 'PHI', 'philadelphia': 'PHI',
-  'steelers': 'PIT', 'pittsburgh': 'PIT',
-  'seahawks': 'SEA', 'seattle': 'SEA',
-  '49ers': 'SF', 'san francisco': 'SF', 'niners': 'SF',
-  'buccaneers': 'TB', 'tampa bay': 'TB', 'bucs': 'TB',
-  'titans': 'TEN', 'tennessee': 'TEN',
-  'commanders': 'WAS', 'washington': 'WAS',
+  'eagles': 'PHI', 'philadelphia eagles': 'PHI',
+  'steelers': 'PIT', 'pittsburgh steelers': 'PIT',
+  'seahawks': 'SEA', 'seattle seahawks': 'SEA',
+  '49ers': 'SF', 'san francisco 49ers': 'SF', 'niners': 'SF',
+  'buccaneers': 'TB', 'tampa bay buccaneers': 'TB', 'bucs': 'TB',
+  'titans': 'TEN', 'tennessee titans': 'TEN',
+  'commanders': 'WAS', 'washington commanders': 'WAS',
 };
 
-function extractTeamFromText(text: string): string | null {
+function extractAllTeamsFromText(text: string): string[] {
   const lower = text.toLowerCase();
+  const found = new Set<string>();
   const sortedKeywords = Object.entries(NFL_TEAM_KEYWORDS)
     .sort((a, b) => b[0].length - a[0].length);
 
   for (const [keyword, abbrev] of sortedKeywords) {
     if (lower.includes(keyword)) {
-      return abbrev;
+      found.add(abbrev);
     }
   }
-  return null;
+  return Array.from(found);
+}
+
+function extractTeamFromText(text: string): string | null {
+  const teams = extractAllTeamsFromText(text);
+  return teams.length > 0 ? teams[0] : null;
+}
+
+let _cachedPlayerNames: { names: Map<string, string>; fetchedAt: number } | null = null;
+const PLAYER_CACHE_TTL = 10 * 60 * 1000;
+
+async function getKnownPlayerNames(): Promise<Map<string, string>> {
+  if (_cachedPlayerNames && Date.now() - _cachedPlayerNames.fetchedAt < PLAYER_CACHE_TTL) {
+    return _cachedPlayerNames.names;
+  }
+
+  const nameMap = new Map<string, string>();
+  try {
+    const players = await prisma.playerIdentityMap.findMany({
+      where: { sport: 'NFL' },
+      select: { canonicalName: true },
+      take: 3000,
+    });
+    for (const p of players) {
+      if (p.canonicalName) {
+        nameMap.set(p.canonicalName.toLowerCase(), p.canonicalName);
+      }
+    }
+  } catch {
+  }
+
+  _cachedPlayerNames = { names: nameMap, fetchedAt: Date.now() };
+  return nameMap;
+}
+
+function extractPlayerNamesFromText(text: string, knownPlayers: Map<string, string>): string[] {
+  const found: string[] = [];
+  const lower = text.toLowerCase();
+
+  for (const [lowerName, canonical] of knownPlayers) {
+    if (lower.includes(lowerName)) {
+      found.push(canonical);
+    }
+  }
+
+  if (found.length === 0) {
+    const namePattern = /\b([A-Z][a-z]+(?:\s(?:Jr\.|Sr\.|III|II|IV))?)\s([A-Z][a-z]{2,}(?:\s(?:Jr\.|Sr\.|III|II|IV))?)\b/g;
+    const commonWords = new Set([
+      'The', 'New', 'San', 'Los', 'Las', 'Bay', 'Green', 'Kansas', 'City',
+      'York', 'England', 'Tampa', 'Monday', 'Tuesday', 'Wednesday', 'Thursday',
+      'Friday', 'Saturday', 'Sunday', 'January', 'February', 'March', 'April',
+      'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December',
+      'Super', 'Bowl', 'Pro', 'Week', 'Season', 'Game', 'Trade', 'Draft', 'Free',
+      'Agent', 'Fantasy', 'Football', 'Breaking', 'Report', 'Update', 'News',
+      'According', 'Sources', 'Per', 'Via', 'Just', 'Now', 'First', 'Last',
+      'North', 'South', 'East', 'West', 'United', 'States', 'National',
+    ]);
+
+    let match;
+    while ((match = namePattern.exec(text)) !== null) {
+      const first = match[1];
+      const last = match[2];
+      if (!commonWords.has(first) && !commonWords.has(last)) {
+        found.push(`${first} ${last}`);
+      }
+    }
+  }
+
+  return [...new Set(found)].slice(0, 10);
+}
+
+function detectSentiment(title: string, description: string | null): string | null {
+  const text = `${title} ${description || ''}`.toLowerCase();
+
+  const negativePatterns = [
+    'injury', 'injured', 'tear', 'torn', 'out for', 'ruled out', 'doubtful',
+    'surgery', 'ir ', 'injured reserve', 'suspend', 'cut', 'released', 'waived',
+    'arrested', 'setback', 'concern', 'disappointing', 'struggling', 'decline',
+    'downgrade', 'questionable', 'miss', 'absence', 'sidelined', 'fracture',
+    'concussion', 'acl', 'mcl', 'hamstring', 'ankle sprain',
+  ];
+
+  const positivePatterns = [
+    'breakout', 'extension', 'signed', 'return', 'returning', 'cleared',
+    'promoted', 'starter', 'upgrade', 'rising', 'surge', 'career high',
+    'record', 'dominant', 'elite', 'contract', 'deal', 'activated',
+    'practicing', 'full practice', 'no limitations', 'healthy',
+    'trending up', 'hot streak', 'sleeper', 'must add', 'pickup',
+  ];
+
+  const tradePatterns = [
+    'trade', 'traded', 'swap', 'deal', 'blockbuster', 'package',
+    'acquire', 'send', 'move', 'exchange',
+  ];
+
+  let negScore = 0;
+  let posScore = 0;
+  let tradeScore = 0;
+
+  for (const p of negativePatterns) {
+    if (text.includes(p)) negScore++;
+  }
+  for (const p of positivePatterns) {
+    if (text.includes(p)) posScore++;
+  }
+  for (const p of tradePatterns) {
+    if (text.includes(p)) tradeScore++;
+  }
+
+  if (tradeScore >= 2) return 'trade';
+  if (negScore > posScore && negScore >= 2) return 'negative';
+  if (posScore > negScore && posScore >= 2) return 'positive';
+  if (negScore > 0 && posScore > 0) return 'mixed';
+  if (negScore > 0) return 'negative';
+  if (posScore > 0) return 'positive';
+  return 'neutral';
+}
+
+function classifyCategory(title: string, description: string | null): string {
+  const text = `${title} ${description || ''}`.toLowerCase();
+
+  if (/injur|torn|tear|surgery|concuss|hamstring|acl|mcl|ir\b|injured reserve|sidelined/.test(text)) return 'injury';
+  if (/trade|traded|swap|deal|blockbuster|acquire|package/.test(text)) return 'trade';
+  if (/waiver|pickup|add|claim|free agent|wire/.test(text)) return 'waiver';
+  if (/draft|prospect|rookie|combine|mock draft|pick|selection/.test(text)) return 'draft';
+  if (/sign|contract|extension|restructure|cap space|salary/.test(text)) return 'contract';
+  if (/start|sit|lineup|matchup|projection|ranking|rest of season/.test(text)) return 'fantasy_advice';
+  if (/score|touchdown|yard|game|win|loss|recap|highlight|play/.test(text)) return 'game_recap';
+  if (/suspend|fine|arrest|disciplin|banned|personal conduct/.test(text)) return 'discipline';
+  if (/coach|hire|fire|coordinator|staff|scheme/.test(text)) return 'coaching';
+  if (/dynasty|keeper|rebuild|contend|window|long.?term/.test(text)) return 'dynasty';
+  if (/devy|college|ncaa|cfb/.test(text)) return 'college';
+  return 'general';
 }
 
 export async function fetchESPNNews(team?: string): Promise<NewsArticle[]> {
@@ -94,29 +255,56 @@ export async function fetchESPNNews(team?: string): Promise<NewsArticle[]> {
     const data = await response.json();
     const articles = data.articles || [];
 
-    return articles.map((a: Record<string, unknown>) => {
-      const categories = ((a as { categories?: Array<{ description?: string; type?: string; teamId?: string }> }).categories || []);
-      const teamCategory = categories.find((c: { type?: string }) => c.type === 'team');
-      const teamAbbrev = teamCategory ? normalizeTeamAbbrev((teamCategory as { description?: string }).description || '') : null;
+    const knownPlayers = await getKnownPlayerNames();
+    const results: NewsArticle[] = [];
+    for (const a of articles) {
+      const categories = (a.categories || []) as Array<{ description?: string; type?: string }>;
+      const teamCategory = categories.find((c) => c.type === 'team');
+      const teamAbbrev = teamCategory ? normalizeTeamAbbrev(teamCategory.description || '') : null;
 
-      return {
-        id: String((a as { id?: unknown }).id || ''),
-        title: String((a as { headline?: unknown }).headline || ''),
-        content: String((a as { description?: unknown }).description || ''),
-        url: (a as { links?: { web?: { href?: string } } }).links?.web?.href || '',
-        published: String((a as { published?: unknown }).published || ''),
-        team: teamAbbrev || (team ? normalizeTeamAbbrev(team) : null),
+      const title = String(a.headline || a.title || '');
+      const desc = String(a.description || '');
+      const combinedText = `${title} ${desc}`;
+      const allTeams = extractAllTeamsFromText(combinedText);
+      const playerNames = extractPlayerNamesFromText(combinedText, knownPlayers);
+      const primaryTeam = teamAbbrev || (team ? normalizeTeamAbbrev(team) : null) || (allTeams[0] || null);
+
+      results.push({
+        id: String(a.id || ''),
+        title,
+        description: desc || null,
+        content: String(a.story || a.description || ''),
+        url: a.links?.web?.href || '',
+        published: String(a.published || ''),
+        team: primaryTeam,
+        teams: allTeams,
         source: 'espn',
-        categories: categories.map((c: { description?: string }) => c.description || ''),
-      };
-    });
+        sourceId: 'espn',
+        author: a.byline || null,
+        imageUrl: a.images?.[0]?.url || null,
+        playerNames,
+        categories: [
+          ...categories.map((c) => c.description || ''),
+          classifyCategory(title, desc),
+        ],
+        sentiment: detectSentiment(title, desc),
+      });
+    }
+
+    return results;
   } catch (error) {
     console.error('[News] ESPN fetch failed:', error);
     return [];
   }
 }
 
-export async function fetchNewsAPIArticles(query?: string): Promise<NewsArticle[]> {
+export async function fetchNewsAPIEverything(query: string, opts?: {
+  domains?: string;
+  excludeDomains?: string;
+  sortBy?: string;
+  from?: string;
+  pageSize?: number;
+}): Promise<NewsArticle[]> {
   const apiKey = process.env.NEWSAPI_KEY;
   if (!apiKey) {
     console.warn('[News] NEWSAPI_KEY not set, skipping NewsAPI fetch');
@@ -124,17 +312,23 @@ export async function fetchNewsAPIArticles(query?: string): Promise<NewsArticle[
   }
 
   try {
-    const searchQuery = query || 'NFL football';
-    const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const fromDate = opts?.from || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
     const params = new URLSearchParams({
-      q: searchQuery,
+      q: query,
       language: 'en',
-      sortBy: 'publishedAt',
+      sortBy: opts?.sortBy || 'publishedAt',
       from: fromDate,
-      pageSize: '50',
+      pageSize: String(opts?.pageSize || 100),
       apiKey,
     });
+
+    if (opts?.domains) {
+      params.set('domains', opts.domains);
+    }
+    if (opts?.excludeDomains) {
+      params.set('excludeDomains', opts.excludeDomains);
+    }
 
     const response = await fetch(`https://newsapi.org/v2/everything?${params.toString()}`, {
       cache: 'no-store',
@@ -142,42 +336,108 @@ export async function fetchNewsAPIArticles(query?: string): Promise<NewsArticle[
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('[News] NewsAPI fetch failed:', response.status, errorData);
+      console.error('[News] NewsAPI /everything failed:', response.status, errorData);
       return [];
     }
 
     const data = await response.json();
-    const articles = data.articles || [];
-
-    return articles.map((a: Record<string, unknown>) => {
-      const title = String((a as { title?: unknown }).title || '');
-      const description = String((a as { description?: unknown }).description || '');
-      const articleUrl = String((a as { url?: unknown }).url || '');
-      const publishedAt = String((a as { publishedAt?: unknown }).publishedAt || '');
-
-      const teamFromTitle = extractTeamFromText(title);
-      const teamFromDesc = teamFromTitle || extractTeamFromText(description);
-
-      const sourceObj = (a as { source?: { name?: string } }).source;
-      const sourceName = sourceObj?.name || 'NewsAPI';
-
-      const articleId = stableArticleId(articleUrl, `${title}-${publishedAt}`);
-
-      return {
-        id: articleId,
-        title,
-        content: description,
-        url: articleUrl,
-        published: publishedAt,
-        team: teamFromDesc,
-        source: 'newsapi',
-        categories: [sourceName, 'football'],
-      };
-    }).filter((a: NewsArticle) => a.title && a.title !== '[Removed]');
+    return parseNewsAPIResponse(data.articles || [], 'newsapi_everything');
   } catch (error) {
-    console.error('[News] NewsAPI fetch failed:', error);
+    console.error('[News] NewsAPI /everything failed:', error);
     return [];
   }
+}
+
+export async function fetchNewsAPITopHeadlines(opts?: {
+  category?: string;
+  country?: string;
+  query?: string;
+  pageSize?: number;
+}): Promise<NewsArticle[]> {
+  const apiKey = process.env.NEWSAPI_KEY;
+  if (!apiKey) {
+    console.warn('[News] NEWSAPI_KEY not set, skipping NewsAPI top-headlines');
+    return [];
+  }
+
+  try {
+    const params = new URLSearchParams({
+      country: opts?.country || 'us',
+      category: opts?.category || 'sports',
+      pageSize: String(opts?.pageSize || 100),
+      apiKey,
+    });
+
+    if (opts?.query) {
+      params.set('q', opts.query);
+    }
+
+    const response = await fetch(`https://newsapi.org/v2/top-headlines?${params.toString()}`, {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[News] NewsAPI /top-headlines failed:', response.status, errorData);
+      return [];
+    }
+
+    const data = await response.json();
+    return parseNewsAPIResponse(data.articles || [], 'newsapi_headlines');
+  } catch (error) {
+    console.error('[News] NewsAPI /top-headlines failed:', error);
+    return [];
+  }
+}
+
+async function parseNewsAPIResponse(articles: any[], sourceTag: string): Promise<NewsArticle[]> {
+  const knownPlayers = await getKnownPlayerNames();
+  const results: NewsArticle[] = [];
+
+  for (const a of articles) {
+    const title = String(a.title || '');
+    if (!title || title === '[Removed]') continue;
+
+    const description = a.description ? String(a.description) : null;
+    const articleContent = a.content ? String(a.content) : null;
+    const articleUrl = String(a.url || '');
+    const publishedAt = String(a.publishedAt || '');
+    const author = a.author ? String(a.author) : null;
+    const imageUrl = a.urlToImage ? String(a.urlToImage) : null;
+
+    const sourceObj = a.source || {};
+    const sourceName = sourceObj.name || 'NewsAPI';
+    const sId = sourceObj.id || null;
+
+    const combinedText = `${title} ${description || ''} ${articleContent || ''}`;
+    const allTeams = extractAllTeamsFromText(combinedText);
+    const primaryTeam = allTeams[0] || null;
+    const playerNames = extractPlayerNamesFromText(combinedText, knownPlayers);
+    const category = classifyCategory(title, description);
+    const sentiment = detectSentiment(title, description);
+
+    const articleId = stableArticleId(articleUrl, `${title}-${publishedAt}`);
+
+    results.push({
+      id: articleId,
+      title,
+      description,
+      content: articleContent,
+      url: articleUrl,
+      published: publishedAt,
+      team: primaryTeam,
+      teams: allTeams,
+      source: sourceTag,
+      sourceId: sId,
+      author,
+      imageUrl,
+      playerNames,
+      categories: [sourceName, category],
+      sentiment,
+    });
+  }
+
+  return results;
 }
 
 async function upsertArticles(articles: NewsArticle[], sourceName: string): Promise<number> {
@@ -199,11 +459,19 @@ async function upsertArticles(articles: NewsArticle[], sourceName: string): Prom
         },
         update: {
           title: article.title,
+          description: article.description,
           content: article.content,
           sourceUrl: article.url,
+          sourceId: article.sourceId,
+          author: article.author,
+          imageUrl: article.imageUrl,
           team: article.team,
+          teams: article.teams,
+          playerName: article.playerNames[0] || null,
+          playerNames: article.playerNames,
           publishedAt: article.published ? new Date(article.published) : null,
           category: article.categories?.join(', ') || null,
+          sentiment: article.sentiment,
           fetchedAt: now,
           expiresAt,
         },
@@ -211,12 +479,20 @@ async function upsertArticles(articles: NewsArticle[], sourceName: string): Prom
           sport: 'NFL',
           externalId: article.id,
           title: article.title,
+          description: article.description,
           content: article.content,
           source: sourceName,
+          sourceId: article.sourceId,
           sourceUrl: article.url,
+          author: article.author,
+          imageUrl: article.imageUrl,
           team: article.team,
+          teams: article.teams,
+          playerName: article.playerNames[0] || null,
+          playerNames: article.playerNames,
           publishedAt: article.published ? new Date(article.published) : null,
           category: article.categories?.join(', ') || null,
+          sentiment: article.sentiment,
           fetchedAt: now,
           expiresAt,
         },
@@ -233,23 +509,126 @@ async function upsertArticles(articles: NewsArticle[], sourceName: string): Prom
 export async function syncNewsToDb(team?: string): Promise<number> {
   const normalizedTeam = team ? normalizeTeamAbbrev(team) : undefined;
   const fullTeamName = normalizedTeam ? ABBREV_TO_FULL_NAME[normalizedTeam] : undefined;
-  const newsApiQuery = fullTeamName ? `NFL ${fullTeamName}` : undefined;
+  const teamQuery = fullTeamName ? `NFL ${fullTeamName}` : undefined;
 
-  const [espnArticles, newsApiArticles] = await Promise.all([
+  const fetchPromises: Promise<NewsArticle[]>[] = [
     fetchESPNNews(team),
-    fetchNewsAPIArticles(newsApiQuery),
+    fetchNewsAPITopHeadlines({ category: 'sports', query: teamQuery ? fullTeamName : 'NFL' }),
+  ];
+
+  if (teamQuery) {
+    fetchPromises.push(
+      fetchNewsAPIEverything(teamQuery, {
+        domains: SPORTS_DOMAINS,
+        excludeDomains: EXCLUDE_DOMAINS,
+        sortBy: 'publishedAt',
+        pageSize: 50,
+      }),
+    );
+  } else {
+    fetchPromises.push(
+      fetchNewsAPIEverything('NFL football', {
+        domains: SPORTS_DOMAINS,
+        excludeDomains: EXCLUDE_DOMAINS,
+        sortBy: 'publishedAt',
+        pageSize: 50,
+      }),
+      fetchNewsAPIEverything('NFL fantasy trade waiver', {
+        sortBy: 'relevancy',
+        pageSize: 30,
+      }),
+    );
+  }
+
+  const results = await Promise.all(fetchPromises);
+
+  const espnArticles = results[0];
+  const headlineArticles = results[1];
+  const everythingArticles = results.slice(2).flat();
+
+  const seenIds = new Set<string>();
+  const deduped = (articles: NewsArticle[]): NewsArticle[] => {
+    return articles.filter((a) => {
+      if (seenIds.has(a.id)) return false;
+      seenIds.add(a.id);
+      return true;
+    });
+  };
+
+  const dedupedEspn = deduped(espnArticles);
+  const dedupedHeadlines = deduped(headlineArticles);
+  const dedupedEverything = deduped(everythingArticles);
+
+  const [espnSynced, headlinesSynced, everythingSynced] = await Promise.all([
+    upsertArticles(dedupedEspn, 'espn'),
+    upsertArticles(dedupedHeadlines, 'newsapi_headlines'),
+    upsertArticles(dedupedEverything, 'newsapi_everything'),
   ]);
 
-  const [espnSynced, newsApiSynced] = await Promise.all([
-    upsertArticles(espnArticles, 'espn'),
-    upsertArticles(newsApiArticles, 'newsapi'),
-  ]);
+  const total = espnSynced + headlinesSynced + everythingSynced;
+  console.log(`[News] Synced: ${espnSynced} ESPN, ${headlinesSynced} Headlines, ${everythingSynced} Everything = ${total} total`);
+  return total;
+}
 
-  console.log(`[News] Synced ${espnSynced} ESPN + ${newsApiSynced} NewsAPI articles`);
-  return espnSynced + newsApiSynced;
+export async function syncFullNewsCoverage(): Promise<{ total: number; breakdown: Record<string, number> }> {
+  const breakdown: Record<string, number> = {};
+
+  const espnArticles = await fetchESPNNews();
+  const espnSynced = await upsertArticles(espnArticles, 'espn');
+  breakdown.espn = espnSynced;
+
+  const headlineArticles = await fetchNewsAPITopHeadlines({
+    category: 'sports',
+    query: 'NFL',
+    pageSize: 100,
+  });
+  const headlinesSynced = await upsertArticles(headlineArticles, 'newsapi_headlines');
+  breakdown.newsapi_headlines = headlinesSynced;
+
+  const seenIds = new Set<string>();
+  for (const a of [...espnArticles, ...headlineArticles]) {
+    seenIds.add(a.id);
+  }
+
+  const queryRotation = FANTASY_QUERY_PATTERNS;
+  const rotationIndex = Math.floor(Date.now() / (30 * 60 * 1000)) % queryRotation.length;
+  const queriesToRun = [
+    queryRotation[rotationIndex],
+    queryRotation[(rotationIndex + 1) % queryRotation.length],
+    'NFL',
+  ];
+
+  for (const q of queriesToRun) {
+    const articles = await fetchNewsAPIEverything(q, {
+      domains: SPORTS_DOMAINS,
+      excludeDomains: EXCLUDE_DOMAINS,
+      sortBy: q === 'NFL' ? 'publishedAt' : 'relevancy',
+      pageSize: 50,
+    });
+
+    const fresh = articles.filter((a) => {
+      if (seenIds.has(a.id)) return false;
+      seenIds.add(a.id);
+      return true;
+    });
+
+    const synced = await upsertArticles(fresh, 'newsapi_everything');
+    breakdown[`everything_${q.replace(/\s+/g, '_').toLowerCase()}`] = synced;
+  }
+
+  const total = Object.values(breakdown).reduce((sum, v) => sum + v, 0);
+  console.log(`[News] Full coverage sync: ${total} total articles`, breakdown);
+  return { total, breakdown };
+}
+
+export async function fetchNewsAPIArticles(query?: string): Promise<NewsArticle[]> {
+  return fetchNewsAPIEverything(query || 'NFL football', {
+    domains: SPORTS_DOMAINS,
+    excludeDomains: EXCLUDE_DOMAINS,
+  });
 }
 
 export async function syncNewsAPIOnly(query?: string): Promise<number> {
   const articles = await fetchNewsAPIArticles(query);
-  return upsertArticles(articles, 'newsapi');
+  return upsertArticles(articles, 'newsapi_everything');
 }

@@ -72,9 +72,9 @@ export const POST = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSy
 
     if (source === 'all' || source === 'espn') {
       if (syncType === 'all' || syncType === 'news') {
-        const { syncNewsToDb } = await import('@/app/api/sports/news/sync-helper');
-        const newsCount = await syncNewsToDb();
-        results.espn_news = { synced: newsCount };
+        const { syncFullNewsCoverage } = await import('@/app/api/sports/news/sync-helper');
+        const newsResult = await syncFullNewsCoverage();
+        results.news = { synced: newsResult.total, breakdown: newsResult.breakdown };
       }
     }
 
