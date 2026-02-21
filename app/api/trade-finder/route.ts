@@ -36,6 +36,7 @@ import {
   type TeamProfileLite,
 } from '@/lib/trade-finder/allowed-assets'
 import { buildAssetIndex, makeSleeperPickId } from '@/lib/trade-finder/asset-index'
+import { buildTradeHubIntelBlock } from '@/lib/trade-engine/trade-analyzer-intel'
 
 const TradeFinderRequestSchema = z.object({
   league_id: z.string(),
@@ -557,6 +558,19 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
       name: a.name, position: a.position, value: a.value, tier: a.tier, isPick: a.isPick,
     })) || []
 
+    const intelPlayerNames = [
+      ...Object.values(pricedAssets).flatMap((arr: PricedAsset[]) => arr.filter(a => !a.isPick).map(a => a.name)),
+    ]
+    const intelTeamAbbrevs = [
+      ...Object.values(pricedAssets).flatMap((arr: PricedAsset[]) => arr.filter(a => !a.isPick).map(a => (a as any).teamAbbr).filter(Boolean)),
+    ] as string[]
+    const externalIntel = await buildTradeHubIntelBlock({
+      playerNames: intelPlayerNames,
+      teamAbbrevs: intelTeamAbbrevs,
+      numTeams: sleeperLeague.total_rosters || 12,
+      isSuperflex: isSF,
+    }).catch(() => '')
+
     const openaiPayload = {
       userTeam: userTeam ? {
         teamId: userTeam.teamId,
@@ -580,6 +594,7 @@ export const POST = withApiUsage({ endpoint: "/api/trade-finder", tool: "TradeFi
       partnerFit: leagueDecisionCtx.partnerFit,
       userRosterAssets,
       preferredTone: data.preferredTone || null,
+      externalIntel,
     }
 
     const userPayloadStr = JSON.stringify(openaiPayload) + '\n\n' + NEGOTIATION_USER_INSTRUCTION
