@@ -130,6 +130,8 @@ model PlayerIdentityMap {
   rollingInsightsId  String?
   apiSportsId        String?
   mflId              String?
+  espnId             String?
+  fleaflickerId      String?
   sport              String   @default("NFL")
   status             String?
   lastSyncedAt       DateTime @default(now())
@@ -140,6 +142,7 @@ model PlayerIdentityMap {
   @@index([fantasyCalcId])
   @@index([rollingInsightsId])
   @@index([apiSportsId])
+  @@index([espnId])
   @@index([currentTeam])
   @@index([sport, position])
 }

@@ -51,6 +51,8 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/identity-sync", tool: "
     withFantasyCalcId,
     withRollingInsightsId,
     withApiSportsId,
+    withEspnId,
+    withFleaflickerId,
     fullyLinked,
   ] = await Promise.all([
     prisma.playerIdentityMap.count(),
@@ -58,6 +60,8 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/identity-sync", tool: "
     prisma.playerIdentityMap.count({ where: { fantasyCalcId: { not: null } } }),
     prisma.playerIdentityMap.count({ where: { rollingInsightsId: { not: null } } }),
     prisma.playerIdentityMap.count({ where: { apiSportsId: { not: null } } }),
+    prisma.playerIdentityMap.count({ where: { espnId: { not: null } } }),
+    prisma.playerIdentityMap.count({ where: { fleaflickerId: { not: null } } }),
     prisma.playerIdentityMap.count({
       where: {
         sleeperId: { not: null },
@@ -73,12 +77,16 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/identity-sync", tool: "
     withFantasyCalcId,
     withRollingInsightsId,
     withApiSportsId,
+    withEspnId,
+    withFleaflickerId,
     fullyLinked,
     coverage: {
       sleeper: totalPlayers > 0 ? Math.round((withSleeperId / totalPlayers) * 100) : 0,
       fantasyCalc: totalPlayers > 0 ? Math.round((withFantasyCalcId / totalPlayers) * 100) : 0,
       rollingInsights: totalPlayers > 0 ? Math.round((withRollingInsightsId / totalPlayers) * 100) : 0,
       apiSports: totalPlayers > 0 ? Math.round((withApiSportsId / totalPlayers) * 100) : 0,
+      espn: totalPlayers > 0 ? Math.round((withEspnId / totalPlayers) * 100) : 0,
+      fleaflicker: totalPlayers > 0 ? Math.round((withFleaflickerId / totalPlayers) * 100) : 0,
       fullyLinked: totalPlayers > 0 ? Math.round((fullyLinked / totalPlayers) * 100) : 0,
     },
   })

@@ -358,6 +358,9 @@ export async function syncIdentityMap(): Promise<{ created: number; updated: num
       }
     }
 
+    const espnId = fc.player.espnId || null
+    const fleaflickerId = fc.player.fleaflickerId || null
+
     if (existing) {
       await prisma.playerIdentityMap.update({
         where: { id: existing.id },
@@ -370,6 +373,8 @@ export async function syncIdentityMap(): Promise<{ created: number; updated: num
           fantasyCalcId: String(fc.player.id),
           sleeperId: sleeperId || existing.sleeperId,
           mflId: fc.player.mflId || existing.mflId,
+          espnId: espnId || existing.espnId,
+          fleaflickerId: fleaflickerId || existing.fleaflickerId,
           status: existing.status,
           lastSyncedAt: new Date(),
         },
@@ -386,6 +391,8 @@ export async function syncIdentityMap(): Promise<{ created: number; updated: num
           sleeperId,
           fantasyCalcId: String(fc.player.id),
           mflId: fc.player.mflId || null,
+          espnId,
+          fleaflickerId,
           sport: 'NFL',
           lastSyncedAt: new Date(),
         },

@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server';
 import { 
   fetchFantasyCalcValues, 
+  fetchFantasyCalcPlayerDirectory,
   findPlayerByName,
   compareTradeValues,
   getTopPlayers,
@@ -27,6 +28,18 @@ export const GET = withApiUsage({ endpoint: "/api/fantasycalc", tool: "Fantasyca
     
     const players = await fetchFantasyCalcValues(settings);
     
+    if (action === 'directory') {
+      const directory = await fetchFantasyCalcPlayerDirectory();
+      const filtered = position
+        ? directory.filter(p => p.position.toUpperCase() === position.toUpperCase())
+        : directory;
+      return NextResponse.json({ 
+        players: filtered.slice(0, limit), 
+        total: filtered.length, 
+        source: 'fantasycalc-directory',
+      });
+    }
+
     if (action === 'player' && playerName) {
       const player = findPlayerByName(players, playerName);
       if (!player) {

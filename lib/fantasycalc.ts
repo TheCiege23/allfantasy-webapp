@@ -1,20 +1,25 @@
 const FANTASYCALC_API_BASE = 'https://api.fantasycalc.com/values/current';
+const FANTASYCALC_PLAYERS_BASE = 'https://api.fantasycalc.com/players';
+
+export interface FantasyCalcPlayerIdentity {
+  id: number;
+  name: string;
+  mflId: string;
+  sleeperId: string;
+  position: string;
+  maybeBirthday: string | null;
+  maybeHeight: string | null;
+  maybeWeight: number | null;
+  maybeCollege: string | null;
+  maybeTeam: string | null;
+  maybeAge: number | null;
+  maybeYoe: number | null;
+  espnId: string | null;
+  fleaflickerId: string | null;
+}
 
 export interface FantasyCalcPlayer {
-  player: {
-    id: number;
-    name: string;
-    mflId: string;
-    sleeperId: string;
-    position: string;
-    maybeBirthday: string | null;
-    maybeHeight: string | null;
-    maybeWeight: number | null;
-    maybeCollege: string | null;
-    maybeTeam: string | null;
-    maybeAge: number | null;
-    maybeYoe: number | null;
-  };
+  player: FantasyCalcPlayerIdentity;
   value: number;
   overallRank: number;
   positionRank: number;
@@ -29,6 +34,9 @@ export interface FantasyCalcPlayer {
   displayTrend: boolean;
   maybeOwner: string | null;
   starter: boolean;
+  maybeTier: number | null;
+  maybeAdp: number | null;
+  maybeTradeFrequency: number | null;
 }
 
 export interface FantasyCalcSettings {
@@ -81,6 +89,29 @@ export async function fetchFantasyCalcValues(
     settings,
   });
   
+  return data;
+}
+
+let playersDirectoryCache: { data: FantasyCalcPlayerIdentity[]; fetchedAt: number } | null = null;
+const PLAYERS_CACHE_TTL = 1000 * 60 * 60 * 12; // 12 hours
+
+export async function fetchFantasyCalcPlayerDirectory(): Promise<FantasyCalcPlayerIdentity[]> {
+  if (playersDirectoryCache && Date.now() - playersDirectoryCache.fetchedAt < PLAYERS_CACHE_TTL) {
+    return playersDirectoryCache.data;
+  }
+
+  const response = await fetch(FANTASYCALC_PLAYERS_BASE, {
+    headers: { 'Accept': 'application/json' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`FantasyCalc Players API error: ${response.status}`);
+  }
+
+  const data: FantasyCalcPlayerIdentity[] = await response.json();
+
+  playersDirectoryCache = { data, fetchedAt: Date.now() };
+
   return data;
 }
 
@@ -410,6 +441,13 @@ export interface PlayerValueLookup {
   sleeperId: string | null;
   age: number | null;
   redraftValue: number;
+  espnId: string | null;
+  fleaflickerId: string | null;
+  maybeTier: number | null;
+  maybeAdp: number | null;
+  maybeTradeFrequency: number | null;
+  volatility: number | null;
+  combinedValue: number;
 }
 
 export async function getPlayerValuesForNames(
@@ -437,6 +475,13 @@ export async function getPlayerValuesForNames(
           sleeperId: player.player.sleeperId,
           age: player.player.maybeAge,
           redraftValue: player.redraftValue,
+          espnId: player.player.espnId || null,
+          fleaflickerId: player.player.fleaflickerId || null,
+          maybeTier: player.maybeTier ?? null,
+          maybeAdp: player.maybeAdp ?? null,
+          maybeTradeFrequency: player.maybeTradeFrequency ?? null,
+          volatility: player.maybeMovingStandardDeviationAdjusted ?? null,
+          combinedValue: player.combinedValue,
         });
       }
     }
@@ -458,7 +503,10 @@ export function formatValuesForPrompt(
     if (lookup) {
       const trendStr = lookup.trend30Day > 0 ? `+${lookup.trend30Day}` : `${lookup.trend30Day}`;
       const ageStr = lookup.age ? `, Age ${lookup.age}` : '';
-      lines.push(`- ${lookup.name}: Dynasty ${lookup.value} / Redraft ${lookup.redraftValue} | ${lookup.detailedTier.label} | Rank #${lookup.rank} (${lookup.position}${lookup.positionRank})${ageStr} | 30d trend: ${trendStr}`);
+      const adpStr = lookup.maybeAdp ? ` | ADP: ${lookup.maybeAdp}` : '';
+      const freqStr = lookup.maybeTradeFrequency ? ` | Trade Freq: ${(lookup.maybeTradeFrequency * 100).toFixed(1)}%` : '';
+      const volStr = lookup.volatility !== null ? ` | Vol: ${lookup.volatility > 0 ? '+' : ''}${lookup.volatility}` : '';
+      lines.push(`- ${lookup.name}: Dynasty ${lookup.value} / Redraft ${lookup.redraftValue} | ${lookup.detailedTier.label} | Rank #${lookup.rank} (${lookup.position}${lookup.positionRank})${ageStr} | 30d trend: ${trendStr}${adpStr}${freqStr}${volStr}`);
     } else {
       lines.push(`- ${name}: Not found in FantasyCalc (treat as low-value depth)`);
     }
