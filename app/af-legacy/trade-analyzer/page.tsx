@@ -718,15 +718,19 @@ export default function LegacyTradeAnalyzerPage() {
     return Number.isFinite(n) ? n : currentYear()
   }
 
-  const buildDefaultPickInventory = (rosters: ManagerOption[], sportVal: Sport) => {
+  const buildDefaultPickInventory = (
+    rosters: ManagerOption[], 
+    sportVal: Sport,
+    slotMap: Map<number, number> | null
+  ) => {
     const years = [currentYear(), currentYear() + 1, currentYear() + 2, currentYear() + 3]
     const rounds = sportVal === 'NFL' ? [1, 2, 3, 4] : [1, 2]
 
     const inv: Record<number, Array<{ value: string; label: string; year: number; round: number; pick: number }>> = {}
     for (const r of rosters) inv[r.roster_id] = []
 
-    rosters.forEach((r, idx) => {
-      const slot = idx + 1
+    rosters.forEach((r) => {
+      const slot = slotMap?.get(r.roster_id) ?? r.roster_id
       const pickStr = String(slot).padStart(2, '0')
       for (const year of years) {
         for (const round of rounds) {
@@ -746,7 +750,8 @@ export default function LegacyTradeAnalyzerPage() {
   const applyTradedPicks = (
     base: Record<number, Array<{ value: string; label: string; year: number; round: number; pick: number }>>,
     traded: SleeperTradedPick[],
-    rosters: ManagerOption[]
+    rosters: ManagerOption[],
+    slotMap: Map<number, number> | null
   ) => {
     const rosterIds = new Set(rosters.map(r => r.roster_id))
     const numTeams = rosters.length || 12
@@ -767,7 +772,8 @@ export default function LegacyTradeAnalyzerPage() {
       const newOwnerRosterId = Number(tp.owner_id)
 
       if (!rosterIds.has(originalRosterId) || !rosterIds.has(newOwnerRosterId)) continue
-      const slot = originalRosterId
+      if (originalRosterId === newOwnerRosterId) continue
+      const slot = slotMap?.get(originalRosterId) ?? originalRosterId
       if (!slot || slot < 1 || slot > numTeams) continue
 
       const movedPick = removePickEverywhere(year, round, slot)
@@ -784,14 +790,48 @@ export default function LegacyTradeAnalyzerPage() {
   const fetchLeaguePickInventory = async (leagueIdToFetch: string, rosters: ManagerOption[], sportVal: Sport) => {
     if (!leagueIdToFetch || !rosters.length) return
     try {
-      const res = await fetch(`https://api.sleeper.app/v1/league/${leagueIdToFetch}/traded_picks`)
-      const traded: SleeperTradedPick[] = res.ok ? await res.json() : []
-      const base = buildDefaultPickInventory(rosters, sportVal)
-      const finalInv = applyTradedPicks(base, traded, rosters)
+      const [tradedRes, draftsRes] = await Promise.all([
+        fetch(`https://api.sleeper.app/v1/league/${leagueIdToFetch}/traded_picks`),
+        fetch(`https://api.sleeper.app/v1/league/${leagueIdToFetch}/drafts`),
+      ])
+      const traded: SleeperTradedPick[] = tradedRes.ok ? await tradedRes.json() : []
+      const drafts: any[] = draftsRes.ok ? await draftsRes.json() : []
+
+      // Build roster_id -> draft slot mapping from the most recent draft
+      let slotMap: Map<number, number> | null = null
+      const rosterUsers = await fetch(`https://api.sleeper.app/v1/league/${leagueIdToFetch}/rosters`)
+      const rosterData: any[] = rosterUsers.ok ? await rosterUsers.json() : []
+      const userToRoster = new Map<string, number>()
+      for (const r of rosterData) {
+        if (r?.owner_id) userToRoster.set(String(r.owner_id), Number(r.roster_id))
+      }
+
+      // Sort drafts by season descending to find the most recent
+      const sortedDrafts = [...drafts].sort((a, b) => parseInt(b.season || '0') - parseInt(a.season || '0'))
+      for (const draft of sortedDrafts) {
+        const map = new Map<number, number>()
+        if (draft.slot_to_roster_id) {
+          for (const [slotStr, rId] of Object.entries(draft.slot_to_roster_id)) {
+            map.set(Number(rId), parseInt(slotStr))
+          }
+        } else if (draft.draft_order) {
+          for (const [userId, slot] of Object.entries(draft.draft_order)) {
+            const rosterId = userToRoster.get(userId)
+            if (rosterId) map.set(rosterId, Number(slot))
+          }
+        }
+        if (map.size > 0) {
+          slotMap = map
+          break
+        }
+      }
+
+      const base = buildDefaultPickInventory(rosters, sportVal, slotMap)
+      const finalInv = applyTradedPicks(base, traded, rosters, slotMap)
       setPickInventoryByRoster(finalInv)
     } catch (e) {
       console.error('Failed to fetch traded picks:', e)
-      setPickInventoryByRoster(buildDefaultPickInventory(rosters, sportVal))
+      setPickInventoryByRoster(buildDefaultPickInventory(rosters, sportVal, null))
     }
   }
 

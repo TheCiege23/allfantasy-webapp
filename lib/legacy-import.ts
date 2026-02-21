@@ -343,10 +343,38 @@ async function importLeague(
   try {
     const drafts = await getLeagueDrafts(leagueId);
     if (drafts && drafts.length > 0) {
-      const latestDraft = drafts[0];
-      const slotToRoster: Record<string, number> = latestDraft.slot_to_roster_id || {};
-      for (const [slot, rosterId] of Object.entries(slotToRoster)) {
-        rosterToSlot[rosterId] = parseInt(slot);
+      // Sort by season descending to get the most recent draft with order data
+      const sortedDrafts = [...drafts].sort((a: any, b: any) => 
+        parseInt(b.season || '0') - parseInt(a.season || '0')
+      );
+      
+      // Build user_id -> roster_id map for draft_order resolution
+      const userToRosterId: Record<string, number> = {};
+      if (rosters) {
+        for (const r of rosters) {
+          if (r.owner_id) userToRosterId[String(r.owner_id)] = r.roster_id;
+        }
+      }
+      
+      for (const draft of sortedDrafts) {
+        const slotToRoster: Record<string, number> = draft.slot_to_roster_id || {};
+        if (Object.keys(slotToRoster).length > 0) {
+          for (const [slot, rosterId] of Object.entries(slotToRoster)) {
+            rosterToSlot[rosterId] = parseInt(slot);
+          }
+          break;
+        }
+        // Fallback to draft_order (maps user_id -> slot)
+        const draftOrder: Record<string, number> = draft.draft_order || {};
+        if (Object.keys(draftOrder).length > 0) {
+          for (const [userId, slot] of Object.entries(draftOrder)) {
+            const rosterId = userToRosterId[userId];
+            if (rosterId) {
+              rosterToSlot[rosterId] = slot;
+            }
+          }
+          break;
+        }
       }
     }
   } catch {}

@@ -172,7 +172,13 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
     
     // Build a map of roster_id -> draft slot for each season
     const rosterToSlot: Record<string, Map<number, number>> = {}
-    for (const draft of drafts) {
+    let latestSlotMap: Map<number, number> | null = null
+    let latestSlotSeason = 0
+    
+    // Sort drafts by season descending so we can identify the most recent
+    const sortedDrafts = [...drafts].sort((a, b) => parseInt(b.season) - parseInt(a.season))
+    
+    for (const draft of sortedDrafts) {
       const slotMap = new Map<number, number>()
       
       // Check slot_to_roster_id first (maps slot -> roster_id)
@@ -194,9 +200,14 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
       
       if (slotMap.size > 0) {
         rosterToSlot[draft.season] = slotMap
+        const seasonNum = parseInt(draft.season)
+        if (seasonNum > latestSlotSeason) {
+          latestSlotSeason = seasonNum
+          latestSlotMap = slotMap
+        }
       }
     }
-
+    
     // 5) Load player directory
     const playersDict = await getSleeperPlayers(sport)
 
@@ -221,6 +232,23 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
     // Determine current year for draft picks
     const currentYear = new Date().getFullYear()
     const futureYears = [currentYear, currentYear + 1, currentYear + 2, currentYear + 3]
+
+    // For future years without a draft, use the most recent draft's slot mapping as fallback
+    // Only apply if the slot map covers enough current rosters (handles owner turnover)
+    if (latestSlotMap) {
+      const currentRosterIds = new Set(rosters.map(r => r.roster_id))
+      const coveredCount = [...currentRosterIds].filter(rid => latestSlotMap!.has(rid)).length
+      const coverageRatio = coveredCount / currentRosterIds.size
+      
+      if (coverageRatio >= 0.5) {
+        for (const year of futureYears) {
+          const yearStr = String(year)
+          if (!rosterToSlot[yearStr]) {
+            rosterToSlot[yearStr] = latestSlotMap
+          }
+        }
+      }
+    }
 
     // Build managers data
     const managers = rosters.map(roster => {
@@ -264,15 +292,16 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
         const rosterSlot = slotMap?.get(roster.roster_id) || null
         
         for (let round = 1; round <= numRounds; round++) {
-          // Check if this pick was traded away
-          const tradedAway = tradedPicks.find(p => 
+          // Check if this pick is currently owned by someone else
+          // roster_id = original owner of the pick, owner_id = who currently owns it
+          const isTradedAway = tradedPicks.some(p => 
             p.season === yearStr && 
             p.round === round && 
-            p.previous_owner_id === roster.roster_id &&
+            p.roster_id === roster.roster_id &&
             p.owner_id !== roster.roster_id
           )
           
-          if (!tradedAway) {
+          if (!isTradedAway) {
             draftPicks.push({
               season: yearStr,
               round,
@@ -284,20 +313,21 @@ export const GET = withApiUsage({ endpoint: "/api/legacy/trade/league-managers",
         }
       })
 
-      // Add picks traded TO this roster
+      // Add picks traded TO this roster (originally belonging to other rosters)
       tradedPicks
-        .filter(p => p.owner_id === roster.roster_id && p.previous_owner_id !== roster.roster_id)
+        .filter(p => p.owner_id === roster.roster_id && p.roster_id !== roster.roster_id)
         .forEach(p => {
-          const originalOwnerName = rosterOwnerMap.get(p.previous_owner_id)?.displayName || `Team ${p.previous_owner_id}`
+          const originalRosterId = p.roster_id
+          const originalOwnerName = rosterOwnerMap.get(originalRosterId)?.displayName || `Team ${originalRosterId}`
           const slotMap = rosterToSlot[p.season]
-          const originalSlot = slotMap?.get(p.previous_owner_id) || null
+          const originalSlot = slotMap?.get(originalRosterId) || null
           
           draftPicks.push({
             season: p.season,
             round: p.round,
             slot: originalSlot,
             originalOwner: originalOwnerName,
-            originalRosterId: p.previous_owner_id
+            originalRosterId: originalRosterId
           })
         })
 
