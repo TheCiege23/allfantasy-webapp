@@ -7,6 +7,7 @@ import { openaiChatJson, parseJsonContentFromChatCompletion } from '@/lib/openai
 import { trackLegacyToolUsage } from '@/lib/analytics-server'
 import { evaluateTrade, formatEvaluationForAI, TradeAsset as TierTradeAsset, LeagueSettings, detectIDPFromRosterPositions, detectSFFromRosterPositions } from '@/lib/dynasty-tiers'
 import { getPlayerValuesForNames, formatValuesForPrompt, FantasyCalcSettings, calculateTradeBalance, getPickValue } from '@/lib/fantasycalc'
+import { buildTradeHubIntelBlock } from '@/lib/trade-engine/trade-analyzer-intel'
 import { fetchPlayerNewsFromGrok } from '@/lib/ai-gm-intelligence'
 import { buildRuntimeConstraints, formatConstraintsForPrompt, DEFAULT_TRADE_CONSTRAINTS, getPickValueWithRange, getPickRange } from '@/lib/trade-constraints'
 import { buildHistoricalTradeContext, getDataInfo } from '@/lib/historical-values'
@@ -2258,6 +2259,20 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       ))
     }
 
+    const intelPlayerNames = [...assetsA, ...assetsB]
+      .filter((a: any) => a.type === 'player' && a.player?.name)
+      .map((a: any) => a.player.name)
+    const intelTeamAbbrevs = [...assetsA, ...assetsB]
+      .filter((a: any) => a.type === 'player' && a.player?.team)
+      .map((a: any) => a.player.team)
+
+    const externalIntel = await buildTradeHubIntelBlock({
+      playerNames: intelPlayerNames,
+      teamAbbrevs: intelTeamAbbrevs,
+      numTeams,
+      isSuperflex: /superflex|2qb/i.test(String(leagueType || '')),
+    }).catch(() => '')
+
     const userPrompt = buildUserPrompt({
       sport,
       format,
@@ -2297,10 +2312,12 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       newsValueAdjustments,
     })
 
+    const enrichedUserPrompt = externalIntel ? `${userPrompt}\n\n${externalIntel}` : userPrompt
+
     const result = await openaiChatJson({
       messages: [
         { role: 'system', content: buildSystemPrompt(numTeams) },
-        { role: 'user', content: userPrompt },
+        { role: 'user', content: enrichedUserPrompt },
       ],
       temperature: 0.6,
       maxTokens: 2800,
