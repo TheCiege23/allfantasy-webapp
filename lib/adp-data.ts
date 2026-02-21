@@ -5,15 +5,128 @@ export interface ADPEntry {
   position: string;
   team: string | null;
   adp: number;
+  adpFormatted: string | null;
   adpTrend: number | null;
   age: number | null;
   value: number | null;
   source: 'analytics' | 'devy' | 'ffc' | 'ktc' | 'rookie-db';
+  ffcPlayerId: number | null;
+  timesDrafted: number | null;
+  adpHigh: number | null;
+  adpLow: number | null;
+  adpStdev: number | null;
+  bye: number | null;
 }
+
+export interface FFCMeta {
+  type: string;
+  teams: number;
+  rounds: number;
+  totalDrafts: number;
+  startDate: string;
+  endDate: string;
+}
+
+export type FFCScoringFormat = 'standard' | 'ppr' | 'half-ppr' | '2qb' | 'dynasty' | 'rookie';
+
+const FFC_FORMAT_MAP: Record<string, FFCScoringFormat> = {
+  dynasty: 'dynasty',
+  redraft: 'standard',
+};
 
 let adpCache: { data: ADPEntry[]; ts: number; type: string } | null = null;
 const CACHE_TTL = 5 * 60 * 1000;
 const DB_CACHE_TTL = 1000 * 60 * 60 * 24;
+
+export async function fetchFFCADP(
+  format: FFCScoringFormat = 'standard',
+  teams: number = 12,
+  year?: number
+): Promise<{ players: ADPEntry[]; meta: FFCMeta | null }> {
+  const ffcYear = year || new Date().getFullYear();
+  const cacheKey = `ffc-adp-${format}-${teams}-${ffcYear}`;
+
+  try {
+    const cached = await prisma.sportsDataCache.findUnique({ where: { key: cacheKey } });
+    if (cached && new Date(cached.expiresAt) > new Date()) {
+      const parsed = cached.data as any;
+      return { players: parsed.players || [], meta: parsed.meta || null };
+    }
+  } catch {}
+
+  try {
+    const res = await fetch(
+      `https://fantasyfootballcalculator.com/api/v1/adp/${format}?teams=${teams}&year=${ffcYear}`,
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) {
+      console.log(`[ffc] API returned ${res.status} for format=${format}`);
+      return { players: [], meta: null };
+    }
+
+    const raw = await res.json();
+    const rawPlayers = Array.isArray(raw) ? raw : (raw?.players || []);
+    const rawMeta = raw?.meta || {};
+
+    const meta: FFCMeta = {
+      type: rawMeta.type || format,
+      teams: rawMeta.teams || teams,
+      rounds: rawMeta.rounds || 15,
+      totalDrafts: rawMeta.total_drafts || 0,
+      startDate: rawMeta.start_date || '',
+      endDate: rawMeta.end_date || '',
+    };
+
+    const players: ADPEntry[] = [];
+    for (const p of rawPlayers) {
+      if (!p.name || !p.position) continue;
+      players.push({
+        name: p.name,
+        position: p.position,
+        team: p.team || null,
+        adp: p.adp ?? 999,
+        adpFormatted: p.adp_formatted || null,
+        adpTrend: null,
+        age: null,
+        value: null,
+        source: 'ffc',
+        ffcPlayerId: p.player_id || null,
+        timesDrafted: p.times_drafted ?? null,
+        adpHigh: p.high ?? null,
+        adpLow: p.low ?? null,
+        adpStdev: p.stdev ?? null,
+        bye: p.bye ?? null,
+      });
+    }
+
+    try {
+      await prisma.sportsDataCache.upsert({
+        where: { key: cacheKey },
+        update: { data: { players, meta } as any, expiresAt: new Date(Date.now() + DB_CACHE_TTL) },
+        create: { key: cacheKey, data: { players, meta } as any, expiresAt: new Date(Date.now() + DB_CACHE_TTL) },
+      });
+    } catch {}
+
+    return { players, meta };
+  } catch (err) {
+    console.log(`[ffc] API fetch failed for format=${format}:`, err instanceof Error ? err.message : err);
+    return { players: [], meta: null };
+  }
+}
+
+export async function fetchAllFFCFormats(teams: number = 12): Promise<Record<FFCScoringFormat, { players: ADPEntry[]; meta: FFCMeta | null }>> {
+  const formats: FFCScoringFormat[] = ['standard', 'ppr', 'half-ppr', '2qb', 'dynasty', 'rookie'];
+  const results = await Promise.allSettled(
+    formats.map(f => fetchFFCADP(f, teams))
+  );
+
+  const out: Record<string, { players: ADPEntry[]; meta: FFCMeta | null }> = {};
+  formats.forEach((f, i) => {
+    const r = results[i];
+    out[f] = r.status === 'fulfilled' ? r.value : { players: [], meta: null };
+  });
+  return out as Record<FFCScoringFormat, { players: ADPEntry[]; meta: FFCMeta | null }>;
+}
 
 export async function getLiveADP(
   type: 'dynasty' | 'redraft' | 'devy' = 'dynasty',
@@ -68,36 +181,39 @@ export async function getLiveADP(
       position: p.position,
       team: p.currentTeam || null,
       adp: p.currentAdp,
+      adpFormatted: null,
       adpTrend: p.currentAdpTrend || null,
       age,
       value: p.lifetimeValue || null,
       source: 'analytics',
+      ffcPlayerId: null,
+      timesDrafted: null,
+      adpHigh: null,
+      adpLow: null,
+      adpStdev: null,
+      bye: null,
     });
   }
 
+  const ffcFormat: FFCScoringFormat = FFC_FORMAT_MAP[type] || 'standard';
   try {
-    const ffcRes = await fetch(
-      `https://fantasyfootballcalculator.com/api/v1/adp/${type === 'dynasty' ? 'dynasty' : 'standard'}?teams=12&year=${new Date().getFullYear()}`,
-      { signal: AbortSignal.timeout(5000) }
-    );
-    if (ffcRes.ok) {
-      const ffcRaw = await ffcRes.json();
-      const ffcData = Array.isArray(ffcRaw) ? ffcRaw : (ffcRaw?.players || ffcRaw?.data || []);
-      if (Array.isArray(ffcData)) {
-        const existingNames = new Set(entries.map(e => e.name.toLowerCase()));
-        for (const p of ffcData) {
-          if (p.name && p.position && !existingNames.has(p.name.toLowerCase())) {
-            entries.push({
-              name: p.name,
-              position: p.position,
-              team: p.team || null,
-              adp: p.adp || 999,
-              adpTrend: null,
-              age: null,
-              value: null,
-              source: 'ffc',
-            });
-            existingNames.add(p.name.toLowerCase());
+    const { players: ffcPlayers } = await fetchFFCADP(ffcFormat);
+    if (ffcPlayers.length > 0) {
+      const existingNames = new Set(entries.map(e => e.name.toLowerCase()));
+      for (const p of ffcPlayers) {
+        if (!existingNames.has(p.name.toLowerCase())) {
+          entries.push(p);
+          existingNames.add(p.name.toLowerCase());
+        } else {
+          const existing = entries.find(e => e.name.toLowerCase() === p.name.toLowerCase());
+          if (existing) {
+            existing.ffcPlayerId = existing.ffcPlayerId ?? p.ffcPlayerId;
+            existing.adpFormatted = existing.adpFormatted ?? p.adpFormatted;
+            existing.timesDrafted = existing.timesDrafted ?? p.timesDrafted;
+            existing.adpHigh = existing.adpHigh ?? p.adpHigh;
+            existing.adpLow = existing.adpLow ?? p.adpLow;
+            existing.adpStdev = existing.adpStdev ?? p.adpStdev;
+            existing.bye = existing.bye ?? p.bye;
           }
         }
       }
@@ -117,10 +233,17 @@ export async function getLiveADP(
             position: p.position || 'UNK',
             team: p.team || null,
             adp: p.rank || 999,
+            adpFormatted: null,
             adpTrend: null,
             age: null,
             value: p.value || null,
             source: 'ktc',
+            ffcPlayerId: null,
+            timesDrafted: null,
+            adpHigh: null,
+            adpLow: null,
+            adpStdev: null,
+            bye: null,
           });
           existingNames.add(p.name.toLowerCase());
         } else if (p.name && p.value) {
@@ -151,10 +274,17 @@ export async function getLiveADP(
               position: r.position,
               team: r.team || 'Rookie',
               adp: r.rank,
+              adpFormatted: null,
               adpTrend: null,
               age: null,
               value: r.dynastyValue || null,
               source: 'rookie-db',
+              ffcPlayerId: null,
+              timesDrafted: null,
+              adpHigh: null,
+              adpLow: null,
+              adpStdev: null,
+              bye: null,
             });
             existingNames.add(r.name.toLowerCase());
           }
@@ -207,10 +337,17 @@ async function getDevyADP(limit: number): Promise<ADPEntry[]> {
       position: p.position,
       team: p.school || p.nflTeam || null,
       adp: adpValue,
+      adpFormatted: null,
       adpTrend: trend,
       age: null,
       value: null,
       source: 'devy',
+      ffcPlayerId: null,
+      timesDrafted: null,
+      adpHigh: null,
+      adpLow: null,
+      adpStdev: null,
+      bye: null,
     });
   }
 
@@ -252,10 +389,17 @@ export async function getPlayerADP(playerName: string): Promise<ADPEntry | null>
     position: player.position,
     team: player.currentTeam || null,
     adp: player.currentAdp,
+    adpFormatted: null,
     adpTrend: player.currentAdpTrend || null,
     age,
     value: player.lifetimeValue || null,
     source: 'analytics',
+    ffcPlayerId: null,
+    timesDrafted: null,
+    adpHigh: null,
+    adpLow: null,
+    adpStdev: null,
+    bye: null,
   };
 }
 
@@ -266,11 +410,19 @@ export function formatADPForPrompt(entries: ADPEntry[], maxEntries = 100): strin
     const team = p.team || 'FA';
     const adp = p.adp != null ? p.adp.toFixed(1) : 'N/A';
     const value = p.value != null ? p.value.toFixed(0) : 'N/A';
-    let line = `${p.name} (${p.position}, ${team}) - ADP: ${adp} • Value: ${value}`;
+    let line = `${p.name} (${p.position}, ${team}) - ADP: ${adp}`;
+    if (p.adpFormatted) line += ` [${p.adpFormatted}]`;
+    line += ` • Value: ${value}`;
     if (p.age != null) line += ` • Age: ${p.age}`;
+    if (p.bye != null) line += ` • BYE: ${p.bye}`;
     if (p.adpTrend != null && p.adpTrend !== 0) {
       line += ` • ${p.adpTrend < 0 ? 'RISING' : 'FALLING'}`;
     }
+    if (p.timesDrafted != null) line += ` • Drafted: ${p.timesDrafted}x`;
+    if (p.adpHigh != null && p.adpLow != null) {
+      line += ` • Range: ${p.adpHigh}-${p.adpLow}`;
+    }
+    if (p.adpStdev != null) line += ` • StDev: ${p.adpStdev}`;
     return line;
   });
 
