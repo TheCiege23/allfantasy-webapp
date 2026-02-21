@@ -62,6 +62,99 @@ const FRESHNESS_RULES: Record<DataType, number> = {
   team_stats: 24 * 60 * 60 * 1000,
 };
 
+// ── In-Memory Cache ──
+interface MemCacheEntry {
+  data: SportsDataResponse;
+  expiresAt: number;
+  staleAt: number;
+}
+
+const memCache = new Map<string, MemCacheEntry>();
+const MEM_CACHE_MAX_SIZE = 500;
+const MEM_CACHE_STALE_RATIO = 0.8;
+
+function memCacheGet(key: string): { entry: MemCacheEntry; fresh: boolean } | null {
+  const entry = memCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    memCache.delete(key);
+    return null;
+  }
+  return { entry, fresh: Date.now() < entry.staleAt };
+}
+
+function memCacheSet(key: string, data: SportsDataResponse, ttlMs: number) {
+  if (memCache.size >= MEM_CACHE_MAX_SIZE) {
+    const firstKey = memCache.keys().next().value;
+    if (firstKey) memCache.delete(firstKey);
+  }
+  memCache.set(key, {
+    data,
+    expiresAt: Date.now() + ttlMs,
+    staleAt: Date.now() + ttlMs * MEM_CACHE_STALE_RATIO,
+  });
+}
+
+// ── Request Deduplication ──
+const inflightRequests = new Map<string, Promise<SportsDataResponse>>();
+
+// ── Circuit Breaker ──
+interface CircuitState {
+  failures: number;
+  lastFailure: number;
+  openUntil: number;
+}
+
+const circuitBreakers = new Map<string, CircuitState>();
+const CIRCUIT_FAILURE_THRESHOLD = 3;
+const CIRCUIT_COOLDOWN_MS = 2 * 60 * 1000;
+const SOURCE_TIMEOUT_MS = 15000;
+
+function isCircuitOpen(source: string): boolean {
+  const state = circuitBreakers.get(source);
+  if (!state) return false;
+  if (state.failures < CIRCUIT_FAILURE_THRESHOLD) return false;
+  if (Date.now() > state.openUntil) {
+    state.failures = 0;
+    state.lastFailure = 0;
+    state.openUntil = 0;
+    console.log(`[SportsRouter] Circuit RESET for ${source} (cooldown expired)`);
+    return false;
+  }
+  return true;
+}
+
+function recordCircuitSuccess(source: string) {
+  const state = circuitBreakers.get(source);
+  if (state) {
+    state.failures = Math.max(0, state.failures - 1);
+    if (state.failures === 0) circuitBreakers.delete(source);
+  }
+}
+
+function recordCircuitFailure(source: string) {
+  const state = circuitBreakers.get(source) || { failures: 0, lastFailure: 0, openUntil: 0 };
+  state.failures++;
+  state.lastFailure = Date.now();
+  if (state.failures >= CIRCUIT_FAILURE_THRESHOLD) {
+    state.openUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+    console.warn(`[SportsRouter] Circuit OPEN for ${source} after ${state.failures} failures (cooldown ${CIRCUIT_COOLDOWN_MS / 1000}s)`);
+  }
+  circuitBreakers.set(source, state);
+}
+
+async function fetchWithTimeout<T>(fn: () => Promise<T>, timeoutMs: number = SOURCE_TIMEOUT_MS): Promise<T | null> {
+  try {
+    const result = await Promise.race([
+      fn(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 const THESPORTSDB_LEAGUE_IDS: Record<string, string> = {
   NFL: '4391',
   NBA: '4387',
@@ -439,24 +532,41 @@ async function fetchFromSource(
   identifier?: string,
   season?: string,
 ): Promise<unknown | null> {
-  switch (source) {
-    case 'rolling_insights':
-      if (sport !== 'NFL') return null;
-      return fetchFromRollingInsights(dataType, identifier, season);
-    case 'api_sports':
-      if (sport !== 'NFL') return null;
-      return fetchFromAPISports(dataType, identifier, season);
-    case 'thesportsdb': {
-      const raw = await fetchFromTheSportsDB(sport, dataType, identifier);
-      return normalizeTheSportsDBData(raw, dataType);
-    }
-    case 'espn': {
-      const raw = await fetchFromESPN(sport, dataType);
-      return normalizeESPNData(raw, dataType);
-    }
-    default:
-      return null;
+  if (isCircuitOpen(source)) {
+    console.log(`[SportsRouter] Skipping ${source} (circuit open)`);
+    return null;
   }
+
+  const timeoutMs = dataType === 'games' ? 10000 : SOURCE_TIMEOUT_MS;
+
+  const result = await fetchWithTimeout(async () => {
+    switch (source) {
+      case 'rolling_insights':
+        if (sport !== 'NFL') return null;
+        return fetchFromRollingInsights(dataType, identifier, season);
+      case 'api_sports':
+        if (sport !== 'NFL') return null;
+        return fetchFromAPISports(dataType, identifier, season);
+      case 'thesportsdb': {
+        const raw = await fetchFromTheSportsDB(sport, dataType, identifier);
+        return normalizeTheSportsDBData(raw, dataType);
+      }
+      case 'espn': {
+        const raw = await fetchFromESPN(sport, dataType);
+        return normalizeESPNData(raw, dataType);
+      }
+      default:
+        return null;
+    }
+  }, timeoutMs);
+
+  if (result) {
+    recordCircuitSuccess(source);
+  } else {
+    recordCircuitFailure(source);
+  }
+
+  return result;
 }
 
 async function tryNFLFromDb(dataType: DataType, identifier?: string): Promise<SportsDataResponse | null> {
@@ -491,8 +601,39 @@ async function tryNFLFromDb(dataType: DataType, identifier?: string): Promise<Sp
 export async function getSportsData(request: SportsDataRequest): Promise<SportsDataResponse> {
   const { sport, dataType, identifier, season, forceRefresh } = request;
   const cacheKey = identifier || 'all';
-
   const key = `${sport}:${dataType}:${cacheKey}`;
+
+  if (!forceRefresh) {
+    const mem = memCacheGet(key);
+    if (mem?.fresh) return mem.entry.data;
+    if (mem && !mem.fresh) {
+      refreshInBackground(sport, dataType, identifier, season);
+      return mem.entry.data;
+    }
+  }
+
+  const inflight = inflightRequests.get(key);
+  if (inflight && !forceRefresh) return inflight;
+
+  const fetchPromise = getSportsDataInternal(key, sport, dataType, identifier, season, forceRefresh);
+  inflightRequests.set(key, fetchPromise);
+
+  try {
+    return await fetchPromise;
+  } finally {
+    inflightRequests.delete(key);
+  }
+}
+
+async function getSportsDataInternal(
+  key: string,
+  sport: Sport,
+  dataType: DataType,
+  identifier?: string,
+  season?: string,
+  forceRefresh?: boolean,
+): Promise<SportsDataResponse> {
+  const freshnessMs = FRESHNESS_RULES[dataType];
 
   if (!forceRefresh) {
     const cached = await (prisma.sportsDataCache as any).findUnique({
@@ -500,28 +641,35 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
     });
 
     if (cached && cached.expiresAt > new Date()) {
-      return {
+      const response: SportsDataResponse = {
         data: cached.data,
         source: 'cache',
         cached: true,
         fetchedAt: cached.createdAt,
       };
+      memCacheSet(key, response, freshnessMs);
+      return response;
     }
 
     if (cached) {
-      refreshInBackground(sport, dataType, identifier, season);
-      return {
+      const response: SportsDataResponse = {
         data: cached.data,
         source: 'cache',
         cached: true,
         fetchedAt: cached.createdAt,
       };
+      memCacheSet(key, response, Math.min(freshnessMs, 60000));
+      refreshInBackground(sport, dataType, identifier, season);
+      return response;
     }
   }
 
   if (sport === 'NFL' && !forceRefresh) {
     const dbResult = await tryNFLFromDb(dataType, identifier);
-    if (dbResult) return dbResult;
+    if (dbResult) {
+      memCacheSet(key, dbResult, freshnessMs);
+      return dbResult;
+    }
   }
 
   const sources = API_PRIORITY[sport];
@@ -541,7 +689,6 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
     throw new Error(`Failed to fetch ${dataType} for ${sport} from any source`);
   }
 
-  const freshnessMs = FRESHNESS_RULES[dataType];
   const expiresAt = new Date(Date.now() + freshnessMs);
 
   await (prisma.sportsDataCache as any).upsert({
@@ -555,14 +702,16 @@ export async function getSportsData(request: SportsDataRequest): Promise<SportsD
       data: fetchedData as object,
       expiresAt,
     },
-  });
+  }).catch((err: Error) => console.error('[SportsRouter] Cache write failed:', err.message));
 
-  return {
+  const response: SportsDataResponse = {
     data: fetchedData,
     source: usedSource,
     cached: false,
     fetchedAt: new Date(),
   };
+  memCacheSet(key, response, freshnessMs);
+  return response;
 }
 
 async function refreshInBackground(sport: Sport, dataType: DataType, identifier?: string, season?: string) {

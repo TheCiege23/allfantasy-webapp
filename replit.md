@@ -61,8 +61,15 @@ The core architecture uses a `One Engine API` integrating One Scoring Core, One 
 -   **Sleeper API**: Importing user league data. Now includes trending players endpoints (`/players/{sport}/trending/add` and `trending/drop`) synced every 2 hours to `trending_players` DB table, providing "crowd wisdom" signals (hot_add/hot_drop/rising/falling) that feed into Waiver AI scoring and Market Timing Alerts.
 -   **Rolling Insights Sports API**: Primary NFL sports data including depth charts (via `rosterByPosition` GraphQL field), team season stats (regular/post via `regularSeason`/`postSeason`), enhanced player fields (injury, formerTeams, allStar), team metadata (conference, bye, dome, arena, record). Synced to `depth_charts` and `team_season_stats` DB tables with 12h/24h TTLs respectively.
 -   **API-Sports.io**: Secondary NFL data provider with full endpoint coverage: teams, players, player statistics, injuries, games (by season/week/date/team/h2h/live), game events (play-by-play), game team statistics, game player statistics, standings (with conference/division filters), conferences, divisions, odds (pre-match and per-game), bookmakers, bet types, leagues, seasons, and timezones. Rate-limit aware with per-minute throttling and IP block detection.
--   **TheSportsDB API**: Tertiary sports data fallback.
--   **ESPN API**: Quaternary sports data fallback, primary for live scores and news.
+-   **TheSportsDB API**: Tertiary sports data fallback, protected by circuit breaker (auto-skips after 3 failures, 2min cooldown).
+-   **ESPN API**: Quaternary sports data fallback, primary for live scores and news. Circuit breaker protected.
+
+**Performance & Reliability Optimizations:**
+-   **Sports Router In-Memory Cache**: Stale-while-revalidate in-memory cache (500 entries, 80% freshness ratio) eliminates redundant DB lookups. Request deduplication collapses concurrent identical requests into a single upstream call.
+-   **Circuit Breaker Pattern**: Per-source failure tracking (3-failure threshold, 2-min cooldown) prevents hammering failing APIs and speeds up fallback to backup sources. Per-request 15s timeout prevents blocking.
+-   **Background Sync Phased Startup**: Tasks classified as fast/medium/heavy phases. Fast syncs run in parallel (3 concurrent), medium syncs (2 concurrent), heavy syncs sequential with 2s gaps. Exponential backoff on failures (up to 8x multiplier).
+-   **API-Sports Non-Blocking Rate Limiting**: Rate limit detection queues future requests instead of synchronously blocking for 60s. Graduated throttling (3s delay when <5 remaining, full pause when <2).
+-   **Concurrent Team Batching**: Rolling Insights player sync and API-Sports identity sync process teams in batches of 4 concurrently instead of sequentially (8x faster for 32 NFL teams).
 -   **CollegeFootballData.com API (CFBD v2)**: College Football data including rosters, stats, recruiting ratings (247/composite), transfer portal tracking, player usage/PPA, WEPA adjusted metrics, SP+ team ratings, returning production, and NFL draft picks. All endpoints cached via SportsDataCache with TTLs (7d recruiting, 1d usage/PPA/portal, 30d SP+/historical). Bulk fetch pattern to stay under 1,000 monthly API call limit.
 -   **Resend**: Email notifications.
 -   **Twilio Verify API**: Phone verification.

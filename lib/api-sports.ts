@@ -46,7 +46,17 @@ export function teamNameToAbbrev(name: string | null): string | null {
 let ipBlockedUntil = 0;
 const IP_BLOCK_COOLDOWN_MS = 60 * 60 * 1000;
 
-async function apiSportsFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+let minuteRateLimitResetAt = 0;
+
+let requestQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueRequest<T>(fn: () => Promise<T>): Promise<T> {
+  const queued = requestQueue.then(() => fn(), () => fn());
+  requestQueue = queued.then(() => {}, () => {});
+  return queued;
+}
+
+async function apiSportsFetchInternal<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
   const apiKey = process.env.API_SPORTS_KEY;
   if (!apiKey) {
     throw new Error('API_SPORTS_KEY not configured');
@@ -56,45 +66,71 @@ async function apiSportsFetch<T>(endpoint: string, params?: Record<string, strin
     throw new Error('API-Sports IP blocked — skipping until cooldown expires');
   }
 
+  if (Date.now() < minuteRateLimitResetAt) {
+    const waitMs = minuteRateLimitResetAt - Date.now();
+    console.log(`[API-Sports] Rate limit active, waiting ${Math.ceil(waitMs / 1000)}s`);
+    await new Promise(r => setTimeout(r, waitMs));
+  }
+
   const url = new URL(`${BASE_URL}/${endpoint}`);
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
 
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: {
-      'x-apisports-key': apiKey,
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
 
-  if (!response.ok) {
-    throw new Error(`API-Sports request failed: ${response.status} ${response.statusText}`);
-  }
+  try {
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'x-apisports-key': apiKey,
+      },
+      signal: controller.signal,
+    });
 
-  const remaining = response.headers.get('x-ratelimit-requests-remaining');
-  if (remaining && parseInt(remaining) < 5) {
-    console.warn(`[API-Sports] Low daily quota: ${remaining} requests remaining`);
-  }
+    clearTimeout(timeout);
 
-  const minuteRemaining = response.headers.get('X-RateLimit-Remaining');
-  if (minuteRemaining && parseInt(minuteRemaining) < 2) {
-    console.warn(`[API-Sports] Per-minute rate limit nearly hit: ${minuteRemaining} remaining, waiting 60s`);
-    await new Promise(r => setTimeout(r, 60_000));
-  }
-
-  const result = await response.json();
-
-  if (result.errors && Object.keys(result.errors).length > 0) {
-    const errStr = JSON.stringify(result.errors);
-    if (errStr.includes('IP is not allowed')) {
-      console.warn('[API-Sports] IP blocked by API-Sports. Pausing requests for 1 hour.');
-      ipBlockedUntil = Date.now() + IP_BLOCK_COOLDOWN_MS;
+    if (!response.ok) {
+      throw new Error(`API-Sports request failed: ${response.status} ${response.statusText}`);
     }
-    throw new Error(`API-Sports error: ${errStr}`);
-  }
 
-  return result.response as T;
+    const remaining = response.headers.get('x-ratelimit-requests-remaining');
+    if (remaining && parseInt(remaining) < 5) {
+      console.warn(`[API-Sports] Low daily quota: ${remaining} requests remaining`);
+    }
+
+    const minuteRemaining = response.headers.get('X-RateLimit-Remaining');
+    if (minuteRemaining) {
+      const rem = parseInt(minuteRemaining);
+      if (rem < 2) {
+        minuteRateLimitResetAt = Date.now() + 62_000;
+        console.warn(`[API-Sports] Per-minute rate limit nearly hit: ${rem} remaining, pausing new requests for 62s`);
+      } else if (rem < 5) {
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+
+    const result = await response.json();
+
+    if (result.errors && Object.keys(result.errors).length > 0) {
+      const errStr = JSON.stringify(result.errors);
+      if (errStr.includes('IP is not allowed')) {
+        console.warn('[API-Sports] IP blocked by API-Sports. Pausing requests for 1 hour.');
+        ipBlockedUntil = Date.now() + IP_BLOCK_COOLDOWN_MS;
+      }
+      throw new Error(`API-Sports error: ${errStr}`);
+    }
+
+    return result.response as T;
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
+
+async function apiSportsFetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+  return enqueueRequest(() => apiSportsFetchInternal<T>(endpoint, params));
 }
 
 export interface APISportsTeam {
@@ -668,64 +704,81 @@ export async function syncAPISportsPlayersToIdentityMap(season?: string): Promis
     select: { externalId: true, shortName: true, name: true },
   });
 
-  for (const team of teams) {
-    let players: APISportsPlayer[];
-    try {
-      players = await fetchAPISportsPlayers(team.externalId, currentSeason);
-    } catch (err) {
-      console.error(`[API-Sports] Failed to fetch players for ${team.name}:`, err);
-      continue;
-    }
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < teams.length; i += BATCH_SIZE) {
+    const batch = teams.slice(i, i + BATCH_SIZE);
 
-    for (const p of players) {
-      const normalizedName = normalizePlayerName(p.name);
-      const position = normalizePosition(p.position || p.group);
-      const teamAbbrev = teamNameToAbbrev(p.team?.name || team.name);
-
-      const candidates = await prisma.playerIdentityMap.findMany({
-        where: { normalizedName, sport: 'NFL' },
-      });
-
-      if (candidates.length === 1) {
-        await prisma.playerIdentityMap.update({
-          where: { id: candidates[0].id },
-          data: {
-            apiSportsId: String(p.id),
-            lastSyncedAt: new Date(),
-          },
-        });
-        linked++;
-      } else if (candidates.length > 1) {
-        const match = candidates.find((c: { position: string | null; currentTeam: string | null }) => {
-          const posMatch = !position || !c.position || normalizePosition(c.position) === position;
-          const teamMatch = !teamAbbrev || !c.currentTeam || normalizeTeamAbbrev(c.currentTeam) === teamAbbrev;
-          return posMatch && teamMatch;
-        });
-        if (match) {
-          await prisma.playerIdentityMap.update({
-            where: { id: match.id },
-            data: {
-              apiSportsId: String(p.id),
-              lastSyncedAt: new Date(),
-            },
-          });
-          linked++;
-        } else {
-          console.warn(`[API-Sports] Ambiguous identity for ${p.name} (${position} ${teamAbbrev}), skipping.`);
+    const batchResults = await Promise.allSettled(
+      batch.map(async (team) => {
+        let players: APISportsPlayer[];
+        try {
+          players = await fetchAPISportsPlayers(team.externalId, currentSeason);
+        } catch (err) {
+          console.error(`[API-Sports] Failed to fetch players for ${team.name}:`, err);
+          return { linked: 0, created: 0 };
         }
-      } else {
-        await prisma.playerIdentityMap.create({
-          data: {
-            canonicalName: p.name,
-            normalizedName,
-            position,
-            currentTeam: teamAbbrev,
-            apiSportsId: String(p.id),
-            sport: 'NFL',
-            lastSyncedAt: new Date(),
-          },
-        });
-        created++;
+
+        let batchLinked = 0;
+        let batchCreated = 0;
+
+        for (const p of players) {
+          const normalizedName = normalizePlayerName(p.name);
+          const position = normalizePosition(p.position || p.group);
+          const teamAbbrev = teamNameToAbbrev(p.team?.name || team.name);
+
+          const candidates = await prisma.playerIdentityMap.findMany({
+            where: { normalizedName, sport: 'NFL' },
+          });
+
+          if (candidates.length === 1) {
+            await prisma.playerIdentityMap.update({
+              where: { id: candidates[0].id },
+              data: {
+                apiSportsId: String(p.id),
+                lastSyncedAt: new Date(),
+              },
+            });
+            batchLinked++;
+          } else if (candidates.length > 1) {
+            const match = candidates.find((c: { position: string | null; currentTeam: string | null }) => {
+              const posMatch = !position || !c.position || normalizePosition(c.position) === position;
+              const teamMatch = !teamAbbrev || !c.currentTeam || normalizeTeamAbbrev(c.currentTeam) === teamAbbrev;
+              return posMatch && teamMatch;
+            });
+            if (match) {
+              await prisma.playerIdentityMap.update({
+                where: { id: match.id },
+                data: {
+                  apiSportsId: String(p.id),
+                  lastSyncedAt: new Date(),
+                },
+              });
+              batchLinked++;
+            }
+          } else {
+            await prisma.playerIdentityMap.create({
+              data: {
+                canonicalName: p.name,
+                normalizedName,
+                position,
+                currentTeam: teamAbbrev,
+                apiSportsId: String(p.id),
+                sport: 'NFL',
+                lastSyncedAt: new Date(),
+              },
+            });
+            batchCreated++;
+          }
+        }
+
+        return { linked: batchLinked, created: batchCreated };
+      })
+    );
+
+    for (const result of batchResults) {
+      if (result.status === 'fulfilled') {
+        linked += result.value.linked;
+        created += result.value.created;
       }
     }
   }

@@ -268,140 +268,157 @@ export async function syncNFLPlayersToDb(options?: { season?: string }): Promise
 
   let synced = 0;
 
-  for (const team of teams) {
-    const players = await fetchNFLRoster({ season, teamId: team.id });
+  const TEAM_BATCH_SIZE = 4;
+  for (let i = 0; i < teams.length; i += TEAM_BATCH_SIZE) {
+    const batch = teams.slice(i, i + TEAM_BATCH_SIZE);
 
-    for (const player of players) {
-      await prisma.sportsPlayer.upsert({
-        where: {
-          sport_externalId_source: {
-            sport: 'NFL',
-            externalId: player.id,
-            source: 'rolling_insights',
-          },
-        },
-        update: {
-          name: player.player,
-          position: player.position,
-          team: normalizeTeamAbbrev(player.team?.abbrv) || null,
-          teamId: player.team?.id || null,
-          number: player.number,
-          height: player.height,
-          weight: player.weight ? String(player.weight) : null,
-          college: player.college,
-          imageUrl: player.img || null,
-          dob: player.dob || null,
-          status: player.status || null,
-          fetchedAt: new Date(),
-          expiresAt,
-        },
-        create: {
-          sport: 'NFL',
-          externalId: player.id,
-          name: player.player,
-          position: player.position,
-          team: normalizeTeamAbbrev(player.team?.abbrv) || null,
-          teamId: player.team?.id || null,
-          number: player.number,
-          height: player.height,
-          weight: player.weight ? String(player.weight) : null,
-          college: player.college,
-          imageUrl: player.img || null,
-          dob: player.dob || null,
-          status: player.status || null,
-          source: 'rolling_insights',
-          fetchedAt: new Date(),
-          expiresAt,
-        },
-      });
+    const results = await Promise.allSettled(
+      batch.map(async (team) => {
+        let teamSynced = 0;
+        try {
+          const players = await fetchNFLRoster({ season, teamId: team.id });
 
-      if (player.regularSeason?.length) {
-        for (const stats of player.regularSeason) {
-          await prisma.playerSeasonStats.upsert({
-            where: {
-              sport_playerId_season_seasonType_source: {
-                sport: 'NFL',
-                playerId: player.id,
-                season: stats.period,
-                seasonType: 'regular',
-                source: 'rolling_insights',
+          for (const player of players) {
+            await prisma.sportsPlayer.upsert({
+              where: {
+                sport_externalId_source: {
+                  sport: 'NFL',
+                  externalId: player.id,
+                  source: 'rolling_insights',
+                },
               },
-            },
-            update: {
-              playerName: player.player,
-              position: player.position,
-              team: player.team?.abbrv || null,
-              stats: stats as unknown as object,
-              gamesPlayed: stats.games_played,
-              fantasyPoints: stats.DK_fantasy_points,
-              fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
-              fetchedAt: new Date(),
-              expiresAt,
-            },
-            create: {
-              sport: 'NFL',
-              playerId: player.id,
-              playerName: player.player,
-              season: stats.period,
-              seasonType: 'regular',
-              position: player.position,
-              team: player.team?.abbrv || null,
-              stats: stats as unknown as object,
-              gamesPlayed: stats.games_played,
-              fantasyPoints: stats.DK_fantasy_points,
-              fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
-              source: 'rolling_insights',
-              fetchedAt: new Date(),
-              expiresAt,
-            },
-          });
-        }
-      }
-
-      if (player.postSeason?.length) {
-        for (const stats of player.postSeason) {
-          await prisma.playerSeasonStats.upsert({
-            where: {
-              sport_playerId_season_seasonType_source: {
-                sport: 'NFL',
-                playerId: player.id,
-                season: stats.period,
-                seasonType: 'postseason',
-                source: 'rolling_insights',
+              update: {
+                name: player.player,
+                position: player.position,
+                team: normalizeTeamAbbrev(player.team?.abbrv) || null,
+                teamId: player.team?.id || null,
+                number: player.number,
+                height: player.height,
+                weight: player.weight ? String(player.weight) : null,
+                college: player.college,
+                imageUrl: player.img || null,
+                dob: player.dob || null,
+                status: player.status || null,
+                fetchedAt: new Date(),
+                expiresAt,
               },
-            },
-            update: {
-              playerName: player.player,
-              position: player.position,
-              team: player.team?.abbrv || null,
-              stats: stats as unknown as object,
-              gamesPlayed: stats.games_played,
-              fantasyPoints: stats.DK_fantasy_points,
-              fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
-              fetchedAt: new Date(),
-              expiresAt,
-            },
-            create: {
-              sport: 'NFL',
-              playerId: player.id,
-              playerName: player.player,
-              season: stats.period,
-              seasonType: 'postseason',
-              position: player.position,
-              team: player.team?.abbrv || null,
-              stats: stats as unknown as object,
-              gamesPlayed: stats.games_played,
-              fantasyPoints: stats.DK_fantasy_points,
-              fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
-              source: 'rolling_insights',
-              fetchedAt: new Date(),
-              expiresAt,
-            },
-          });
-        }
-      }
+              create: {
+                sport: 'NFL',
+                externalId: player.id,
+                name: player.player,
+                position: player.position,
+                team: normalizeTeamAbbrev(player.team?.abbrv) || null,
+                teamId: player.team?.id || null,
+                number: player.number,
+                height: player.height,
+                weight: player.weight ? String(player.weight) : null,
+                college: player.college,
+                imageUrl: player.img || null,
+                dob: player.dob || null,
+                status: player.status || null,
+                source: 'rolling_insights',
+                fetchedAt: new Date(),
+                expiresAt,
+              },
+            });
 
-      synced++;
+            if (player.regularSeason?.length) {
+              for (const stats of player.regularSeason) {
+                await prisma.playerSeasonStats.upsert({
+                  where: {
+                    sport_playerId_season_seasonType_source: {
+                      sport: 'NFL',
+                      playerId: player.id,
+                      season: stats.period,
+                      seasonType: 'regular',
+                      source: 'rolling_insights',
+                    },
+                  },
+                  update: {
+                    playerName: player.player,
+                    position: player.position,
+                    team: player.team?.abbrv || null,
+                    stats: stats as unknown as object,
+                    gamesPlayed: stats.games_played,
+                    fantasyPoints: stats.DK_fantasy_points,
+                    fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
+                    fetchedAt: new Date(),
+                    expiresAt,
+                  },
+                  create: {
+                    sport: 'NFL',
+                    playerId: player.id,
+                    playerName: player.player,
+                    season: stats.period,
+                    seasonType: 'regular',
+                    position: player.position,
+                    team: player.team?.abbrv || null,
+                    stats: stats as unknown as object,
+                    gamesPlayed: stats.games_played,
+                    fantasyPoints: stats.DK_fantasy_points,
+                    fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
+                    source: 'rolling_insights',
+                    fetchedAt: new Date(),
+                    expiresAt,
+                  },
+                });
+              }
+            }
+
+            if (player.postSeason?.length) {
+              for (const stats of player.postSeason) {
+                await prisma.playerSeasonStats.upsert({
+                  where: {
+                    sport_playerId_season_seasonType_source: {
+                      sport: 'NFL',
+                      playerId: player.id,
+                      season: stats.period,
+                      seasonType: 'postseason',
+                      source: 'rolling_insights',
+                    },
+                  },
+                  update: {
+                    playerName: player.player,
+                    position: player.position,
+                    team: player.team?.abbrv || null,
+                    stats: stats as unknown as object,
+                    gamesPlayed: stats.games_played,
+                    fantasyPoints: stats.DK_fantasy_points,
+                    fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
+                    fetchedAt: new Date(),
+                    expiresAt,
+                  },
+                  create: {
+                    sport: 'NFL',
+                    playerId: player.id,
+                    playerName: player.player,
+                    season: stats.period,
+                    seasonType: 'postseason',
+                    position: player.position,
+                    team: player.team?.abbrv || null,
+                    stats: stats as unknown as object,
+                    gamesPlayed: stats.games_played,
+                    fantasyPoints: stats.DK_fantasy_points,
+                    fantasyPointsPerGame: stats.DK_fantasy_points_per_game,
+                    source: 'rolling_insights',
+                    fetchedAt: new Date(),
+                    expiresAt,
+                  },
+                });
+              }
+            }
+
+            teamSynced++;
+          }
+        } catch (err) {
+          console.error(`[RollingInsights] Failed to sync players for ${team.team}:`, err);
+        }
+        return teamSynced;
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') synced += result.value;
     }
   }
 

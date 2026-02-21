@@ -13,6 +13,10 @@ interface SyncTask {
   requiresAuth: boolean;
   lastRun: number;
   running: boolean;
+  phase: 'fast' | 'medium' | 'heavy';
+  priority: number;
+  consecutiveFailures: number;
+  lastError: string | null;
 }
 
 const syncTasks: SyncTask[] = [
@@ -24,6 +28,10 @@ const syncTasks: SyncTask[] = [
     requiresAuth: false,
     lastRun: 0,
     running: false,
+    phase: 'fast',
+    priority: 1,
+    consecutiveFailures: 0,
+    lastError: null,
   },
   {
     name: 'News',
@@ -33,6 +41,10 @@ const syncTasks: SyncTask[] = [
     requiresAuth: false,
     lastRun: 0,
     running: false,
+    phase: 'fast',
+    priority: 2,
+    consecutiveFailures: 0,
+    lastError: null,
   },
   {
     name: 'Injuries',
@@ -42,6 +54,49 @@ const syncTasks: SyncTask[] = [
     requiresAuth: false,
     lastRun: 0,
     running: false,
+    phase: 'fast',
+    priority: 3,
+    consecutiveFailures: 0,
+    lastError: null,
+  },
+  {
+    name: 'Trending Players Sync',
+    url: `${BASE_URL}/api/sports/trending?refresh=true`,
+    method: 'GET',
+    intervalMs: 2 * 60 * 60 * 1000,
+    requiresAuth: false,
+    lastRun: 0,
+    running: false,
+    phase: 'medium',
+    priority: 4,
+    consecutiveFailures: 0,
+    lastError: null,
+  },
+  {
+    name: 'Depth Charts Sync',
+    url: `${BASE_URL}/api/sports/depth-charts?refresh=true`,
+    method: 'GET',
+    intervalMs: 12 * 60 * 60 * 1000,
+    requiresAuth: false,
+    lastRun: 0,
+    running: false,
+    phase: 'medium',
+    priority: 5,
+    consecutiveFailures: 0,
+    lastError: null,
+  },
+  {
+    name: 'Team Stats Sync',
+    url: `${BASE_URL}/api/sports/team-stats?refresh=true`,
+    method: 'GET',
+    intervalMs: 24 * 60 * 60 * 1000,
+    requiresAuth: false,
+    lastRun: 0,
+    running: false,
+    phase: 'medium',
+    priority: 6,
+    consecutiveFailures: 0,
+    lastError: null,
   },
   {
     name: 'Full Data Sync (Teams + Schedule)',
@@ -52,80 +107,81 @@ const syncTasks: SyncTask[] = [
     requiresAuth: true,
     lastRun: 0,
     running: false,
-  },
-  {
-    name: 'Weekly Auto-Recalibration',
-    url: `${BASE_URL}/api/admin/recalibration`,
-    method: 'POST' as const,
-    intervalMs: 7 * 24 * 60 * 60 * 1000,
-    body: { season: '2025' },
-    requiresAuth: true,
-    lastRun: 0,
-    running: false,
-  },
-  {
-    name: 'Weekly Weight Re-Learning',
-    url: `${BASE_URL}/api/admin/weekly-weights`,
-    method: 'POST' as const,
-    intervalMs: 7 * 24 * 60 * 60 * 1000,
-    body: {},
-    requiresAuth: true,
-    lastRun: 0,
-    running: false,
+    phase: 'heavy',
+    priority: 7,
+    consecutiveFailures: 0,
+    lastError: null,
   },
   {
     name: 'Devy Player Sync',
     url: `${BASE_URL}/api/admin/devy-sync`,
-    method: 'POST' as const,
+    method: 'POST',
     intervalMs: 24 * 60 * 60 * 1000,
     body: {},
     requiresAuth: true,
     lastRun: 0,
     running: false,
+    phase: 'heavy',
+    priority: 8,
+    consecutiveFailures: 0,
+    lastError: null,
   },
   {
-    name: 'Trending Players Sync',
-    url: `${BASE_URL}/api/sports/trending?refresh=true`,
-    method: 'GET' as const,
-    intervalMs: 2 * 60 * 60 * 1000,
-    requiresAuth: false,
-    lastRun: 0,
-    running: false,
-  },
-  {
-    name: 'Depth Charts Sync',
-    url: `${BASE_URL}/api/sports/depth-charts?refresh=true`,
-    method: 'GET' as const,
-    intervalMs: 12 * 60 * 60 * 1000,
-    requiresAuth: false,
-    lastRun: 0,
-    running: false,
-  },
-  {
-    name: 'Team Stats Sync',
-    url: `${BASE_URL}/api/sports/team-stats?refresh=true`,
-    method: 'GET' as const,
-    intervalMs: 24 * 60 * 60 * 1000,
-    requiresAuth: false,
-    lastRun: 0,
-    running: false,
-  },
-  {
-    name: 'Weekly Backtest + Param Learning',
-    url: `${BASE_URL}/api/admin/weekly-backtest`,
-    method: 'POST' as const,
+    name: 'Weekly Auto-Recalibration',
+    url: `${BASE_URL}/api/admin/recalibration`,
+    method: 'POST',
     intervalMs: 7 * 24 * 60 * 60 * 1000,
     body: { season: '2025' },
     requiresAuth: true,
     lastRun: 0,
     running: false,
+    phase: 'heavy',
+    priority: 9,
+    consecutiveFailures: 0,
+    lastError: null,
+  },
+  {
+    name: 'Weekly Weight Re-Learning',
+    url: `${BASE_URL}/api/admin/weekly-weights`,
+    method: 'POST',
+    intervalMs: 7 * 24 * 60 * 60 * 1000,
+    body: {},
+    requiresAuth: true,
+    lastRun: 0,
+    running: false,
+    phase: 'heavy',
+    priority: 10,
+    consecutiveFailures: 0,
+    lastError: null,
+  },
+  {
+    name: 'Weekly Backtest + Param Learning',
+    url: `${BASE_URL}/api/admin/weekly-backtest`,
+    method: 'POST',
+    intervalMs: 7 * 24 * 60 * 60 * 1000,
+    body: { season: '2025' },
+    requiresAuth: true,
+    lastRun: 0,
+    running: false,
+    phase: 'heavy',
+    priority: 11,
+    consecutiveFailures: 0,
+    lastError: null,
   },
 ];
 
-async function runTask(task: SyncTask): Promise<void> {
+const MAX_BACKOFF_MULTIPLIER = 8;
+
+function getEffectiveInterval(task: SyncTask): number {
+  if (task.consecutiveFailures === 0) return task.intervalMs;
+  const multiplier = Math.min(MAX_BACKOFF_MULTIPLIER, Math.pow(2, task.consecutiveFailures - 1));
+  return task.intervalMs * multiplier;
+}
+
+async function runTask(task: SyncTask): Promise<boolean> {
   if (task.running) {
-    console.log(`[Sync] ${task.name}: SKIPPED (still running from previous tick)`);
-    return;
+    console.log(`[Sync] ${task.name}: SKIPPED (still running)`);
+    return false;
   }
   task.running = true;
   task.lastRun = Date.now();
@@ -146,32 +202,75 @@ async function runTask(task: SyncTask): Promise<void> {
       options.body = JSON.stringify(task.body);
     }
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+    options.signal = controller.signal;
+
     const response = await fetch(task.url, options);
+    clearTimeout(timeout);
     const duration = Date.now() - startTime;
 
     if (response.ok) {
       const data = await response.json();
-      const count = data.count || data.results ? JSON.stringify(data.results || data.count) : 'ok';
+      const count = data.results ? JSON.stringify(data.results) : (data.count != null ? String(data.count) : 'ok');
       console.log(`[Sync] ${task.name}: SUCCESS (${duration}ms) - ${count}`);
+      task.consecutiveFailures = 0;
+      task.lastError = null;
+      return true;
     } else {
-      console.error(`[Sync] ${task.name}: FAILED ${response.status} (${duration}ms)`);
+      task.consecutiveFailures++;
+      task.lastError = `HTTP ${response.status}`;
+      console.error(`[Sync] ${task.name}: FAILED ${response.status} (${duration}ms) [failures: ${task.consecutiveFailures}]`);
+      return false;
     }
   } catch (error) {
     const duration = Date.now() - startTime;
-    console.error(`[Sync] ${task.name}: ERROR (${duration}ms) -`, error instanceof Error ? error.message : error);
+    task.consecutiveFailures++;
+    task.lastError = error instanceof Error ? error.message : String(error);
+    console.error(`[Sync] ${task.name}: ERROR (${duration}ms) [failures: ${task.consecutiveFailures}] -`, task.lastError);
+    return false;
   } finally {
     task.running = false;
   }
 }
 
-async function checkAndRunTasks(): Promise<void> {
-  const now = Date.now();
+async function runTasksParallel(tasks: SyncTask[], concurrency: number): Promise<void> {
+  const queue = [...tasks];
+  const running: Promise<void>[] = [];
 
-  for (const task of syncTasks) {
-    if (now - task.lastRun >= task.intervalMs) {
-      await runTask(task);
+  while (queue.length > 0 || running.length > 0) {
+    while (running.length < concurrency && queue.length > 0) {
+      const task = queue.shift()!;
+      const promise = runTask(task).then(() => {
+        const idx = running.indexOf(promise);
+        if (idx >= 0) running.splice(idx, 1);
+      });
+      running.push(promise);
+    }
+
+    if (running.length > 0) {
+      await Promise.race(running);
     }
   }
+}
+
+async function checkAndRunTasks(): Promise<void> {
+  const now = Date.now();
+  const dueTasks = syncTasks.filter(
+    (task) => !task.running && now - task.lastRun >= getEffectiveInterval(task)
+  );
+
+  if (dueTasks.length === 0) return;
+
+  dueTasks.sort((a, b) => a.priority - b.priority);
+
+  const fastTasks = dueTasks.filter((t) => t.phase === 'fast');
+  const mediumTasks = dueTasks.filter((t) => t.phase === 'medium');
+  const heavyTasks = dueTasks.filter((t) => t.phase === 'heavy');
+
+  if (fastTasks.length > 0) await runTasksParallel(fastTasks, 3);
+  if (mediumTasks.length > 0) await runTasksParallel(mediumTasks, 2);
+  if (heavyTasks.length > 0) await runTasksParallel(heavyTasks, 1);
 }
 
 function formatInterval(ms: number): string {
@@ -185,20 +284,26 @@ async function main(): Promise<void> {
   console.log(`[BackgroundSync] Base URL: ${BASE_URL}`);
   console.log('[BackgroundSync] Schedule:');
   for (const task of syncTasks) {
-    console.log(`  - ${task.name}: every ${formatInterval(task.intervalMs)}`);
+    console.log(`  - ${task.name}: every ${formatInterval(task.intervalMs)} [${task.phase}]`);
   }
   console.log('');
 
   console.log('[BackgroundSync] Waiting 15s for server to be ready...');
   await new Promise((resolve) => setTimeout(resolve, 15000));
 
-  console.log('[BackgroundSync] Running initial sync...');
-  for (const task of syncTasks) {
-    try {
-      await runTask(task);
-    } catch (e) {
-      console.error(`[BackgroundSync] Initial sync failed for ${task.name}:`, e instanceof Error ? e.message : e);
-    }
+  console.log('[BackgroundSync] Phase 1: Fast syncs (parallel)...');
+  const fastTasks = syncTasks.filter((t) => t.phase === 'fast');
+  await runTasksParallel(fastTasks, 3);
+
+  console.log('[BackgroundSync] Phase 2: Medium syncs (2 at a time)...');
+  const mediumTasks = syncTasks.filter((t) => t.phase === 'medium');
+  await runTasksParallel(mediumTasks, 2);
+
+  console.log('[BackgroundSync] Phase 3: Heavy syncs (sequential)...');
+  const heavyTasks = syncTasks.filter((t) => t.phase === 'heavy');
+  for (const task of heavyTasks) {
+    await runTask(task);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
   console.log('[BackgroundSync] Initial sync complete. Starting scheduled loop...\n');
