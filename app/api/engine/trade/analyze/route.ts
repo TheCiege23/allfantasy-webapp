@@ -3,6 +3,8 @@ import { runTradeAnalysis } from '@/lib/engine'
 import type { TradeEngineRequest } from '@/lib/engine'
 import { buildLeagueDecisionContext, deriveTradeDecisionContext } from '@/lib/trade-engine/league-context-assembler'
 import { assembleTradeDecisionContext } from '@/lib/trade-engine/trade-context-assembler'
+import { fetchPlayerNewsFromGrok } from '@/lib/ai-gm-intelligence'
+import { computeNewsValueAdjustments, formatNewsForEngineContext, type PlayerNewsData } from '@/lib/news-value-adjustment'
 
 export async function POST(req: Request) {
   try {
@@ -20,6 +22,25 @@ export async function POST(req: Request) {
     const teamBName = body.teamBName || 'Team B'
     const rosterIdA = (body as any).rosterIdA as number | undefined
     const rosterIdB = (body as any).rosterIdB as number | undefined
+
+    if (!body.newsAdjustments) {
+      const playerNames = [
+        ...body.assetsA.filter(a => a.type === 'player').map(a => (a as any).player?.name).filter(Boolean),
+        ...body.assetsB.filter(a => a.type === 'player').map(a => (a as any).player?.name).filter(Boolean),
+      ] as string[]
+
+      if (playerNames.length > 0) {
+        try {
+          const news = await fetchPlayerNewsFromGrok(playerNames, 'nfl')
+          if (news && news.length > 0) {
+            const adjustments = computeNewsValueAdjustments(news as PlayerNewsData[], new Map())
+            body.newsAdjustments = formatNewsForEngineContext(adjustments)
+          }
+        } catch (e) {
+          console.warn('[engine/trade] News fetch failed (non-fatal):', (e as Error)?.message)
+        }
+      }
+    }
 
     const [result, canonicalContext] = await Promise.all([
       runTradeAnalysis(body),

@@ -11,6 +11,7 @@ import { fetchPlayerNewsFromGrok } from '@/lib/ai-gm-intelligence'
 import { buildRuntimeConstraints, formatConstraintsForPrompt, DEFAULT_TRADE_CONSTRAINTS, getPickValueWithRange, getPickRange } from '@/lib/trade-constraints'
 import { buildHistoricalTradeContext, getDataInfo } from '@/lib/historical-values'
 import { autoLogDecision } from '@/lib/decision-log'
+import { computeNewsValueAdjustments, applyNewsAdjustmentsToValueMap, formatNewsAdjustmentsForPrompt, type PlayerNewsData, type NewsValueAdjustment } from '@/lib/news-value-adjustment'
 import { computeConfidenceRisk, getHistoricalHitRate, type AssetContext } from '@/lib/analytics/confidence-risk-engine'
 import { getCachedDNA, formatDNAForPrompt } from '@/lib/manager-dna'
 import { lookupByNames, buildPlayerContextForAI, enrichWithValuation, type UnifiedPlayer } from '@/lib/unified-player-service'
@@ -1188,8 +1189,9 @@ function buildUserPrompt(args: {
   } | null
   managerDnaContext?: string
   unifiedPlayerContext?: string
+  newsValueAdjustments?: NewsValueAdjustment[]
 }) {
-  const { sport, format, leagueType, idpEnabled, league, numTeams, sideA, sideB, otherManagers, assetsA, assetsB, sportsDb, espnStats, fantasyCalcValues, tradeBalance, tradeDriverData, tierEvaluation, playerNews, tradeGoal, runtimeConstraints, historicalContext, managerDnaContext, unifiedPlayerContext } = args
+  const { sport, format, leagueType, idpEnabled, league, numTeams, sideA, sideB, otherManagers, assetsA, assetsB, sportsDb, espnStats, fantasyCalcValues, tradeBalance, tradeDriverData, tierEvaluation, playerNews, tradeGoal, runtimeConstraints, historicalContext, managerDnaContext, unifiedPlayerContext, newsValueAdjustments } = args
 
   // Parse league settings for AI
   const rosterPositions = league?.roster_positions || []
@@ -1390,6 +1392,7 @@ YOUR GRADE MUST ALIGN WITH THESE VALUES. Adjust ±1 level for context, but DO NO
         tierEvaluation ? 'TIER EVALUATION (MANDATORY): The deterministic tier system has pre-evaluated this trade. You MUST follow the grade cap and warnings. Do NOT override the tier system verdict.' : '',
         tradeGoal ? `USER TRADE GOAL: The user has specified their goal as "${tradeGoal}". Evaluate the trade in the context of this goal. Does the trade help them achieve it? Be specific about how this trade aligns or conflicts with their stated objective.` : '',
         'CRITICAL - REAL-TIME NEWS: realTimePlayerNews contains LIVE news from X/Twitter (last 7 days). If a player was RELEASED, CUT, INJURED, or had a BREAKOUT PERFORMANCE, this MUST be reflected in your analysis. Real-time news SUPERSEDES static FantasyCalc values. Always mention relevant breaking news in your expertAnalysis and playerBreakdowns.',
+        newsValueAdjustments && newsValueAdjustments.length > 0 ? `NEWS VALUE ADJUSTMENTS APPLIED: The trade balance numbers above ALREADY include news-based value adjustments. ${formatNewsAdjustmentsForPrompt(newsValueAdjustments)}` : '',
       ].filter(Boolean),
       
       runtimeConstraints: runtimeConstraints || null,
@@ -1913,8 +1916,30 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       }),
     ])
     
-    const fantasyCalcValues = sport === 'nfl' && fantasyCalcMap.size > 0
-      ? formatValuesForPrompt(fantasyCalcMap, involvedNames)
+    let newsValueAdjustments: NewsValueAdjustment[] = []
+    let newsAdjustedCalcMap = fantasyCalcMap
+    if (sport === 'nfl' && fantasyCalcMap.size > 0 && playerNews && playerNews.length > 0) {
+      newsValueAdjustments = computeNewsValueAdjustments(
+        playerNews as PlayerNewsData[],
+        fantasyCalcMap as Map<string, { value: number }>
+      )
+      const { adjustedMap, appliedCount } = applyNewsAdjustmentsToValueMap(
+        fantasyCalcMap as Map<string, { value: number }>,
+        newsValueAdjustments
+      )
+      if (appliedCount > 0) {
+        newsAdjustedCalcMap = adjustedMap
+        console.log('[Trade] Applied news-based value adjustments:', newsValueAdjustments.filter(a => a.severity !== 'none').map(a => ({
+          player: a.playerName,
+          original: a.originalValue,
+          adjusted: a.adjustedValue,
+          reason: a.reason,
+        })))
+      }
+    }
+
+    const fantasyCalcValues = sport === 'nfl' && newsAdjustedCalcMap.size > 0
+      ? formatValuesForPrompt(newsAdjustedCalcMap, involvedNames)
       : undefined
 
     let unifiedPlayerContext = ''
@@ -1943,10 +1968,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       }
     }
 
-    // Calculate trade balance using FantasyCalc values
+    // Calculate trade balance using NEWS-ADJUSTED FantasyCalc values
     // IMPORTANT: assetsA = what Team A RECEIVES from B, assetsB = what Team A GIVES to B (what B receives)
     let tradeBalance: ReturnType<typeof calculateTradeBalance> | undefined = undefined
-    if (sport === 'nfl' && fantasyCalcMap.size > 0) {
+    if (sport === 'nfl' && newsAdjustedCalcMap.size > 0) {
       // What Team A RECEIVES (from assetsA)
       const sideAReceivesPlayers = assetsA.filter(a => a.type === 'player').map((a: any) => a.player?.name).filter(Boolean) as string[]
       const sideAReceivesPicks = assetsA.filter(a => a.type === 'pick').map((a: any) => ({ year: a.pick.year, round: a.pick.round }))
@@ -1956,7 +1981,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       const sideBReceivesPicks = assetsB.filter(a => a.type === 'pick').map((a: any) => ({ year: a.pick.year, round: a.pick.round }))
       
       tradeBalance = calculateTradeBalance(
-        fantasyCalcMap,
+        newsAdjustedCalcMap,
         sideAReceivesPlayers,  // Players that Team A RECEIVES
         sideBReceivesPlayers,  // Players that Team B RECEIVES (= what A gives)
         sideAReceivesPicks,    // Picks that Team A RECEIVES
@@ -1971,8 +1996,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
           let boost = 0
           for (const p of players) {
             if (!p.found || p.value <= 200) continue
-            const lookup = fantasyCalcMap.get(p.name.toLowerCase())
-            const pos = lookup?.position?.toUpperCase() || ''
+            const lookup = newsAdjustedCalcMap.get(p.name.toLowerCase())
+            const pos = (lookup as any)?.position?.toUpperCase() || ''
             const playerTier = classifyPlayerTier(p.value, pos)
             const adjusted = applyScarcityToPlayerValue(p.value, playerTier, scarcityMult)
             boost += adjusted - p.value
@@ -2267,6 +2292,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       historicalContext,
       managerDnaContext,
       unifiedPlayerContext,
+      newsValueAdjustments,
     })
 
     const result = await openaiChatJson({
@@ -2592,6 +2618,13 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         nflContext: body.nflContext || undefined,
         numTeams: numTeams ?? undefined,
         tradeGoal: body.tradeGoal ?? undefined,
+        newsAdjustments: newsValueAdjustments.length > 0
+          ? Object.fromEntries(
+              newsValueAdjustments
+                .filter(a => a.severity !== 'none')
+                .map(a => [a.playerName.toLowerCase(), { multiplier: a.multiplier, sentiment: a.sentiment, reason: a.reason }])
+            )
+          : undefined,
         options: { explainLevel: 'full', counterCount: 3 },
       }
       engineReqSaved = engineReq
@@ -2635,6 +2668,20 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
       ...(analyticsEnhanced ? { analytics: analyticsEnhanced } : {}),
       ...(engineAnalysis ? { engineAnalysis, engineRequest: engineReqSaved } : {}),
       ...(offseasonContext ? { offseasonContext } : {}),
+      ...(newsValueAdjustments.length > 0 ? {
+        newsAdjustments: newsValueAdjustments
+          .filter(a => a.severity !== 'none')
+          .map(a => ({
+            playerName: a.playerName,
+            originalValue: a.originalValue,
+            adjustedValue: a.adjustedValue,
+            multiplier: a.multiplier,
+            sentiment: a.sentiment,
+            severity: a.severity,
+            reason: a.reason,
+            headlines: a.newsHeadlines,
+          })),
+      } : {}),
       validated: true,
       rate_limit: { remaining: rlPair.remaining, retryAfterSec: rlPair.retryAfterSec },
     })

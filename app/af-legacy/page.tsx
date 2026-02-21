@@ -7646,6 +7646,58 @@ function AFLegacyContent() {
                             )}
                           </div>
 
+                          {/* NEWS VALUE ADJUSTMENTS */}
+                          {inlineTradeResult.newsAdjustments?.length > 0 && (
+                            <div className="mb-6 rounded-xl border border-amber-500/25 bg-gradient-to-r from-amber-500/5 via-transparent to-amber-500/5 p-4">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="text-base">📰</span>
+                                <span className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Breaking News Impact</span>
+                                <span className="text-[10px] text-white/30 ml-auto">Values adjusted in real-time</span>
+                              </div>
+                              <div className="space-y-2">
+                                {inlineTradeResult.newsAdjustments.map((adj: any, i: number) => (
+                                  <div
+                                    key={i}
+                                    className={`flex items-start gap-3 p-3 rounded-lg border ${
+                                      adj.severity === 'critical' ? 'bg-rose-500/10 border-rose-500/20' :
+                                      adj.severity === 'significant' ? 'bg-orange-500/10 border-orange-500/20' :
+                                      adj.sentiment === 'bullish' ? 'bg-emerald-500/10 border-emerald-500/20' :
+                                      'bg-amber-500/10 border-amber-500/20'
+                                    }`}
+                                  >
+                                    <span className="text-lg shrink-0">
+                                      {adj.severity === 'critical' ? '\u{1F6A8}' :
+                                       adj.severity === 'significant' ? '\u26A0\uFE0F' :
+                                       adj.sentiment === 'bullish' ? '\u{1F4C8}' : '\u{1F4C9}'}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="font-bold text-white text-sm">{adj.playerName}</span>
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                          adj.severity === 'critical' ? 'bg-rose-500/30 text-rose-300' :
+                                          adj.severity === 'significant' ? 'bg-orange-500/30 text-orange-300' :
+                                          adj.sentiment === 'bullish' ? 'bg-emerald-500/30 text-emerald-300' :
+                                          'bg-amber-500/30 text-amber-300'
+                                        }`}>
+                                          {adj.sentiment}
+                                        </span>
+                                        {adj.originalValue != null && adj.adjustedValue != null && (
+                                          <span className="text-[10px] text-white/40 ml-auto">
+                                            {adj.originalValue} → <span className={adj.multiplier < 1 ? 'text-rose-400' : 'text-emerald-400'}>{adj.adjustedValue}</span>
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-white/50 mt-1">{adj.reason}</div>
+                                      {adj.headlines?.[0] && (
+                                        <div className="text-[10px] text-white/30 mt-1 italic truncate">&ldquo;{adj.headlines[0]}&rdquo;</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
                           {inlineTradeResult.offseasonContext?.offseason && (
                             <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-3">
                               <div className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center">
@@ -10465,6 +10517,50 @@ function AFLegacyContent() {
                                       </div>
                                     ))}
                                   </div>
+
+                                  {/* NEWS IMPACT ALERTS */}
+                                  {tradeHubLivePreview.newsAlerts?.length > 0 && (
+                                    <div className="space-y-1.5">
+                                      <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+                                        <span className="text-amber-400">NEWS IMPACT</span>
+                                        <span className="text-white/30">— Values adjusted</span>
+                                      </div>
+                                      {tradeHubLivePreview.newsAlerts.map((alert: any, i: number) => (
+                                        <div
+                                          key={i}
+                                          className={`flex items-start gap-2 p-2 rounded-lg border text-xs ${
+                                            alert.severity === 'critical' ? 'bg-rose-500/10 border-rose-500/25' :
+                                            alert.severity === 'significant' ? 'bg-orange-500/10 border-orange-500/25' :
+                                            alert.sentiment === 'bullish' ? 'bg-emerald-500/10 border-emerald-500/25' :
+                                            'bg-amber-500/10 border-amber-500/25'
+                                          }`}
+                                        >
+                                          <span className="text-sm mt-px">
+                                            {alert.severity === 'critical' ? '\u{1F6A8}' :
+                                             alert.severity === 'significant' ? '\u26A0\uFE0F' :
+                                             alert.sentiment === 'bullish' ? '\u{1F4C8}' : '\u{1F4C9}'}
+                                          </span>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="font-semibold text-white">{alert.playerName}</span>
+                                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                                alert.severity === 'critical' ? 'bg-rose-500/30 text-rose-300' :
+                                                alert.severity === 'significant' ? 'bg-orange-500/30 text-orange-300' :
+                                                alert.sentiment === 'bullish' ? 'bg-emerald-500/30 text-emerald-300' :
+                                                'bg-amber-500/30 text-amber-300'
+                                              }`}>
+                                                {alert.sentiment}
+                                              </span>
+                                            </div>
+                                            <div className="text-white/50 mt-0.5 leading-snug">{alert.reason}</div>
+                                            {alert.headlines?.[0] && (
+                                              <div className="text-white/30 text-[10px] mt-1 italic truncate">{alert.headlines[0]}</div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
 
                                   {/* SLOT DELTA MAP */}
                                   {tradeHubLivePreview.slotMap?.deltas?.length > 0 && (

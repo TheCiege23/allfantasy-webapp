@@ -750,8 +750,39 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     } catch {}
   }
 
-  const pricedA = { ...rawPricedA, ...applyScoringNormalization(rawPricedA.items as any, scoringAdj) }
-  const pricedB = { ...rawPricedB, ...applyScoringNormalization(rawPricedB.items as any, scoringAdj) }
+  const scoredA = applyScoringNormalization(rawPricedA.items as any, scoringAdj)
+  const scoredB = applyScoringNormalization(rawPricedB.items as any, scoringAdj)
+
+  const applyNewsToItems = (items: Array<any>, newsAdj: Record<string, { multiplier: number; sentiment: string; reason: string }>) => {
+    let total = 0
+    const adjusted = items.map((it: any) => {
+      const rawVal = Number(it.assetValue?.total ?? it.value ?? 0) || 0
+      if (it.type !== 'player') {
+        total += rawVal
+        return it
+      }
+      const nm = String(it.name || '').trim().toLowerCase()
+      const adj = newsAdj[nm]
+      if (!adj || adj.multiplier === 1.0) {
+        total += rawVal
+        return it
+      }
+      const newVal = Math.round(rawVal * adj.multiplier)
+      total += newVal
+      return { ...it, value: newVal, assetValue: { ...it.assetValue, total: newVal, newsMultiplier: adj.multiplier, newsReason: adj.reason } }
+    })
+    return { items: adjusted, total }
+  }
+
+  let pricedA = { ...rawPricedA, ...scoredA }
+  let pricedB = { ...rawPricedB, ...scoredB }
+
+  if (req.newsAdjustments && Object.keys(req.newsAdjustments).length > 0) {
+    const newsA = applyNewsToItems(pricedA.items as any, req.newsAdjustments)
+    const newsB = applyNewsToItems(pricedB.items as any, req.newsAdjustments)
+    pricedA = { ...pricedA, items: newsA.items, total: newsA.total }
+    pricedB = { ...pricedB, items: newsB.items, total: newsB.total }
+  }
 
   const pricingSources: Record<string, string> = {
     ...pricedItemsToSources(pricedA.items as any),

@@ -168,6 +168,8 @@ export interface TradeEngineRequest {
   tradeGoal?: string
   numTeams?: number
 
+  newsAdjustments?: Record<string, { multiplier: number; sentiment: string; reason: string }>
+
   options?: {
     explainLevel?: 'short' | 'full'
     counterCount?: number
