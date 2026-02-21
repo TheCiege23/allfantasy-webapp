@@ -1,6 +1,6 @@
 import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server';
-import { syncNFLTeamsToDb, syncNFLPlayersToDb, syncNFLScheduleToDb } from '@/lib/rolling-insights';
+import { syncNFLTeamsToDb, syncNFLPlayersToDb, syncNFLScheduleToDb, syncNFLDepthChartsToDb, syncNFLTeamStatsToDb } from '@/lib/rolling-insights';
 import {
   syncAPISportsTeamsToDb,
   syncAPISportsGamesToDb,
@@ -40,6 +40,16 @@ export const POST = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSy
       if (syncType === 'all' || syncType === 'players') {
         const playerCount = await syncNFLPlayersToDb({ season });
         results.ri_players = { synced: playerCount };
+      }
+
+      if (syncType === 'all' || syncType === 'depth_charts') {
+        const depthCount = await syncNFLDepthChartsToDb({ season });
+        results.ri_depth_charts = { synced: depthCount };
+      }
+
+      if (syncType === 'all' || syncType === 'team_stats') {
+        const statsCount = await syncNFLTeamStatsToDb({ season });
+        results.ri_team_stats = { synced: statsCount };
       }
     }
 
@@ -111,6 +121,7 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
 
     const [
       riTeams, riPlayers, riGames, riStats,
+      riDepthCharts, riTeamStats,
       asTeams, asGames, asInjuries,
       espnLiveGames, espnNews,
       cacheCount, identityCount, identityWithApiSports,
@@ -119,6 +130,8 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
       prisma.sportsPlayer.count({ where: { source: 'rolling_insights' } }),
       prisma.sportsGame.count({ where: { source: 'rolling_insights' } }),
       prisma.playerSeasonStats.count({ where: { source: 'rolling_insights' } }),
+      prisma.depthChart.count({ where: { source: 'rolling_insights' } }),
+      prisma.teamSeasonStats.count({ where: { source: 'rolling_insights' } }),
       prisma.sportsTeam.count({ where: { source: 'api_sports' } }),
       prisma.sportsGame.count({ where: { source: 'api_sports' } }),
       prisma.sportsInjury.count({ where: { source: 'api_sports' } }),
@@ -161,6 +174,8 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
           players: riPlayers,
           games: riGames,
           seasonStats: riStats,
+          depthCharts: riDepthCharts,
+          teamStats: riTeamStats,
           lastSyncAt: latestRISync?.fetchedAt?.toISOString() || null,
         },
         api_sports: {

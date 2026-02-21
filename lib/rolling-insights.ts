@@ -454,4 +454,443 @@ export async function syncNFLScheduleToDb(options?: { season?: string }): Promis
   return synced;
 }
 
+// ── Depth Charts ──
+
+export interface RIDepthChartPlayer {
+  id: string;
+  player: string;
+  position: string | null;
+  number: number | null;
+  status: string | null;
+  img: string | null;
+}
+
+export interface RIDepthChart {
+  team: string;
+  teamId: string;
+  abbrv: string;
+  positions: Record<string, RIDepthChartPlayer[]>;
+}
+
+const DEPTH_CHART_POSITIONS = [
+  'QB', 'RB', 'WR', 'WR1', 'WR2', 'WR3', 'TE', 'K', 'P',
+  'LT', 'LG', 'C', 'RG', 'RT', 'FB',
+  'DE', 'DT', 'LB', 'CB', 'S', 'SS', 'FS',
+  'EDGE', 'ILB', 'OLB', 'NT', 'DL',
+  'KR', 'PR', 'LS',
+];
+
+const DEPTH_CHART_FIELDS = DEPTH_CHART_POSITIONS.map(
+  (pos) => `${pos} { id player position number status img }`
+).join('\n    ');
+
+export async function fetchNFLDepthCharts(options?: {
+  teamName?: string;
+  season?: string;
+}): Promise<RIDepthChart[]> {
+  const args: string[] = [];
+  if (options?.teamName) args.push(`teamName: "${options.teamName}"`);
+  if (options?.season) args.push(`season: "${options.season}"`);
+
+  const argsStr = args.length ? `(${args.join(', ')})` : '';
+
+  const query = `{
+    nflTeams${argsStr} {
+      id team abbrv
+      rosterByPosition {
+        ${DEPTH_CHART_FIELDS}
+      }
+    }
+  }`;
+
+  const data = await graphqlQuery<{
+    nflTeams: Array<{
+      id: string;
+      team: string;
+      abbrv: string;
+      rosterByPosition: Record<string, any[] | null> | null;
+    }>;
+  }>(query);
+
+  return (data.nflTeams || []).map((t) => {
+    const positions: Record<string, RIDepthChartPlayer[]> = {};
+    if (t.rosterByPosition) {
+      for (const [pos, players] of Object.entries(t.rosterByPosition)) {
+        if (Array.isArray(players) && players.length > 0) {
+          positions[pos] = players.map((p: any) => ({
+            id: p.id,
+            player: p.player,
+            position: p.position || pos,
+            number: p.number ?? null,
+            status: p.status ?? null,
+            img: p.img ?? null,
+          }));
+        }
+      }
+    }
+    return { team: t.team, teamId: t.id, abbrv: t.abbrv, positions };
+  });
+}
+
+// ── Team Season Stats ──
+
+export interface RITeamSeasonStats {
+  period: string;
+  wins: number | null;
+  losses: number | null;
+  ties: number | null;
+  points: number | null;
+  totalYards: number | null;
+  passingYards: number | null;
+  rushingYards: number | null;
+  turnovers: number | null;
+  sacks: number | null;
+  firstDowns: number | null;
+  penalties: number | null;
+  penaltyYards: number | null;
+  gamesPlayed: number | null;
+  DK_fantasy_points: number | null;
+  DK_fantasy_points_per_game: number | null;
+  passingTouchdowns: number | null;
+  rushingTouchdowns: number | null;
+  defenseTouchdowns: number | null;
+  defenseInterceptions: number | null;
+  totalPassingYardsAllowed: number | null;
+  totalRushingYardsAllowed: number | null;
+  pointsAgainstDST: number | null;
+}
+
+export interface RITeamFull {
+  id: string;
+  team: string;
+  abbrv: string;
+  mascot: string;
+  img: string | null;
+  conf: string | null;
+  city: string | null;
+  state: string | null;
+  arena: string | null;
+  dome: boolean | null;
+  bye: Array<{ period: string; value: number | null }>;
+  injuries: Array<{
+    injury: string | null;
+    player: string | null;
+    returns: string | null;
+    playerId: string | null;
+    date: string | null;
+  }>;
+  record: Array<{
+    period: string;
+    regular: { wins: number; losses: number; ties: number } | null;
+    wildcard: { wins: number; losses: number; ties: number } | null;
+  }>;
+  regularSeason: RITeamSeasonStats[];
+  postSeason: RITeamSeasonStats[];
+}
+
+const TEAM_SEASON_STATS_FIELDS = `
+  period
+  wins losses ties
+  points total_yards passing_yards rushing_yards turnovers sacks
+  first_downs penalties penalty_yards games_played
+  DK_fantasy_points DK_fantasy_points_per_game
+  passing_touchdowns rushing_touchdowns defense_touchdowns
+  defense_interceptions total_passing_yards_allowed total_rushing_yards_allowed
+  points_against_defense_special_teams
+  offense_touchdowns receiving_touchdowns special_team_touchdowns
+  safeties blocked_kicks blocked_punts
+  kick_return_touchdowns punt_return_touchdowns
+  interception_touchdowns fumble_return_touchdowns defense_fumble_recoveries
+`;
+
+export async function fetchNFLTeamsFull(options?: {
+  teamName?: string;
+  season?: string;
+}): Promise<RITeamFull[]> {
+  const args: string[] = [];
+  if (options?.teamName) args.push(`teamName: "${options.teamName}"`);
+  if (options?.season) args.push(`season: "${options.season}"`);
+
+  const argsStr = args.length ? `(${args.join(', ')})` : '';
+
+  const query = `{
+    nflTeams${argsStr} {
+      id team abbrv mascot img
+      conf city state arena dome
+      bye { period value }
+      injuries { injury player returns playerId date }
+      record { period regular { wins losses ties } wildcard { wins losses ties } }
+      regularSeason { ${TEAM_SEASON_STATS_FIELDS} }
+      postSeason { ${TEAM_SEASON_STATS_FIELDS} }
+    }
+  }`;
+
+  const data = await graphqlQuery<{ nflTeams: any[] }>(query);
+
+  return (data.nflTeams || []).map((t) => ({
+    id: t.id,
+    team: t.team,
+    abbrv: t.abbrv,
+    mascot: t.mascot,
+    img: t.img,
+    conf: t.conf ?? null,
+    city: t.city ?? null,
+    state: t.state ?? null,
+    arena: t.arena ?? null,
+    dome: t.dome ?? null,
+    bye: t.bye || [],
+    injuries: t.injuries || [],
+    record: t.record || [],
+    regularSeason: (t.regularSeason || []).map(mapTeamSeasonStats),
+    postSeason: (t.postSeason || []).map(mapTeamSeasonStats),
+  }));
+}
+
+function mapTeamSeasonStats(s: any): RITeamSeasonStats {
+  return {
+    period: s.period,
+    wins: s.wins ?? null,
+    losses: s.losses ?? null,
+    ties: s.ties ?? null,
+    points: s.points ?? null,
+    totalYards: s.total_yards ?? null,
+    passingYards: s.passing_yards ?? null,
+    rushingYards: s.rushing_yards ?? null,
+    turnovers: s.turnovers ?? null,
+    sacks: s.sacks ?? null,
+    firstDowns: s.first_downs ?? null,
+    penalties: s.penalties ?? null,
+    penaltyYards: s.penalty_yards ?? null,
+    gamesPlayed: s.games_played ?? null,
+    DK_fantasy_points: s.DK_fantasy_points ?? null,
+    DK_fantasy_points_per_game: s.DK_fantasy_points_per_game ?? null,
+    passingTouchdowns: s.passing_touchdowns ?? null,
+    rushingTouchdowns: s.rushing_touchdowns ?? null,
+    defenseTouchdowns: s.defense_touchdowns ?? null,
+    defenseInterceptions: s.defense_interceptions ?? null,
+    totalPassingYardsAllowed: s.total_passing_yards_allowed ?? null,
+    totalRushingYardsAllowed: s.total_rushing_yards_allowed ?? null,
+    pointsAgainstDST: s.points_against_defense_special_teams ?? null,
+  };
+}
+
+// ── Enhanced Player Fields ──
+
+export interface RIPlayerEnhanced extends RIPlayer {
+  injury: {
+    injury: string | null;
+    returns: string | null;
+    date: string | null;
+  } | null;
+  formerTeams: Array<{ period: string; teamNames: string[] }>;
+  allStar: Array<{ period: string; count: number }>;
+}
+
+const PLAYER_ENHANCED_FIELDS = `
+  id player
+  team { id team abbrv mascot }
+  number position height weight college dob img
+  positionCategory status DK_salary
+  injury { injury player returns date }
+  formerTeams { period teamNames }
+  allStar { period count }
+  regularSeason {
+    period passing_yards passing_touchdowns passing_attempts completions
+    interceptions passerRating rushing_yards rushing_touchdowns rushing_attempts
+    receptions receiving_yards receiving_touchdowns targets sacks tackles
+    fumbles fumbles_lost DK_fantasy_points DK_fantasy_points_per_game
+    games_played snap_count_offense snap_count_defense snap_count_special_teams
+    field_goals_made field_goals_attempted extra_points_made extra_points_attempted
+    punts punts_long punting_yards inside_20
+    punt_returns punt_return_yards punt_return_touchdowns
+    kick_return_touchdowns
+  }
+  postSeason {
+    period passing_yards passing_touchdowns passing_attempts completions
+    interceptions passerRating rushing_yards rushing_touchdowns rushing_attempts
+    receptions receiving_yards receiving_touchdowns targets sacks tackles
+    fumbles fumbles_lost DK_fantasy_points DK_fantasy_points_per_game
+    games_played snap_count_offense snap_count_defense snap_count_special_teams
+    field_goals_made field_goals_attempted extra_points_made extra_points_attempted
+    punts punts_long punting_yards inside_20
+    punt_returns punt_return_yards punt_return_touchdowns
+    kick_return_touchdowns
+  }
+`;
+
+export async function fetchNFLRosterEnhanced(options: {
+  season?: string;
+  playerName?: string;
+  teamId?: string;
+  limit?: number;
+}): Promise<RIPlayerEnhanced[]> {
+  const args: string[] = [];
+  if (options.season) args.push(`season: "${options.season}"`);
+  if (options.playerName) args.push(`playerName: "${options.playerName}"`);
+  if (options.teamId) args.push(`teamId: "${options.teamId}"`);
+  if (options.limit) args.push(`limit: ${options.limit}`);
+
+  const argsStr = args.length ? `(${args.join(', ')})` : '';
+  const query = `{ nflRoster${argsStr} { ${PLAYER_ENHANCED_FIELDS} } }`;
+
+  const data = await graphqlQuery<{ nflRoster: RIPlayerEnhanced[] }>(query);
+  return data.nflRoster || [];
+}
+
+// ── Sync Functions ──
+
+export async function syncNFLDepthChartsToDb(options?: { season?: string }): Promise<number> {
+  const season = options?.season || getCurrentNFLSeason();
+  const expiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+
+  let charts: RIDepthChart[];
+  try {
+    charts = await fetchNFLDepthCharts({ season });
+  } catch (error) {
+    console.error('[RollingInsights] Failed to fetch depth charts:', error);
+    return 0;
+  }
+
+  let synced = 0;
+  for (const chart of charts) {
+    const team = normalizeTeamAbbrev(chart.abbrv) || chart.abbrv;
+
+    for (const [position, players] of Object.entries(chart.positions)) {
+      if (!players.length) continue;
+
+      try {
+        await prisma.depthChart.upsert({
+          where: {
+            sport_team_position_source: {
+              sport: 'NFL',
+              team,
+              position,
+              source: 'rolling_insights',
+            },
+          },
+          update: {
+            teamId: chart.teamId,
+            players: players as unknown as object,
+            season,
+            fetchedAt: new Date(),
+            expiresAt,
+          },
+          create: {
+            sport: 'NFL',
+            team,
+            teamId: chart.teamId,
+            position,
+            players: players as unknown as object,
+            source: 'rolling_insights',
+            season,
+            fetchedAt: new Date(),
+            expiresAt,
+          },
+        });
+        synced++;
+      } catch (err) {
+        console.error(`[RollingInsights] Failed to sync depth chart ${team}/${position}:`, err);
+      }
+    }
+  }
+
+  console.log(`[RollingInsights] Synced ${synced} depth chart entries`);
+  return synced;
+}
+
+export async function syncNFLTeamStatsToDb(options?: { season?: string }): Promise<number> {
+  const season = options?.season || getCurrentNFLSeason();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+  let teams: RITeamFull[];
+  try {
+    teams = await fetchNFLTeamsFull({ season });
+  } catch (error) {
+    console.error('[RollingInsights] Failed to fetch team stats:', error);
+    return 0;
+  }
+
+  let synced = 0;
+  for (const team of teams) {
+    const abbrev = normalizeTeamAbbrev(team.abbrv) || team.abbrv;
+
+    if (team.conf || team.dome !== null || team.arena) {
+      try {
+        await prisma.sportsTeam.updateMany({
+          where: { sport: 'NFL', shortName: abbrev, source: 'rolling_insights' },
+          data: {
+            conference: team.conf || undefined,
+          },
+        });
+      } catch {}
+    }
+
+    const allStats = [
+      ...team.regularSeason.map((s) => ({ ...s, type: 'regular' as const })),
+      ...team.postSeason.map((s) => ({ ...s, type: 'postseason' as const })),
+    ];
+
+    for (const stats of allStats) {
+      try {
+        await prisma.teamSeasonStats.upsert({
+          where: {
+            sport_team_season_seasonType_source: {
+              sport: 'NFL',
+              team: abbrev,
+              season: stats.period,
+              seasonType: stats.type,
+              source: 'rolling_insights',
+            },
+          },
+          update: {
+            teamId: team.id,
+            stats: stats as unknown as object,
+            wins: stats.wins,
+            losses: stats.losses,
+            ties: stats.ties,
+            pointsFor: stats.points,
+            totalYards: stats.totalYards,
+            passingYards: stats.passingYards,
+            rushingYards: stats.rushingYards,
+            turnovers: stats.turnovers,
+            sacks: stats.sacks,
+            fantasyPoints: stats.DK_fantasy_points,
+            gamesPlayed: stats.gamesPlayed,
+            fetchedAt: new Date(),
+            expiresAt,
+          },
+          create: {
+            sport: 'NFL',
+            team: abbrev,
+            teamId: team.id,
+            season: stats.period,
+            seasonType: stats.type,
+            stats: stats as unknown as object,
+            wins: stats.wins,
+            losses: stats.losses,
+            ties: stats.ties,
+            pointsFor: stats.points,
+            totalYards: stats.totalYards,
+            passingYards: stats.passingYards,
+            rushingYards: stats.rushingYards,
+            turnovers: stats.turnovers,
+            sacks: stats.sacks,
+            fantasyPoints: stats.DK_fantasy_points,
+            gamesPlayed: stats.gamesPlayed,
+            source: 'rolling_insights',
+            fetchedAt: new Date(),
+            expiresAt,
+          },
+        });
+        synced++;
+      } catch (err) {
+        console.error(`[RollingInsights] Failed to sync team stats ${abbrev}/${stats.period}:`, err);
+      }
+    }
+  }
+
+  console.log(`[RollingInsights] Synced ${synced} team season stats entries`);
+  return synced;
+}
+
 export { getCurrentNFLSeason, getAccessToken as testAuth };

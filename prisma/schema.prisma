@@ -1540,6 +1540,60 @@ model PlayerSeasonStats {
   @@map("player_season_stats")
 }
 
+model DepthChart {
+  id         String   @id @default(uuid())
+  sport      String
+  team       String
+  teamId     String?
+  position   String
+  players    Json
+  source     String
+  season     String?
+  fetchedAt  DateTime @default(now())
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([sport, team, position, source])
+  @@index([sport, team])
+  @@index([sport, position])
+
+  @@map("depth_charts")
+}
+
+model TeamSeasonStats {
+  id               String   @id @default(uuid())
+  sport            String
+  team             String
+  teamId           String?
+  season           String
+  seasonType       String   @default("regular")
+  stats            Json
+  wins             Int?
+  losses           Int?
+  ties             Int?
+  pointsFor        Int?
+  pointsAgainst    Int?
+  totalYards       Int?
+  passingYards     Int?
+  rushingYards     Int?
+  turnovers        Int?
+  sacks            Float?
+  fantasyPoints    Float?
+  gamesPlayed      Int?
+  source           String
+  fetchedAt        DateTime @default(now())
+  expiresAt        DateTime
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([sport, team, season, seasonType, source])
+  @@index([sport, team])
+  @@index([season])
+
+  @@map("team_season_stats")
+}
+
 model GuardianIntervention {
   id                String   @id @default(uuid())
   userId            String   @db.VarChar(64)

@@ -5,6 +5,8 @@ import {
   fetchNFLSchedule,
   searchNFLPlayer,
   getCurrentNFLSeason,
+  fetchNFLDepthCharts,
+  fetchNFLTeamsFull,
   type RIPlayer,
   type RITeam,
   type RIScheduleGame,
@@ -25,7 +27,7 @@ import {
 import { normalizeTeamAbbrev } from './team-abbrev';
 
 export type Sport = 'NFL' | 'NBA' | 'MLB';
-export type DataType = 'teams' | 'players' | 'games' | 'stats' | 'standings' | 'schedule';
+export type DataType = 'teams' | 'players' | 'games' | 'stats' | 'standings' | 'schedule' | 'depth_charts' | 'team_stats';
 
 interface SportsDataRequest {
   sport: Sport;
@@ -56,6 +58,8 @@ const FRESHNESS_RULES: Record<DataType, number> = {
   stats: 6 * 60 * 60 * 1000,
   standings: 6 * 60 * 60 * 1000,
   schedule: 12 * 60 * 60 * 1000,
+  depth_charts: 12 * 60 * 60 * 1000,
+  team_stats: 24 * 60 * 60 * 1000,
 };
 
 const THESPORTSDB_LEAGUE_IDS: Record<string, string> = {
@@ -185,6 +189,36 @@ async function fetchFromRollingInsights(
       }
       case 'standings':
         return null;
+      case 'depth_charts': {
+        const charts = await fetchNFLDepthCharts({
+          season: currentSeason,
+          teamName: identifier,
+        });
+        return charts.map(c => ({
+          team: c.abbrv,
+          teamName: c.team,
+          positions: c.positions,
+          source: 'rolling_insights',
+        }));
+      }
+      case 'team_stats': {
+        const teams = await fetchNFLTeamsFull({
+          season: currentSeason,
+          teamName: identifier,
+        });
+        return teams.map(t => ({
+          team: t.abbrv,
+          teamName: t.team,
+          record: t.record,
+          regularSeason: t.regularSeason,
+          postSeason: t.postSeason,
+          injuries: t.injuries,
+          bye: t.bye,
+          conference: t.conf,
+          dome: t.dome,
+          source: 'rolling_insights',
+        }));
+      }
       default:
         return null;
     }
