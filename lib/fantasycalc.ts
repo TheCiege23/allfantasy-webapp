@@ -254,7 +254,7 @@ export function getDetailedTier(value: number, rank: number, position: string): 
   return { tier: 4, label: 'Tier 4 - Depth/Lottery', description: 'Roster filler, low trade value' };
 }
 
-export function getPickValue(year: number, round: number, isDynasty: boolean): number {
+export function getPickValue(year: number, round: number, isDynasty: boolean, pickNumber?: number, numTeams?: number): number {
   const currentYear = new Date().getFullYear();
   const yearsAway = year - currentYear;
   
@@ -288,7 +288,23 @@ export function getPickValue(year: number, round: number, isDynasty: boolean): n
     ? { 1: 6000, 2: 3900, 3: 2400, 4: 1200, 5: 600 }
     : { 1: 3000, 2: 1200, 3: 500, 4: 200, 5: 100 };
   
-  const base = baseValues[Math.min(round, 5)] || (isDynasty ? 600 : 100);
+  let base = baseValues[Math.min(round, 5)] || (isDynasty ? 600 : 100);
+
+  if (pickNumber && numTeams && numTeams > 1) {
+    const slotPosition = clamp((pickNumber - 1) / (numTeams - 1), 0, 1);
+    const prevRoundBase = round > 1
+      ? (baseValues[round - 1] || base * 1.5)
+      : base * 1.6;
+    const nextRoundBase = baseValues[Math.min(round + 1, 5)] || base * 0.5;
+
+    if (slotPosition < 0.5) {
+      const blend = (0.5 - slotPosition) / 0.5;
+      base = base + blend * 0.30 * (prevRoundBase - base);
+    } else if (slotPosition > 0.5) {
+      const blend = (slotPosition - 0.5) / 0.5;
+      base = base - blend * 0.30 * (base - nextRoundBase);
+    }
+  }
   
   let timeMult = TIME_MULTIPLIER[yearsAway] ?? TIME_FLOOR;
   timeMult = clamp(timeMult, TIME_FLOOR, 1.00);
@@ -465,9 +481,10 @@ export function calculateTradeBalance(
   values: Map<string, PlayerValueLookup>,
   sideAReceivesPlayers: string[],
   sideBReceivesPlayers: string[],
-  sideAReceivesPicks: { year: number; round: number }[],
-  sideBReceivesPicks: { year: number; round: number }[],
-  isDynasty: boolean
+  sideAReceivesPicks: { year: number; round: number; pickNumber?: number }[],
+  sideBReceivesPicks: { year: number; round: number; pickNumber?: number }[],
+  isDynasty: boolean,
+  numTeams: number = 12
 ): {
   sideAValue: number;
   sideBValue: number;
@@ -495,9 +512,9 @@ export function calculateTradeBalance(
     };
   });
   
-  const getPickValues = (picks: { year: number; round: number }[]) => picks.map(p => ({
-    desc: `${p.year} Round ${p.round}`,
-    value: getPickValue(p.year, p.round, isDynasty),
+  const getPickValues = (picks: { year: number; round: number; pickNumber?: number }[]) => picks.map(p => ({
+    desc: `${p.year} Round ${p.round}${p.pickNumber ? ` Pick ${p.pickNumber}` : ''}`,
+    value: getPickValue(p.year, p.round, isDynasty, p.pickNumber, numTeams),
   }));
   
   const sideAPlayerValues = getPlayerValues(sideAReceivesPlayers);
@@ -505,8 +522,35 @@ export function calculateTradeBalance(
   const sideAPickValues = getPickValues(sideAReceivesPicks);
   const sideBPickValues = getPickValues(sideBReceivesPicks);
   
-  const sideAValue = sideAPlayerValues.reduce((s, p) => s + p.value, 0) + sideAPickValues.reduce((s, p) => s + p.value, 0);
-  const sideBValue = sideBPlayerValues.reduce((s, p) => s + p.value, 0) + sideBPickValues.reduce((s, p) => s + p.value, 0);
+  const sideACountRaw = sideAReceivesPlayers.length + sideAReceivesPicks.length;
+  const sideBCountRaw = sideBReceivesPlayers.length + sideBReceivesPicks.length;
+  const sideARaw = sideAPlayerValues.reduce((s, p) => s + p.value, 0) + sideAPickValues.reduce((s, p) => s + p.value, 0);
+  const sideBRaw = sideBPlayerValues.reduce((s, p) => s + p.value, 0) + sideBPickValues.reduce((s, p) => s + p.value, 0);
+
+  const bestValueA = Math.max(...sideAPlayerValues.map(p => p.value), ...sideAPickValues.map(p => p.value), 0);
+  const bestValueB = Math.max(...sideBPlayerValues.map(p => p.value), ...sideBPickValues.map(p => p.value), 0);
+
+  const getStarBoost = (receivingBestValue: number) => {
+    if (receivingBestValue >= 7000) return 0.15;
+    if (receivingBestValue >= 5000) return 0.10;
+    if (receivingBestValue >= 3000) return 0.05;
+    return 0;
+  };
+
+  let sideAValue = sideARaw;
+  let sideBValue = sideBRaw;
+
+  if (sideACountRaw > sideBCountRaw && sideACountRaw - sideBCountRaw >= 1) {
+    const diff = sideACountRaw - sideBCountRaw;
+    const boost = getStarBoost(bestValueB);
+    const consolMult = diff >= 2 ? (1.50 + boost) : (1.30 + boost);
+    sideAValue = Math.round(sideARaw / consolMult);
+  } else if (sideBCountRaw > sideACountRaw && sideBCountRaw - sideACountRaw >= 1) {
+    const diff = sideBCountRaw - sideACountRaw;
+    const boost = getStarBoost(bestValueA);
+    const consolMult = diff >= 2 ? (1.50 + boost) : (1.30 + boost);
+    sideBValue = Math.round(sideBRaw / consolMult);
+  }
   
   const difference = sideAValue - sideBValue;
   const maxValue = Math.max(sideAValue, sideBValue, 1);

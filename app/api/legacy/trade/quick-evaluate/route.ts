@@ -59,7 +59,7 @@ function findFcPlayer(fcPlayers: FantasyCalcPlayer[], name: string): FantasyCalc
   }) || null
 }
 
-function assetToTradeAsset(a: QuickAsset, fcPlayers: FantasyCalcPlayer[], isDynasty: boolean): Asset | null {
+function assetToTradeAsset(a: QuickAsset, fcPlayers: FantasyCalcPlayer[], isDynasty: boolean, numTeams: number = 12): Asset | null {
   if (a.type === 'player') {
     const fc = findFcPlayer(fcPlayers, a.name || '')
     const value = fc?.value || 0
@@ -77,7 +77,7 @@ function assetToTradeAsset(a: QuickAsset, fcPlayers: FantasyCalcPlayer[], isDyna
     }
   }
   if (a.type === 'pick') {
-    const value = getPickValue(a.year || new Date().getFullYear(), a.round || 1, isDynasty)
+    const value = getPickValue(a.year || new Date().getFullYear(), a.round || 1, isDynasty, a.pickNumber || undefined, numTeams)
     return {
       id: `${a.year}_${a.round}_${a.pickNumber || ''}`,
       type: 'PICK',
@@ -201,7 +201,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/quick-evaluate",
 
     const receiveAssets = (assetsYouGet as QuickAsset[])
       .map(a => {
-        const asset = assetToTradeAsset(a, fcPlayers, isDynasty)
+        const asset = assetToTradeAsset(a, fcPlayers, isDynasty, numTeams)
         if (asset && a.type === 'player' && a.name) {
           const mult = newsMultipliers[a.name.toLowerCase()]
           if (mult && mult !== 1.0) {
@@ -216,7 +216,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/quick-evaluate",
       .filter(Boolean) as Asset[]
     const giveAssets = (assetsYouGive as QuickAsset[])
       .map(a => {
-        const asset = assetToTradeAsset(a, fcPlayers, isDynasty)
+        const asset = assetToTradeAsset(a, fcPlayers, isDynasty, numTeams)
         if (asset && a.type === 'player' && a.name) {
           const mult = newsMultipliers[a.name.toLowerCase()]
           if (mult && mult !== 1.0) {
@@ -303,7 +303,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/quick-evaluate",
       const results: typeof sweeteners = []
 
       for (const candidate of candidates) {
-        const candidateAsset = assetToTradeAsset(candidate, fcPlayers, isDynasty)
+        const candidateAsset = assetToTradeAsset(candidate, fcPlayers, isDynasty, numTeams)
         if (!candidateAsset || candidateAsset.value < 50) continue
 
         const newGiveAssets = [...giveAssets, candidateAsset]

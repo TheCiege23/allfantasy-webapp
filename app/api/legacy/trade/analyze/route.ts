@@ -1974,11 +1974,11 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
     if (sport === 'nfl' && newsAdjustedCalcMap.size > 0) {
       // What Team A RECEIVES (from assetsA)
       const sideAReceivesPlayers = assetsA.filter(a => a.type === 'player').map((a: any) => a.player?.name).filter(Boolean) as string[]
-      const sideAReceivesPicks = assetsA.filter(a => a.type === 'pick').map((a: any) => ({ year: a.pick.year, round: a.pick.round }))
+      const sideAReceivesPicks = assetsA.filter(a => a.type === 'pick').map((a: any) => ({ year: a.pick.year, round: a.pick.round, pickNumber: a.pick.pickNumber }))
       
       // What Team B RECEIVES (from assetsB = what A gives away)
       const sideBReceivesPlayers = assetsB.filter(a => a.type === 'player').map((a: any) => a.player?.name).filter(Boolean) as string[]
-      const sideBReceivesPicks = assetsB.filter(a => a.type === 'pick').map((a: any) => ({ year: a.pick.year, round: a.pick.round }))
+      const sideBReceivesPicks = assetsB.filter(a => a.type === 'pick').map((a: any) => ({ year: a.pick.year, round: a.pick.round, pickNumber: a.pick.pickNumber }))
       
       tradeBalance = calculateTradeBalance(
         newsAdjustedCalcMap,
@@ -1986,7 +1986,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
         sideBReceivesPlayers,  // Players that Team B RECEIVES (= what A gives)
         sideAReceivesPicks,    // Picks that Team A RECEIVES
         sideBReceivesPicks,    // Picks that Team B RECEIVES (= what A gives)
-        format === 'dynasty'
+        format === 'dynasty',
+        numTeams || clientLeagueContext?.numTeams || 12
       )
 
       const scarcityMult = getScarcityMultiplier(numTeams)
@@ -2166,11 +2167,12 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/trade/analyze", tool: 
             age: a.player?.age,
           }
         }
+        const effectiveNumTeams = numTeams || clientLeagueContext?.numTeams || (league as any)?.total_rosters || 12
         return {
           id: `${a.pick?.year}_${a.pick?.round}`,
           type: 'PICK' as const,
-          value: getPickValue(a.pick?.year, a.pick?.round, format === 'dynasty'),
-          marketValue: getPickValue(a.pick?.year, a.pick?.round, format === 'dynasty'),
+          value: getPickValue(a.pick?.year, a.pick?.round, format === 'dynasty', a.pick?.pickNumber || undefined, effectiveNumTeams),
+          marketValue: getPickValue(a.pick?.year, a.pick?.round, format === 'dynasty', a.pick?.pickNumber || undefined, effectiveNumTeams),
           round: a.pick?.round,
           pickSeason: a.pick?.year,
         }

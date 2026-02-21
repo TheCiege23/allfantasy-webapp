@@ -81,12 +81,23 @@ function getTradeStructure(give: Asset[], receive: Asset[]): TradeStructure | nu
   return null
 }
 
-function getConsolidationPenalty(structure: TradeStructure | null): number {
+function getConsolidationPenalty(structure: TradeStructure | null, give?: Asset[], receive?: Asset[]): number {
   if (!structure) return 1.0
-  if (structure === '2-for-1') return 1.15
-  if (structure === '3-for-1') return 1.25
-  if (structure === '1-for-2') return 0.87
-  if (structure === '1-for-3') return 0.80
+  if (structure === '1-for-1' || structure === '2-for-2') return 1.0
+
+  const bestReceiveValue = receive ? Math.max(...receive.map(a => a.value || 0)) : 0
+  const bestGiveValue = give ? Math.max(...give.map(a => a.value || 0)) : 0
+
+  const starValue = Math.max(bestReceiveValue, bestGiveValue)
+  let starBoost = 0
+  if (starValue >= 7000) starBoost = 0.15
+  else if (starValue >= 5000) starBoost = 0.10
+  else if (starValue >= 3000) starBoost = 0.05
+
+  if (structure === '2-for-1') return 1.30 + starBoost
+  if (structure === '3-for-1') return 1.50 + starBoost
+  if (structure === '1-for-2') return 1.0 / (1.30 + starBoost)
+  if (structure === '1-for-3') return 1.0 / (1.50 + starBoost)
   return 1.0
 }
 
@@ -717,7 +728,7 @@ function computeFairnessScore(
   rosterCtx?: RosterContext,
 ): { score: number; breakdown: Record<string, number>; lineupDelta?: LineupDeltaResult } {
   const structure = getTradeStructure(give, receive)
-  const consolPenalty = getConsolidationPenalty(structure)
+  const consolPenalty = getConsolidationPenalty(structure, give, receive)
 
   const giveVorp = sumField(give, 'vorpValue') * consolPenalty
   const receiveVorp = sumField(receive, 'vorpValue')
@@ -1526,7 +1537,7 @@ export function computeTradeDrivers(
   calibratedWeights?: { b0: number; w1: number; w2: number; w3: number; w4: number; w5: number; w6: number; w7: number } | null,
 ): TradeDriverData {
   const structure = getTradeStructure(give, receive)
-  const consolPenalty = getConsolidationPenalty(structure)
+  const consolPenalty = getConsolidationPenalty(structure, give, receive)
 
   const giveVorp = sumField(give, 'vorpValue') * consolPenalty
   const receiveVorp = sumField(receive, 'vorpValue')
