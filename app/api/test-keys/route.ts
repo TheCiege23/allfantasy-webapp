@@ -178,20 +178,15 @@ async function testTwilio(): Promise<TestResult> {
 
 async function testResend(): Promise<TestResult> {
   try {
-    const apiKey = process.env.RESEND_API_KEY;
-    
-    if (!apiKey) {
-      return { service: 'Resend', status: 'skipped', message: 'No API key found' };
-    }
+    const { getResendClient } = await import('@/lib/resend-client');
+    const { client, fromEmail, source } = await getResendClient();
 
-    const response = await fetch('https://api.resend.com/domains', {
-      headers: { 'Authorization': `Bearer ${apiKey}` },
-    });
+    const response = await client.domains.list();
 
-    if (response.ok) {
-      return { service: 'Resend', status: 'success', message: 'API key valid - domains endpoint accessible' };
+    if (response.error) {
+      return { service: 'Resend', status: 'failed', message: `API error: ${response.error.message}` };
     }
-    return { service: 'Resend', status: 'failed', message: `API returned ${response.status}` };
+    return { service: 'Resend', status: 'success', message: `API key valid via ${source} - from: ${fromEmail}` };
   } catch (error) {
     return { service: 'Resend', status: 'failed', message: String(error) };
   }
