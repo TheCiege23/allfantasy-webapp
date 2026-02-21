@@ -9,8 +9,8 @@ import { getUniversalAIContext } from '@/lib/ai-player-context';
 import { assembleLegacyAIContext, formatEnrichedContextForPrompt } from '@/lib/legacy-ai-context';
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
 });
 
 const LEGACY_AI_SYSTEM_PROMPT = `

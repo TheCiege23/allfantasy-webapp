@@ -7,10 +7,10 @@ import { openaiChatText } from '@/lib/openai-client'
 import { xaiChatJson, parseTextFromXaiChatCompletion } from '@/lib/xai-client'
 
 function getOpenAIClient(): OpenAI | null {
-  const key = process.env.OPENAI_API_KEY
+  const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
   if (!key) return null
   try {
-    return new OpenAI({ apiKey: key })
+    return new OpenAI({ apiKey: key, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' })
   } catch {
     return null
   }

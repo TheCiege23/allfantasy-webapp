@@ -14,7 +14,7 @@ import { recordMemoryEvent } from '@/lib/ai-memory'
 import { checkMilestoneBadges } from '@/lib/badge-engine'
 import { prisma } from '@/lib/prisma'
 
-const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL })
+const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' })
 
 const SPORTS_SYSTEM_PROMPT = `You are an expert fantasy sports assistant for AllFantasy - a personalized AI assistant that KNOWS each user's leagues, rosters, trading history, and preferences across MULTIPLE fantasy platforms.
 You specialize in:

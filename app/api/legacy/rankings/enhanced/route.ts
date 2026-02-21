@@ -9,7 +9,7 @@ import { computeEnhancedRankings, type EnhancedView } from '@/lib/rankings-engin
 import type { LeagueRosterConfig } from '@/lib/vorp-engine'
 import OpenAI from 'openai'
 
-const openai = new OpenAI()
+const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' })
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
