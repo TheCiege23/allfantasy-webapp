@@ -352,6 +352,152 @@ export async function getLeagueTransactions(
   }
 }
 
+// ── Trending Players ──
+
+export interface SleeperTrendingPlayer {
+  player_id: string;
+  count: number;
+}
+
+export async function getTrendingPlayers(
+  sport: string = 'nfl',
+  type: 'add' | 'drop' = 'add',
+  lookbackHours: number = 24,
+  limit: number = 25,
+): Promise<SleeperTrendingPlayer[]> {
+  try {
+    const response = await fetch(
+      `${SLEEPER_API_BASE}/players/${sport}/trending/${type}?lookback_hours=${lookbackHours}&limit=${limit}`,
+    );
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getTrendingAdds(
+  sport: string = 'nfl',
+  lookbackHours: number = 24,
+  limit: number = 50,
+): Promise<SleeperTrendingPlayer[]> {
+  return getTrendingPlayers(sport, 'add', lookbackHours, limit);
+}
+
+export async function getTrendingDrops(
+  sport: string = 'nfl',
+  lookbackHours: number = 24,
+  limit: number = 50,
+): Promise<SleeperTrendingPlayer[]> {
+  return getTrendingPlayers(sport, 'drop', lookbackHours, limit);
+}
+
+export interface TrendingPlayerEnriched {
+  sleeperId: string;
+  name: string | null;
+  position: string | null;
+  team: string | null;
+  addCount: number;
+  dropCount: number;
+  netTrend: number;
+  addRank: number | null;
+  dropRank: number | null;
+  crowdSignal: 'hot_add' | 'hot_drop' | 'rising' | 'falling' | 'neutral';
+  crowdScore: number;
+  fetchedAt: Date;
+}
+
+let sleeperPlayersCache: { data: Record<string, { full_name: string; position: string; team: string }>; ts: number } | null = null;
+const SLEEPER_PLAYERS_CACHE_TTL = 6 * 60 * 60 * 1000;
+
+async function getCachedSleeperPlayersMap(sport: string = 'nfl'): Promise<Record<string, { full_name: string; position: string; team: string }> | null> {
+  if (sleeperPlayersCache && Date.now() - sleeperPlayersCache.ts < SLEEPER_PLAYERS_CACHE_TTL) {
+    return sleeperPlayersCache.data;
+  }
+  try {
+    const res = await fetch(`${SLEEPER_API_BASE}/players/${sport}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    sleeperPlayersCache = { data, ts: Date.now() };
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function getEnrichedTrendingPlayers(
+  sport: string = 'nfl',
+  lookbackHours: number = 24,
+): Promise<TrendingPlayerEnriched[]> {
+  const [adds, drops] = await Promise.all([
+    getTrendingAdds(sport, lookbackHours, 50),
+    getTrendingDrops(sport, lookbackHours, 50),
+  ]);
+
+  const addMap = new Map<string, { count: number; rank: number }>();
+  adds.forEach((p, i) => addMap.set(p.player_id, { count: p.count, rank: i + 1 }));
+
+  const dropMap = new Map<string, { count: number; rank: number }>();
+  drops.forEach((p, i) => dropMap.set(p.player_id, { count: p.count, rank: i + 1 }));
+
+  const allPlayerIds = new Set([...addMap.keys(), ...dropMap.keys()]);
+
+  const playerMap = await getCachedSleeperPlayersMap(sport);
+
+  const results: TrendingPlayerEnriched[] = [];
+  const now = new Date();
+
+  for (const pid of allPlayerIds) {
+    const addData = addMap.get(pid);
+    const dropData = dropMap.get(pid);
+    const addCount = addData?.count || 0;
+    const dropCount = dropData?.count || 0;
+    const netTrend = addCount - dropCount;
+
+    const maxAdd = adds[0]?.count || 1;
+    const maxDrop = drops[0]?.count || 1;
+    const addPct = addCount / maxAdd;
+    const dropPct = dropCount / maxDrop;
+
+    let crowdSignal: TrendingPlayerEnriched['crowdSignal'] = 'neutral';
+    let crowdScore = 50;
+
+    if (addPct >= 0.5 && dropPct < 0.2) {
+      crowdSignal = 'hot_add';
+      crowdScore = 75 + addPct * 25;
+    } else if (dropPct >= 0.5 && addPct < 0.2) {
+      crowdSignal = 'hot_drop';
+      crowdScore = 25 - dropPct * 25;
+    } else if (netTrend > 0) {
+      crowdSignal = 'rising';
+      crowdScore = 55 + Math.min(20, addPct * 30);
+    } else if (netTrend < 0) {
+      crowdSignal = 'falling';
+      crowdScore = 45 - Math.min(20, dropPct * 30);
+    }
+
+    const pInfo = playerMap?.[pid];
+
+    results.push({
+      sleeperId: pid,
+      name: pInfo?.full_name || null,
+      position: pInfo?.position || null,
+      team: pInfo?.team || null,
+      addCount,
+      dropCount,
+      netTrend,
+      addRank: addData?.rank || null,
+      dropRank: dropData?.rank || null,
+      crowdSignal,
+      crowdScore: Math.round(Math.max(0, Math.min(100, crowdScore))),
+      fetchedAt: now,
+    });
+  }
+
+  results.sort((a, b) => b.crowdScore - a.crowdScore);
+  return results;
+}
+
 export async function getAllLeagueTrades(
   leagueId: string,
   totalWeeks: number = 18

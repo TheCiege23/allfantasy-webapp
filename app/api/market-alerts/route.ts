@@ -6,6 +6,17 @@ import { getCFBPlayerStats } from '@/lib/cfb-player-data'
 import OpenAI from 'openai'
 import type { MarketSignal, MarketAlert, MarketAlertResponse } from '@/lib/types/market-alerts'
 
+type CrowdTrendRow = {
+  playerName: string | null
+  addCount: number
+  dropCount: number
+  netTrend: number
+  crowdSignal: string
+  crowdScore: number
+  addRank: number | null
+  dropRank: number | null
+}
+
 const openai = new OpenAI()
 
 let narrativeCache: { data: Map<string, { headline: string; reasoning: string }>; ts: number } | null = null
@@ -265,6 +276,22 @@ export async function GET(req: Request) {
   try {
     const alerts: MarketAlert[] = []
 
+    let crowdMap = new Map<string, CrowdTrendRow>()
+    try {
+      const trendingRows = await prisma.trendingPlayer.findMany({
+        where: {
+          sport: 'nfl',
+          expiresAt: { gt: new Date() },
+          playerName: { not: null },
+        },
+      })
+      for (const row of trendingRows) {
+        if (row.playerName) {
+          crowdMap.set(row.playerName.toLowerCase(), row as CrowdTrendRow)
+        }
+      }
+    } catch { /* trending data is optional */ }
+
     if (filter === 'all' || filter === 'nfl') {
       const fcPlayers = await fetchFantasyCalcValues({
         isDynasty: true,
@@ -277,11 +304,35 @@ export async function GET(req: Request) {
         if (position !== 'all' && p.player.position !== position.toUpperCase()) continue
         if (!['QB', 'RB', 'WR', 'TE'].includes(p.player.position)) continue
 
-        const { signal, strength, tags } = computeNFLSignal(p)
+        let { signal, strength, tags } = computeNFLSignal(p)
+
+        const crowd = crowdMap.get(p.player.name.toLowerCase())
+        if (crowd) {
+          if (crowd.crowdSignal === 'hot_add') {
+            strength = Math.min(100, strength + 15)
+            tags.push(`🔥 ${crowd.addCount.toLocaleString()} adds/24h`)
+            if (signal === 'HOLD') signal = 'BUY'
+            else if (signal === 'BUY') { signal = 'STRONG_BUY'; strength = Math.min(100, strength + 5) }
+          } else if (crowd.crowdSignal === 'rising') {
+            strength = Math.min(100, strength + 8)
+            tags.push(`📈 Trending add (+${crowd.netTrend})`)
+            if (signal === 'HOLD' && strength >= 20) signal = 'BUY'
+          } else if (crowd.crowdSignal === 'hot_drop') {
+            strength = Math.min(100, strength + 12)
+            tags.push(`⚠️ ${crowd.dropCount.toLocaleString()} drops/24h`)
+            if (signal === 'HOLD') signal = 'SELL'
+            else if (signal === 'SELL') { signal = 'STRONG_SELL'; strength = Math.min(100, strength + 5) }
+          } else if (crowd.crowdSignal === 'falling') {
+            strength = Math.min(100, strength + 5)
+            tags.push(`📉 Trending drop (${crowd.netTrend})`)
+            if (signal === 'HOLD' && strength >= 20) signal = 'SELL'
+          }
+        }
 
         if (signal === 'HOLD' && strength < 15) continue
 
         const trendPct = p.value > 0 ? Math.round((p.trend30Day / p.value) * 100) : 0
+        const crowdNote = crowd ? ` Crowd: ${crowd.addCount} adds, ${crowd.dropCount} drops.` : ''
 
         alerts.push({
           id: `nfl-${p.player.sleeperId || p.player.id}`,
@@ -306,7 +357,7 @@ export async function GET(req: Request) {
                     signal === 'STRONG_SELL' ? `${p.player.name} value cratering — sell now` :
                     signal === 'SELL' ? `${p.player.name} declining — consider moving` :
                     `${p.player.name} holding steady`,
-          reasoning: `30-day trend: ${trendPct > 0 ? '+' : ''}${trendPct}%. Rank #${p.overallRank}.`,
+          reasoning: `30-day trend: ${trendPct > 0 ? '+' : ''}${trendPct}%. Rank #${p.overallRank}.${crowdNote}`,
           tags,
           updatedAt: new Date().toISOString(),
         })

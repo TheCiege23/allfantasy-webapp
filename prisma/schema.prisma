@@ -1540,6 +1540,34 @@ model PlayerSeasonStats {
   @@map("player_season_stats")
 }
 
+model TrendingPlayer {
+  id          String   @id @default(uuid())
+  sport       String   @default("nfl")
+  sleeperId   String
+  playerName  String?
+  position    String?
+  team        String?
+  addCount    Int      @default(0)
+  dropCount   Int      @default(0)
+  netTrend    Int      @default(0)
+  addRank     Int?
+  dropRank    Int?
+  crowdSignal String   @default("neutral")
+  crowdScore  Int      @default(50)
+  lookbackHours Int    @default(24)
+  fetchedAt   DateTime @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([sport, sleeperId, lookbackHours])
+  @@index([sport, crowdSignal])
+  @@index([sport, crowdScore])
+  @@index([playerName])
+
+  @@map("trending_players")
+}
+
 model DepthChart {
   id         String   @id @default(uuid())
   sport      String

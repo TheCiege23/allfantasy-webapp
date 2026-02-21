@@ -26,6 +26,7 @@ import {
   type WaiverCandidate,
   type WaiverRosterPlayer,
   type WaiverScoringContext,
+  type CrowdTrendData,
 } from '@/lib/waiver-engine/waiver-scoring'
 import {
   computeTeamNeeds,
@@ -374,6 +375,37 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
       if (analyticsMap.size === 0) analyticsMap = undefined
     } catch { analyticsMap = undefined }
 
+    let trendingMap: Map<string, CrowdTrendData> | undefined
+    try {
+      const trendingRows = await prisma.trendingPlayer.findMany({
+        where: {
+          sport: 'nfl',
+          expiresAt: { gt: new Date() },
+          playerName: { not: null },
+        },
+      })
+      if (trendingRows.length > 0) {
+        trendingMap = new Map()
+        const normalizeName = (n: string) => n.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim()
+        for (const row of trendingRows) {
+          if (row.playerName) {
+            const data: CrowdTrendData = {
+              addCount: row.addCount,
+              dropCount: row.dropCount,
+              netTrend: row.netTrend,
+              crowdSignal: row.crowdSignal as CrowdTrendData['crowdSignal'],
+              crowdScore: row.crowdScore,
+              addRank: row.addRank,
+              dropRank: row.dropRank,
+            }
+            trendingMap.set(row.playerName, data)
+            trendingMap.set(normalizeName(row.playerName), data)
+          }
+        }
+        if (trendingMap.size === 0) trendingMap = undefined
+      }
+    } catch { trendingMap = undefined }
+
     const scoringCtx: WaiverScoringContext = {
       goal,
       needs,
@@ -386,6 +418,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/waiver/analyze", tool:
       teamNeeds,
       currentWeek,
       analyticsMap,
+      trendingMap,
     }
 
     const deterministicResults = scoreWaiverCandidates(waiverCandidates, scoringCtx, { maxResults: 10 })

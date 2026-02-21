@@ -124,6 +124,7 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
       riDepthCharts, riTeamStats,
       asTeams, asGames, asInjuries,
       espnLiveGames, espnNews,
+      trendingCount,
       cacheCount, identityCount, identityWithApiSports,
     ] = await Promise.all([
       prisma.sportsTeam.count({ where: { source: 'rolling_insights' } }),
@@ -137,6 +138,7 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
       prisma.sportsInjury.count({ where: { source: 'api_sports' } }),
       prisma.sportsGame.count({ where: { source: 'espn_live' } }),
       prisma.sportsNews.count({ where: { source: 'espn' } }),
+      prisma.trendingPlayer.count(),
       prisma.sportsDataCache.count(),
       prisma.playerIdentityMap.count(),
       prisma.playerIdentityMap.count({ where: { apiSportsId: { not: null } } }),
@@ -184,6 +186,9 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
           injuries: asInjuries,
           standings: await prisma.sportsDataCache.count({ where: { key: { startsWith: 'NFL:standings:' } } }),
           lastSyncAt: latestASSync?.fetchedAt?.toISOString() || null,
+        },
+        sleeper: {
+          trendingPlayers: trendingCount,
         },
         espn: {
           liveGames: espnLiveGames,

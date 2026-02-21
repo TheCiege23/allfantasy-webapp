@@ -3,6 +3,16 @@ import type { TeamNeedsMap, UserGoal, SlotNeed, PositionalDepth } from './team-n
 import type { PlayerAnalytics } from '@/lib/player-analytics'
 import { computeAthleticGrade, computeCollegeProductionGrade } from '@/lib/player-analytics'
 
+export type CrowdTrendData = {
+  addCount: number
+  dropCount: number
+  netTrend: number
+  crowdSignal: 'hot_add' | 'hot_drop' | 'rising' | 'falling' | 'neutral'
+  crowdScore: number
+  addRank: number | null
+  dropRank: number | null
+}
+
 export type WaiverDimensions = {
   startNow: number
   stash: number
@@ -21,6 +31,7 @@ export type WaiverDriverId =
   | 'wa_league_demand'
   | 'wa_replacement_gain'
   | 'wa_role_trend'
+  | 'wa_crowd_trend'
 
 export type WaiverDriver = {
   id: WaiverDriverId
@@ -64,6 +75,7 @@ export type WaiverScoringContext = {
   teamNeeds: TeamNeedsMap
   currentWeek: number
   analyticsMap?: Map<string, PlayerAnalytics>
+  trendingMap?: Map<string, CrowdTrendData>
 }
 
 export type ScoredWaiverTarget = {
@@ -280,7 +292,30 @@ function computeLeagueDemand(
 
   if (ctx.isDynasty && candidate.age && candidate.age <= 24) score *= 1.1
 
+  if (ctx.trendingMap) {
+    const trend = lookupTrending(ctx.trendingMap, candidate.playerName)
+    if (trend) {
+      if (trend.crowdSignal === 'hot_add') {
+        score = Math.min(100, score * 1.2 + 10)
+      } else if (trend.crowdSignal === 'rising') {
+        score = Math.min(100, score * 1.1 + 5)
+      } else if (trend.crowdSignal === 'hot_drop') {
+        score = Math.max(0, score * 0.75 - 10)
+      } else if (trend.crowdSignal === 'falling') {
+        score = Math.max(0, score * 0.9 - 5)
+      }
+    }
+  }
+
   return clamp(Math.round(score), 0, 100)
+}
+
+function normalizeName(n: string): string {
+  return n.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+function lookupTrending(map: Map<string, CrowdTrendData>, name: string): CrowdTrendData | undefined {
+  return map.get(name) || map.get(normalizeName(name))
 }
 
 function computeDrivers(
@@ -498,6 +533,42 @@ function computeDrivers(
       ? `High demand in your ${ctx.numTeams}-team ${ctx.isSF ? 'SF' : '1QB'} league`
       : `Moderate demand in your league format`,
   })
+
+  if (ctx.trendingMap) {
+    const trend = lookupTrending(ctx.trendingMap, candidate.playerName)
+    if (trend) {
+      let trendScore = trend.crowdScore
+      let trendDetail = ''
+      let trendDirection: WaiverDriver['direction'] = 'neutral'
+
+      if (trend.crowdSignal === 'hot_add') {
+        trendScore = Math.min(100, trend.crowdScore)
+        trendDetail = `🔥 Hot add — ${trend.addCount.toLocaleString()} adds in 24h`
+        if (trend.addRank && trend.addRank <= 5) trendDetail += ` (Top ${trend.addRank})`
+        trendDirection = 'positive'
+      } else if (trend.crowdSignal === 'rising') {
+        trendDetail = `Trending up — ${trend.addCount.toLocaleString()} adds, net +${trend.netTrend.toLocaleString()}`
+        trendDirection = 'positive'
+      } else if (trend.crowdSignal === 'hot_drop') {
+        trendDetail = `⚠️ Mass drop — ${trend.dropCount.toLocaleString()} drops in 24h`
+        if (trend.dropRank && trend.dropRank <= 5) trendDetail += ` (Top ${trend.dropRank} dropped)`
+        trendDirection = 'negative'
+      } else if (trend.crowdSignal === 'falling') {
+        trendDetail = `Trending down — ${trend.dropCount.toLocaleString()} drops, net ${trend.netTrend.toLocaleString()}`
+        trendDirection = 'negative'
+      } else {
+        trendDetail = `Stable — ${trend.addCount} adds, ${trend.dropCount} drops`
+      }
+
+      drivers.push({
+        id: 'wa_crowd_trend' as WaiverDriverId,
+        label: 'Crowd Wisdom',
+        score: Math.round(trendScore),
+        direction: trendDirection,
+        detail: trendDetail,
+      })
+    }
+  }
 
   return drivers
 }

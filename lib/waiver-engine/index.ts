@@ -23,6 +23,7 @@ export type {
   WaiverDriverId,
   WaiverDriver,
   ScoredWaiverTarget,
+  CrowdTrendData,
 } from "./waiver-scoring";
 
 export { computeTeamNeeds, deriveGoalFromContext } from "./team-needs";

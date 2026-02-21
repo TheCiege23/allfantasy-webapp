@@ -58,7 +58,7 @@ The core architecture uses a `One Engine API` integrating One Scoring Core, One 
 -   **OpenAI**: General AI analysis.
 -   **Grok**: Social media post generation.
 -   **PostgreSQL**: Primary database.
--   **Sleeper API**: Importing user league data.
+-   **Sleeper API**: Importing user league data. Now includes trending players endpoints (`/players/{sport}/trending/add` and `trending/drop`) synced every 2 hours to `trending_players` DB table, providing "crowd wisdom" signals (hot_add/hot_drop/rising/falling) that feed into Waiver AI scoring and Market Timing Alerts.
 -   **Rolling Insights Sports API**: Primary NFL sports data including depth charts (via `rosterByPosition` GraphQL field), team season stats (regular/post via `regularSeason`/`postSeason`), enhanced player fields (injury, formerTeams, allStar), team metadata (conference, bye, dome, arena, record). Synced to `depth_charts` and `team_season_stats` DB tables with 12h/24h TTLs respectively.
 -   **API-Sports.io**: Secondary NFL data provider with full endpoint coverage: teams, players, player statistics, injuries, games (by season/week/date/team/h2h/live), game events (play-by-play), game team statistics, game player statistics, standings (with conference/division filters), conferences, divisions, odds (pre-match and per-game), bookmakers, bet types, leagues, seasons, and timezones. Rate-limit aware with per-minute throttling and IP block detection.
 -   **TheSportsDB API**: Tertiary sports data fallback.

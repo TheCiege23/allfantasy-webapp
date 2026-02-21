@@ -84,6 +84,15 @@ const syncTasks: SyncTask[] = [
     running: false,
   },
   {
+    name: 'Trending Players Sync',
+    url: `${BASE_URL}/api/sports/trending?refresh=true`,
+    method: 'GET' as const,
+    intervalMs: 2 * 60 * 60 * 1000,
+    requiresAuth: false,
+    lastRun: 0,
+    running: false,
+  },
+  {
     name: 'Depth Charts Sync',
     url: `${BASE_URL}/api/sports/depth-charts?refresh=true`,
     method: 'GET' as const,
