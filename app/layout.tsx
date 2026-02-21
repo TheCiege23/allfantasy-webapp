@@ -4,6 +4,7 @@ import Script from 'next/script';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import { GlobalModeToggle } from '@/components/theme/GlobalModeToggle';
+import { BackToTop } from '@/components/BackToTop';
 import './globals.css';
 
 const inter = Inter({
@@ -148,6 +149,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
           <Toaster position="top-center" richColors closeButton />
           <GlobalModeToggle />
+          <BackToTop />
         </ThemeProvider>
       </body>
     </html>
