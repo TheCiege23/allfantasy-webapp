@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { fetchWeatherByCity } from '@/lib/openweathermap';
 import { prisma } from '@/lib/prisma';
 
 export async function GET(req: Request) {
@@ -15,17 +16,22 @@ export async function GET(req: Request) {
     return NextResponse.json(cached.data);
   }
 
-  const res = await fetch(
-    `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${process.env.OPENWEATHER_API_KEY}&units=imperial`
-  );
-
-  const data = await res.json();
+  const weather = await fetchWeatherByCity(city);
+  if (!weather) {
+    return NextResponse.json({ error: 'Failed to fetch weather data' }, { status: 502 });
+  }
 
   const gameWeather = {
-    temp: data.list[0]?.main.temp,
-    windSpeed: data.list[0]?.wind.speed,
-    rain: data.list[0]?.rain?.['3h'] || 0,
-    description: data.list[0]?.weather[0]?.description,
+    temp: weather.temp,
+    windSpeed: weather.windSpeed,
+    rain: weather.rain1h || 0,
+    description: weather.description,
+    feelsLike: weather.feelsLike,
+    humidity: weather.humidity,
+    windGust: weather.windGust,
+    condition: weather.condition,
+    fantasyImpact: weather.fantasyImpact,
+    fantasyImpactLevel: weather.fantasyImpactLevel,
   };
 
   await prisma.sportsDataCache.upsert({
