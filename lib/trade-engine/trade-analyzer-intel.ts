@@ -3,13 +3,22 @@ import { fetchFantasyCalcValues, findPlayerByName } from '@/lib/fantasycalc'
 import { fetchNewsContext, fetchRollingInsights } from '@/lib/upstream-apis'
 import type { TradeDecisionContextV1 } from './trade-decision-context'
 
-export type TradeAnalyzerIntelDeps = {
+export interface TradeAnalyzerIntelDeps {
   fetchNewsContext: typeof fetchNewsContext
   fetchRollingInsights: typeof fetchRollingInsights
   fetchFantasyCalcValues: typeof fetchFantasyCalcValues
   findPlayerByName: typeof findPlayerByName
-  findLatestRookieClass: (args?: any) => Promise<any>
-  findTopRookieRankings: (args?: any) => Promise<any[]>
+  findLatestRookieClass: () => Promise<Awaited<ReturnType<typeof prisma.rookieClass.findFirst>>>
+  findTopRookieRankings: () => Promise<Awaited<ReturnType<typeof prisma.rookieRanking.findMany>>>
+}
+
+const defaultDeps: TradeAnalyzerIntelDeps = {
+  fetchNewsContext,
+  fetchRollingInsights,
+  fetchFantasyCalcValues,
+  findPlayerByName,
+  findLatestRookieClass: () => prisma.rookieClass.findFirst({ orderBy: { year: 'desc' } }),
+  findTopRookieRankings: () => prisma.rookieRanking.findMany({ orderBy: [{ year: 'desc' }, { rank: 'asc' }], take: 20 }),
 }
 
 function toPlayerNames(ctx: TradeDecisionContextV1): string[] {
@@ -26,16 +35,18 @@ function toTeamAbbrevs(ctx: TradeDecisionContextV1): string[] {
   ])]
 }
 
-const defaultDeps: TradeAnalyzerIntelDeps = {
-  fetchNewsContext: (deps: any, params: any) => fetchNewsContext(deps, params),
-  fetchRollingInsights: (deps: any, params: any) => fetchRollingInsights(deps, params),
-  fetchFantasyCalcValues,
-  findPlayerByName,
-  findLatestRookieClass: () => prisma.rookieClass.findFirst({ orderBy: { year: 'desc' } }),
-  findTopRookieRankings: () => prisma.rookieRanking.findMany({ orderBy: [{ year: 'desc' }, { rank: 'asc' }], take: 20 }),
-}
-
-export async function buildTradeAnalyzerIntelPrompt(ctx: TradeDecisionContextV1, deps: TradeAnalyzerIntelDeps = defaultDeps): Promise<string> {
+/**
+ * Builds a compact "external intelligence" addendum for the dynasty analyzer.
+ *
+ * This is intentionally separate from deterministic valuation math. It gives
+ * OpenAI/Grok fresh market and news context (news, rolling insights,
+ * FantasyCalc trends, and rookie data) while preserving deterministic scores
+ * as the primary source of truth.
+ */
+export async function buildTradeAnalyzerIntelPrompt(
+  ctx: TradeDecisionContextV1,
+  deps: TradeAnalyzerIntelDeps = defaultDeps,
+): Promise<string> {
   const playerNames = toPlayerNames(ctx).slice(0, 20)
   const teamAbbrevs = toTeamAbbrevs(ctx).slice(0, 12)
 
@@ -69,16 +80,16 @@ export async function buildTradeAnalyzerIntelPrompt(ctx: TradeDecisionContextV1,
     .slice(0, 14)
     .map(r => `- ${r.name}: value=${r.v!.value}, rank=#${r.v!.overallRank}, posRank=${r.v!.positionRank}, trend30d=${r.v!.trend30Day}`)
 
-  const newsLines = (news?.items || []).slice(0, 10).map((n: any) => `- [${n.relevance}] ${n.title} (${n.source}, ${n.publishedAt?.slice(0, 10) || 'unknown'})`)
-  const rollingLines = (rolling?.players || []).slice(0, 10).map((p: any) => `- ${p.name} (${p.position || '?'}/${p.team || '?'}): status=${p.status || 'unknown'}, fpg=${p.fantasyPointsPerGame ?? 'n/a'}, games=${p.gamesPlayed ?? 'n/a'}`)
+  const newsLines = (news?.items || []).slice(0, 10).map(n => `- [${n.relevance}] ${n.title} (${n.source}, ${n.publishedAt.slice(0, 10) || 'unknown'})`)
+  const rollingLines = (rolling?.players || []).slice(0, 10).map(p => `- ${p.name} (${p.position || '?'}/${p.team || '?'}): status=${p.status || 'unknown'}, fpg=${p.fantasyPointsPerGame ?? 'n/a'}, games=${p.gamesPlayed ?? 'n/a'}`)
 
-  const rookieLines = (rookieRanks || []).slice(0, 10).map((r: any) => `- ${r.year} #${r.rank}: ${r.name} (${r.position})${r.dynastyValue ? ` value=${r.dynastyValue}` : ''}`)
+  const rookieLines = rookieRanks.slice(0, 10).map(r => `- ${r.year} #${r.rank}: ${r.name} (${r.position})${r.dynastyValue ? ` value=${r.dynastyValue}` : ''}`)
 
   const parts: string[] = []
   parts.push('--- EXTERNAL TRADE INTELLIGENCE LAYER ---')
-  parts.push(`News: ${news?.items?.length || 0} items | sources=${news?.sources?.join(', ') || 'none'} | fetched=${news?.fetchedAt || 'n/a'}`)
+  parts.push(`News: ${news?.items.length || 0} items | sources=${news?.sources.join(', ') || 'none'} | fetched=${news?.fetchedAt || 'n/a'}`)
   if (newsLines.length) parts.push(newsLines.join('\n'))
-  parts.push(`Rolling Insights: players=${rolling?.players?.length || 0}, teams=${rolling?.teams?.length || 0}, source=${rolling?.source || 'n/a'}, fetched=${rolling?.fetchedAt || 'n/a'}`)
+  parts.push(`Rolling Insights: players=${rolling?.players.length || 0}, teams=${rolling?.teams.length || 0}, source=${rolling?.source || 'n/a'}, fetched=${rolling?.fetchedAt || 'n/a'}`)
   if (rollingLines.length) parts.push(rollingLines.join('\n'))
   parts.push(`FantasyCalc matches: ${fcLines.length}/${playerNames.length}`)
   if (fcLines.length) parts.push(fcLines.join('\n'))
