@@ -13,6 +13,7 @@ import {
 import { runQualityGate } from '@/lib/trade-engine/quality-gate';
 import { formatTradeResponse } from '@/lib/trade-engine/trade-response-formatter';
 import type { TradeDecisionContextV1 } from '@/lib/trade-engine/trade-decision-context';
+import { buildTradeAnalyzerIntelPrompt } from '@/lib/trade-engine/trade-analyzer-intel'
 
 function parseLeagueContext(raw: string | undefined): LeagueContextInput {
   if (!raw) return {}
@@ -76,7 +77,8 @@ export async function POST(req: Request) {
 
     console.log(`[dynasty-trade-analyzer] Stage A assembled in ${stageALatency}ms — ctx=${tradeContext.contextId}, ${tradeContext.dataQuality.assetsCovered}/${tradeContext.dataQuality.assetsTotal} assets (${tradeContext.dataQuality.coveragePercent}%), ${tradeContext.dataQuality.warnings.length} warnings`)
 
-    const factLayerPrompt = contextToPromptV1(tradeContext)
+    const intelPrompt = await buildTradeAnalyzerIntelPrompt(tradeContext).catch(() => '')
+    const factLayerPrompt = [contextToPromptV1(tradeContext), intelPrompt].filter(Boolean).join('\n\n')
     const dataGapsPrompt = buildDataGapsPrompt(tradeContext)
 
     const stageBStart = Date.now()

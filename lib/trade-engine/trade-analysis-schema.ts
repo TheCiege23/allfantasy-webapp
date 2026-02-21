@@ -38,6 +38,9 @@ Rules:
 - "counters": 2-5 counter-arguments — why someone might disagree with your verdict
 - "warnings": 0-5 data quality or risk warnings (missing ADP, stale injury data, age cliffs, etc.)
 - Do NOT hallucinate values. Use ONLY the numbers in the deterministic fact layer.
+- Treat the fact layer and external intelligence block as your source of truth for: Sleeper historical context, manager tendencies, roster needs, scoring settings, FantasyCalc values, rookie value context, injuries/news, and rolling player/team stats.
+- For Grok runs, if web/x search tools are available, use them to validate major breaking-news claims before finalizing verdict.
+- Explicitly account for competitive window fit (win-now/rebuild/middle) in reasons/counters.
 - If data is missing for key players, note it in warnings and reduce confidence.`;
 
 export const PEER_REVIEW_TEMPERATURE = 0.4;

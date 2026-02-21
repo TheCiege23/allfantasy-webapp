@@ -116,7 +116,15 @@ async function callProviderForPeerReview(
       parsed = parseJsonContentFromChatCompletion(result.json);
     } else {
       const result = await withTimeout(
-        xaiChatJson({ messages, temperature: PEER_REVIEW_TEMPERATURE, maxTokens: PEER_REVIEW_MAX_TOKENS }),
+        xaiChatJson({
+          messages,
+          temperature: PEER_REVIEW_TEMPERATURE,
+          maxTokens: PEER_REVIEW_MAX_TOKENS,
+          tools: [
+            { type: 'web_search' },
+            { type: 'x_search' },
+          ],
+        }),
         timeoutMs,
         "Grok"
       );
