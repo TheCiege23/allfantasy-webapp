@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const PIXEL_ID = process.env.META_PIXEL_ID || '1607977376870461';
+const PIXEL_ID = process.env.META_PIXEL_ID || process.env.NEXT_PUBLIC_META_PIXEL_ID || '1607977376870461';
 
 function sha256(input: string): string {
   return crypto.createHash('sha256').update(input).digest('hex');
