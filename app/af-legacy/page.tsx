@@ -2191,8 +2191,18 @@ function AFLegacyContent() {
       const data = rawResponse.data || rawResponse
       const confidenceRisk = rawResponse.confidenceRisk
       
-      const sideANames = sideA.map((item: any) => item.player?.name || `${item.pick?.season} ${item.pick?.round}rd` || `$${item.amount} FAAB`)
-      const sideBNames = sideB.map((item: any) => item.player?.name || `${item.pick?.season} ${item.pick?.round}rd` || `$${item.amount} FAAB`)
+      const formatAssetName = (item: any) => {
+        if (item.player?.name) return item.player.name
+        if (item.pick?.season && item.pick?.round) {
+          const ord = ['1st', '2nd', '3rd', '4th', '5th'][item.pick.round - 1] || `${item.pick.round}th`
+          const slot = item.pick?.pickNumber ? `.${String(item.pick.pickNumber).padStart(2, '0')}` : ''
+          return `${item.pick.season} ${ord}${slot}`
+        }
+        if (item.amount != null) return `$${item.amount} FAAB`
+        return 'Unknown asset'
+      }
+      const sideANames = sideA.map(formatAssetName)
+      const sideBNames = sideB.map(formatAssetName)
       const ok = await triggerGuardianCheck({
         actionType: 'trade',
         sideAPlayers: sideANames,
@@ -2220,8 +2230,8 @@ function AFLegacyContent() {
       const offseasonCtx2 = rawResponse.offseasonContext || null
       setInlineTradeResult({ ...data, confidenceRisk, counters: engineCounters2 || data.counters, championshipEquity: engineChampEq2, engineRequest: engineReqForSim2, acceptanceBuckets: acceptBuckets2, offseasonContext: offseasonCtx2 })
       setLastTradeResult({
-        sideA: sideA.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
-        sideB: sideB.map((item: any) => ({ name: item.player?.name || item.pick?.season + ' ' + item.pick?.round + 'rd' || `$${item.amount} FAAB` })),
+        sideA: sideA.map((item: any) => ({ name: formatAssetName(item) })),
+        sideB: sideB.map((item: any) => ({ name: formatAssetName(item) })),
         grade: data.grade,
         verdict: data.verdict,
         leagueType: inlineTradeFormat

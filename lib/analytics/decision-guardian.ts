@@ -95,20 +95,46 @@ function computeTradeDeviation(input: TradeActionInput): {
   const netDelta = input.netDelta ?? 0
   const fairness = input.fairnessScore ?? 50
 
+  const sideAStr = input.sideAPlayers.join(', ')
+  const sideBStr = input.sideBPlayers.join(', ')
+
+  const youGiveUp = sideAStr || 'your players'
+  const youReceive = sideBStr || 'their players'
+
+  const favorsYou = verdict.includes('favors a') || verdict.includes('you win')
+  const favorsThem = verdict.includes('favors b') || verdict.includes('they win')
+  const stronglyFavors = verdict.includes('strongly')
+
   if (gradeNum <= 45) {
     deviationScore += 40
     riskFactors.push(`Trade graded ${grade} — significantly below fair value`)
-    details.push(`This trade received a grade of ${grade}, which indicates a major value imbalance.`)
+    if (favorsThem) {
+      details.push(`This trade received a ${grade} grade. You're giving up significantly more value (${youGiveUp}) than you're getting back (${youReceive}).`)
+    } else {
+      details.push(`This trade received a ${grade} grade, indicating a major value imbalance between the two sides.`)
+    }
   } else if (gradeNum <= 60) {
     deviationScore += 20
     riskFactors.push(`Trade graded ${grade} — below average`)
-    details.push(`This trade received a ${grade} grade, suggesting the value isn't ideal.`)
+    if (favorsThem) {
+      details.push(`This trade received a ${grade} grade. The players you're sending out (${youGiveUp}) are worth more than what you'd receive (${youReceive}).`)
+    } else {
+      details.push(`This trade received a ${grade} grade, suggesting the value exchange isn't balanced in your favor.`)
+    }
   }
 
-  if (verdict.includes('strongly favors')) {
+  if (stronglyFavors) {
     deviationScore += 30
-    riskFactors.push('Trade strongly favors one side')
-    details.push('AI analysis shows this trade heavily benefits one team over the other.')
+    if (favorsThem) {
+      riskFactors.push(`Trade strongly favors the other team`)
+      details.push(`AI analysis shows this trade heavily benefits the other team. ${youReceive} doesn't match the value of ${youGiveUp}.`)
+    } else if (favorsYou) {
+      riskFactors.push(`Trade strongly favors you — may be rejected`)
+      details.push(`This trade is heavily in your favor, which means the other manager is unlikely to accept it.`)
+    } else {
+      riskFactors.push('Trade strongly favors one side')
+      details.push('AI analysis shows this trade heavily benefits one team over the other.')
+    }
     confidenceInWarning += 10
   } else if (verdict.includes('slightly favors')) {
     deviationScore += 10
@@ -117,29 +143,37 @@ function computeTradeDeviation(input: TradeActionInput): {
   if (Math.abs(netDelta) > 2000) {
     deviationScore += 25
     expectedValueLoss = Math.abs(netDelta)
+    const direction = netDelta < 0 ? 'You\'re giving up' : 'You\'re gaining'
     riskFactors.push(`Large value gap: ${Math.abs(netDelta).toLocaleString()} points`)
-    details.push(`The net value difference is ${Math.abs(netDelta).toLocaleString()} — this is a significant gap.`)
+    details.push(`${direction} ~${Math.abs(netDelta).toLocaleString()} points of trade value — this is a significant gap that makes the trade lopsided.`)
     confidenceInWarning += 5
   } else if (Math.abs(netDelta) > 1000) {
     deviationScore += 15
     expectedValueLoss = Math.abs(netDelta)
-    riskFactors.push(`Moderate value gap: ${Math.abs(netDelta).toLocaleString()} points`)
+    const direction = netDelta < 0 ? 'against you' : 'in your favor'
+    riskFactors.push(`Moderate value gap: ${Math.abs(netDelta).toLocaleString()} points ${direction}`)
   } else if (Math.abs(netDelta) > 500) {
     deviationScore += 8
     expectedValueLoss = Math.abs(netDelta)
   }
 
-  if (fairness < 30 || fairness > 80) {
+  if (fairness < 30) {
     deviationScore += 10
+    riskFactors.push(`Low fairness score: ${fairness}/100`)
+    details.push(`The fairness score of ${fairness}/100 indicates the trade is significantly unbalanced.`)
+  } else if (fairness > 80) {
+    deviationScore += 5
     riskFactors.push(`Fairness score: ${fairness}/100`)
-    details.push('The fairness score suggests this trade is unbalanced.')
   }
 
   if (input.winProbShift != null && input.winProbShift < -5) {
     deviationScore += 15
     riskFactors.push(`Win probability drops by ${Math.abs(input.winProbShift).toFixed(1)}%`)
-    details.push('Completing this trade is projected to lower your win probability.')
+    details.push(`Completing this trade is projected to lower your win probability by ${Math.abs(input.winProbShift).toFixed(1)}%. This means your team gets weaker overall.`)
     confidenceInWarning += 5
+  } else if (input.winProbShift != null && input.winProbShift < -2) {
+    deviationScore += 8
+    details.push(`Your win probability drops by ${Math.abs(input.winProbShift).toFixed(1)}% with this trade.`)
   }
 
   if (input.confidenceRisk) {
@@ -147,6 +181,7 @@ function computeTradeDeviation(input: TradeActionInput): {
     if (cr.riskProfile === 'extreme') {
       deviationScore += 20
       riskFactors.push('Extreme risk profile detected')
+      details.push('The players involved have extreme volatility — their values could swing dramatically.')
     } else if (cr.riskProfile === 'high') {
       deviationScore += 10
       riskFactors.push('High risk profile')
@@ -157,7 +192,15 @@ function computeTradeDeviation(input: TradeActionInput): {
       const criticals = (cr.riskTags as RiskTag[]).filter(t => criticalTags.includes(t))
       if (criticals.length > 0) {
         deviationScore += criticals.length * 5
-        riskFactors.push(`Critical risk tags: ${criticals.join(', ')}`)
+        const tagLabels: Record<string, string> = {
+          injury_risk: 'injury concerns',
+          rb_cliff: 'RB age cliff risk',
+          high_value_swing: 'volatile value',
+          negative_trend: 'declining performance trend',
+        }
+        const readable = criticals.map(t => tagLabels[t] || t).join(', ')
+        riskFactors.push(`Risk flags: ${readable}`)
+        details.push(`Key risk factors for players in this trade: ${readable}.`)
       }
     }
   }
@@ -165,13 +208,28 @@ function computeTradeDeviation(input: TradeActionInput): {
   deviationScore = Math.min(100, deviationScore)
   confidenceInWarning = Math.min(98, confidenceInWarning)
 
-  const sideAStr = input.sideAPlayers.join(', ')
-  const sideBStr = input.sideBPlayers.join(', ')
   const headline = deviationScore >= 60
-    ? 'This trade carries significant risk'
+    ? favorsThem ? `You're giving up too much in this trade` : 'This trade carries significant risk'
     : deviationScore >= 35
-    ? 'This trade has some concerns'
+    ? favorsThem ? `This trade may not be in your best interest` : 'This trade has some concerns'
     : 'Minor considerations to review'
+
+  let aiRecText: string
+  if (favorsThem && grade) {
+    aiRecText = `AI grades this trade ${grade} for your side. You're sending away ${youGiveUp} and getting back ${youReceive}, which doesn't return equal value.`
+    if (netDelta !== 0) {
+      aiRecText += ` Net value gap: ${Math.abs(netDelta).toLocaleString()} points ${netDelta < 0 ? 'against you' : 'in your favor'}.`
+    }
+  } else if (favorsYou && grade) {
+    aiRecText = `AI grades this trade ${grade}. This trade favors your side — ${youReceive} is worth more than ${youGiveUp}. The other manager may reject this.`
+  } else if (grade) {
+    aiRecText = `AI grades this trade ${grade}. The value exchange between ${youGiveUp} and ${youReceive} is ${gradeNum >= 75 ? 'reasonably balanced' : 'somewhat uneven'}.`
+    if (netDelta !== 0) {
+      aiRecText += ` Value gap: ${Math.abs(netDelta).toLocaleString()} points.`
+    }
+  } else {
+    aiRecText = `Trading ${youGiveUp} for ${youReceive}. ${verdict || 'Analysis pending.'}`
+  }
 
   return {
     deviationScore,
@@ -179,7 +237,7 @@ function computeTradeDeviation(input: TradeActionInput): {
     riskFactors,
     headline,
     details,
-    aiRec: `AI grades this trade ${grade || 'N/A'} — ${input.verdict || 'analysis pending'}. Net value delta: ${netDelta > 0 ? '+' : ''}${netDelta.toLocaleString()}.`,
+    aiRec: aiRecText,
     userAct: `Trading away ${sideAStr} to receive ${sideBStr}`,
     confidenceInWarning,
   }

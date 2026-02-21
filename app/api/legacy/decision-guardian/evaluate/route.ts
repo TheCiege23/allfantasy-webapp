@@ -233,12 +233,19 @@ function buildGuardianTitle(mode: GuardianMode, acceptancePct: number): string {
   }
 }
 
-function buildGuardianBody(mode: GuardianMode, tier: TradeTier, acceptancePct: number): string {
+function buildGuardianBody(mode: GuardianMode, tier: TradeTier, acceptancePct: number, action: z.infer<typeof tradeSchema>): string {
+  const sideAStr = action.sideAPlayers.join(', ')
+  const sideBStr = action.sideBPlayers.join(', ')
+  const grade = action.tradeGrade || ''
+
   if (mode === 'STRONG_WARN') {
-    if (tier === 'YOU_WIN') return 'Our analysis suggests this trade heavily favors your side. The other manager will likely see the imbalance and decline.'
+    if (tier === 'YOU_WIN') return `This trade heavily favors your side. Sending ${sideBStr} for ${sideAStr} is a big ask — the other manager will likely see the imbalance and decline.`
+    if (tier === 'THEY_WIN') return `You're giving up more than you're getting back. ${sideAStr} is worth more than ${sideBStr}${grade ? ` (graded ${grade})` : ''}. Consider adjusting your offer.`
     return 'Multiple factors suggest this trade has a low probability of being accepted. Consider adjusting your offer.'
   }
   if (mode === 'SOFT_WARN') {
+    if (tier === 'THEY_WIN') return `This trade leans in the other team's favor. ${sideBStr} may not fully replace the value of ${sideAStr}${grade ? ` (graded ${grade})` : ''}. The other manager may accept, but it's not ideal for you.`
+    if (tier === 'YOU_WIN') return `This trade favors your side, which may make the other manager hesitate. They might want more in return for ${sideBStr}.`
     return 'This trade has moderate acceptance probability. Some factors may cause the other manager to hesitate.'
   }
   return 'Here\'s how we project the other manager will evaluate this trade.'
@@ -289,7 +296,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/decision-guardian/eval
       mode = deriveGuardianMode(confidenceState, acceptancePct, tier)
       failureRiskLine = buildFailureRiskLine(tier, acceptancePct, result.drivers)
       title = buildGuardianTitle(mode, acceptancePct)
-      guardianBody = buildGuardianBody(mode, tier, acceptancePct)
+      guardianBody = buildGuardianBody(mode, tier, acceptancePct, action)
       recommendedActionLabel = buildRecommendedAction(mode)
 
       const sev = evaluation.severity
