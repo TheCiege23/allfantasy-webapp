@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
 import { prisma } from '@/lib/prisma';
 import OpenAI from 'openai';
+import { executeSerperWebSearch, executeSerperNewsSearch } from '@/lib/serper';
 
 const grok = new OpenAI({ apiKey: process.env.XAI_API_KEY!, baseURL: 'https://api.x.ai/v1' });
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
@@ -28,8 +29,16 @@ const GROK_TOOLS: OpenAI.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'web_search',
-      description: 'Search current web for NFL news, injuries, signings, rookie updates, waiver wire buzz',
-      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+      description: 'Search current web for NFL news, injuries, signings, rookie updates, waiver wire buzz. Returns organic results with position/date, answer boxes, knowledge graph data, top stories, and related questions.',
+      parameters: { type: 'object', properties: { query: { type: 'string' }, num: { type: 'number', description: 'Number of results (default 10)' } }, required: ['query'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'news_search',
+      description: 'Search Google News specifically for recent NFL/fantasy football news articles. Returns news with title, snippet, source, date. Best for breaking news, injuries, transactions, waiver wire buzz.',
+      parameters: { type: 'object', properties: { query: { type: 'string' }, num: { type: 'number', description: 'Number of news results (default 10)' } }, required: ['query'] },
     },
   },
   {
@@ -48,29 +57,6 @@ const GROK_TOOLS: OpenAI.ChatCompletionTool[] = [
     },
   },
 ];
-
-async function executeWebSearch(query: string): Promise<any> {
-  const serperKey = process.env.SERPER_API_KEY;
-  if (!serperKey) return { note: 'Web search not configured' };
-  try {
-    const res = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: { 'X-API-KEY': serperKey, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q: query, num: 5 }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) return { error: `Search failed: ${res.status}` };
-    const data = await res.json();
-    const organic = data.organic?.slice(0, 5).map((r: any) => ({
-      title: r.title,
-      snippet: r.snippet,
-      link: r.link,
-    })) || [];
-    return { results: organic, answerBox: data.answerBox || null };
-  } catch (err: any) {
-    return { error: err.message || 'Search timeout' };
-  }
-}
 
 function safeParseRoster(raw: string): any[] {
   try {
@@ -163,9 +149,20 @@ async function runGrokWithTools(systemPrompt: string, useRealTime: boolean): Pro
       let result: any;
 
       if (fnName === 'web_search') {
-        result = await executeWebSearch(args.query || 'NFL fantasy football waiver wire 2026');
+        result = await executeSerperWebSearch(args.query || 'NFL fantasy football waiver wire 2026', args.num || 10);
         if (result?.results?.length) {
           newsEvidence.push({ source: 'news', metric: 'web_search', value: `${args.query || 'waiver'} (${result.results.length} results)` });
+        }
+        if (result?.topStories?.length) {
+          newsEvidence.push({ source: 'news', metric: 'top_stories', value: `${result.topStories.length} breaking stories found` });
+        }
+        if (result?.knowledgeGraph?.title) {
+          newsEvidence.push({ source: 'news', metric: 'knowledge_graph', value: result.knowledgeGraph.title });
+        }
+      } else if (fnName === 'news_search') {
+        result = await executeSerperNewsSearch(args.query || 'NFL fantasy football waiver news 2026', args.num || 10);
+        if (result?.news?.length) {
+          newsEvidence.push({ source: 'news', metric: 'news_search', value: `${args.query || 'waiver news'} (${result.news.length} articles)` });
         }
       } else if (fnName === 'x_keyword_search') {
         try {
