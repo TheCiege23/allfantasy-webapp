@@ -121,7 +121,7 @@ async function callProviderForPeerReview(
           temperature: PEER_REVIEW_TEMPERATURE,
           maxTokens: PEER_REVIEW_MAX_TOKENS,
           tools: [
-            { type: 'web_search' },
+            { type: 'web_search', user_location_country: 'US' },
             { type: 'x_search' },
           ],
         }),

@@ -252,7 +252,7 @@ async function getGrokAnswer(compiledPrompt: string): Promise<AssistantPayload |
       { role: 'system', content: DOMAIN_GUARD },
       { role: 'user', content: compiledPrompt },
     ],
-    tools: [{ type: 'web_search' }],
+    tools: [{ type: 'web_search', user_location_country: 'US' }],
     temperature: 0.35,
     maxTokens: 900,
   })

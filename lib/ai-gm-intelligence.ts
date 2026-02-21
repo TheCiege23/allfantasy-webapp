@@ -187,7 +187,11 @@ IMPORTANT: If a player was RELEASED or CUT, sentiment MUST be "bearish" and this
       { 
         type: 'x_search', 
         from_date: fromDate,
-      }
+      },
+      {
+        type: 'web_search',
+        user_location_country: 'US',
+      },
     ],
   });
 

@@ -130,7 +130,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/social-pulse", tool: "
     
     const tools: XaiTool[] = [
       { type: "x_search", from_date: fromDate, to_date: toDate },
-      { type: "web_search" }
+      { type: "web_search", user_location_country: "US" }
     ]
 
     const grok = await xaiChatJson({
