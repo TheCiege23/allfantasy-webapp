@@ -7,6 +7,7 @@ import { withApiUsage } from '@/lib/telemetry/usage'
 import { buildFeedbackPromptBlock } from '@/lib/feedback-store'
 import { getUserTradeProfile } from '@/lib/trade-feedback-profile'
 import { executeSerperWebSearch, executeSerperNewsSearch } from '@/lib/serper'
+import { fetchFantasyCalcValues as fetchCalcValues } from '@/lib/fantasycalc'
 
 const grokClient = new OpenAI({
   apiKey: process.env.XAI_API_KEY,
@@ -234,17 +235,19 @@ Return ONLY valid JSON:
 }`
 }
 
-async function fetchFantasyCalcValues(isDynasty: boolean, leagueSize: number, scoring: string): Promise<string | undefined> {
+async function fetchFantasyCalcValuesForTrade(isDynasty: boolean, leagueSize: number, scoring: string): Promise<string | undefined> {
   try {
     const pprValue = scoring === 'ppr' ? 1 : scoring === 'half' ? 0.5 : 0
-    const url = `https://api.fantasycalc.com/values/current?isDynasty=${isDynasty}&numTeams=${leagueSize}&ppr=${pprValue}&numQbs=1`
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) })
-    if (!res.ok) return undefined
-    const data = await res.json()
+    const data = await fetchCalcValues({
+      isDynasty,
+      numTeams: leagueSize,
+      ppr: pprValue,
+      numQbs: 1,
+    })
     if (!Array.isArray(data) || data.length === 0) return undefined
-    const top30 = data.slice(0, 30).map((p: any) => ({
-      name: p.player?.name || p.name,
-      pos: p.player?.position || p.position,
+    const top30 = data.slice(0, 30).map((p) => ({
+      name: p.player?.name || 'Unknown',
+      pos: p.player?.position || 'Unknown',
       value: p.value,
       trend: p.trend30Day,
     }))
@@ -319,7 +322,7 @@ export const POST = withApiUsage({ endpoint: '/api/instant/improve-trade', tool:
       }
     } catch {}
 
-    const fantasyCalcSnippet = await fetchFantasyCalcValues(isDynasty, leagueSize, scoring)
+    const fantasyCalcSnippet = await fetchFantasyCalcValuesForTrade(isDynasty, leagueSize, scoring)
 
     const systemPrompt = buildSystemPrompt({
       tradeText, leagueSize, scoring, isDynasty,

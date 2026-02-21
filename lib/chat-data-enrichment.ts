@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { fetchGameWeather, isTeamDome, getVenueForTeam } from '@/lib/openweathermap'
 import { normalizeTeamAbbrev } from '@/lib/team-abbrev'
+import { fetchFantasyCalcValues, findPlayerByName, getTrendingPlayers, getValueTier, type FantasyCalcPlayer } from '@/lib/fantasycalc'
+import { getTrendingAdds, getTrendingDrops, getPlayerName, getAllPlayers } from '@/lib/sleeper-client'
 
 export interface ChatDataSources {
   news: { title: string; source: string; publishedAt: string; teams: string[] }[]
@@ -8,6 +10,9 @@ export interface ChatDataSources {
   weather: { team: string; venue: string; isDome: boolean; temp?: number; wind?: number; impact?: string }[]
   playerStats: { name: string; position: string; team: string; stats: Record<string, any> }[]
   liveScores: { homeTeam: string; awayTeam: string; homeScore: number; awayScore: number; status: string; quarter?: string; clock?: string }[]
+  valuations: { name: string; position: string; team: string; value: number; tier: string; trend30Day: number; rank: number }[]
+  trendingPlayers: { name: string; position: string; team: string; adds: number; drops: number; signal: string }[]
+  depthCharts: { team: string; position: string; starters: string[] }[]
 }
 
 function extractPlayerAndTeamMentions(message: string): { players: string[]; teams: string[] } {
@@ -91,6 +96,9 @@ export async function enrichChatWithData(
     weather: [],
     playerStats: [],
     liveScores: [],
+    valuations: [],
+    trendingPlayers: [],
+    depthCharts: [],
   }
 
   const contextParts: string[] = []
@@ -103,6 +111,9 @@ export async function enrichChatWithData(
   const wantsInjury = lower.includes('injur') || lower.includes('hurt') || lower.includes('out') || lower.includes('questionable') || lower.includes('doubtful') || lower.includes('health')
   const wantsScores = lower.includes('score') || lower.includes('game') || lower.includes('live') || lower.includes('playing') || lower.includes('winning') || lower.includes('losing')
   const wantsStats = lower.includes('stat') || lower.includes('yards') || lower.includes('touchdown') || lower.includes('point') || lower.includes('average') || lower.includes('how') || players.length > 0
+  const wantsValues = lower.includes('value') || lower.includes('worth') || lower.includes('trade') || lower.includes('dynasty') || lower.includes('redraft') || lower.includes('tier') || lower.includes('rank') || players.length > 0
+  const wantsTrending = lower.includes('trending') || lower.includes('waiver') || lower.includes('pickup') || lower.includes('add') || lower.includes('drop') || lower.includes('hot') || lower.includes('buzz') || lower.includes('hype')
+  const wantsDepthChart = lower.includes('depth') || lower.includes('starter') || lower.includes('backup') || lower.includes('rb1') || lower.includes('wr1') || lower.includes('qb1') || (lower.includes('start') && teams.length > 0)
 
   const tasks: Promise<void>[] = []
 
@@ -335,6 +346,171 @@ export async function enrichChatWithData(
     })())
   }
 
+  if (wantsValues) {
+    tasks.push((async () => {
+      try {
+        const isDynasty = lower.includes('dynasty')
+        const allValues = await fetchFantasyCalcValues({
+          isDynasty,
+          numQbs: lower.includes('superflex') || lower.includes('sf') ? 2 : 1,
+          numTeams: 12,
+          ppr: 1,
+        })
+
+        const matched: typeof sources.valuations = []
+
+        if (players.length > 0) {
+          for (const pName of players.slice(0, 5)) {
+            const found = findPlayerByName(allValues, pName)
+            if (found) {
+              matched.push({
+                name: found.player.name,
+                position: found.player.position,
+                team: found.player.maybeTeam || 'FA',
+                value: found.value,
+                tier: getValueTier(found.value),
+                trend30Day: found.trend30Day,
+                rank: found.overallRank,
+              })
+            }
+          }
+        }
+
+        if (matched.length === 0 && !players.length) {
+          const topPlayers = allValues.slice(0, 10)
+          for (const p of topPlayers) {
+            matched.push({
+              name: p.player.name,
+              position: p.player.position,
+              team: p.player.maybeTeam || 'FA',
+              value: p.value,
+              tier: getValueTier(p.value),
+              trend30Day: p.trend30Day,
+              rank: p.overallRank,
+            })
+          }
+        }
+
+        const trendingUp = getTrendingPlayers(allValues, 'up', 5)
+        const trendingDown = getTrendingPlayers(allValues, 'down', 5)
+
+        if (matched.length > 0) {
+          enrichSourcesUsed.push('valuations')
+          sources.valuations = matched
+          contextParts.push(`\n## PLAYER VALUES (from FantasyCalc — ${isDynasty ? 'Dynasty' : 'Redraft'})\n${matched.map(p =>
+            `- ${p.name} (${p.position}, ${p.team}): Value=${p.value} | Tier=${p.tier} | Rank=#${p.rank} | 30-Day Trend=${p.trend30Day > 0 ? '+' : ''}${p.trend30Day}`
+          ).join('\n')}`)
+
+          contextParts.push(`\n## VALUE TRENDS (FantasyCalc 30-Day)\nRising: ${trendingUp.map(p => `${p.player.name} (+${p.trend30Day})`).join(', ')}\nFalling: ${trendingDown.map(p => `${p.player.name} (${p.trend30Day})`).join(', ')}`)
+        }
+      } catch (err) {
+        enrichErrors.push(`valuations: ${String(err)}`)
+        enrichMissing.push('valuations')
+        console.warn('[ChatEnrich] Valuations fetch failed:', err)
+      }
+    })())
+  }
+
+  if (wantsTrending) {
+    tasks.push((async () => {
+      try {
+        const [adds, drops, sleeperPlayers] = await Promise.all([
+          getTrendingAdds('nfl', 24, 10),
+          getTrendingDrops('nfl', 24, 10),
+          getAllPlayers(),
+        ])
+
+        const trendingItems: typeof sources.trendingPlayers = []
+
+        for (const add of adds) {
+          const name = getPlayerName(sleeperPlayers, add.player_id) || add.player_id
+          const player = sleeperPlayers[add.player_id]
+          trendingItems.push({
+            name,
+            position: player?.position || '?',
+            team: player?.team || 'FA',
+            adds: add.count,
+            drops: 0,
+            signal: 'rising',
+          })
+        }
+
+        for (const drop of drops) {
+          const existing = trendingItems.find(t => t.name === (getPlayerName(sleeperPlayers, drop.player_id) || drop.player_id))
+          if (existing) {
+            existing.drops = drop.count
+            existing.signal = existing.adds > existing.drops ? 'rising' : 'falling'
+          } else {
+            const name = getPlayerName(sleeperPlayers, drop.player_id) || drop.player_id
+            const player = sleeperPlayers[drop.player_id]
+            trendingItems.push({
+              name,
+              position: player?.position || '?',
+              team: player?.team || 'FA',
+              adds: 0,
+              drops: drop.count,
+              signal: 'falling',
+            })
+          }
+        }
+
+        if (trendingItems.length > 0) {
+          enrichSourcesUsed.push('trending')
+          sources.trendingPlayers = trendingItems
+          const rising = trendingItems.filter(t => t.signal === 'rising')
+          const falling = trendingItems.filter(t => t.signal === 'falling')
+          contextParts.push(`\n## TRENDING PLAYERS (from Sleeper — last 24 hours)\nMost Added: ${rising.slice(0, 5).map(p => `${p.name} (${p.position}, ${p.team}) +${p.adds} adds`).join(', ')}\nMost Dropped: ${falling.slice(0, 5).map(p => `${p.name} (${p.position}, ${p.team}) -${p.drops} drops`).join(', ')}`)
+        }
+      } catch (err) {
+        enrichErrors.push(`trending: ${String(err)}`)
+        enrichMissing.push('trending')
+        console.warn('[ChatEnrich] Trending fetch failed:', err)
+      }
+    })())
+  }
+
+  if (wantsDepthChart && teams.length > 0) {
+    tasks.push((async () => {
+      try {
+        const depthRows = await prisma.depthChart.findMany({
+          where: {
+            sport: 'NFL',
+            team: { in: teams },
+          },
+          orderBy: { fetchedAt: 'desc' },
+        })
+
+        if (depthRows.length > 0) {
+          enrichSourcesUsed.push('depth_charts')
+          const chartsByTeam = new Map<string, { position: string; starters: string[] }[]>()
+
+          for (const row of depthRows) {
+            if (!chartsByTeam.has(row.team)) chartsByTeam.set(row.team, [])
+            const playersArr = Array.isArray(row.players) ? row.players as { name: string; rank?: number }[] : []
+            const starters = playersArr.slice(0, 2).map(p => typeof p === 'string' ? p : p.name || String(p))
+            chartsByTeam.get(row.team)!.push({ position: row.position, starters })
+            sources.depthCharts.push({ team: row.team, position: row.position, starters })
+          }
+
+          const lines: string[] = []
+          for (const [team, positions] of chartsByTeam) {
+            const keyPositions = positions.filter(p => ['QB', 'RB', 'WR', 'TE'].includes(p.position.toUpperCase()))
+            if (keyPositions.length > 0) {
+              lines.push(`**${team}**: ${keyPositions.map(p => `${p.position}: ${p.starters.join(' → ')}`).join(' | ')}`)
+            }
+          }
+          if (lines.length > 0) {
+            contextParts.push(`\n## DEPTH CHARTS (from Rolling Insights)\n${lines.join('\n')}`)
+          }
+        }
+      } catch (err) {
+        enrichErrors.push(`depth_charts: ${String(err)}`)
+        enrichMissing.push('depth_charts')
+        console.warn('[ChatEnrich] Depth charts fetch failed:', err)
+      }
+    })())
+  }
+
   await Promise.all(tasks)
 
   const context = contextParts.length > 0
@@ -358,5 +534,8 @@ export function buildDataSourcesSummary(sources: ChatDataSources): string[] {
   if (sources.weather.length > 0) summary.push(`${sources.weather.length} weather reports (OpenWeatherMap)`)
   if (sources.playerStats.length > 0) summary.push(`${sources.playerStats.length} player stat profiles (Rolling Insights)`)
   if (sources.liveScores.length > 0) summary.push(`${sources.liveScores.length} game scores (ESPN)`)
+  if (sources.valuations.length > 0) summary.push(`${sources.valuations.length} player valuations (FantasyCalc)`)
+  if (sources.trendingPlayers.length > 0) summary.push(`${sources.trendingPlayers.length} trending players (Sleeper)`)
+  if (sources.depthCharts.length > 0) summary.push(`${sources.depthCharts.length} depth chart entries (Rolling Insights)`)
   return summary
 }

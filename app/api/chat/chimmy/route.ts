@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { openaiChatText } from '@/lib/openai-client'
 import { xaiChatJson, parseTextFromXaiChatCompletion } from '@/lib/xai-client'
+import { enrichChatWithData, buildDataSourcesSummary } from '@/lib/chat-data-enrichment'
 
 function getOpenAIClient(): OpenAI | null {
   const key = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY
@@ -207,6 +208,8 @@ function buildPrompt({
   userContext,
   privateMode,
   targetUsername,
+  enrichmentContext,
+  enrichmentSources,
 }: {
   message: string
   conversation: ChatMsg[]
@@ -214,19 +217,30 @@ function buildPrompt({
   userContext?: string
   privateMode?: boolean
   targetUsername?: string
+  enrichmentContext?: string
+  enrichmentSources?: string[]
 }) {
   const convo = conversation.length
     ? conversation.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n')
     : 'No prior conversation.'
 
-  return [
+  const parts = [
     `User question: ${message || 'Analyze this fantasy sports screenshot.'}`,
     `Private mode: ${privateMode ? 'on' : 'off'}`,
     `Target username: ${targetUsername || 'none'}`,
     `Recent conversation:\n${convo}`,
     `User fantasy context:\n${userContext || 'none'}`,
     screenshotContext ? `Screenshot context JSON:\n${screenshotContext}` : 'Screenshot context JSON: none',
-  ].join('\n\n')
+  ]
+
+  if (enrichmentContext) {
+    parts.push(`\n--- REAL-TIME DATA (use this to ground your answer) ---\n${enrichmentContext}`)
+  }
+  if (enrichmentSources && enrichmentSources.length > 0) {
+    parts.push(`Data sources consulted: ${enrichmentSources.join(', ')}`)
+  }
+
+  return parts.join('\n\n')
 }
 
 async function getOpenAIAnswer(compiledPrompt: string): Promise<AssistantPayload | null> {
@@ -310,7 +324,19 @@ export async function POST(req: NextRequest) {
       screenshotContext = await parseScreenshotWithOpenAI(imageFile, message)
     }
 
-    const userContext = await getUserContext(userId)
+    const sleeperUsername = ((formData.get('sleeperUsername') as string) || '').trim() || undefined
+
+    const [userContext, enrichment] = await Promise.all([
+      getUserContext(userId),
+      enrichChatWithData(message || '', {
+        sleeperUsername: sleeperUsername || undefined,
+      }).catch((err) => {
+        console.warn('[Chimmy] Enrichment failed, continuing without:', err)
+        return null
+      }),
+    ])
+
+    const dataSources = enrichment?.sources ? buildDataSourcesSummary(enrichment.sources) : []
 
     const compiledPrompt = buildPrompt({
       message: message || 'Analyze this fantasy sports screenshot and advise what to do next.',
@@ -319,6 +345,8 @@ export async function POST(req: NextRequest) {
       userContext,
       privateMode,
       targetUsername,
+      enrichmentContext: enrichment?.context || undefined,
+      enrichmentSources: dataSources.length > 0 ? dataSources : undefined,
     })
 
     const [oa, gr] = await Promise.all([
@@ -346,6 +374,8 @@ export async function POST(req: NextRequest) {
         privateMode,
         targetUsername: targetUsername || null,
         usedConversationTurns: conversation.length,
+        dataSources: dataSources.length > 0 ? dataSources : undefined,
+        enrichmentAudit: enrichment?.audit || undefined,
       },
     })
   } catch (error) {
