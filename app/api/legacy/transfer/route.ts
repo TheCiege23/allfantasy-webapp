@@ -5,7 +5,7 @@ import OpenAI from 'openai'
 import { getAllPlayers } from '@/lib/sleeper-client'
 import { computeRivalryWeek, type RivalryWeekData } from '@/lib/rivalry-engine'
 
-const openai = new OpenAI()
+const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL })
 
 interface SleeperLeague {
   league_id: string

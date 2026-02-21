@@ -5,7 +5,7 @@ import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 import { getLiveADP, formatADPForPrompt } from '@/lib/adp-data'
 
-const openai = new OpenAI()
+const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL })
 
 export async function POST(req: NextRequest) {
   try {

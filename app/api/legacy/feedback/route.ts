@@ -31,7 +31,7 @@ async function runAiTriage(feedback: {
   stepsToReproduce: string | null;
 }) {
   try {
-    const openai = new OpenAI();
+    const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
     
     const prompt = `You are an AI assistant helping triage bug reports and feedback for a fantasy sports application called AllFantasy. Analyze the following feedback and provide a structured triage.
 

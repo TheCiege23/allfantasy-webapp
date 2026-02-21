@@ -6,7 +6,7 @@ import OpenAI from 'openai'
 import { getLiveADP } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
 
-const openai = new OpenAI()
+const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL })
 
 const POSITION_TARGETS: Record<string, { starter: number; ideal: number }> = {
   QB: { starter: 1, ideal: 2 },

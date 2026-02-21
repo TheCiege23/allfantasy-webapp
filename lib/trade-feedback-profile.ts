@@ -3,7 +3,7 @@ import { FeedbackReason, VoteType } from '@prisma/client'
 import OpenAI from 'openai'
 import { FEEDBACK_REASONS } from '@/lib/feedback-reasons'
 
-const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const openaiClient = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL })
 
 const PROFILE_STALE_HOURS = 6
 const MIN_VOTES_FOR_PROFILE = 3

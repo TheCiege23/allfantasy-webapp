@@ -1,3 +1,5 @@
+import OpenAI from 'openai'
+
 export type OpenAIConfig = {
   apiKey: string
   baseUrl: string
@@ -5,13 +7,26 @@ export type OpenAIConfig = {
 }
 
 export function getOpenAIConfig(): OpenAIConfig {
-  const apiKey = (process.env.OPENAI_API_KEY || '').trim()
-  if (!apiKey) throw new Error('OPENAI_API_KEY is not configured.')
+  const apiKey = (process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || '').trim()
+  if (!apiKey) throw new Error('OpenAI API key is not configured.')
 
-  const baseUrl = (process.env.OPENAI_BASE_URL || 'https://api.openai.com').replace(/\/+$/, '')
+  const baseUrl = (process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '')
   const model = (process.env.OPENAI_MODEL || 'gpt-4o').trim()
 
   return { apiKey, baseUrl, model }
+}
+
+let _client: OpenAI | null = null
+
+export function getOpenAIClient(): OpenAI {
+  if (!_client) {
+    const { apiKey, baseUrl } = getOpenAIConfig()
+    _client = new OpenAI({
+      apiKey,
+      baseURL: baseUrl,
+    })
+  }
+  return _client
 }
 
 export async function openaiChatJson(args: {
@@ -22,47 +37,24 @@ export async function openaiChatJson(args: {
   | { ok: true; json: any; model: string; baseUrl: string }
   | { ok: false; status: number; details: string; model: string; baseUrl: string }
 > {
-  const { apiKey, baseUrl, model } = getOpenAIConfig()
+  const { model, baseUrl } = getOpenAIConfig()
+  const client = getOpenAIClient()
 
-  let resp: Response
   try {
-    resp = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: args.temperature ?? 0.7,
-        max_tokens: args.maxTokens ?? 1500,
-        messages: args.messages,
-        response_format: { type: 'json_object' },
-      }),
+    const response = await client.chat.completions.create({
+      model,
+      temperature: args.temperature ?? 0.7,
+      max_completion_tokens: args.maxTokens ?? 1500,
+      messages: args.messages,
+      response_format: { type: 'json_object' },
     })
+
+    return { ok: true, json: response, model, baseUrl }
   } catch (e: any) {
-    return {
-      ok: false,
-      status: 0,
-      details: `network: ${String(e?.message || e || '').slice(0, 800)}`,
-      model,
-      baseUrl,
-    }
+    const status = e?.status ?? e?.statusCode ?? 0
+    const details = String(e?.message || e || '').slice(0, 800)
+    return { ok: false, status, details, model, baseUrl }
   }
-
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '')
-    return {
-      ok: false,
-      status: resp.status,
-      details: errText.slice(0, 800),
-      model,
-      baseUrl,
-    }
-  }
-
-  const data = await resp.json().catch(() => null)
-  return { ok: true, json: data, model, baseUrl }
 }
 
 export async function openaiChatText(args: {
@@ -73,50 +65,27 @@ export async function openaiChatText(args: {
   | { ok: true; text: string; model: string; baseUrl: string }
   | { ok: false; status: number; details: string; model: string; baseUrl: string }
 > {
-  const { apiKey, baseUrl, model } = getOpenAIConfig()
+  const { model, baseUrl } = getOpenAIConfig()
+  const client = getOpenAIClient()
 
-  let resp: Response
   try {
-    resp = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        temperature: args.temperature ?? 0.7,
-        max_tokens: args.maxTokens ?? 1500,
-        messages: args.messages,
-      }),
+    const response = await client.chat.completions.create({
+      model,
+      temperature: args.temperature ?? 0.7,
+      max_completion_tokens: args.maxTokens ?? 1500,
+      messages: args.messages,
     })
+
+    const content = response.choices?.[0]?.message?.content
+    if (typeof content === 'string') {
+      return { ok: true, text: content, model, baseUrl }
+    }
+    return { ok: false, status: 200, details: 'No content in response', model, baseUrl }
   } catch (e: any) {
-    return {
-      ok: false,
-      status: 0,
-      details: `network: ${String(e?.message || e || '').slice(0, 800)}`,
-      model,
-      baseUrl,
-    }
+    const status = e?.status ?? e?.statusCode ?? 0
+    const details = String(e?.message || e || '').slice(0, 800)
+    return { ok: false, status, details, model, baseUrl }
   }
-
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => '')
-    return {
-      ok: false,
-      status: resp.status,
-      details: errText.slice(0, 800),
-      model,
-      baseUrl,
-    }
-  }
-
-  const data = await resp.json().catch(() => null)
-  const content = data?.choices?.[0]?.message?.content
-  if (typeof content === 'string') {
-    return { ok: true, text: content, model, baseUrl }
-  }
-  return { ok: false, status: 200, details: 'No content in response', model, baseUrl }
 }
 
 export function parseJsonContentFromChatCompletion(data: any) {
