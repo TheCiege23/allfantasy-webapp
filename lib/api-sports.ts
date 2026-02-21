@@ -74,7 +74,13 @@ async function apiSportsFetch<T>(endpoint: string, params?: Record<string, strin
 
   const remaining = response.headers.get('x-ratelimit-requests-remaining');
   if (remaining && parseInt(remaining) < 5) {
-    console.warn(`[API-Sports] Low quota: ${remaining} requests remaining`);
+    console.warn(`[API-Sports] Low daily quota: ${remaining} requests remaining`);
+  }
+
+  const minuteRemaining = response.headers.get('X-RateLimit-Remaining');
+  if (minuteRemaining && parseInt(minuteRemaining) < 2) {
+    console.warn(`[API-Sports] Per-minute rate limit nearly hit: ${minuteRemaining} remaining, waiting 60s`);
+    await new Promise(r => setTimeout(r, 60_000));
   }
 
   const result = await response.json();
@@ -252,10 +258,199 @@ export async function fetchAPISportsLiveGames(): Promise<APISportsGame[]> {
   return data || [];
 }
 
-export async function fetchAPISportsStandings(season: string): Promise<APISportsStanding[]> {
-  const data = await apiSportsFetch<APISportsStanding[]>('standings', {
+export async function fetchAPISportsStandings(season: string, opts?: { conference?: string; division?: string }): Promise<APISportsStanding[]> {
+  const params: Record<string, string> = { league: '1', season };
+  if (opts?.conference) params.conference = opts.conference;
+  if (opts?.division) params.division = opts.division;
+  const data = await apiSportsFetch<APISportsStanding[]>('standings', params);
+  return data || [];
+}
+
+export interface APISportsConference {
+  id: number;
+  name: string;
+  league: { id: number; name: string; season: string };
+}
+
+export interface APISportsDivision {
+  id: number;
+  name: string;
+  conference: { id: number; name: string };
+  league: { id: number; name: string; season: string };
+}
+
+export async function fetchAPISportsConferences(season: string): Promise<APISportsConference[]> {
+  const data = await apiSportsFetch<APISportsConference[]>('standings/conferences', {
     league: '1',
     season,
+  });
+  return data || [];
+}
+
+export async function fetchAPISportsDivisions(season: string): Promise<APISportsDivision[]> {
+  const data = await apiSportsFetch<APISportsDivision[]>('standings/divisions', {
+    league: '1',
+    season,
+  });
+  return data || [];
+}
+
+export interface APISportsPlayerStatistics {
+  player: { id: number; name: string; image: string | null };
+  teams: Array<{
+    team: { id: number; name: string; logo: string | null };
+    groups: Array<{
+      name: string;
+      statistics: Array<{ name: string; value: string | number | null }>;
+    }>;
+  }>;
+}
+
+export async function fetchAPISportsPlayerStatistics(playerId: string, season: string): Promise<APISportsPlayerStatistics[]> {
+  const data = await apiSportsFetch<APISportsPlayerStatistics[]>('players/statistics', {
+    id: playerId,
+    season,
+  });
+  return data || [];
+}
+
+export interface APISportsGameEvent {
+  quarter: number | null;
+  minute: string | null;
+  team: { id: number; name: string; logo: string | null } | null;
+  player: { id: number; name: string } | null;
+  type: string | null;
+  comment: string | null;
+}
+
+export async function fetchAPISportsGameEvents(gameId: string): Promise<APISportsGameEvent[]> {
+  const data = await apiSportsFetch<APISportsGameEvent[]>('games/events', {
+    id: gameId,
+  });
+  return data || [];
+}
+
+export interface APISportsGameTeamStats {
+  team: { id: number; name: string; logo: string | null };
+  statistics: Array<{ name: string; value: string | number | null }>;
+}
+
+export async function fetchAPISportsGameTeamStats(gameId: string): Promise<APISportsGameTeamStats[]> {
+  const data = await apiSportsFetch<APISportsGameTeamStats[]>('games/statistics/teams', {
+    id: gameId,
+  });
+  return data || [];
+}
+
+export interface APISportsGamePlayerStats {
+  team: { id: number; name: string; logo: string | null };
+  groups: Array<{
+    name: string;
+    players: Array<{
+      player: { id: number; name: string };
+      statistics: Array<{ name: string; value: string | number | null }>;
+    }>;
+  }>;
+}
+
+export async function fetchAPISportsGamePlayerStats(gameId: string): Promise<APISportsGamePlayerStats[]> {
+  const data = await apiSportsFetch<APISportsGamePlayerStats[]>('games/statistics/players', {
+    id: gameId,
+  });
+  return data || [];
+}
+
+export interface APISportsOdds {
+  league: { id: number; name: string; season: string };
+  game: { id: number; date: string };
+  bookmakers: Array<{
+    id: number;
+    name: string;
+    bets: Array<{
+      id: number;
+      name: string;
+      values: Array<{ value: string; odd: string }>;
+    }>;
+  }>;
+}
+
+export async function fetchAPISportsOdds(gameId: string): Promise<APISportsOdds[]> {
+  const data = await apiSportsFetch<APISportsOdds[]>('odds', {
+    game: gameId,
+  });
+  return data || [];
+}
+
+export async function fetchAPISportsOddsBySeasonWeek(season: string, opts?: { bookmaker?: string }): Promise<APISportsOdds[]> {
+  const params: Record<string, string> = { league: '1', season };
+  if (opts?.bookmaker) params.bookmaker = opts.bookmaker;
+  const data = await apiSportsFetch<APISportsOdds[]>('odds', params);
+  return data || [];
+}
+
+export interface APISportsBookmaker {
+  id: number;
+  name: string;
+}
+
+export async function fetchAPISportsBookmakers(): Promise<APISportsBookmaker[]> {
+  const data = await apiSportsFetch<APISportsBookmaker[]>('odds/bookmakers');
+  return data || [];
+}
+
+export interface APISportsBetType {
+  id: number;
+  name: string;
+}
+
+export async function fetchAPISportsBetTypes(): Promise<APISportsBetType[]> {
+  const data = await apiSportsFetch<APISportsBetType[]>('odds/bets');
+  return data || [];
+}
+
+export interface APISportsLeague {
+  id: number;
+  name: string;
+  season: string | null;
+  logo: string | null;
+  country: { name: string; code: string | null; flag: string | null } | null;
+}
+
+export async function fetchAPISportsLeagues(): Promise<APISportsLeague[]> {
+  const data = await apiSportsFetch<APISportsLeague[]>('leagues');
+  return data || [];
+}
+
+export async function fetchAPISportsSeasons(): Promise<number[]> {
+  const data = await apiSportsFetch<number[]>('seasons');
+  return data || [];
+}
+
+export async function fetchAPISportsTimezones(): Promise<string[]> {
+  const data = await apiSportsFetch<string[]>('timezone');
+  return data || [];
+}
+
+export async function fetchAPISportsGamesByDate(date: string): Promise<APISportsGame[]> {
+  const data = await apiSportsFetch<APISportsGame[]>('games', {
+    league: '1',
+    date,
+  });
+  return data || [];
+}
+
+export async function fetchAPISportsH2H(team1Id: string, team2Id: string): Promise<APISportsGame[]> {
+  const data = await apiSportsFetch<APISportsGame[]>('games', {
+    h2h: `${team1Id}-${team2Id}`,
+  });
+  return data || [];
+}
+
+export async function fetchAPISportsGamesByTeam(teamId: string, season: string): Promise<APISportsGame[]> {
+  const data = await apiSportsFetch<APISportsGame[]>('games', {
+    league: '1',
+    season,
+    team: teamId,
   });
   return data || [];
 }
@@ -537,4 +732,86 @@ export async function syncAPISportsPlayersToIdentityMap(season?: string): Promis
 
   console.log(`[API-Sports] Identity sync: ${linked} linked, ${created} created`);
   return { linked, created };
+}
+
+export async function syncAPISportsStandingsToDb(season?: string): Promise<number> {
+  const currentSeason = season || getCurrentNFLSeasonForAPISports();
+  let standings: APISportsStanding[];
+
+  try {
+    standings = await fetchAPISportsStandings(currentSeason);
+  } catch (error) {
+    console.error('[API-Sports] Failed to fetch standings:', error);
+    return 0;
+  }
+
+  let synced = 0;
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+
+  for (const s of standings) {
+    const teamAbbrev = teamNameToAbbrev(s.team.name) || s.team.name;
+
+    try {
+      const key = `NFL:standings:${currentSeason}:${teamAbbrev}`;
+      await (prisma.sportsDataCache as any).upsert({
+        where: { key },
+        update: {
+          data: {
+            team: teamAbbrev,
+            teamName: s.team.name,
+            logo: s.team.logo,
+            position: s.position,
+            won: s.won,
+            lost: s.lost,
+            tied: s.tied,
+            pointsFor: s.points.for,
+            pointsAgainst: s.points.against,
+            conference: s.group?.conference || null,
+            division: s.group?.name || null,
+            season: currentSeason,
+          } as object,
+          expiresAt,
+        },
+        create: {
+          key,
+          data: {
+            team: teamAbbrev,
+            teamName: s.team.name,
+            logo: s.team.logo,
+            position: s.position,
+            won: s.won,
+            lost: s.lost,
+            tied: s.tied,
+            pointsFor: s.points.for,
+            pointsAgainst: s.points.against,
+            conference: s.group?.conference || null,
+            division: s.group?.name || null,
+            season: currentSeason,
+          } as object,
+          expiresAt,
+        },
+      });
+      synced++;
+    } catch (err) {
+      console.error(`[API-Sports] Failed to sync standing for ${s.team.name}:`, err);
+    }
+  }
+
+  console.log(`[API-Sports] Synced ${synced}/${standings.length} standings`);
+  return synced;
+}
+
+export async function getAPISportsGameDetail(gameId: string): Promise<{
+  events: APISportsGameEvent[];
+  teamStats: APISportsGameTeamStats[];
+  playerStats: APISportsGamePlayerStats[];
+}> {
+  const [events, teamStats, playerStats] = await Promise.all([
+    fetchAPISportsGameEvents(gameId).catch(() => [] as APISportsGameEvent[]),
+    fetchAPISportsGameTeamStats(gameId).catch(() => [] as APISportsGameTeamStats[]),
+    fetchAPISportsGamePlayerStats(gameId).catch(() => [] as APISportsGamePlayerStats[]),
+  ]);
+
+  return { events, teamStats, playerStats };
 }

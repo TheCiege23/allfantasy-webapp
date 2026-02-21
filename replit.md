@@ -60,7 +60,7 @@ The core architecture uses a `One Engine API` integrating One Scoring Core, One 
 -   **PostgreSQL**: Primary database.
 -   **Sleeper API**: Importing user league data.
 -   **Rolling Insights Sports API**: Primary NFL sports data.
--   **API-Sports.io**: Secondary NFL data, primary for injuries.
+-   **API-Sports.io**: Secondary NFL data provider with full endpoint coverage: teams, players, player statistics, injuries, games (by season/week/date/team/h2h/live), game events (play-by-play), game team statistics, game player statistics, standings (with conference/division filters), conferences, divisions, odds (pre-match and per-game), bookmakers, bet types, leagues, seasons, and timezones. Rate-limit aware with per-minute throttling and IP block detection.
 -   **TheSportsDB API**: Tertiary sports data fallback.
 -   **ESPN API**: Quaternary sports data fallback, primary for live scores and news.
 -   **CollegeFootballData.com API (CFBD v2)**: College Football data including rosters, stats, recruiting ratings (247/composite), transfer portal tracking, player usage/PPA, WEPA adjusted metrics, SP+ team ratings, returning production, and NFL draft picks. All endpoints cached via SportsDataCache with TTLs (7d recruiting, 1d usage/PPA/portal, 30d SP+/historical). Bulk fetch pattern to stay under 1,000 monthly API call limit.

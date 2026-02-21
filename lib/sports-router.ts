@@ -14,6 +14,7 @@ import {
   fetchAPISportsPlayerBySearch,
   fetchAPISportsGames,
   fetchAPISportsStandings,
+  fetchAPISportsPlayerStatistics,
   getCurrentNFLSeasonForAPISports,
   teamNameToAbbrev as apiSportsTeamToAbbrev,
   type APISportsTeam,
@@ -250,6 +251,35 @@ async function fetchFromAPISports(
           venue: g.game.venue?.name || null,
           source: 'api_sports',
         }));
+      }
+      case 'stats': {
+        if (!identifier) return null;
+        const players = await fetchAPISportsPlayerBySearch(identifier, currentSeason);
+        if (!players.length) return null;
+        const playerWithStats = [];
+        for (const p of players.slice(0, 3)) {
+          try {
+            const stats = await fetchAPISportsPlayerStatistics(String(p.id), currentSeason);
+            playerWithStats.push({
+              id: String(p.id),
+              name: p.name,
+              position: p.position || p.group || null,
+              team: p.team ? apiSportsTeamToAbbrev(p.team.name) : null,
+              statistics: stats,
+              source: 'api_sports',
+            });
+          } catch {
+            playerWithStats.push({
+              id: String(p.id),
+              name: p.name,
+              position: p.position || p.group || null,
+              team: p.team ? apiSportsTeamToAbbrev(p.team.name) : null,
+              statistics: [],
+              source: 'api_sports',
+            });
+          }
+        }
+        return playerWithStats;
       }
       case 'standings': {
         const standings = await fetchAPISportsStandings(currentSeason);

@@ -6,6 +6,7 @@ import {
   syncAPISportsGamesToDb,
   syncAPISportsInjuriesToDb,
   syncAPISportsPlayersToIdentityMap,
+  syncAPISportsStandingsToDb,
 } from '@/lib/api-sports';
 
 export const POST = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSync" })(async (request: NextRequest) => {
@@ -56,6 +57,11 @@ export const POST = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSy
       if (syncType === 'all' || syncType === 'injuries') {
         const injuryCount = await syncAPISportsInjuriesToDb(season);
         results.as_injuries = { synced: injuryCount };
+      }
+
+      if (syncType === 'all' || syncType === 'standings') {
+        const standingsCount = await syncAPISportsStandingsToDb(season);
+        results.as_standings = { synced: standingsCount };
       }
 
       if (syncType === 'all' || syncType === 'identity') {
@@ -161,6 +167,7 @@ export const GET = withApiUsage({ endpoint: "/api/sports/sync", tool: "SportsSyn
           teams: asTeams,
           games: asGames,
           injuries: asInjuries,
+          standings: await prisma.sportsDataCache.count({ where: { key: { startsWith: 'NFL:standings:' } } }),
           lastSyncAt: latestASSync?.fetchedAt?.toISOString() || null,
         },
         espn: {
