@@ -472,9 +472,69 @@ async function fetchFromTheSportsDB(sport: Sport, dataType: DataType, identifier
   }
 }
 
-async function fetchFromESPN(sport: Sport, dataType: DataType): Promise<unknown | null> {
+async function fetchFromESPN(sport: Sport, dataType: DataType, identifier?: string): Promise<unknown | null> {
   const path = ESPN_PATHS[sport];
   if (!path) return null;
+
+  if (sport === 'NFL' && (dataType === 'players' || dataType === 'stats') && identifier) {
+    try {
+      const dbPlayers = await prisma.sportsPlayer.findMany({
+        where: {
+          sport: 'NFL',
+          source: 'espn',
+          name: { contains: identifier, mode: 'insensitive' },
+        },
+        take: 5,
+      });
+
+      if (dbPlayers.length > 0) {
+        return dbPlayers.map((p): NormalizedPlayer => ({
+          id: p.externalId,
+          name: p.name,
+          position: p.position,
+          team: p.team,
+          teamId: p.teamId,
+          number: p.number,
+          height: p.height,
+          weight: p.weight ? parseInt(p.weight) || null : null,
+          college: p.college,
+          dob: p.dob,
+          status: p.status,
+          img: p.imageUrl,
+          fantasyPoints: null,
+          seasonStats: [],
+          source: 'espn',
+        }));
+      }
+
+      const { fetchESPNTeamRoster } = await import('./espn-data');
+      const teamAbbrev = normalizeTeamAbbrev(identifier);
+      if (teamAbbrev) {
+        const roster = await fetchESPNTeamRoster(teamAbbrev);
+        return roster.map((a): NormalizedPlayer => ({
+          id: `espn-${a.id}`,
+          name: a.fullName,
+          position: a.position?.abbreviation || null,
+          team: teamAbbrev,
+          teamId: null,
+          number: a.jersey ? parseInt(a.jersey) || null : null,
+          height: a.height ? String(a.height) : null,
+          weight: a.weight || null,
+          college: a.college?.name || null,
+          dob: a.dateOfBirth || null,
+          status: a.status?.type?.name || null,
+          img: a.headshot?.href || null,
+          fantasyPoints: null,
+          seasonStats: [],
+          source: 'espn',
+        }));
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  }
 
   let url = '';
 
@@ -552,7 +612,8 @@ async function fetchFromSource(
         return normalizeTheSportsDBData(raw, dataType);
       }
       case 'espn': {
-        const raw = await fetchFromESPN(sport, dataType);
+        const raw = await fetchFromESPN(sport, dataType, identifier);
+        if (dataType === 'players' || dataType === 'stats') return raw;
         return normalizeESPNData(raw, dataType);
       }
       default:

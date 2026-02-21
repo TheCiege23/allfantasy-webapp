@@ -2,6 +2,7 @@ import { withApiUsage } from "@/lib/telemetry/usage"
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { syncAPISportsInjuriesToDb } from '@/lib/api-sports';
+import { syncESPNInjuriesToDb } from '@/lib/espn-data';
 import { normalizeTeamAbbrev } from '@/lib/team-abbrev';
 
 export const dynamic = 'force-dynamic';
@@ -15,12 +16,20 @@ export const GET = withApiUsage({ endpoint: "/api/sports/injuries", tool: "Sport
     const season = searchParams.get('season');
 
     if (refresh) {
-      await syncAPISportsInjuriesToDb(season || undefined);
+      const [apiSportsResult, espnResult] = await Promise.allSettled([
+        syncAPISportsInjuriesToDb(season || undefined),
+        syncESPNInjuriesToDb(),
+      ]);
+      if (apiSportsResult.status === 'rejected') {
+        console.warn('[Injuries] API-Sports sync failed:', apiSportsResult.reason);
+      }
+      if (espnResult.status === 'rejected') {
+        console.warn('[Injuries] ESPN sync failed:', espnResult.reason);
+      }
     }
 
     const where: Record<string, unknown> = {
       sport: 'NFL',
-      source: 'api_sports',
     };
 
     if (team) {
@@ -34,23 +43,26 @@ export const GET = withApiUsage({ endpoint: "/api/sports/injuries", tool: "Sport
     const injuries = await prisma.sportsInjury.findMany({
       where,
       orderBy: { fetchedAt: 'desc' },
-      take: 200,
+      take: 300,
     });
 
     const stale = injuries.length > 0 && injuries[0].expiresAt < new Date();
 
     if (stale && !refresh) {
-      await syncAPISportsInjuriesToDb(season || undefined);
+      await Promise.allSettled([
+        syncAPISportsInjuriesToDb(season || undefined),
+        syncESPNInjuriesToDb(),
+      ]);
       const freshInjuries = await prisma.sportsInjury.findMany({
         where,
         orderBy: { fetchedAt: 'desc' },
-        take: 200,
+        take: 300,
       });
 
       return NextResponse.json({
         injuries: freshInjuries,
         count: freshInjuries.length,
-        source: 'api_sports',
+        sources: ['api_sports', 'espn'],
         refreshed: true,
       });
     }
@@ -58,7 +70,7 @@ export const GET = withApiUsage({ endpoint: "/api/sports/injuries", tool: "Sport
     return NextResponse.json({
       injuries,
       count: injuries.length,
-      source: 'api_sports',
+      sources: [...new Set(injuries.map(i => i.source))],
       refreshed: refresh,
     });
   } catch (error) {
