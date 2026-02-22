@@ -15,7 +15,7 @@ export async function POST() {
       return NextResponse.json({ error: "DATABASE_URL not set" }, { status: 500 })
     }
 
-    await runMigrations({ databaseUrl, schema: "stripe" })
+    await runMigrations({ databaseUrl })
 
     const stripeSync = await getStripeSync()
     const webhookBaseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`

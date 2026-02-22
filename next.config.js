@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  outputFileTracingIncludes: {
-    '/api/**': ['./data/**'],
+  experimental: {
+    outputFileTracingIncludes: {
+      '/api/**': ['./data/**'],
+    },
   },
   images: {
     remotePatterns: [
