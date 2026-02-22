@@ -284,7 +284,7 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
 
     const validation = summarizeDraftValidation({
       picks: draftResults,
-      constraints: { strict: !casualMode, draftType: draftTypeLabel, expectedPicks: rounds * numTeams },
+      constraints: { strict: !casualMode },
     })
 
     if (!validation.valid) {
