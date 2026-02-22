@@ -1,128 +1,108 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useMemo, useState } from "react"
 
-const PRESET_AMOUNTS = [5, 10, 25, 50]
+type Mode = "donate" | "lab"
+const DONATION_PRESETS = [3, 5, 10, 25]
+
+function getModeFromSearch(): Mode {
+  if (typeof window === "undefined") return "donate"
+  return new URLSearchParams(window.location.search).get("mode") === "lab" ? "lab" : "donate"
+}
 
 export default function DonatePage() {
-  const router = useRouter()
-  const [amount, setAmount] = useState<number>(10)
-  const [custom, setCustom] = useState("")
-  const [useCustom, setUseCustom] = useState(false)
+  const mode = useMemo(getModeFromSearch, [])
+  const [amount, setAmount] = useState<number>(mode === "lab" ? 9.99 : 5)
+  const [custom, setCustom] = useState<string>("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
-  const finalAmount = useCustom ? Number(custom) : amount
-
-  async function handleDonate() {
-    if (!finalAmount || finalAmount < 1 || finalAmount > 500) {
-      setError("Please enter an amount between $1 and $500.")
-      return
-    }
-
+  async function startCheckout(finalAmount: number) {
     setLoading(true)
-    setError(null)
-
     try {
       const res = await fetch("/api/stripe/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "donate", amount: finalAmount, currency: "usd" }),
+        body: JSON.stringify({ mode, amount: finalAmount, currency: "usd" }),
       })
-
       const data = await res.json()
-
-      if (!res.ok || !data.url) {
-        setError(data.error || "Something went wrong. Please try again.")
-        return
-      }
-
+      if (!res.ok) throw new Error(data?.error ?? "Failed")
       window.location.href = data.url
-    } catch {
-      setError("Network error. Please try again.")
-    } finally {
+    } catch (e: any) {
+      alert(e?.message ?? "Checkout failed")
       setLoading(false)
     }
   }
 
+  const title = mode === "lab" ? "Get Bracket Lab Pass" : "Support FanCred Brackets"
+  const subtitle =
+    mode === "lab"
+      ? "Unlock simulation + strategy exploration tools for this tournament."
+      : "Optional support to fund servers, data costs, and performance."
+
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-4">
-      <div className="w-full max-w-md space-y-6">
-        <button
-          onClick={() => router.back()}
-          className="text-sm text-white/50 hover:text-white/80 transition"
-        >
-          &larr; Back
-        </button>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-white">
+      <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+        <a href="/ai-lab" className="text-sm text-white/70 hover:text-white">
+          &larr; Back to Bracket Lab
+        </a>
 
-        <div className="rounded-2xl border border-white/10 bg-slate-900/60 p-6 space-y-5">
-          <div>
-            <h1 className="text-2xl font-bold">Support AllFantasy</h1>
-            <p className="mt-1 text-sm text-white/60">
-              Brackets are always free. Your support helps cover servers, data feeds, and development costs.
-            </p>
-          </div>
+        <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-8">
+          <h1 className="text-2xl font-semibold">{title}</h1>
+          <p className="mt-2 text-white/70">{subtitle}</p>
 
-          <div>
-            <p className="text-xs font-medium text-white/50 uppercase tracking-wide mb-2">
-              Choose an amount
-            </p>
-            <div className="grid grid-cols-4 gap-2">
-              {PRESET_AMOUNTS.map((a) => (
-                <button
-                  key={a}
-                  onClick={() => { setAmount(a); setUseCustom(false) }}
-                  className={`rounded-lg border py-2 text-sm font-semibold transition ${
-                    !useCustom && amount === a
-                      ? "border-blue-500 bg-blue-500/20 text-blue-400"
-                      : "border-white/10 bg-slate-800/50 text-white/70 hover:border-white/30"
-                  }`}
-                >
-                  ${a}
-                </button>
-              ))}
-            </div>
-          </div>
+          <div className="mt-6 rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+            <div className="text-sm font-semibold">Amount</div>
 
-          <div>
-            <button
-              onClick={() => setUseCustom(!useCustom)}
-              className="text-xs text-blue-400 hover:text-blue-300 transition"
-            >
-              {useCustom ? "Use preset amount" : "Enter custom amount"}
-            </button>
-            {useCustom && (
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-white/50">$</span>
+            {mode === "donate" ? (
+              <>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {DONATION_PRESETS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => {
+                        setAmount(p)
+                        setCustom("")
+                      }}
+                      className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                        amount === p && custom === ""
+                          ? "bg-gradient-to-r from-cyan-400 to-violet-500 text-slate-950"
+                          : "border border-white/15 bg-white/5 hover:bg-white/10"
+                      }`}
+                    >
+                      ${p}
+                    </button>
+                  ))}
+                </div>
+
                 <input
-                  type="number"
-                  min={1}
-                  max={500}
-                  placeholder="Enter amount"
                   value={custom}
-                  onChange={(e) => setCustom(e.target.value)}
-                  className="w-full rounded-lg border border-white/10 bg-slate-800/50 px-3 py-2 text-sm text-white placeholder-white/30 focus:border-blue-500 focus:outline-none"
+                  onChange={(e) => {
+                    setCustom(e.target.value)
+                    const num = Number(e.target.value)
+                    if (!Number.isNaN(num) && num > 0) setAmount(num)
+                  }}
+                  placeholder="Custom donation (e.g. 12)"
+                  className="mt-4 w-full rounded-xl border border-white/15 bg-slate-950/40 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/25"
                 />
-              </div>
+              </>
+            ) : (
+              <div className="mt-4 text-lg font-semibold">$9.99</div>
             )}
+
+            <button
+              disabled={loading}
+              onClick={() => startCheckout(mode === "lab" ? 9.99 : amount)}
+              className="mt-6 w-full rounded-xl bg-gradient-to-r from-cyan-400 to-violet-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:opacity-95 disabled:opacity-60"
+            >
+              {loading ? "Redirecting\u2026" : "Continue to Checkout"}
+            </button>
+
+            <p className="mt-4 text-xs text-white/55">
+              {mode === "lab"
+                ? "Bracket Lab is a research/visualization tool and does not guarantee outcomes."
+                : "Donations are optional and do not unlock competitive advantages."}
+            </p>
           </div>
-
-          {error && (
-            <p className="text-sm text-red-400">{error}</p>
-          )}
-
-          <button
-            onClick={handleDonate}
-            disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Redirecting to checkout..." : `Donate $${finalAmount || "..."}`}
-          </button>
-
-          <p className="text-[11px] text-white/40 text-center">
-            Processed securely via Stripe. No account required.
-          </p>
         </div>
       </div>
     </div>
