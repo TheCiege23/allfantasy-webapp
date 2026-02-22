@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { fetchGameWeather, isTeamDome, getVenueForTeam } from '@/lib/openweathermap'
 import { normalizeTeamAbbrev } from '@/lib/team-abbrev'
 import { fetchFantasyCalcValues, findPlayerByName, getTrendingPlayers, getValueTier, type FantasyCalcPlayer } from '@/lib/fantasycalc'
+import { getConsensusADP } from '@/lib/multi-platform-adp'
 import { getTrendingAdds, getTrendingDrops, getPlayerName, getAllPlayers } from '@/lib/sleeper-client'
 
 export interface ChatDataSources {
@@ -397,9 +398,17 @@ export async function enrichChatWithData(
         if (matched.length > 0) {
           enrichSourcesUsed.push('valuations')
           sources.valuations = matched
-          contextParts.push(`\n## PLAYER VALUES (from FantasyCalc — ${isDynasty ? 'Dynasty' : 'Redraft'})\n${matched.map(p =>
-            `- ${p.name} (${p.position}, ${p.team}): Value=${p.value} | Tier=${p.tier} | Rank=#${p.rank} | 30-Day Trend=${p.trend30Day > 0 ? '+' : ''}${p.trend30Day}`
-          ).join('\n')}`)
+          contextParts.push(`\n## PLAYER VALUES (from FantasyCalc — ${isDynasty ? 'Dynasty' : 'Redraft'})\n${matched.map(p => {
+            let line = `- ${p.name} (${p.position}, ${p.team}): Value=${p.value} | Tier=${p.tier} | Rank=#${p.rank} | 30-Day Trend=${p.trend30Day > 0 ? '+' : ''}${p.trend30Day}`
+            const consensus = getConsensusADP(p.name, p.position, p.team)
+            if (consensus && consensus.consensusADP < 9999) {
+              line += ` | ConsensusADP: ${consensus.consensusADP.toFixed(1)} (${consensus.platformCount} platforms) [${consensus.tier}]`
+              if (consensus.dynastyADP) line += ` DynADP:${consensus.dynastyADP.toFixed(1)}`
+              if (consensus.aav) line += ` AAV:$${consensus.aav.toFixed(1)}`
+              if (consensus.injury) line += ` ⚠${consensus.injury}`
+            }
+            return line
+          }).join('\n')}`)
 
           contextParts.push(`\n## VALUE TRENDS (FantasyCalc 30-Day)\nRising: ${trendingUp.map(p => `${p.player.name} (+${p.trend30Day})`).join(', ')}\nFalling: ${trendingDown.map(p => `${p.player.name} (${p.trend30Day})`).join(', ')}`)
         }

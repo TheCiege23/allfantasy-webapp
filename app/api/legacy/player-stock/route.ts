@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { pricePlayer, ValuationContext } from '@/lib/hybrid-valuation'
 import { fetchFantasyCalcValues, FantasyCalcPlayer } from '@/lib/fantasycalc'
 import { findPlayerInCSV, getPlayerValue as getCSVPlayerValue, getPlayerECR, CSVPlayerValue } from '@/lib/player-values-csv'
+import { getConsensusADP } from '@/lib/multi-platform-adp'
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/player-stock", tool: "LegacyPlayerStock" })(async (request: Request) => {
   try {
@@ -109,6 +110,8 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/player-stock", tool: "
     const playerPosition = player?.player.position || csvPlayer?.pos || ''
     const playerTeam = player?.player.maybeTeam || csvPlayer?.team || 'FA'
 
+    const multiPlatform = getConsensusADP(playerName || pricedPlayer.name, playerPosition, playerTeam)
+
     return NextResponse.json({
       success: true,
       player: {
@@ -131,6 +134,19 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/player-stock", tool: "
           age: csvPlayer.age,
           draftYear: csvPlayer.draftYear,
           scrapeDate: csvPlayer.scrapeDate
+        } : null,
+        multiPlatformADP: multiPlatform ? {
+          consensusADP: multiPlatform.consensusADP,
+          platformCount: multiPlatform.platformCount,
+          spread: multiPlatform.spread,
+          tier: multiPlatform.tier,
+          bestPlatformADP: multiPlatform.bestPlatformADP,
+          worstPlatformADP: multiPlatform.worstPlatformADP,
+          dynastyADP: multiPlatform.dynastyADP,
+          dynasty2QBADP: multiPlatform.dynasty2QBADP,
+          aav: multiPlatform.aav,
+          healthStatus: multiPlatform.healthStatus,
+          injury: multiPlatform.injury,
         } : null
       }
     })

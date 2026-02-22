@@ -1,3 +1,5 @@
+import { getConsensusADP as getMultiPlatformConsensus } from './multi-platform-adp'
+
 const FANTASYCALC_API_BASE = 'https://api.fantasycalc.com/values/current';
 const FANTASYCALC_PLAYERS_BASE = 'https://api.fantasycalc.com/players';
 
@@ -506,9 +508,31 @@ export function formatValuesForPrompt(
       const adpStr = lookup.maybeAdp ? ` | ADP: ${lookup.maybeAdp}` : '';
       const freqStr = lookup.maybeTradeFrequency ? ` | Trade Freq: ${(lookup.maybeTradeFrequency * 100).toFixed(1)}%` : '';
       const volStr = lookup.volatility !== null ? ` | Vol: ${lookup.volatility > 0 ? '+' : ''}${lookup.volatility}` : '';
-      lines.push(`- ${lookup.name}: Dynasty ${lookup.value} / Redraft ${lookup.redraftValue} | ${lookup.detailedTier.label} | Rank #${lookup.rank} (${lookup.position}${lookup.positionRank})${ageStr} | 30d trend: ${trendStr}${adpStr}${freqStr}${volStr}`);
+
+      let multiPlatStr = '';
+      try {
+        const consensus = getMultiPlatformConsensus(lookup.name, lookup.position, lookup.team || undefined);
+        if (consensus && consensus.consensusADP < 9999) {
+          multiPlatStr = ` | ConsensusADP: ${consensus.consensusADP.toFixed(1)} (${consensus.platformCount}plat, spread:${consensus.spread.toFixed(0)}) [${consensus.tier}]`;
+          if (consensus.dynastyADP) multiPlatStr += ` DynADP:${consensus.dynastyADP.toFixed(1)}`;
+          if (consensus.aav) multiPlatStr += ` AAV:$${consensus.aav.toFixed(1)}`;
+          if (consensus.injury) multiPlatStr += ` ⚠${consensus.injury}`;
+        }
+      } catch {}
+
+      lines.push(`- ${lookup.name}: Dynasty ${lookup.value} / Redraft ${lookup.redraftValue} | ${lookup.detailedTier.label} | Rank #${lookup.rank} (${lookup.position}${lookup.positionRank})${ageStr} | 30d trend: ${trendStr}${adpStr}${freqStr}${volStr}${multiPlatStr}`);
     } else {
-      lines.push(`- ${name}: Not found in FantasyCalc (treat as low-value depth)`);
+      let fallbackStr = '';
+      try {
+        const consensus = getMultiPlatformConsensus(name);
+        if (consensus && consensus.consensusADP < 9999) {
+          fallbackStr = ` — Multi-Platform ConsensusADP: ${consensus.consensusADP.toFixed(1)} [${consensus.tier}] (${consensus.position} - ${consensus.team})`;
+          if (consensus.dynastyADP) fallbackStr += ` DynADP:${consensus.dynastyADP.toFixed(1)}`;
+          if (consensus.aav) fallbackStr += ` AAV:$${consensus.aav.toFixed(1)}`;
+          if (consensus.injury) fallbackStr += ` ⚠${consensus.injury}`;
+        }
+      } catch {}
+      lines.push(`- ${name}: Not found in FantasyCalc (treat as low-value depth)${fallbackStr}`);
     }
   }
   

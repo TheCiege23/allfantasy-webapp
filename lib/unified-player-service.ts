@@ -1,6 +1,7 @@
 import { prisma } from './prisma'
 import { normalizeTeamAbbrev, normalizePosition, normalizePlayerName, playerNamesMatch } from './team-abbrev'
 import { fetchFantasyCalcValues, type FantasyCalcPlayer } from './fantasycalc'
+import { findMultiADP, getConsensusADP, type ADPConsensus } from './multi-platform-adp'
 
 export interface UnifiedPlayer {
   canonicalId: string
@@ -33,6 +34,24 @@ export interface UnifiedPlayerStats {
   source: string
 }
 
+export interface MultiPlatformADPData {
+  consensusADP: number | null
+  platformCount: number
+  adpSpread: number | null
+  tier: string | null
+  redraft: {
+    fantrax: number | null
+    sleeper: number | null
+    espn: number | null
+    mfl: number | null
+    nffc: number | null
+  }
+  dynastyADP: number | null
+  dynasty2QBADP: number | null
+  aav: number | null
+  health: { status: string | null; injury: string | null } | null
+}
+
 export interface UnifiedValuation {
   dynastyValue: number
   redraftValue: number | null
@@ -40,6 +59,7 @@ export interface UnifiedValuation {
   positionRank: number
   trend30Day: number
   source: string
+  multiPlatformADP?: MultiPlatformADPData | null
 }
 
 const SLEEPER_HEADSHOT_BASE = 'https://sleepercdn.com/content/nfl/players/thumb'
@@ -302,6 +322,8 @@ export async function enrichWithValuation(
     })
   }
 
+  const multiADP = buildMultiPlatformADPData(player.canonicalName, player.position || undefined, player.currentTeam || undefined)
+
   if (match) {
     return {
       ...player,
@@ -312,11 +334,46 @@ export async function enrichWithValuation(
         positionRank: match.positionRank,
         trend30Day: match.trend30Day,
         source: 'fantasycalc',
+        multiPlatformADP: multiADP,
+      },
+    }
+  }
+
+  if (multiADP) {
+    return {
+      ...player,
+      valuation: {
+        dynastyValue: 0,
+        redraftValue: null,
+        overallRank: multiADP.consensusADP ?? 9999,
+        positionRank: 0,
+        trend30Day: 0,
+        source: 'multi-platform-adp',
+        multiPlatformADP: multiADP,
       },
     }
   }
 
   return player
+}
+
+function buildMultiPlatformADPData(name: string, position?: string, team?: string): MultiPlatformADPData | null {
+  const entry = findMultiADP(name, position, team)
+  if (!entry) return null
+
+  const consensus = getConsensusADP(name, position, team)
+
+  return {
+    consensusADP: entry.consensus,
+    platformCount: entry.platformCount,
+    adpSpread: entry.adpSpread,
+    tier: consensus?.tier ?? null,
+    redraft: entry.redraft,
+    dynastyADP: entry.dynasty.sleeper,
+    dynasty2QBADP: entry.dynasty2QB.sleeper,
+    aav: entry.aav.mfl ?? entry.aav.espn ?? null,
+    health: entry.health.status || entry.health.injury ? entry.health : null,
+  }
 }
 
 export async function syncIdentityMap(): Promise<{ created: number; updated: number; matched: number }> {
@@ -489,6 +546,16 @@ export function buildPlayerContextForAI(players: UnifiedPlayer[]): string {
       if (p.valuation.trend30Day) {
         const arrow = p.valuation.trend30Day > 0 ? '↑' : '↓'
         parts.push(`${arrow}${Math.abs(p.valuation.trend30Day)} 30d`)
+      }
+      if (p.valuation.multiPlatformADP) {
+        const mp = p.valuation.multiPlatformADP
+        if (mp.consensusADP !== null) {
+          parts.push(`| ConsensusADP: ${mp.consensusADP.toFixed(1)} (${mp.platformCount} platforms, spread: ${mp.adpSpread?.toFixed(1) ?? '?'})`)
+        }
+        if (mp.tier) parts.push(`[${mp.tier}]`)
+        if (mp.dynastyADP !== null) parts.push(`DynADP: ${mp.dynastyADP.toFixed(1)}`)
+        if (mp.aav !== null) parts.push(`AAV: $${mp.aav.toFixed(2)}`)
+        if (mp.health?.injury) parts.push(`⚠ ${mp.health.status || ''} ${mp.health.injury}`.trim())
       }
     }
 

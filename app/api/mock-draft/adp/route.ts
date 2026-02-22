@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getLiveADP, fetchFFCADP, fetchAllFFCFormats, FFCScoringFormat } from '@/lib/adp-data'
 import { resolveSleeperIds } from '@/lib/sleeper/players-cache'
+import { findMultiADP, type ADPFormat } from '@/lib/multi-platform-adp'
 
 export async function GET(req: NextRequest) {
   try {
@@ -97,24 +98,41 @@ export async function GET(req: NextRequest) {
       sleeperIdMap = await resolveSleeperIds(entries.map(e => e.name))
     } catch {}
 
+    const adpFormat: ADPFormat = type === 'dynasty' ? 'dynasty' : 'redraft'
+
     return NextResponse.json({
-      entries: entries.map(e => ({
-        name: e.name,
-        position: e.position,
-        team: e.team,
-        adp: e.adp,
-        adpFormatted: e.adpFormatted,
-        adpTrend: e.adpTrend,
-        value: e.value,
-        sleeperId: sleeperIdMap[e.name] || null,
-        ffcPlayerId: e.ffcPlayerId,
-        timesDrafted: e.timesDrafted,
-        adpHigh: e.adpHigh,
-        adpLow: e.adpLow,
-        adpStdev: e.adpStdev,
-        bye: e.bye,
-        isRookie: e.source === 'devy' || e.source === 'rookie-db',
-      })),
+      entries: entries.map(e => {
+        const isRookie = e.source === 'devy' || e.source === 'rookie-db'
+        const mp = !isRookie ? findMultiADP(e.name, e.position, e.team || undefined) : null
+        return {
+          name: e.name,
+          position: e.position,
+          team: e.team,
+          adp: e.adp,
+          adpFormatted: e.adpFormatted,
+          adpTrend: e.adpTrend,
+          value: e.value,
+          sleeperId: sleeperIdMap[e.name] || null,
+          ffcPlayerId: e.ffcPlayerId,
+          timesDrafted: e.timesDrafted,
+          adpHigh: e.adpHigh,
+          adpLow: e.adpLow,
+          adpStdev: e.adpStdev,
+          bye: e.bye,
+          isRookie,
+          multiPlatformADP: mp ? {
+            format: adpFormat,
+            consensus: mp.consensus,
+            platformCount: mp.platformCount,
+            spread: mp.adpSpread,
+            redraft: mp.redraft,
+            dynastyADP: mp.dynasty.sleeper,
+            dynasty2QBADP: mp.dynasty2QB.sleeper,
+            aav: mp.aav.mfl ?? mp.aav.espn ?? null,
+            health: mp.health.status || mp.health.injury ? mp.health : null,
+          } : null,
+        }
+      }),
       count: entries.length,
       type,
       pool,
