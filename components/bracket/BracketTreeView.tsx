@@ -1,8 +1,9 @@
 "use client"
 
-import { useMemo, useState, useCallback, useRef } from "react"
-import { Trophy, Sparkles, Zap, Info, Check, X } from "lucide-react"
+import { useMemo, useState, useCallback, useRef, useEffect } from "react"
+import { Trophy, Sparkles, Zap, Info, Check, X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
+import { MatchupCardOverlay } from "./MatchupCardOverlay"
 
 type Game = {
   id: string
@@ -199,6 +200,7 @@ function MiniCell({
   sleeperTeams,
   highlightedTeam,
   onHoverTeam,
+  onMatchupClick,
   x,
   y,
 }: {
@@ -212,6 +214,7 @@ function MiniCell({
   sleeperTeams?: Set<string>
   highlightedTeam?: string | null
   onHoverTeam?: (team: string | null) => void
+  onMatchupClick?: (node: Node) => void
   x: number
   y: number
 }) {
@@ -352,7 +355,9 @@ function MiniCell({
         animation: upsetAnimation,
         opacity: isDimmed ? 0.3 : 1,
         transition: 'opacity 0.2s ease',
+        cursor: 'pointer',
       }}
+      onDoubleClick={() => onMatchupClick?.(node)}
     >
       <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" correct={homeCorrect} wrong={homeWrong} isUpset={homeIsUpsetPick} />
       <TeamRow name={awayName} seed={awaySeed} isPicked={awayPicked} side="away" correct={awayCorrect} wrong={awayWrong} isUpset={awayIsUpsetPick} />
@@ -379,6 +384,14 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const [showTips, setShowTips] = useState(false)
   const [autoFilling, setAutoFilling] = useState(false)
   const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<string | null>(null)
+
+  const [zoom, setZoom] = useState(1)
+  const [panX, setPanX] = useState(0)
+  const [panY, setPanY] = useState(0)
+  const [isPanning, setIsPanning] = useState(false)
+  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null)
 
   const regionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -449,6 +462,94 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     if (!res.ok) setPicks((p) => ({ ...p, [node.id]: prev }))
   }, [picks, nodesWithLive, entryId, readOnly])
 
+  const handleMatchupClick = useCallback((node: Node) => {
+    if (!isPanning) setSelectedNode(node.id)
+  }, [isPanning])
+
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      const delta = e.deltaY > 0 ? -0.1 : 0.1
+      setZoom((z) => Math.max(0.3, Math.min(3, z + delta)))
+    } else {
+      setPanX((x) => x - e.deltaX)
+      setPanY((y) => y - e.deltaY)
+    }
+  }, [])
+
+  const touchStartRef = useRef<{ touches: Array<{ x: number; y: number }>; zoom: number; panX: number; panY: number } | null>(null)
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button === 1 || (e.button === 0 && (e.altKey || e.pointerType === "touch"))) {
+      e.preventDefault()
+      setIsPanning(true)
+      panStartRef.current = { x: e.clientX, y: e.clientY, panX, panY }
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    }
+  }, [panX, panY])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isPanning) return
+    const dx = e.clientX - panStartRef.current.x
+    const dy = e.clientY - panStartRef.current.y
+    setPanX(panStartRef.current.panX + dx)
+    setPanY(panStartRef.current.panY + dy)
+  }, [isPanning])
+
+  const handlePointerUp = useCallback(() => {
+    setIsPanning(false)
+  }, [])
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length >= 2) {
+      e.preventDefault()
+      touchStartRef.current = {
+        touches: Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY })),
+        zoom,
+        panX,
+        panY,
+      }
+    }
+  }, [zoom, panX, panY])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length >= 2 && touchStartRef.current) {
+      e.preventDefault()
+      const startDist = Math.hypot(
+        touchStartRef.current.touches[1].x - touchStartRef.current.touches[0].x,
+        touchStartRef.current.touches[1].y - touchStartRef.current.touches[0].y
+      )
+      const curDist = Math.hypot(
+        e.touches[1].clientX - e.touches[0].clientX,
+        e.touches[1].clientY - e.touches[0].clientY
+      )
+      const scale = curDist / startDist
+      setZoom(Math.max(0.3, Math.min(3, touchStartRef.current.zoom * scale)))
+
+      const startCx = (touchStartRef.current.touches[0].x + touchStartRef.current.touches[1].x) / 2
+      const startCy = (touchStartRef.current.touches[0].y + touchStartRef.current.touches[1].y) / 2
+      const curCx = (e.touches[0].clientX + e.touches[1].clientX) / 2
+      const curCy = (e.touches[0].clientY + e.touches[1].clientY) / 2
+      setPanX(touchStartRef.current.panX + (curCx - startCx))
+      setPanY(touchStartRef.current.panY + (curCy - startCy))
+    }
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    touchStartRef.current = null
+  }, [])
+
+  const resetView = useCallback(() => {
+    setZoom(1)
+    setPanX(0)
+    setPanY(0)
+  }, [])
+
+  const selectedNodeData = useMemo(() => {
+    if (!selectedNode) return null
+    return nodesWithLive.find((n) => n.id === selectedNode) ?? null
+  }, [selectedNode, nodesWithLive])
+
   function scrollToRegion(region: string) {
     setActiveRegion(region)
     const el = regionRefs.current[region]
@@ -493,6 +594,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
             sleeperTeams={sleeperTeams}
             highlightedTeam={highlightedTeam}
             onHoverTeam={setHighlightedTeam}
+            onMatchupClick={handleMatchupClick}
             x={x}
             y={y}
           />
@@ -652,13 +754,42 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, background: progressPct === 100 ? '#22c55e' : '#fb923c' }} />
       </div>
 
-      {/* DESKTOP: Full bracket tree */}
+      {/* DESKTOP: Full bracket tree with pan/zoom */}
       <div className="hidden lg:block">
+        <div className="flex items-center gap-2 mb-2 justify-end">
+          <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            {Math.round(zoom * 100)}%
+          </span>
+          <button onClick={() => setZoom(z => Math.max(0.3, z - 0.15))} className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <ZoomOut className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
+          </button>
+          <button onClick={() => setZoom(z => Math.min(3, z + 0.15))} className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <ZoomIn className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
+          </button>
+          <button onClick={resetView} className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <Maximize2 className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
+          </button>
+          <span className="text-[9px] ml-2" style={{ color: 'rgba(255,255,255,0.15)' }}>Scroll to pan | Ctrl+scroll to zoom | Double-click matchup for details</span>
+        </div>
         <div
-          className="overflow-auto rounded-xl"
-          style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}
+          ref={canvasContainerRef}
+          className="overflow-hidden rounded-xl select-none"
+          style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', cursor: isPanning ? 'grabbing' : 'grab' }}
+          onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          <div style={{ padding: 24, minWidth: FULL_W + 48 }}>
+          <div style={{
+            padding: 24,
+            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+            transformOrigin: 'center center',
+            transition: isPanning ? 'none' : 'transform 0.15s ease',
+            minWidth: FULL_W + 48,
+          }}>
             <div className="relative" style={{ width: FULL_W, height: FULL_H, margin: '0 auto' }}>
 
               <svg
@@ -725,6 +856,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   sleeperTeams={sleeperTeams}
                   highlightedTeam={highlightedTeam}
                   onHoverTeam={setHighlightedTeam}
+                  onMatchupClick={handleMatchupClick}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={i === 0 ? ff0Y : ff1Y}
                 />
@@ -744,6 +876,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   sleeperTeams={sleeperTeams}
                   highlightedTeam={highlightedTeam}
                   onHoverTeam={setHighlightedTeam}
+                  onMatchupClick={handleMatchupClick}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={champY}
                 />
@@ -947,6 +1080,20 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
           </div>
         </div>
       </div>
+
+      {selectedNodeData && (
+        <MatchupCardOverlay
+          node={selectedNodeData}
+          effective={effective.get(selectedNodeData.id) ?? { home: selectedNodeData.homeTeamName, away: selectedNodeData.awayTeamName }}
+          picked={picks[selectedNodeData.id] ?? null}
+          seedMap={seedMap}
+          locked={isPickLocked(selectedNodeData)}
+          readOnly={readOnly}
+          onPick={(n, team) => { submitPick(n, team); setSelectedNode(null) }}
+          onClose={() => setSelectedNode(null)}
+          entryId={entryId}
+        />
+      )}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { scoreMomentum, scoreAccuracyBoldness, scoreStreakSurvival, type ScoringMode, type PickResult, type LeaguePickDistribution } from "@/lib/brackets/scoring"
 
 export const dynamic = "force-dynamic"
 
@@ -84,7 +85,15 @@ export async function GET(request: NextRequest) {
     })
 
     let standings = null
+    let scoringMode: ScoringMode = "momentum"
     if (leagueId) {
+      const league = await prisma.bracketLeague.findUnique({
+        where: { id: leagueId },
+        select: { scoringRules: true },
+      })
+      const rules = (league?.scoringRules || {}) as any
+      scoringMode = rules.mode || "momentum"
+
       const entries = await prisma.bracketEntry.findMany({
         where: { leagueId },
         include: {
@@ -97,33 +106,86 @@ export async function GET(request: NextRequest) {
       const nodeRoundMap = new Map<string, number>()
       for (const n of nodes) nodeRoundMap.set(n.id, n.round)
 
-      const ROUND_MAX: Record<number, number> = { 1: 32, 2: 16, 3: 8, 4: 4, 5: 2, 6: 1 }
       const ROUND_PTS: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32 }
 
+      const seedMapLocal = new Map<string, number>()
+      for (const n of nodes) {
+        if (n.round === 1) {
+          if (n.homeTeamName && n.seedHome != null) seedMapLocal.set(n.homeTeamName, n.seedHome)
+          if (n.awayTeamName && n.seedAway != null) seedMapLocal.set(n.awayTeamName, n.seedAway)
+        }
+      }
+
+      let leagueDistribution: LeaguePickDistribution = {}
+      if (scoringMode === "accuracy_boldness") {
+        for (const entry of entries) {
+          for (const pick of entry.picks) {
+            if (!pick.pickedTeamName) continue
+            if (!leagueDistribution[pick.nodeId]) leagueDistribution[pick.nodeId] = {}
+            leagueDistribution[pick.nodeId][pick.pickedTeamName] =
+              (leagueDistribution[pick.nodeId][pick.pickedTeamName] || 0) + 1
+          }
+        }
+      }
+
       standings = entries.map((entry) => {
-        let totalPoints = 0
         let correctPicks = 0
         let totalPicks = 0
         const roundCorrect: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
-
         let championPick: string | null = null
         let maxPossible = 0
 
-        for (const pick of entry.picks) {
+        const pickResults: PickResult[] = entry.picks.map((pick) => {
           const round = nodeRoundMap.get(pick.nodeId) ?? 0
-          totalPoints += pick.points ?? 0
           if (pick.isCorrect === true) {
             correctPicks++
             if (round >= 1 && round <= 6) roundCorrect[round]++
           }
           if (pick.isCorrect !== null) totalPicks++
-
           if (pick.isCorrect !== false && round >= 1 && round <= 6) {
             maxPossible += ROUND_PTS[round] ?? 0
           }
-
           if (round === 6 && pick.pickedTeamName) {
             championPick = pick.pickedTeamName
+          }
+
+          const node = nodes.find((n) => n.id === pick.nodeId)
+          const gameForNode = node?.sportsGameId ? gameMap.get(node.sportsGameId) : null
+          let actualWinnerSeed: number | null = null
+          if (gameForNode && gameForNode.status === "final" && gameForNode.homeScore != null && gameForNode.awayScore != null) {
+            const winner = gameForNode.homeScore > gameForNode.awayScore ? node?.homeTeamName : node?.awayTeamName
+            actualWinnerSeed = winner ? (seedMapLocal.get(winner) ?? null) : null
+          }
+
+          return {
+            nodeId: pick.nodeId,
+            round,
+            pickedTeamName: pick.pickedTeamName,
+            isCorrect: pick.isCorrect,
+            pickedSeed: pick.pickedTeamName ? (seedMapLocal.get(pick.pickedTeamName) ?? null) : null,
+            actualWinnerSeed,
+          }
+        })
+
+        let totalPoints = 0
+        let details: any = null
+        switch (scoringMode) {
+          case "accuracy_boldness": {
+            const result = scoreAccuracyBoldness(pickResults, leagueDistribution)
+            totalPoints = result.total
+            details = result
+            break
+          }
+          case "streak_survival": {
+            const result = scoreStreakSurvival(pickResults)
+            totalPoints = result.total
+            details = { currentStreak: result.currentStreak, longestStreak: result.longestStreak }
+            break
+          }
+          default: {
+            const result = scoreMomentum(pickResults)
+            totalPoints = result.total
+            details = result
           }
         }
 
@@ -139,6 +201,7 @@ export async function GET(request: NextRequest) {
           roundCorrect,
           championPick,
           maxPossible,
+          scoringDetails: details,
         }
       })
 

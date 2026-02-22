@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useCallback } from "react"
 
 type LivePayload = {
   ok: boolean
@@ -29,6 +29,9 @@ type LivePayload = {
     championPick?: string | null
     maxPossible?: number
   }>
+  sleeperTeams?: string[]
+  hasLiveGames?: boolean
+  pollIntervalMs?: number
 }
 
 export function useBracketLive(opts: {
@@ -36,14 +39,17 @@ export function useBracketLive(opts: {
   leagueId?: string
   enabled?: boolean
   intervalMs?: number
+  useSSE?: boolean
 }) {
-  const { tournamentId, leagueId, enabled = true, intervalMs = 15000 } = opts
+  const { tournamentId, leagueId, enabled = true, intervalMs = 15000, useSSE = false } = opts
 
   const [data, setData] = useState<LivePayload | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [connected, setConnected] = useState(false)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const eventSourceRef = useRef<EventSource | null>(null)
 
-  async function tick() {
+  const tick = useCallback(async () => {
     try {
       const qs = new URLSearchParams({ tournamentId })
       if (leagueId) qs.set("leagueId", leagueId)
@@ -55,17 +61,59 @@ export function useBracketLive(opts: {
     } catch (e: any) {
       setError(e?.message ?? "Live fetch failed")
     }
-  }
+  }, [tournamentId, leagueId])
 
   useEffect(() => {
     if (!enabled) return
+
+    if (useSSE && typeof EventSource !== "undefined") {
+      const qs = new URLSearchParams({ tournamentId })
+      if (leagueId) qs.set("leagueId", leagueId)
+      const es = new EventSource(`/api/bracket/live/stream?${qs.toString()}`)
+      eventSourceRef.current = es
+
+      es.addEventListener("connected", () => {
+        setConnected(true)
+        setError(null)
+      })
+
+      es.addEventListener("update", (e) => {
+        try {
+          const payload = JSON.parse(e.data)
+          setData((prev) => ({
+            ...prev,
+            ok: true,
+            tournamentId,
+            games: payload.games ?? prev?.games ?? [],
+            standings: payload.standings ?? prev?.standings ?? null,
+            hasLiveGames: payload.hasLive,
+          }))
+          setError(null)
+        } catch {}
+      })
+
+      es.addEventListener("error", () => {
+        setConnected(false)
+        setError("Connection lost, reconnecting...")
+      })
+
+      es.onerror = () => {
+        setConnected(false)
+      }
+
+      return () => {
+        es.close()
+        eventSourceRef.current = null
+        setConnected(false)
+      }
+    }
+
     tick()
     timer.current = setInterval(tick, intervalMs)
     return () => {
       if (timer.current) clearInterval(timer.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournamentId, leagueId, enabled, intervalMs])
+  }, [tournamentId, leagueId, enabled, intervalMs, useSSE, tick])
 
-  return { data, error, refresh: tick }
+  return { data, error, refresh: tick, connected }
 }

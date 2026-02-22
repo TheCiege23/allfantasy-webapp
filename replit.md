@@ -1,7 +1,7 @@
 # AllFantasy
 
 ## Overview
-AllFantasy is an AI-powered fantasy sports platform designed to provide advanced analytical tools for fantasy football enthusiasts. It offers AI-driven trade evaluations, waiver wire recommendations, and personalized career insights, aiming to become a leading hub in the fantasy sports market through sophisticated AI analytics, robust league management, and integrated social sharing. The platform seeks to establish an "AF Legacy" by delivering comprehensive tools that enhance the fantasy sports experience.
+AllFantasy is an AI-powered fantasy sports platform designed to provide advanced analytical tools for fantasy football enthusiasts. It offers AI-driven trade evaluations, waiver wire recommendations, and personalized career insights. The platform aims to become a leading hub in the fantasy sports market by leveraging sophisticated AI analytics, robust league management, and integrated social sharing to enhance the fantasy sports experience and establish an "AF Legacy."
 
 ## User Preferences
 I want to use the Replit AI Integrations for OpenAI.
@@ -22,58 +22,50 @@ The AllFantasy platform is built with Next.js 14 (App Router) and TypeScript, st
 The design is mobile-first, featuring a persistent Bottom Tab Bar, contextual AI Bottom Sheets, Universal AI Badges, and tabbed navigation. A universal theme system (Dark, Light, AF Legacy) is controlled by `ThemeProvider`. The dashboard offers an AI Overview displaying user data, league information, and recommended actions.
 
 **Technical Implementations:**
-The core architecture is based on a `One Engine API` that integrates a One Scoring Core, One Narrative System, and One Monitoring System.
--   **Authentication System:** Features password-based signup, email verification, login, password reset, optional Sleeper account linking, and a three-tier gating system with age/email/phone verification, all rate-limited.
--   **Universal Trade Engine:** A deterministic `runTradeAnalysis()` pipeline supports various league scoring, team direction inference, and acceptance probability modeling. It uses a 2-Stage Trade Analysis Pipeline: Stage A (Deterministic Intelligence Layer) provides the primary verdict, and Stage B (Peer Review Layer) uses OpenAI and Grok for explanation without overriding the deterministic outcome.
--   **AI-Powered Analysis:** Includes Instant Trade Check, Personalized AI Chat (Chimmy with real-time data enrichment from FantasyCalc, Sleeper trending, depth charts, news, injuries, weather, live scores, and player stats), AI Trade Evaluator with deterministic tiers, pick aging, and veto layer, Deterministic Waiver AI, and a Goal-Driven AI Trade Proposal Generator.
--   **Adaptive Consensus + Context Rankings:** A multi-dimensional player ranking system with percentile-normalized scores and a League Demand Index, incorporating an Adaptive Rankings v2 Engine that learns from historical trades.
--   **League Rankings V2 (Team-Level):** A two-layer team ranking system (Power Rankings and Dynasty Outlook) with five core scores, AI Coach Box, Motivational Framing System, Luck Meter, and Win Window projection.
--   **Valuation Systems:** Features IDP & Kicker Valuation and a Devy Player Classification & Intelligence Engine.
+The core architecture is based on a `One Engine API` that integrates a One Scoring Core, One Narrative System, and One Monitoring System. Key features include:
+-   **Authentication System:** Password-based signup, email/phone verification, login, and optional Sleeper account linking.
+-   **Universal Trade Engine:** A deterministic `runTradeAnalysis()` pipeline with a 2-Stage Trade Analysis (Deterministic Intelligence Layer and Peer Review Layer for explanation).
+-   **AI-Powered Analysis:** Instant Trade Check, Personalized AI Chat (Chimmy), AI Trade Evaluator with deterministic tiers and veto layer, Deterministic Waiver AI, and a Goal-Driven AI Trade Proposal Generator.
+-   **Adaptive Consensus + Context Rankings:** Multi-dimensional player ranking system with a League Demand Index and an Adaptive Rankings v2 Engine.
+-   **League Rankings V2 (Team-Level):** Two-layer team ranking system (Power Rankings and Dynasty Outlook) with five core scores, AI Coach Box, and Win Window projection.
 -   **Monte Carlo Simulation Engine:** Performs matchup, season, and championship delta simulations.
--   **Acceptance Probability Model:** A logistic regression model with isotonic regression for calibrated predictions.
--   **Manager Psychology Profiles:** AI-powered psychological analysis of each league manager based on their trade history, win/loss records, waiver activity, and roster management. Generates archetypes, trait scores (Risk Tolerance, Patience, Aggression, Adaptability), tendencies, blind spots, negotiation styles, and risk/decision profiles. Accessible via dropdown in League Rankings V2 team cards.
+-   **Acceptance Probability Model:** A logistic regression model for calibrated predictions.
+-   **Manager Psychology Profiles:** AI-powered psychological analysis of league managers based on their activity.
 -   **Game Theory Counter Builder:** Generates mathematically optimized counter offers.
--   **NCAA Bracket Challenge (Sleeper-Style):** A full March Madness bracket system rebuilt with Sleeper app-inspired UI/UX. Features include: dark navy (#0d1117) theme with orange (#fb923c) accents, simplified pool creation (name-only), BracketTreeView with 4-region layout + SVG connectors + Final Four center, POOL/BRACKETS/GLOBAL tabs, invite link sharing, auto-fill functionality (higher-seeded favorites), "Sleeper" team badges (purple highlights for teams outperforming seed expectations), global cross-pool rankings, strategy tips panel, standard scoring (1/2/4/8/16/32 per game, max 192), up to 10,000 participants per pool, First Four play-in exclusion from locking, mobile region shortcuts, and in-app chat.
--   **Trade Improvement AI (Dual-Brain):** Utilizes Agentic Grok and GPT-4o for parallel synthesis with a real-time UI.
--   **Unified Canonical Context (v1):** All trade tools share a `TradeDecisionContextV1` via `buildUnifiedTradeContext()`, bridging legacy data with a canonical schema and providing freshness, coverage, and quality metadata.
--   **Data Quality Features:** Includes Source Freshness Scoring, Data Coverage Tier Scoring, and Confidence Guard Gates (Injury Compound Risk Guard, Missing Roster/Team Data Guard).
--   **Trade Analysis UI Badges:** Three expandable badges (`Freshness Badge`, `Coverage Badge`, `Disagreement Badge`) display data quality signals.
+-   **NCAA Bracket Challenge (Sleeper-Style):** Full March Madness bracket system with dark navy theme, simplified pool creation, BracketTreeView, multiple scoring modes, interactive canvas, and SSE Live Updates.
+-   **Trade Improvement AI (Dual-Brain):** Utilizes Agentic Grok and GPT-4o for parallel synthesis.
+-   **Unified Canonical Context (v1):** All trade tools share a `TradeDecisionContextV1` for consistent data.
+-   **Data Quality Features:** Includes Source Freshness Scoring, Data Coverage Tier Scoring, and Confidence Guard Gates.
 -   **3-Section Trade Response:** API responses are structured into Value Verdict, Viability Verdict, and Action Plan.
--   **Rivalry Week Mode:** A deterministic rivalry scoring engine computes head-to-head records, trade friction, and matchup impact, generating narrative cards with AI-generated hype text.
--   **League Sync System:** A multi-platform league sync system supports Sleeper, MFL, ESPN, and Yahoo, with encrypted credential storage.
--   **Manager DNA Cards:** Opponent-specific draft behavior profiling system computing 5 behavioral signals per manager from roster/performance data, deriving archetypes.
--   **Live Board Volatility Meter:** Per-pick decision-risk overlay on the predicted draft board, using normalized Shannon entropy to classify pick windows and compute confidence bands.
--   **Snipe Radar:** Pre-pick threat detection system using Monte Carlo simulations to identify players likely to be taken before user picks.
--   **Trade-Window Optimizer:** Actionable draft-day trade optimizer generating top trade-up and trade-down offers ranked by risk-adjusted expected value.
--   **Board Drift Report:** Weekly "Monday morning draft intel" system comparing current ADP snapshots against the previous week to identify risers/fallers and changes in manager tendency projections.
--   **Explainable AI Scorecards:** Per-pick weighted-factor breakdown showing how each signal (ADP Position, Team Need, Manager Style, News Impact, Rookie Rank Boost) contributed to the AI's prediction.
--   **Scenario Lab:** User-controlled "what-if" simulation engine with toggle-able market assumptions, running parallel baseline vs scenario simulations.
--   **Enhanced Mock Draft System:** League import from Sleeper (draft order, traded picks, rosters, league settings), multi-pool ADP (rookie/vet/combined), AI opponent picking engine (needs-based with realistic delays), AI DM suggestions with OpenAI-powered insights, fullscreen mode, 3-mode auto-pick (OFF/BPA/NEEDS), current roster display for rookie drafts, traded pick indicators on draft board. APIs: `/api/mock-draft/league-import`, `/api/mock-draft/ai-pick` (pick/dm-suggestion/trade-proposal actions), `/api/mock-draft/adp?pool=rookie|vet|combined|all`.
--   **Draft-Day Assistant Mode:** On-the-clock decision intelligence providing instant top 3 picks, wait/take advice, and one-tap queue generation.
--   **Post-Draft Retrospective:** Compares AI predict-board predictions vs actual draft picks after real draft import, featuring per-manager prediction accuracy and automatic per-league model calibration.
--   **Market Timing Alerts:** AI-powered buy/sell signal system based on dynasty values and trends for NFL and Devy players.
--   **News-Driven Value Adjustments:** Real-time news sentiment analysis that modifies player values before deterministic trade calculations, with multipliers based on severity and sentiment.
--   **Definitive Player Classification Engine:** Multi-source cross-referencing system that definitively classifies every devy player into statuses: `college`, `declared`, `drafted`, `nfl_active`, or `returning`.
--   **CFBD v2 Enhanced Devy Intelligence:** Enriched devy valuations incorporating recruiting composite ratings, transfer portal tracking, player usage rates, Predicted Points Added (PPA), Wins-above-Expected Points Added (WEPA), SP+ team context ratings, and returning production percentages.
-
--   **Stripe Payment Integration for Brackets:** Paid bracket pools use Stripe Checkout for hosting convenience fees. Two products: $2 "Bracket Hosting Fee" (first bracket in paid league) and $3 "Unlimited Brackets Unlock" (after 3 brackets). Payment state tracked via `BracketPayment` model. Stripe client at `lib/stripe-client.ts`. APIs: `/api/bracket/stripe/checkout` (create checkout session), `/api/bracket/stripe/webhook` (Stripe webhook handler), `/api/bracket/stripe/payment-status` (check user payment state), `/api/bracket/stripe/init` (initialize Stripe schema), `/api/bracket/stripe/publishable-key` (frontend key). Seed script: `scripts/seed-bracket-products.ts`. FanCred link-out in settings panel for league dues/payouts (external). Free leagues have no payment gates; paid leagues enforce $2 first bracket fee and $3 unlimited unlock.
+-   **Rivalry Week Mode:** Deterministic rivalry scoring engine for narrative cards.
+-   **League Sync System:** Multi-platform league sync supporting Sleeper, MFL, ESPN, and Yahoo.
+-   **Manager DNA Cards:** Opponent-specific draft behavior profiling.
+-   **Live Board Volatility Meter & Snipe Radar:** Draft-day decision support.
+-   **Trade-Window Optimizer:** Actionable draft-day trade offers.
+-   **Enhanced Mock Draft System:** League import, multi-pool ADP, AI opponent picking, and AI DM suggestions.
+-   **Draft-Day Assistant Mode:** On-the-clock decision intelligence.
+-   **Market Timing Alerts:** AI-powered buy/sell signals for players.
+-   **News-Driven Value Adjustments:** Real-time news sentiment analysis impacting player values.
+-   **Definitive Player Classification Engine:** Classifies devy players into statuses.
+-   **CFBD v2 Enhanced Devy Intelligence:** Enriched devy valuations using college football data.
+-   **Stripe Payment Integration:** Handles payments for paid bracket pools.
 
 ## External Dependencies
--   **OpenAI**: Used for general AI analysis.
--   **Grok**: Used for social media post generation.
--   **PostgreSQL**: The primary database.
--   **Sleeper API**: Integrates user league data and trending player information.
--   **Rolling Insights Sports API**: Provides primary NFL sports data, including depth charts and team season statistics.
--   **API-Sports.io**: A secondary NFL data provider with comprehensive endpoint coverage, including teams, players, statistics, and games.
--   **TheSportsDB API**: Serves as a tertiary sports data fallback.
--   **ESPN API**: Provides live scores, news, team rosters, injuries, game summaries, and standings.
--   **CollegeFootballData.com API (CFBD v2)**: Provides college football data, including rosters, stats, recruiting ratings, and advanced player metrics.
--   **Resend**: Used for email notifications.
--   **Twilio Verify API**: Used for phone verification.
--   **OpenWeatherMap API**: Provides game-day weather data.
--   **NewsAPI.org**: Comprehensive news intelligence, including keyword searches, top headlines, sentiment detection, and player/team tagging.
--   **Serper**: Google Search API for web and news searches, utilized by AI tools for real-time information retrieval.
--   **xAI (Grok)**: Dual-API client via `lib/xai-client.ts`. Uses Chat Completions API (`/v1/chat/completions`) for plain text calls and automatically routes to Responses API (`/v1/responses`) when search tools (`web_search`, `x_search`) are present. Full typed response parsing for both APIs including `XaiChatCompletionResponse` (id, object, created, model, system_fingerprint, choices with finish_reason/refusal/reasoning_content, usage with prompt_tokens_details/completion_tokens_details/num_sources_used) and `XaiResponsesResponse` (output items with content/annotations, reasoning summaries, usage with input_tokens_details/output_tokens_details/num_server_side_tools_used/cost_in_usd_ticks). Tool types: `XaiToolXSearch` (from_date, to_date, allowed_x_handles, excluded_x_handles, enable_image_understanding) and `XaiToolWebSearch` (allowed_domains, excluded_domains, enable_image_understanding, user_location_country/city/region/timezone). Request params include topP, n, stop, presencePenalty, frequencyPenalty, responseFormat, seed. Used by Social Pulse, Chimmy chatbot, GM Intelligence, Dual-Brain Trade Analyzer, Trade Improvement AI. Separate `lib/ai-external/grok.ts` provides enrichment layer with safety guardrails for narrative-only outputs.
--   **FantasyCalc API**: The primary source for trade values, including dynasty/redraft values, tiers, and player directories with cross-platform IDs.
--   **Multi-Platform ADP Data**: Comprehensive CSV (`data/nfl-adp-multiplatform.csv`) with ~4500 players across Fantrax, Sleeper, ESPN, MFL, NFFC platforms. Includes redraft ADP, 2QB ADP, dynasty ADP, dynasty 2QB ADP, AAV (Average Annual Value), and health reports (status + injury). Parsed by `lib/multi-platform-adp.ts` with format-aware consensus calculation, name-indexed lookups, tier assignment, and platform disagreement detection. Integrated into: unified player service (`enrichWithValuation`), trade analysis (`formatValuesForPrompt`), mock draft ADP endpoint, chat data enrichment, player stock endpoint, and AI context builder.
+-   **OpenAI**: General AI analysis.
+-   **Grok**: Social media post generation and AI tools.
+-   **PostgreSQL**: Primary database.
+-   **Sleeper API**: User league data and trending player information.
+-   **Rolling Insights Sports API**: Primary NFL sports data (depth charts, team stats).
+-   **API-Sports.io**: Secondary NFL data provider.
+-   **TheSportsDB API**: Tertiary sports data fallback.
+-   **ESPN API**: Live scores, news, team rosters, injuries.
+-   **CollegeFootballData.com API (CFBD v2)**: College football data.
+-   **Resend**: Email notifications.
+-   **Twilio Verify API**: Phone verification.
+-   **OpenWeatherMap API**: Game-day weather data.
+-   **NewsAPI.org**: News intelligence, sentiment analysis.
+-   **Serper**: Google Search API for AI tools.
+-   **FantasyCalc API**: Primary source for trade values, tiers, and player directories.
+-   **Multi-Platform ADP Data**: Local CSV for redraft and dynasty ADP.
 -   **Community Trade Value Data**: Locally stored historical NFL player and pick values.
+-   **Stripe**: Payment processing for bracket pools.
