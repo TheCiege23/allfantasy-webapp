@@ -151,6 +151,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </Script>
       </head>
       <body className={`${inter.variable} antialiased min-h-screen`} style={{ background: "var(--bg)", color: "var(--text)" }}>
+        <div id="fb-root"></div>
+        <Script
+          src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v25.0&appId=1790659191546539"
+          strategy="afterInteractive"
+          crossOrigin="anonymous"
+        />
         <ThemeProvider>
           {children}
           <Toaster position="top-center" richColors closeButton />
