@@ -2,10 +2,11 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Globe, Lock } from "lucide-react"
 
 export default function NewBracketLeaguePage() {
   const [name, setName] = useState("")
+  const [isPublic, setIsPublic] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAgeConfirm, setShowAgeConfirm] = useState(false)
@@ -44,6 +45,7 @@ export default function NewBracketLeaguePage() {
           season: new Date().getFullYear(),
           sport: "ncaam",
           maxManagers: 100,
+          isPublic,
         }),
       })
 
@@ -102,6 +104,46 @@ export default function NewBracketLeaguePage() {
             <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
               Don&apos;t worry. You will be able to change this later.
             </p>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold" style={{ color: '#fb923c' }}>Pool Visibility</label>
+            <div className="flex gap-3 mt-3">
+              <button
+                type="button"
+                onClick={() => setIsPublic(false)}
+                className="flex-1 flex items-center gap-3 rounded-xl p-3.5 transition"
+                style={{
+                  background: !isPublic ? 'rgba(251,146,60,0.1)' : 'rgba(255,255,255,0.02)',
+                  border: `1.5px solid ${!isPublic ? 'rgba(251,146,60,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                }}
+              >
+                <Lock className="w-5 h-5 flex-shrink-0" style={{ color: !isPublic ? '#fb923c' : 'rgba(255,255,255,0.25)' }} />
+                <div className="text-left">
+                  <div className="text-sm font-semibold" style={{ color: !isPublic ? 'white' : 'rgba(255,255,255,0.4)' }}>Private</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: !isPublic ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)' }}>
+                    Invite only via code
+                  </div>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPublic(true)}
+                className="flex-1 flex items-center gap-3 rounded-xl p-3.5 transition"
+                style={{
+                  background: isPublic ? 'rgba(251,146,60,0.1)' : 'rgba(255,255,255,0.02)',
+                  border: `1.5px solid ${isPublic ? 'rgba(251,146,60,0.4)' : 'rgba(255,255,255,0.06)'}`,
+                }}
+              >
+                <Globe className="w-5 h-5 flex-shrink-0" style={{ color: isPublic ? '#fb923c' : 'rgba(255,255,255,0.25)' }} />
+                <div className="text-left">
+                  <div className="text-sm font-semibold" style={{ color: isPublic ? 'white' : 'rgba(255,255,255,0.4)' }}>Public</div>
+                  <div className="text-[10px] mt-0.5" style={{ color: isPublic ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)' }}>
+                    Anyone can find &amp; join
+                  </div>
+                </div>
+              </button>
+            </div>
           </div>
 
           {showAgeConfirm && (
