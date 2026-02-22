@@ -1,7 +1,7 @@
 modules = ["nodejs-20", "python-3.11", "postgresql-16"]
 [agent]
 expertMode = true
-integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:2.0.0", "resend:1.0.0"]
+integrations = ["javascript_database:1.0.0", "javascript_openai_ai_integrations:2.0.0", "resend:1.0.0", "stripe:2.0.0"]
 
 [workflows]
 runButton = "Project"
@@ -48,7 +48,7 @@ externalPort = 80
 
 [nix]
 channel = "stable-25_05"
-packages = ["zip", "git-filter-repo"]
+packages = ["git-filter-repo", "zip"]
 
 [deployment]
 deploymentTarget = "autoscale"

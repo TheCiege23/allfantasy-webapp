@@ -56,6 +56,8 @@ The core architecture is based on a `One Engine API` that integrates a One Scori
 -   **Definitive Player Classification Engine:** Multi-source cross-referencing system that definitively classifies every devy player into statuses: `college`, `declared`, `drafted`, `nfl_active`, or `returning`.
 -   **CFBD v2 Enhanced Devy Intelligence:** Enriched devy valuations incorporating recruiting composite ratings, transfer portal tracking, player usage rates, Predicted Points Added (PPA), Wins-above-Expected Points Added (WEPA), SP+ team context ratings, and returning production percentages.
 
+-   **Stripe Payment Integration for Brackets:** Paid bracket pools use Stripe Checkout for hosting convenience fees. Two products: $2 "Bracket Hosting Fee" (first bracket in paid league) and $3 "Unlimited Brackets Unlock" (after 3 brackets). Payment state tracked via `BracketPayment` model. Stripe client at `lib/stripe-client.ts`. APIs: `/api/bracket/stripe/checkout` (create checkout session), `/api/bracket/stripe/webhook` (Stripe webhook handler), `/api/bracket/stripe/payment-status` (check user payment state), `/api/bracket/stripe/init` (initialize Stripe schema), `/api/bracket/stripe/publishable-key` (frontend key). Seed script: `scripts/seed-bracket-products.ts`. FanCred link-out in settings panel for league dues/payouts (external). Free leagues have no payment gates; paid leagues enforce $2 first bracket fee and $3 unlimited unlock.
+
 ## External Dependencies
 -   **OpenAI**: Used for general AI analysis.
 -   **Grok**: Used for social media post generation.

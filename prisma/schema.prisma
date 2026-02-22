@@ -2224,6 +2224,7 @@ model AppUser {
   mockDrafts           MockDraft[]
   activeLeagueId       String?
   bracketLeagueMessages BracketLeagueMessage[] @relation("BracketLeagueMessages")
+  bracketPayments      BracketPayment[]       @relation("BracketPayments")
 
   @@map("app_users")
 }
@@ -2279,6 +2280,7 @@ model BracketTournament {
 
   nodes     BracketNode[]
   leagues   BracketLeague[]
+  payments  BracketPayment[]
 
   @@unique([sport, season])
 }
@@ -2330,6 +2332,7 @@ model BracketLeague {
   members      BracketLeagueMember[]
   entries      BracketEntry[]
   messages     BracketLeagueMessage[]
+  payments     BracketPayment[]
 
   @@index([tournamentId])
   @@index([ownerId])
@@ -2394,6 +2397,27 @@ model BracketLeagueMessage {
   @@index([leagueId, createdAt])
   @@index([userId])
   @@map("bracket_league_messages")
+}
+
+model BracketPayment {
+  id                  String   @id @default(uuid())
+  userId              String
+  leagueId            String
+  tournamentId        String
+  paymentType         String
+  stripeSessionId     String?  @unique
+  stripePaymentIntent String?
+  status              String   @default("pending")
+  amountCents         Int
+  createdAt           DateTime @default(now())
+  completedAt         DateTime?
+
+  user       AppUser           @relation("BracketPayments", fields: [userId], references: [id], onDelete: Cascade)
+  league     BracketLeague     @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  tournament BracketTournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([userId, leagueId, tournamentId])
+  @@index([stripeSessionId])
 }
 
 enum VerificationMethod {

@@ -45,10 +45,8 @@ export async function POST(req: Request) {
   }
 
   const rules = (league.scoringRules || {}) as any
-  const entriesPerUserFree = Number(rules.entriesPerUserFree ?? 2)
-  const maxEntriesPerUser = Number(rules.maxEntriesPerUser ?? 10)
   const isPaidLeague = Boolean(rules.isPaidLeague)
-  const commissionerPaymentConfirmedAt = rules.commissionerPaymentConfirmedAt
+  const maxEntriesPerUser = Number(rules.maxEntriesPerUser ?? 10)
 
   const count = await (prisma as any).bracketEntry.count({
     where: { leagueId, userId: auth.userId },
@@ -64,15 +62,41 @@ export async function POST(req: Request) {
     )
   }
 
-  const needsPayment = count >= entriesPerUserFree
-  if (needsPayment && (!isPaidLeague || !commissionerPaymentConfirmedAt)) {
-    return NextResponse.json(
-      {
-        error: "PAYMENT_REQUIRED_FOR_EXTRA_ENTRIES",
-        message: "This league allows 2 free entries. Additional entries require commissioner-confirmed FanCred payment.",
+  if (isPaidLeague) {
+    const payments = await (prisma as any).bracketPayment.findMany({
+      where: {
+        userId: auth.userId,
+        leagueId,
+        tournamentId: league.tournamentId,
+        status: "completed",
       },
-      { status: 402 }
-    )
+      select: { paymentType: true },
+    })
+
+    const hasPaidFirstBracket = payments.some((p: any) => p.paymentType === "first_bracket_fee")
+    const hasUnlimitedUnlock = payments.some((p: any) => p.paymentType === "unlimited_unlock")
+
+    if (count === 0 && !hasPaidFirstBracket) {
+      return NextResponse.json(
+        {
+          error: "PAYMENT_REQUIRED",
+          paymentType: "first_bracket_fee",
+          message: "A $2 hosting fee is required to create your first bracket in this paid league.",
+        },
+        { status: 402 }
+      )
+    }
+
+    if (count >= 3 && !hasUnlimitedUnlock) {
+      return NextResponse.json(
+        {
+          error: "PAYMENT_REQUIRED",
+          paymentType: "unlimited_unlock",
+          message: "You've used your 3 included brackets. Unlock unlimited brackets for $3.",
+        },
+        { status: 402 }
+      )
+    }
   }
 
   const entry = await (prisma as any).bracketEntry.create({
@@ -89,6 +113,5 @@ export async function POST(req: Request) {
     entryId: entry.id,
     tournamentId: league.tournamentId,
     entryCountForUser: count + 1,
-    freeEntriesRemaining: Math.max(0, entriesPerUserFree - (count + 1)),
   })
 }

@@ -9,7 +9,6 @@ import { PoolBrackets } from "./PoolBrackets"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 import CopyJoinCode from "@/app/brackets/leagues/[leagueId]/CopyJoinCode"
 import CreateEntryButton from "@/app/brackets/leagues/[leagueId]/CreateEntryButton"
-import ConfirmPaymentButton from "@/app/brackets/leagues/[leagueId]/ConfirmPaymentButton"
 
 type Member = {
   id: string
@@ -513,12 +512,34 @@ function SettingsPanel({
       </div>
 
       {isPaidLeague && (
-        <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)' }}>
-          <div className="text-sm font-semibold" style={{ color: '#6ee7b7' }}>Paid League (FanCred)</div>
-          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            Status: {paymentConfirmedAt ? `Confirmed` : "Pending confirmation"}
+        <div className="space-y-3">
+          <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.12)' }}>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'rgba(251,146,60,0.15)' }}>
+                <span className="text-xs" style={{ color: '#fb923c' }}>$</span>
+              </div>
+              <span className="text-sm font-semibold" style={{ color: '#fb923c' }}>Paid League</span>
+            </div>
+            <div className="text-xs space-y-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              <div>$2 hosting fee for first bracket</div>
+              <div>Includes 3 brackets. Unlock unlimited for $3.</div>
+            </div>
           </div>
-          {isOwner && !paymentConfirmedAt && <ConfirmPaymentButton leagueId={leagueId} />}
+
+          <a
+            href="https://fancred.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded-xl p-3 text-center transition-all hover:opacity-80"
+            style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}
+          >
+            <div className="text-xs font-semibold" style={{ color: '#818cf8' }}>
+              Pay League Dues on FanCred &rarr;
+            </div>
+            <div className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              Dues and payouts are handled on FanCred. This app only hosts brackets.
+            </div>
+          </a>
         </div>
       )}
     </div>

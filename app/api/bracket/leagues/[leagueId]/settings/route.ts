@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth-options"
-import { db } from "@/lib/db"
-import { bracketLeagues } from "@/lib/schema"
-import { eq } from "drizzle-orm"
+import { authOptions } from "@/lib/auth"
+import { prisma } from "@/lib/prisma"
 
 export async function PATCH(
   req: NextRequest,
@@ -18,11 +16,10 @@ export async function PATCH(
     const { leagueId } = params
     const body = await req.json()
 
-    const [league] = await db
-      .select()
-      .from(bracketLeagues)
-      .where(eq(bracketLeagues.id, leagueId))
-      .limit(1)
+    const league = await (prisma as any).bracketLeague.findUnique({
+      where: { id: leagueId },
+      select: { ownerId: true, scoringRules: true },
+    })
 
     if (!league) {
       return NextResponse.json({ error: "League not found" }, { status: 404 })
@@ -48,10 +45,10 @@ export async function PATCH(
       }
     }
 
-    await db
-      .update(bracketLeagues)
-      .set({ scoringRules: updatedRules })
-      .where(eq(bracketLeagues.id, leagueId))
+    await (prisma as any).bracketLeague.update({
+      where: { id: leagueId },
+      data: { scoringRules: updatedRules },
+    })
 
     return NextResponse.json({ ok: true, scoringRules: updatedRules })
   } catch (err: any) {
