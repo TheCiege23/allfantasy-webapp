@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import OpenAI from 'openai'
 import { getLiveADP } from '@/lib/adp-data'
 import { applyRealtimeAdpAdjustments } from '@/lib/mock-draft/adp-realtime-adjuster'
+import { summarizeDraftValidation, type DraftType } from '@/lib/mock-draft/draft-engine'
 
 const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1' })
 
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { leagueId, rounds = 15, refresh = false, scoringTweak = 'default' } = body
+    const { leagueId, rounds = 15, refresh = false, scoringTweak = 'default', draftType = 'snake', casualMode = false, autopickMode = 'queue-first' } = body
 
     if (!leagueId) {
       return NextResponse.json({ error: 'leagueId is required' }, { status: 400 })
@@ -211,13 +212,25 @@ ${adjustmentNotes || 'No significant adjustments'}`
       console.log('[mock-draft] ADP fetch failed, AI will use internal knowledge:', adpErr)
     }
 
+    const draftTypeLabel = (['snake', 'linear', 'auction'].includes(draftType) ? draftType : 'snake') as DraftType
+
+    const draftFormatInstruction = draftTypeLabel === 'snake'
+      ? 'Use snake draft order (odd rounds ascending, even rounds descending).'
+      : draftTypeLabel === 'linear'
+        ? 'Use linear draft order (same order every round).'
+        : 'Use auction nomination + bidding loops and output final winning nominations in sequence.'
+    const auctionOutputHint = draftTypeLabel === 'auction'
+      ? ' For auction, include realistic values and sequence by winning nomination events.'
+      : ''
+
     const systemPrompt = `You are an expert fantasy football mock draft simulator. You simulate realistic drafts based on current ADP (Average Draft Position) data, positional scarcity, and real manager draft tendencies.
 
 Rules:
 - Generate a full ${rounds}-round mock draft for a ${numTeams}-team league
-- Use snake draft order (odd rounds ascending, even rounds descending)
+- Draft format: ${draftTypeLabel}. ${draftFormatInstruction}
 - Base picks on the LIVE ADP DATA provided below — players should be drafted close to their ADP with realistic variance
 - Each AI manager should have a distinct draft style (some reach, some go BPA, some are position-focused)
+- Autopick mode default per team: ${autopickMode} (queue-first -> BPA -> need-based fallback)
 - Team at index ${userTeamIdx} ("${teamNames[userTeamIdx]}") is the user's team — mark those picks with isUser: true
 - League format: ${league.scoring || 'PPR'}, ${league.isDynasty ? 'Dynasty' : 'Redraft'}${scoringTweak === 'sf' ? '\n- SUPERFLEX LEAGUE: QBs are significantly more valuable. Draft QBs earlier and expect 2-3 QBs taken in Round 1. Value QBs like top-10 overall picks.' : ''}${scoringTweak === 'tep' ? '\n- TE PREMIUM LEAGUE: TEs receive bonus PPR scoring (1.5-2.0 PPR). Draft elite TEs earlier (Rounds 1-3 for top TEs). TEs like Kelce, LaPorta, Bowers are valued much higher.' : ''}
 - Include real NFL player names with correct positions and teams
@@ -228,7 +241,7 @@ Rules:
 Return a JSON object with a "draftResults" array. Each pick object:
 { "round": number, "pick": number, "overall": number, "playerName": string, "position": string, "team": string, "manager": string, "confidence": number, "isUser": boolean, "value": number, "notes": string }`
 
-    const userPrompt = `Simulate a ${rounds}-round snake mock draft for this ${numTeams}-team ${league.isDynasty ? 'dynasty' : 'redraft'} ${league.scoring || 'PPR'} league.
+    const userPrompt = `Simulate a ${rounds}-round ${draftTypeLabel} mock draft for this ${numTeams}-team ${league.isDynasty ? 'dynasty' : 'redraft'} ${league.scoring || 'PPR'} league.
 
 Team names in draft order: ${teamNames.join(', ')}
 
@@ -236,7 +249,7 @@ The user controls "${teamNames[userTeamIdx]}" (pick position #${userTeamIdx + 1}
 
 Custom settings: ${rounds} rounds • Scoring tweak: ${scoringTweak || 'default'}
 
-Generate all ${rounds * numTeams} picks with realistic player selections based on the ADP data above.`
+Generate all ${rounds * numTeams} picks with realistic player selections based on the ADP data above.${auctionOutputHint}`
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -268,6 +281,19 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
       return NextResponse.json({ error: 'Invalid AI response format' }, { status: 500 })
     }
 
+
+    const validation = summarizeDraftValidation({
+      picks: draftResults,
+      constraints: { strict: !casualMode, draftType: draftTypeLabel, expectedPicks: rounds * numTeams },
+    })
+
+    if (!validation.valid) {
+      return NextResponse.json({
+        error: 'Draft validation failed',
+        details: validation.errors.slice(0, 10),
+      }, { status: 422 })
+    }
+
     const avatarMap: Record<string, string> = {}
     for (const t of league.teams) {
       const name = t.teamName || t.ownerName || ''
@@ -279,7 +305,7 @@ Generate all ${rounds * numTeams} picks with realistic player selections based o
       }
     }
 
-    const proposals = generateInlineTradeProposals(draftResults, league)
+    const proposals = draftTypeLabel === 'auction' ? [] : generateInlineTradeProposals(draftResults, league)
 
     let proposalsWithReasons = proposals
     if (proposals.length > 0) {
@@ -338,7 +364,7 @@ Return exactly ${proposals.length} reasons in the "reasons" array.`
       console.error('[mock-draft] Failed to save draft:', saveErr)
     }
 
-    return NextResponse.json({ draftResults, draftId, proposals: proposalsWithReasons })
+    return NextResponse.json({ draftResults, draftId, proposals: proposalsWithReasons, validationWarnings: validation.warnings })
   } catch (err: any) {
     console.error('[mock-draft] Error:', err)
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
