@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import DemandHeatmap from './DemandHeatmap'
 import { WhatChangedPanel, TierLabel, WinWindowPanel } from './RankingsMicroPanels'
+import ManagerPsychology from './ManagerPsychology'
 
 interface PositionValue {
   starter: number
@@ -1404,6 +1405,13 @@ export default function LeagueRankingsV2Panel({ leagueId, leagueName, username }
                         </div>
                       </div>
                     )}
+
+                    <ManagerPsychology
+                      leagueId={leagueId}
+                      rosterId={team.rosterId}
+                      username={team.username}
+                      teamData={team}
+                    />
                   </div>
                 )}
               </div>

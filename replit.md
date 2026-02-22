@@ -31,6 +31,7 @@ The core architecture is based on a `One Engine API` that integrates a One Scori
 -   **Valuation Systems:** Features IDP & Kicker Valuation and a Devy Player Classification & Intelligence Engine.
 -   **Monte Carlo Simulation Engine:** Performs matchup, season, and championship delta simulations.
 -   **Acceptance Probability Model:** A logistic regression model with isotonic regression for calibrated predictions.
+-   **Manager Psychology Profiles:** AI-powered psychological analysis of each league manager based on their trade history, win/loss records, waiver activity, and roster management. Generates archetypes, trait scores (Risk Tolerance, Patience, Aggression, Adaptability), tendencies, blind spots, negotiation styles, and risk/decision profiles. Accessible via dropdown in League Rankings V2 team cards.
 -   **Game Theory Counter Builder:** Generates mathematically optimized counter offers.
 -   **NCAA Bracket Challenge:** A full March Madness bracket system with league creation, ESPN-style UI, live scores, and standings.
 -   **Trade Improvement AI (Dual-Brain):** Utilizes Agentic Grok and GPT-4o for parallel synthesis with a real-time UI.
