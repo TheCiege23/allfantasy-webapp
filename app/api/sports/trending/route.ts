@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const TRENDING_TTL_MS = 2 * 60 * 60 * 1000;
 
-export async function syncTrendingPlayersToDb(
+async function syncTrendingPlayersToDb(
   sport: string = 'nfl',
   lookbackHours: number = 24,
 ): Promise<number> {
