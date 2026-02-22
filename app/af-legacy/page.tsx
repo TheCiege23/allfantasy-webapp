@@ -17967,6 +17967,72 @@ function AFLegacyContent() {
         />
       )}
 
+      {showAiExplain && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setShowAiExplain(false)}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+          <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-3xl bg-gradient-to-br from-slate-900 to-slate-950 border border-purple-500/30 shadow-[0_20px_80px_rgba(139,92,246,0.25)]" onClick={e => e.stopPropagation()}>
+            <div className="h-1.5 bg-gradient-to-r from-cyan-400 via-purple-500 to-cyan-400" />
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/30 to-cyan-500/30 flex items-center justify-center text-xl">🧠</div>
+                  <h3 className="text-xl font-bold text-white">How AI Analysis Works</h3>
+                </div>
+                <button onClick={() => setShowAiExplain(false)} className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white transition">
+                  ✕
+                </button>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-2xl bg-cyan-500/10 border border-cyan-500/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">📊</span>
+                    <h4 className="font-semibold text-cyan-200">1. Data Collection</h4>
+                  </div>
+                  <p className="text-sm text-white/70 leading-relaxed">We pull your complete Sleeper history — leagues, rosters, win/loss records, playoff appearances, championships, and transaction history across all seasons.</p>
+                </div>
+
+                <div className="rounded-2xl bg-purple-500/10 border border-purple-500/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🤖</span>
+                    <h4 className="font-semibold text-purple-200">2. AI Processing</h4>
+                  </div>
+                  <p className="text-sm text-white/70 leading-relaxed">GPT-4o analyzes your career data to identify patterns — your draft tendencies, trade behavior, roster management style, and how you perform under pressure in playoffs.</p>
+                </div>
+
+                <div className="rounded-2xl bg-amber-500/10 border border-amber-500/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🏷️</span>
+                    <h4 className="font-semibold text-amber-200">3. Archetype Classification</h4>
+                  </div>
+                  <p className="text-sm text-white/70 leading-relaxed">Based on your patterns, you're assigned a manager archetype (like "Hoarder", "Sniper", or "Rebuilder") that captures your dominant playstyle.</p>
+                </div>
+
+                <div className="rounded-2xl bg-emerald-500/10 border border-emerald-500/20 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">📈</span>
+                    <h4 className="font-semibold text-emerald-200">4. Scoring & Insights</h4>
+                  </div>
+                  <p className="text-sm text-white/70 leading-relaxed">You receive a Consistency Score (how stable your performance is), an AI Rating (overall career grade), a Window Status (contender vs rebuilder), and personalized action items.</p>
+                </div>
+
+                <div className="rounded-2xl bg-white/5 border border-white/10 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-lg">🔄</span>
+                    <h4 className="font-semibold text-white/80">Re-run Anytime</h4>
+                  </div>
+                  <p className="text-sm text-white/70 leading-relaxed">Hit "Re-run" to get a fresh analysis. Each run re-evaluates your latest data so your insights stay current as your season progresses.</p>
+                </div>
+              </div>
+
+              <button onClick={() => setShowAiExplain(false)} className="w-full mt-6 py-3 rounded-xl bg-gradient-to-r from-purple-500/30 to-cyan-500/30 hover:from-purple-500/40 hover:to-cyan-500/40 border border-purple-400/30 text-white font-medium transition">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 rounded-xl bg-emerald-500/90 px-4 py-3 text-sm text-white shadow-lg transition-all duration-500">
           {toast}
