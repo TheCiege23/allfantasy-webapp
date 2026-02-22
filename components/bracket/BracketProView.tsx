@@ -1,8 +1,10 @@
 "use client"
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react"
-import { Timer, Trophy, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+import { Timer, Trophy, ZoomIn, ZoomOut, Maximize2, Sparkles } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
+import { MatchupCardOverlay } from "./MatchupCardOverlay"
+import Image from "next/image"
 
 type Game = {
   id: string
@@ -38,7 +40,6 @@ type Props = {
 }
 
 const ALL_REGIONS = ["West", "East", "South", "Midwest"]
-const REGION_ABBREV: Record<string, string> = { West: "W", East: "E", South: "S", Midwest: "MW" }
 
 const CW = 110
 const CH = 34
@@ -48,7 +49,7 @@ const CG = 20
 const REGION_H = 8 * CH + 7 * VG
 const REGION_W = 4 * CW + 3 * CG
 const REGION_V_GAP = 36
-const CENTER_W = 160
+const CENTER_W = 180
 const FULL_H = 2 * REGION_H + REGION_V_GAP
 const FULL_W = 2 * REGION_W + CENTER_W
 
@@ -75,11 +76,6 @@ function regionPositions() {
 }
 
 const POS = regionPositions()
-
-function teamLabel(name: string | null, seed: number | null) {
-  if (!name) return "TBD"
-  return seed != null ? `(${seed}) ${name}` : name
-}
 
 function isPickLocked(node: Node) {
   if (!node.game?.startTime) return false
@@ -144,8 +140,14 @@ function cascadeClearInvalidPicks(
   return current
 }
 
+function isBracketReleased(nodes: Node[]): boolean {
+  const r1 = nodes.filter(n => n.round === 1)
+  const seeded = r1.filter(n => n.homeTeamName || n.awayTeamName).length
+  return seeded >= 8
+}
+
 function MiniCell({
-  node, picks, seedMap, effective, locked, onPick, x, y,
+  node, picks, seedMap, effective, locked, onPick, onTap, x, y, bracketReleased,
 }: {
   node: Node
   picks: Record<string, string | null>
@@ -153,8 +155,10 @@ function MiniCell({
   effective: Map<string, { home: string | null; away: string | null }>
   locked: boolean
   onPick: (node: Node, team: string) => void
+  onTap: (node: Node) => void
   x: number
   y: number
+  bracketReleased: boolean
 }) {
   const picked = picks[node.id] ?? null
   const eff = effective.get(node.id)
@@ -166,14 +170,21 @@ function MiniCell({
   const awayPicked = !!awayName && picked === awayName
   const canClick = !locked
 
+  const isR1 = node.round === 1
+
   function TeamRow({ name, seed, isPicked, side }: {
     name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'
   }) {
     const clickable = canClick && !!name
+    const showSeedOnly = !bracketReleased && isR1 && !name && seed != null
+
     return (
       <button
         disabled={!clickable}
-        onClick={() => name && onPick(node, name)}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (name) onPick(node, name)
+        }}
         style={{
           width: '100%',
           display: 'flex',
@@ -195,18 +206,24 @@ function MiniCell({
             {seed}
           </span>
         )}
-        <span style={{
-          fontSize: 10,
-          fontWeight: isPicked ? 600 : 400,
-          color: !name ? 'rgba(255,255,255,0.12)' : isPicked ? '#7dd3fc' : 'rgba(255,255,255,0.6)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          flex: 1,
-          fontStyle: !name ? 'italic' : undefined,
-        }}>
-          {name || 'TBD'}
-        </span>
+        {showSeedOnly ? (
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)', fontStyle: 'italic', flex: 1 }}>
+            ---
+          </span>
+        ) : (
+          <span style={{
+            fontSize: 10,
+            fontWeight: isPicked ? 600 : 400,
+            color: !name ? 'rgba(255,255,255,0.12)' : isPicked ? '#7dd3fc' : 'rgba(255,255,255,0.6)',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flex: 1,
+            fontStyle: !name ? 'italic' : undefined,
+          }}>
+            {name || ''}
+          </span>
+        )}
         {node.game && (
           <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>
             {side === 'home' ? (node.game.homeScore ?? '') : (node.game.awayScore ?? '')}
@@ -219,8 +236,11 @@ function MiniCell({
   let borderColor = 'rgba(255,255,255,0.08)'
   if (homePicked || awayPicked) borderColor = 'rgba(56,189,248,0.25)'
 
+  const hasBothTeams = !!homeName && !!awayName
+
   return (
     <div
+      onClick={() => { if (hasBothTeams) onTap(node) }}
       style={{
         position: 'absolute',
         left: x,
@@ -231,6 +251,7 @@ function MiniCell({
         borderRadius: 8,
         border: `1px solid ${borderColor}`,
         overflow: 'hidden',
+        cursor: hasBothTeams ? 'pointer' : 'default',
       }}
     >
       <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" />
@@ -244,6 +265,7 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
 
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks)
   const [savingNode, setSavingNode] = useState<string | null>(null)
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
 
   const [zoom, setZoom] = useState(0.55)
   const [panX, setPanX] = useState(0)
@@ -257,7 +279,7 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   const seedMap = useMemo(() => buildSeedMap(nodes), [nodes])
 
   const nodesWithLive = useMemo(() => {
-    const gameById = new Map((live?.games ?? []).map((g) => [g.id, g]))
+    const gameById = new Map((live?.games ?? []).map((g: any) => [g.id, g]))
     return nodes.map((n) => {
       const g = n.sportsGameId ? gameById.get(n.sportsGameId) : null
       return { ...n, game: (g as Game) ?? n.game ?? null }
@@ -265,6 +287,8 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   }, [nodes, live?.games])
 
   const effective = useMemo(() => computeEffectiveTeams(nodesWithLive, picks), [nodesWithLive, picks])
+
+  const bracketReleased = useMemo(() => isBracketReleased(nodesWithLive), [nodesWithLive])
 
   const { byRegion, finals, firstFour } = useMemo(() => {
     const reg: Record<string, Node[]> = {}
@@ -291,11 +315,6 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
       .sort((a, b) => a - b)
     if (!starts.length) return "TBD"
     return new Date(starts[0]).toLocaleDateString(undefined, { month: "long", day: "numeric" })
-  }, [nodesWithLive])
-
-  const waitingForSelection = useMemo(() => {
-    const seeded = nodesWithLive.filter((n) => n.round === 1 && (n.homeTeamName || n.awayTeamName)).length
-    return seeded < 8
   }, [nodesWithLive])
 
   const submitPick = useCallback(async (node: Node, teamName: string) => {
@@ -387,7 +406,7 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     const fit = () => {
       const cw = el.clientWidth
       if (cw > 0) {
-        const fitZoom = Math.min(1, cw / (FULL_W + 48))
+        const fitZoom = Math.min(1, (cw - 16) / FULL_W)
         setZoom(Math.max(0.25, fitZoom))
         setPanX(0)
         setPanY(0)
@@ -403,7 +422,7 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   const resetView = useCallback(() => {
     const el = containerRef.current
     if (el) {
-      const fitZoom = Math.min(1, el.clientWidth / (FULL_W + 48))
+      const fitZoom = Math.min(1, (el.clientWidth - 16) / FULL_W)
       setZoom(Math.max(0.25, fitZoom))
     } else {
       setZoom(0.55)
@@ -446,8 +465,10 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
             effective={effective}
             locked={isPickLocked(roundNodes[i])}
             onPick={submitPick}
+            onTap={(n) => setSelectedNode(n)}
             x={x}
             y={y}
+            bracketReleased={bracketReleased}
           />
         )
       }
@@ -481,14 +502,14 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
         const mx = (sx + ex) / 2
 
         lines.push(
-          <line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+          <line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
         )
         lines.push(
-          <line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+          <line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
         )
         if (i % 2 === 0) {
           lines.push(
-            <line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+            <line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
           )
         }
       }
@@ -510,9 +531,11 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   const ffNodes = finals.filter(n => n.round === 5)
   const champNodes = finals.filter(n => n.round === 6)
 
-  const ff0Y = centerMidY - CH - 16
-  const ff1Y = centerMidY + 16
+  const ff0Y = centerMidY - CH - 24
+  const ff1Y = centerMidY + 24
   const champY = centerMidY - TH
+
+  const selectedEff = selectedNode ? effective.get(selectedNode.id) : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -540,10 +563,10 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
         </div>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
-            Brackets open on {openDate}
+            {bracketReleased ? `Brackets open - ${openDate}` : `Brackets open on ${openDate}`}
           </div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
-            {waitingForSelection ? "Waiting for Selection Sunday" : "Make your picks before games lock"}
+            {bracketReleased ? "Make your picks before games lock" : "Waiting for Selection Sunday"}
           </div>
         </div>
       </div>
@@ -625,6 +648,7 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
             border: '1px solid rgba(255,255,255,0.05)',
             cursor: isPanning ? 'grabbing' : 'grab',
             userSelect: 'none',
+            position: 'relative',
           }}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
@@ -635,13 +659,14 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
           onTouchEnd={handleTouchEnd}
         >
           <div style={{
-            padding: 24,
+            padding: '8px',
             transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-            transformOrigin: 'center center',
+            transformOrigin: 'top left',
             transition: isPanning ? 'none' : 'transform 0.15s ease',
-            minWidth: FULL_W + 48,
+            width: FULL_W,
+            height: FULL_H,
+            position: 'relative',
           }}>
-            <div style={{ position: 'relative', width: FULL_W, height: FULL_H, margin: '0 auto' }}>
 
               <svg
                 width={FULL_W}
@@ -653,26 +678,26 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
                 {renderRegionLines('rtl', rightX, topY)}
                 {renderRegionLines('rtl', rightX, botY)}
 
-                <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+                <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+                <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+                <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
 
-                <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+                <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
               </svg>
 
               <div style={{ position: 'absolute', left: leftX + REGION_W * 0.45, top: topY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.04)', letterSpacing: 6 }}>W</span>
+                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>W</span>
               </div>
               <div style={{ position: 'absolute', left: leftX + REGION_W * 0.45, top: botY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.04)', letterSpacing: 6 }}>E</span>
+                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>E</span>
               </div>
               <div style={{ position: 'absolute', left: rightX + REGION_W * 0.55, top: topY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.04)', letterSpacing: 6 }}>S</span>
+                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>S</span>
               </div>
               <div style={{ position: 'absolute', left: rightX + REGION_W * 0.55, top: botY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.04)', letterSpacing: 6 }}>MW</span>
+                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>MW</span>
               </div>
 
               {renderRegionCells('West', 'ltr', leftX, topY)}
@@ -689,8 +714,10 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
                   effective={effective}
                   locked={isPickLocked(n)}
                   onPick={submitPick}
+                  onTap={(nd) => setSelectedNode(nd)}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={i === 0 ? ff0Y : ff1Y}
+                  bracketReleased={bracketReleased}
                 />
               ))}
 
@@ -703,49 +730,53 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
                   effective={effective}
                   locked={isPickLocked(n)}
                   onPick={submitPick}
+                  onTap={(nd) => setSelectedNode(nd)}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={champY}
+                  bracketReleased={bracketReleased}
                 />
               ))}
 
               <div style={{
                 position: 'absolute',
-                left: centerX + (CENTER_W - 48) / 2,
-                top: centerMidY - 24,
-                width: 48,
-                height: 48,
-                borderRadius: 12,
-                background: '#2a3348',
-                border: '1px solid rgba(255,255,255,0.08)',
+                left: centerX + (CENTER_W - 72) / 2,
+                top: centerMidY - 36,
+                width: 72,
+                height: 72,
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, #2a3348, #1e2740)',
+                border: '1px solid rgba(255,255,255,0.10)',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
+                gap: 2,
+                pointerEvents: 'none',
               }}>
-                <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.3)' }} />
+                <Trophy style={{ width: 20, height: 20, color: 'rgba(251,146,60,0.6)' }} />
+                <img
+                  src="/af-crest.png"
+                  alt="AF"
+                  style={{ width: 22, height: 22, objectFit: 'contain', opacity: 0.5 }}
+                />
               </div>
 
-              {ffNodes.length === 0 && champNodes.length === 0 && (
-                <div style={{
-                  position: 'absolute',
-                  left: centerX + (CENTER_W - 48) / 2,
-                  top: FULL_H / 2 - 24,
-                  width: 48,
-                  height: 48,
-                  borderRadius: 12,
-                  background: '#2a3348',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}>
-                  <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.3)' }} />
-                </div>
-              )}
-
-            </div>
           </div>
         </div>
       </div>
+
+      {selectedNode && selectedEff && (
+        <MatchupCardOverlay
+          node={selectedNode}
+          effective={{ home: selectedEff.home, away: selectedEff.away }}
+          picked={picks[selectedNode.id] ?? null}
+          seedMap={seedMap}
+          locked={isPickLocked(selectedNode)}
+          onPick={submitPick}
+          onClose={() => setSelectedNode(null)}
+          entryId={entryId}
+        />
+      )}
     </div>
   )
 }
