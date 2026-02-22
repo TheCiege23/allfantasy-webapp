@@ -38,16 +38,21 @@ export default function InsightsPanel({
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchInsights = async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetch(`/api/legacy/insights?username=${encodeURIComponent(username)}`)
-      if (res.ok) {
-        const data = await res.json()
+      const data = await res.json().catch(() => null)
+      if (res.ok && data) {
         setInsights(data.insights || [])
+      } else {
+        setError(data?.error || `Failed to load insights (${res.status})`)
       }
     } catch (err) {
+      setError('Failed to connect — please try again')
       console.warn('Failed to fetch insights:', String(err))
     } finally {
       setLoading(false)
@@ -56,17 +61,27 @@ export default function InsightsPanel({
 
   const generateInsights = async () => {
     setGenerating(true)
+    setError(null)
     try {
       const res = await fetch('/api/legacy/insights', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, leagueId }),
       })
-      if (res.ok) {
-        const data = await res.json()
-        setInsights(data.insights || [])
+      const data = await res.json().catch(() => null)
+      if (res.ok && data) {
+        const newInsights = data.insights || []
+        setInsights(newInsights)
+        if (newInsights.length === 0) {
+          setError('No new insights found — try again after syncing your leagues or when more news is available.')
+        }
+      } else if (res.status === 429) {
+        setError(data?.error || 'Too many requests — please wait a moment before trying again.')
+      } else {
+        setError(data?.error || `Failed to generate insights (${res.status})`)
       }
     } catch (err) {
+      setError('Failed to connect — please try again')
       console.warn('Failed to generate insights:', String(err))
     } finally {
       setGenerating(false)
@@ -103,7 +118,7 @@ export default function InsightsPanel({
           )}
         </div>
         <button
-          onClick={generateInsights}
+          onClick={generating ? undefined : generateInsights}
           disabled={generating}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-medium hover:bg-cyan-500/20 transition-colors disabled:opacity-50"
         >
@@ -112,11 +127,20 @@ export default function InsightsPanel({
         </button>
       </div>
 
-      {loading && insights.length === 0 && (
-        <div className="text-center py-6 text-white/40 text-sm">Loading insights...</div>
+      {error && (
+        <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+          <div className="text-xs text-red-300">{error}</div>
+        </div>
       )}
 
-      {!loading && insights.length === 0 && (
+      {loading && insights.length === 0 && !error && (
+        <div className="text-center py-6">
+          <RefreshCw size={16} className="animate-spin mx-auto mb-2 text-cyan-400" />
+          <span className="text-white/40 text-sm">Loading insights...</span>
+        </div>
+      )}
+
+      {!loading && insights.length === 0 && !error && (
         <div className="text-center py-6">
           <p className="text-white/40 text-sm mb-2">No insights yet</p>
           <button
@@ -124,7 +148,12 @@ export default function InsightsPanel({
             disabled={generating}
             className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500/20 to-purple-500/20 border border-cyan-500/30 text-cyan-300 text-sm font-medium hover:border-cyan-400/50 transition-colors disabled:opacity-50"
           >
-            {generating ? 'Generating...' : 'Generate Insights'}
+            {generating ? (
+              <span className="flex items-center gap-2">
+                <RefreshCw size={14} className="animate-spin" />
+                Generating...
+              </span>
+            ) : 'Generate Insights'}
           </button>
         </div>
       )}

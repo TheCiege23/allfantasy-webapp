@@ -29,14 +29,14 @@ export default function CommunityInsights() {
   const [news, setNews] = useState<NewsItem[]>([])
   const [injuries, setInjuries] = useState<InjuryItem[]>([])
   const [aiSummary, setAiSummary] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [summarizing, setSummarizing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const fetchData = async (withSummary = false) => {
-    setLoading(true)
-    setError(null)
+    if (!withSummary) setLoading(true)
     if (withSummary) setSummarizing(true)
+    setError(null)
     try {
       const url = `/api/legacy/community-insights${withSummary ? '?summarize=true' : ''}`
       const res = await fetch(url)
@@ -46,6 +46,9 @@ export default function CommunityInsights() {
         setNews(data.recentNews || [])
         setInjuries(data.injuries || [])
         if (data.aiSummary) setAiSummary(data.aiSummary)
+        if (withSummary && !data.aiSummary && (data.recentNews?.length || 0) < 3) {
+          setError('Not enough recent news to generate a summary — try again later.')
+        }
       } else {
         setError(data?.error || `Request failed (${res.status})`)
       }
@@ -111,6 +114,25 @@ export default function CommunityInsights() {
         </div>
       )}
 
+      {loading && trending.length === 0 && !error && (
+        <div className="text-center py-6 text-white/40 text-sm">
+          <RefreshCw size={16} className="animate-spin mx-auto mb-2" />
+          Loading community insights...
+        </div>
+      )}
+
+      {!loading && trending.length === 0 && news.length === 0 && injuries.length === 0 && !error && !aiSummary && (
+        <div className="text-center py-6">
+          <p className="text-white/40 text-sm mb-2">No community data available yet</p>
+          <button
+            onClick={() => fetchData()}
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500/20 to-cyan-500/20 border border-purple-500/30 text-purple-300 text-sm font-medium hover:border-purple-400/50 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {trending.length > 0 && (
         <div>
           <div className="text-xs font-semibold text-white/50 mb-2 uppercase tracking-wider">Trending Topics</div>
@@ -164,13 +186,6 @@ export default function CommunityInsights() {
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {loading && trending.length === 0 && (
-        <div className="text-center py-6 text-white/40 text-sm">
-          <RefreshCw size={16} className="animate-spin mx-auto mb-2" />
-          Loading community insights...
         </div>
       )}
     </div>
