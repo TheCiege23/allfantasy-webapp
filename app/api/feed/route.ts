@@ -6,19 +6,22 @@ export const dynamic = "force-dynamic"
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const scope = searchParams.get("scope") || "global"
-    const tournamentId = searchParams.get("tournamentId")
-    const leagueId = searchParams.get("leagueId")
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "30", 10)))
+    const url = new URL(req.url)
+    const scope = (url.searchParams.get("scope") ?? "global") as "global" | "league"
+    const tournamentId = url.searchParams.get("tournamentId")
+    const leagueId = url.searchParams.get("leagueId")
+    const limit = Math.min(50, Math.max(1, parseInt(url.searchParams.get("limit") || "30", 10)))
 
     if (!tournamentId) {
-      return NextResponse.json({ error: "tournamentId is required" }, { status: 400 })
+      return NextResponse.json({ error: "Missing tournamentId" }, { status: 400 })
     }
 
     const where: any = { tournamentId }
 
-    if (scope === "league" && leagueId) {
+    if (scope === "league") {
+      if (!leagueId) {
+        return NextResponse.json({ error: "Missing leagueId" }, { status: 400 })
+      }
       where.leagueId = leagueId
     } else {
       where.leagueId = null
@@ -44,7 +47,7 @@ export async function GET(req: NextRequest) {
     }))
 
     return NextResponse.json(
-      { ok: true, events },
+      { events },
       { headers: { "Cache-Control": "no-cache, no-store, must-revalidate" } }
     )
   } catch (err: any) {
