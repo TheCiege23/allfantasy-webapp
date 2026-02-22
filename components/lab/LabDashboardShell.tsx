@@ -1,484 +1,348 @@
 "use client"
 
-import { useState } from "react"
-import {
-  FlaskConical,
-  BarChart3,
-  SlidersHorizontal,
-  RefreshCcw,
-  Download,
-  Zap,
-  TrendingUp,
-  Shuffle,
-  Target,
-  Activity,
-  ChevronRight,
-  Lock,
-  Sparkles,
-} from "lucide-react"
+import { useMemo, useState } from "react"
+import { LegalSafeAIFraming } from "@/components/LegalSafeAIFraming"
 
-interface Props {
+type Props = {
   userId: string
   tournamentId: string
   tournamentName: string
 }
 
-type Tab = "simulations" | "compare" | "strategy" | "recalibrate" | "reports"
-
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "simulations", label: "Simulations", icon: <Activity className="w-4 h-4" /> },
-  { id: "compare", label: "Compare", icon: <BarChart3 className="w-4 h-4" /> },
-  { id: "strategy", label: "Strategy", icon: <SlidersHorizontal className="w-4 h-4" /> },
-  { id: "recalibrate", label: "Recalibrate", icon: <RefreshCcw className="w-4 h-4" /> },
-  { id: "reports", label: "Reports", icon: <Download className="w-4 h-4" /> },
-]
-
-const BRACKET_STYLES = [
-  { id: "chalk", label: "Chalk", desc: "Follow the seeds. Minimal upsets.", color: "#22c55e", icon: <Target className="w-5 h-5" /> },
-  { id: "balanced", label: "Balanced", desc: "Mix of favorites and calculated upsets.", color: "#3b82f6", icon: <TrendingUp className="w-5 h-5" /> },
-  { id: "chaos", label: "Chaos", desc: "Maximum upsets. High risk, high reward.", color: "#ef4444", icon: <Shuffle className="w-5 h-5" /> },
-]
+type SimStatus =
+  | { state: "idle" }
+  | { state: "queued"; jobId: string }
+  | { state: "running"; jobId: string }
+  | { state: "done"; jobId: string; result: any }
+  | { state: "error"; message: string }
 
 export function LabDashboardShell({ userId, tournamentId, tournamentName }: Props) {
-  const [activeTab, setActiveTab] = useState<Tab>("simulations")
-  const [simCount, setSimCount] = useState(1000)
-  const [running, setRunning] = useState(false)
-  const [riskSlider, setRiskSlider] = useState(50)
-  const [uniquenessSlider, setUniquenessSlider] = useState(50)
-  const [upsetSlider, setUpsetSlider] = useState(30)
+  const [activeTab, setActiveTab] = useState<"overview" | "sim" | "compare">("overview")
+  const [bracketId, setBracketId] = useState<string>("")
+  const [status, setStatus] = useState<SimStatus>({ state: "idle" })
+
+  const canRun = useMemo(() => bracketId.trim().length > 0, [bracketId])
+
+  async function enqueueSim() {
+    if (!canRun) return
+    setStatus({ state: "queued", jobId: "pending" })
+
+    try {
+      const res = await fetch("/api/lab/simulations/enqueue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bracketId,
+          tournamentId,
+          runs: 10000,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? "Failed to enqueue")
+
+      setStatus({ state: "queued", jobId: data.jobId })
+      pollResult(data.jobId)
+    } catch (e: any) {
+      setStatus({ state: "error", message: e?.message ?? "Unknown error" })
+    }
+  }
+
+  async function pollResult(jobId: string) {
+    setStatus({ state: "running", jobId })
+    for (let i = 0; i < 60; i++) {
+      await new Promise((r) => setTimeout(r, 1500))
+      try {
+        const res = await fetch(`/api/lab/simulations/status?jobId=${encodeURIComponent(jobId)}`)
+        const data = await res.json()
+        if (!res.ok) continue
+        if (data.state === "completed") {
+          setStatus({ state: "done", jobId, result: data.result })
+          return
+        }
+        if (data.state === "failed") {
+          setStatus({ state: "error", message: data.error ?? "Job failed" })
+          return
+        }
+      } catch {}
+    }
+    setStatus({ state: "error", message: "Timed out waiting for results" })
+  }
 
   return (
-    <div className="min-h-screen text-white" style={{ background: "#0a0e17" }}>
-      <header className="sticky top-0 z-40 backdrop-blur" style={{ background: "rgba(10,14,23,0.85)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #06b6d4, #8b5cf6)" }}>
-              <FlaskConical className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-bold flex items-center gap-2">
-                Bracket Lab
-                <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold" style={{ background: "rgba(251,146,60,0.15)", color: "#fb923c" }}>PASS</span>
-              </div>
-              <div className="text-[10px]" style={{ color: "rgba(255,255,255,0.4)" }}>{tournamentName}</div>
-            </div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-white">
+      <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-xs text-white/60">Bracket Lab</div>
+            <h1 className="text-2xl font-semibold">{tournamentName}</h1>
+            <p className="mt-1 text-sm text-white/70">
+              Simulations + comparisons (research tools). No guarantees. Same scoring/gameplay for everyone.
+            </p>
           </div>
-          <a href="/brackets" className="text-xs px-3 py-1.5 rounded-lg transition hover:bg-white/5" style={{ color: "rgba(255,255,255,0.5)" }}>
+
+          <a
+            href="/"
+            className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-semibold hover:bg-white/10"
+          >
             Back to Brackets
           </a>
         </div>
-      </header>
 
-      <div className="max-w-7xl mx-auto px-4 pt-4 pb-2">
-        <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition"
-              style={{
-                background: activeTab === tab.id ? "rgba(251,146,60,0.12)" : "transparent",
-                color: activeTab === tab.id ? "#fb923c" : "rgba(255,255,255,0.4)",
-                border: activeTab === tab.id ? "1px solid rgba(251,146,60,0.2)" : "1px solid transparent",
-              }}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
+        <div className="mt-6 flex flex-wrap gap-2">
+          <Tab active={activeTab === "overview"} onClick={() => setActiveTab("overview")}>
+            Overview
+          </Tab>
+          <Tab active={activeTab === "sim"} onClick={() => setActiveTab("sim")}>
+            Simulations
+          </Tab>
+          <Tab active={activeTab === "compare"} onClick={() => setActiveTab("compare")}>
+            Compare Styles
+          </Tab>
+        </div>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
+            {activeTab === "overview" && <OverviewPanel tournamentId={tournamentId} />}
+            {activeTab === "sim" && (
+              <SimPanel
+                bracketId={bracketId}
+                setBracketId={setBracketId}
+                canRun={canRun}
+                enqueueSim={enqueueSim}
+                status={status}
+              />
+            )}
+            {activeTab === "compare" && <ComparePanel />}
+          </div>
+
+          <div className="space-y-4">
+            <LegalSafeAIFraming />
+            <MiniCard title="Lab Access">
+              <div className="text-sm text-white/70">
+                User: <span className="text-white/90">{userId.slice(0, 8)}...</span>
+              </div>
+              <div className="mt-1 text-sm text-white/70">
+                Tournament: <span className="text-white/90">{tournamentName}</span>
+              </div>
+            </MiniCard>
+            <MiniCard title="Tip">
+              <div className="text-sm text-white/70">
+                Start with one bracket, run simulations, then compare against Chalk vs Chaos templates.
+              </div>
+            </MiniCard>
+          </div>
         </div>
       </div>
-
-      <main className="max-w-7xl mx-auto px-4 py-4">
-        {activeTab === "simulations" && (
-          <SimulationsPanel
-            simCount={simCount}
-            setSimCount={setSimCount}
-            running={running}
-            setRunning={setRunning}
-            tournamentId={tournamentId}
-          />
-        )}
-        {activeTab === "compare" && <ComparePanel />}
-        {activeTab === "strategy" && (
-          <StrategyPanel
-            risk={riskSlider}
-            setRisk={setRiskSlider}
-            uniqueness={uniquenessSlider}
-            setUniqueness={setUniquenessSlider}
-            upsetTolerance={upsetSlider}
-            setUpsetTolerance={setUpsetSlider}
-          />
-        )}
-        {activeTab === "recalibrate" && <RecalibratePanel />}
-        {activeTab === "reports" && <ReportsPanel />}
-      </main>
     </div>
   )
 }
 
-function SimulationsPanel({
-  simCount,
-  setSimCount,
-  running,
-  setRunning,
-  tournamentId,
-}: {
-  simCount: number
-  setSimCount: (n: number) => void
-  running: boolean
-  setRunning: (b: boolean) => void
-  tournamentId: string
-}) {
-  const [results, setResults] = useState<null | { winPct: Record<string, number>; avgScore: number; upsetRate: number }>(null)
-
-  function handleRun() {
-    setRunning(true)
-    setTimeout(() => {
-      setResults({
-        winPct: { "Your Bracket": 12.4, "Field Average": 8.1, "Chalk Baseline": 6.3 },
-        avgScore: 142,
-        upsetRate: 34.2,
-      })
-      setRunning(false)
-    }, 2000)
-  }
-
+function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div className="space-y-4">
-      <SectionCard title="Monte Carlo Simulations" subtitle="Run thousands of tournament simulations to evaluate your bracket's strength">
-        <div className="flex items-end gap-4 flex-wrap">
-          <div className="flex-1 min-w-[160px]">
-            <label className="text-[10px] uppercase tracking-wider mb-1.5 block" style={{ color: "rgba(255,255,255,0.3)" }}>Simulation Runs</label>
-            <div className="flex gap-2">
-              {[1000, 5000, 10000].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setSimCount(n)}
-                  className="text-xs px-3 py-2 rounded-lg font-semibold transition"
-                  style={{
-                    background: simCount === n ? "rgba(251,146,60,0.15)" : "rgba(255,255,255,0.03)",
-                    color: simCount === n ? "#fb923c" : "rgba(255,255,255,0.4)",
-                    border: `1px solid ${simCount === n ? "rgba(251,146,60,0.3)" : "rgba(255,255,255,0.06)"}`,
-                  }}
-                >
-                  {n.toLocaleString()}
-                </button>
-              ))}
+    <button
+      onClick={onClick}
+      className={[
+        "rounded-xl px-4 py-2 text-sm font-semibold transition",
+        active
+          ? "bg-gradient-to-r from-cyan-400 to-violet-500 text-slate-950"
+          : "border border-white/15 bg-white/5 text-white hover:bg-white/10",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  )
+}
+
+function MiniCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+      <div className="text-sm font-semibold">{title}</div>
+      <div className="mt-2">{children}</div>
+    </div>
+  )
+}
+
+function OverviewPanel({ tournamentId }: { tournamentId: string }) {
+  return (
+    <div>
+      <h2 className="text-lg font-semibold">Overview</h2>
+      <p className="mt-2 text-sm text-white/70">
+        Your bracket health, volatility meter, and round-by-round scenario summary will appear here as games are played.
+      </p>
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+          <div className="text-xs text-white/40 uppercase tracking-wider">Bracket Health</div>
+          <div className="mt-2 text-2xl font-bold text-emerald-400">--</div>
+          <div className="mt-1 text-xs text-white/40">Available after R64</div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+          <div className="text-xs text-white/40 uppercase tracking-wider">Volatility</div>
+          <div className="mt-2 text-2xl font-bold text-amber-400">--</div>
+          <div className="mt-1 text-xs text-white/40">Available after R64</div>
+        </div>
+        <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+          <div className="text-xs text-white/40 uppercase tracking-wider">Win Probability</div>
+          <div className="mt-2 text-2xl font-bold text-cyan-400">--</div>
+          <div className="mt-1 text-xs text-white/40">Run simulations first</div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+        <div className="text-sm font-semibold">Data last updated</div>
+        <div className="mt-1 text-sm text-white/50">Provider timestamps will appear here when data is ingested.</div>
+      </div>
+    </div>
+  )
+}
+
+function SimPanel({
+  bracketId,
+  setBracketId,
+  canRun,
+  enqueueSim,
+  status,
+}: {
+  bracketId: string
+  setBracketId: (v: string) => void
+  canRun: boolean
+  enqueueSim: () => void
+  status: SimStatus
+}) {
+  return (
+    <div>
+      <h2 className="text-lg font-semibold">Simulations</h2>
+      <p className="mt-2 text-sm text-white/70">
+        Run Monte Carlo simulations (10,000+) and cache results per bracket.
+      </p>
+
+      <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/40 p-5">
+        <label className="text-sm font-semibold">Bracket ID</label>
+        <input
+          value={bracketId}
+          onChange={(e) => setBracketId(e.target.value)}
+          placeholder="Paste a bracketId"
+          className="mt-2 w-full rounded-xl border border-white/15 bg-slate-950/40 px-4 py-2 text-sm text-white placeholder:text-white/40 outline-none focus:border-white/25"
+        />
+
+        <button
+          disabled={!canRun || status.state === "queued" || status.state === "running"}
+          onClick={enqueueSim}
+          className="mt-4 w-full rounded-xl bg-gradient-to-r from-cyan-400 to-violet-500 px-5 py-3 text-sm font-semibold text-slate-950 hover:opacity-95 disabled:opacity-60 transition"
+        >
+          {status.state === "running" ? "Running..." : "Run 10,000 Simulations"}
+        </button>
+
+        <div className="mt-4 text-sm text-white/70">
+          Status: <span className="text-white/90">{status.state}</span>
+          {"jobId" in status && (
+            <span className="ml-2 text-white/60">({(status as any).jobId})</span>
+          )}
+        </div>
+
+        {status.state === "running" && (
+          <div className="mt-3">
+            <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
+              <div className="h-full rounded-full animate-pulse" style={{ background: "linear-gradient(90deg, #06b6d4, #8b5cf6)", width: "60%" }} />
             </div>
+            <p className="text-xs text-white/40 mt-1.5">Simulating tournament outcomes...</p>
           </div>
-          <button
-            onClick={handleRun}
-            disabled={running}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-black disabled:opacity-50 transition"
-            style={{ background: "#fb923c" }}
-          >
-            {running ? (
-              <>
-                <Activity className="w-4 h-4 animate-spin" />
-                Running {simCount.toLocaleString()}...
-              </>
-            ) : (
-              <>
-                <Zap className="w-4 h-4" />
-                Run Simulations
-              </>
+        )}
+
+        {status.state === "done" && (
+          <div className="mt-4">
+            <div className="grid gap-2 sm:grid-cols-3 mb-3">
+              {status.result?.summary && (
+                <>
+                  <ResultStat label="Beat Chalk %" value={`${status.result.summary.winPct ?? 0}%`} color="text-emerald-400" />
+                  <ResultStat label="Avg Score" value={String(status.result.summary.avgScore ?? 0)} color="text-cyan-400" />
+                  <ResultStat label="Avg Upset Hits" value={String(status.result.summary.upsetRate ?? 0)} color="text-amber-400" />
+                </>
+              )}
+            </div>
+            {status.result?.summary && (
+              <div className="grid gap-2 sm:grid-cols-3 mb-3">
+                <ResultStat label="Chalk Baseline" value={String(status.result.summary.chalkBaseline ?? 0)} color="text-white/70" />
+                <ResultStat label="Best Run" value={String(status.result.summary.maxScore ?? 0)} color="text-emerald-300" />
+                <ResultStat label="Worst Run" value={String(status.result.summary.minScore ?? 0)} color="text-red-300" />
+              </div>
             )}
-          </button>
-        </div>
-      </SectionCard>
-
-      {running && (
-        <div className="rounded-xl p-6 text-center" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div className="w-full rounded-full h-2 mb-3 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-            <div className="h-full rounded-full animate-pulse" style={{ background: "linear-gradient(90deg, #fb923c, #f59e0b)", width: "60%" }} />
-          </div>
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Simulating {simCount.toLocaleString()} tournament outcomes...
-          </p>
-        </div>
-      )}
-
-      {results && !running && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <StatCard label="Win Rate" value={`${results.winPct["Your Bracket"]}%`} sub="vs 8.1% field avg" accent="#22c55e" />
-          <StatCard label="Avg Score" value={String(results.avgScore)} sub="projected points" accent="#3b82f6" />
-          <StatCard label="Upset Rate" value={`${results.upsetRate}%`} sub="of simulated upsets hit" accent="#f59e0b" />
-        </div>
-      )}
-
-      {results && !running && (
-        <SectionCard title="Win Probability Breakdown" subtitle="How your bracket compares across simulation runs">
-          <div className="space-y-3">
-            {Object.entries(results.winPct).map(([label, pct]) => (
-              <div key={label}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span style={{ color: "rgba(255,255,255,0.6)" }}>{label}</span>
-                  <span className="font-bold" style={{ color: "#fb923c" }}>{pct}%</span>
-                </div>
-                <div className="w-full h-2 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
-                  <div
-                    className="h-full rounded-full transition-all"
-                    style={{ width: `${Math.min(100, pct * 4)}%`, background: label === "Your Bracket" ? "#fb923c" : "rgba(255,255,255,0.15)" }}
-                  />
+            {status.result?.roundBreakdown && (
+              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3 mb-3">
+                <div className="text-[10px] uppercase tracking-wider text-white/40 mb-2">Avg Points by Round</div>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(status.result.roundBreakdown).map(([round, pts]) => (
+                    <div key={round} className="rounded-lg border border-white/10 bg-slate-950/60 px-3 py-1.5 text-xs">
+                      <span className="text-white/40">{round}:</span>{" "}
+                      <span className="text-white/90 font-semibold">{String(pts)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
+            )}
+            {status.result?.scoring && (
+              <div className="text-[10px] text-white/30 mb-2">{status.result.scoring}</div>
+            )}
+            <details className="mt-2">
+              <summary className="text-xs text-white/40 cursor-pointer hover:text-white/60 transition">Raw result data</summary>
+              <pre className="mt-2 max-h-80 overflow-auto rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-xs text-white/80">
+                {JSON.stringify(status.result, null, 2)}
+              </pre>
+            </details>
           </div>
-        </SectionCard>
-      )}
+        )}
+
+        {status.state === "error" && (
+          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+            {status.message}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
 function ComparePanel() {
   return (
-    <div className="space-y-4">
-      <SectionCard title="Compare Bracket Styles" subtitle="See how different approaches perform across thousands of simulations">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {BRACKET_STYLES.map((style) => (
-            <button
-              key={style.id}
-              className="rounded-xl p-4 text-left transition hover:scale-[1.02]"
-              style={{ background: "rgba(255,255,255,0.02)", border: `1px solid ${style.color}33` }}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${style.color}15`, color: style.color }}>
-                  {style.icon}
-                </div>
-                <span className="text-sm font-bold">{style.label}</span>
-              </div>
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>{style.desc}</p>
-              <div className="flex items-center gap-1 mt-3 text-[10px] font-semibold" style={{ color: style.color }}>
-                Run comparison <ChevronRight className="w-3 h-3" />
-              </div>
-            </button>
-          ))}
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Style Comparison Results" subtitle="Results will appear here after running a comparison">
-        <div className="text-center py-8">
-          <BarChart3 className="w-10 h-10 mx-auto mb-3" style={{ color: "rgba(255,255,255,0.1)" }} />
-          <p className="text-xs" style={{ color: "rgba(255,255,255,0.3)" }}>
-            Select a bracket style above to compare outcomes
-          </p>
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function StrategyPanel({
-  risk,
-  setRisk,
-  uniqueness,
-  setUniqueness,
-  upsetTolerance,
-  setUpsetTolerance,
-}: {
-  risk: number
-  setRisk: (n: number) => void
-  uniqueness: number
-  setUniqueness: (n: number) => void
-  upsetTolerance: number
-  setUpsetTolerance: (n: number) => void
-}) {
-  return (
-    <div className="space-y-4">
-      <SectionCard title="Strategy Sliders" subtitle="Adjust parameters to explore how different strategies affect outcomes">
-        <div className="space-y-6">
-          <SliderControl
-            label="Risk Tolerance"
-            value={risk}
-            onChange={setRisk}
-            low="Conservative"
-            high="Aggressive"
-            color="#ef4444"
-          />
-          <SliderControl
-            label="Uniqueness"
-            value={uniqueness}
-            onChange={setUniqueness}
-            low="Follow Consensus"
-            high="Contrarian"
-            color="#8b5cf6"
-          />
-          <SliderControl
-            label="Upset Tolerance"
-            value={upsetTolerance}
-            onChange={setUpsetTolerance}
-            low="Chalk Heavy"
-            high="Upset Heavy"
-            color="#f59e0b"
-          />
-        </div>
-
-        <div className="mt-6 rounded-xl p-4" style={{ background: "rgba(251,146,60,0.05)", border: "1px solid rgba(251,146,60,0.1)" }}>
-          <div className="flex items-start gap-2">
-            <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#fb923c" }} />
-            <div>
-              <div className="text-xs font-semibold" style={{ color: "#fb923c" }}>Strategy Profile</div>
-              <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.5)" }}>
-                {risk > 60 ? "High-risk" : risk < 40 ? "Conservative" : "Balanced"} approach with{" "}
-                {uniqueness > 60 ? "contrarian" : uniqueness < 40 ? "consensus-aligned" : "moderate"} picks and{" "}
-                {upsetTolerance > 50 ? "upset-friendly" : "chalk-leaning"} tendencies.
-              </p>
-            </div>
-          </div>
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function RecalibratePanel() {
-  return (
-    <div className="space-y-4">
-      <SectionCard title="Round-by-Round Recalibration" subtitle="After each round completes, see how your bracket's outlook changes">
-        <div className="space-y-2">
-          {["Round of 64", "Round of 32", "Sweet 16", "Elite 8", "Final Four", "Championship"].map((round, i) => {
-            const completed = i < 0
-            return (
-              <div
-                key={round}
-                className="flex items-center justify-between rounded-xl px-4 py-3 transition"
-                style={{
-                  background: completed ? "rgba(34,197,94,0.05)" : "rgba(255,255,255,0.02)",
-                  border: `1px solid ${completed ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.06)"}`,
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold"
-                    style={{
-                      background: completed ? "rgba(34,197,94,0.15)" : "rgba(255,255,255,0.05)",
-                      color: completed ? "#22c55e" : "rgba(255,255,255,0.3)",
-                    }}
-                  >
-                    R{i + 1}
-                  </div>
-                  <span className="text-sm font-semibold" style={{ color: completed ? "white" : "rgba(255,255,255,0.5)" }}>{round}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {completed ? (
-                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e" }}>
-                      Recalibrated
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-                      <Lock className="w-3 h-3" /> Awaiting results
-                    </span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function ReportsPanel() {
-  const reports = [
-    { name: "Bracket Health Report", desc: "Overall bracket strength analysis", format: "PDF" },
-    { name: "Volatility Summary", desc: "Which picks carry the most risk", format: "CSV" },
-    { name: "Scenario Outcomes", desc: "Best/worst case point projections", format: "PDF" },
-    { name: "Simulation Raw Data", desc: "Full simulation run results", format: "CSV" },
-  ]
-
-  return (
-    <div className="space-y-4">
-      <SectionCard title="Exportable Reports" subtitle="Download detailed analysis of your bracket and simulations">
-        <div className="space-y-2">
-          {reports.map((r) => (
-            <div
-              key={r.name}
-              className="flex items-center justify-between rounded-xl px-4 py-3"
-              style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
-            >
-              <div>
-                <div className="text-sm font-semibold">{r.name}</div>
-                <div className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>{r.desc}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.3)" }}>
-                  {r.format}
-                </span>
-                <button
-                  className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                  style={{ background: "rgba(251,146,60,0.12)", color: "#fb923c", border: "1px solid rgba(251,146,60,0.2)" }}
-                >
-                  <Download className="w-3 h-3" />
-                  Export
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function SectionCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl p-5" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <h2 className="text-base font-bold mb-0.5">{title}</h2>
-      <p className="text-[11px] mb-4" style={{ color: "rgba(255,255,255,0.35)" }}>{subtitle}</p>
-      {children}
-    </div>
-  )
-}
-
-function StatCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent: string }) {
-  return (
-    <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "rgba(255,255,255,0.3)" }}>{label}</div>
-      <div className="text-2xl font-bold" style={{ color: accent }}>{value}</div>
-      <div className="text-[10px] mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{sub}</div>
-    </div>
-  )
-}
-
-function SliderControl({
-  label,
-  value,
-  onChange,
-  low,
-  high,
-  color,
-}: {
-  label: string
-  value: number
-  onChange: (n: number) => void
-  low: string
-  high: string
-  color: string
-}) {
-  return (
     <div>
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-xs font-semibold">{label}</span>
-        <span className="text-xs font-bold" style={{ color }}>{value}%</span>
+      <h2 className="text-lg font-semibold">Compare Styles</h2>
+      <p className="mt-2 text-sm text-white/70">
+        Side-by-side comparisons for Chalk vs Balanced vs Chaos bracket templates.
+      </p>
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        {[
+          { name: "Chalk", desc: "Follow the seeds. Minimal upsets.", color: "text-emerald-400", border: "border-emerald-500/20" },
+          { name: "Balanced", desc: "Mix of favorites and calculated upsets.", color: "text-blue-400", border: "border-blue-500/20" },
+          { name: "Chaos", desc: "Maximum upsets. High risk, high reward.", color: "text-red-400", border: "border-red-500/20" },
+        ].map((style) => (
+          <div key={style.name} className={`rounded-2xl border ${style.border} bg-slate-950/40 p-4`}>
+            <div className={`text-sm font-semibold ${style.color}`}>{style.name}</div>
+            <div className="mt-1 text-xs text-white/50">{style.desc}</div>
+            <div className="mt-3 space-y-1.5">
+              <StatRow label="Avg Score" value="--" />
+              <StatRow label="Win Rate" value="--" />
+              <StatRow label="Bust Rate" value="--" />
+            </div>
+            <div className="mt-3 text-[10px] text-white/30">Run simulations to populate</div>
+          </div>
+        ))}
       </div>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-        style={{
-          background: `linear-gradient(90deg, ${color} ${value}%, rgba(255,255,255,0.06) ${value}%)`,
-          accentColor: color,
-        }}
-      />
-      <div className="flex justify-between mt-1">
-        <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>{low}</span>
-        <span className="text-[9px]" style={{ color: "rgba(255,255,255,0.25)" }}>{high}</span>
-      </div>
+    </div>
+  )
+}
+
+function ResultStat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3">
+      <div className="text-[10px] uppercase tracking-wider text-white/40">{label}</div>
+      <div className={`text-xl font-bold mt-1 ${color}`}>{value}</div>
+    </div>
+  )
+}
+
+function StatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between text-xs">
+      <span className="text-white/40">{label}</span>
+      <span className="text-white/70 font-semibold">{value}</span>
     </div>
   )
 }
