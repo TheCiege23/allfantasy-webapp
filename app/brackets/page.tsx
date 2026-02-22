@@ -3,7 +3,7 @@ import Image from "next/image"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { Trophy, Plus, Users, ChevronRight, Star, Shield, Zap, Crown, ExternalLink, Sparkles } from "lucide-react"
+import { Trophy, Plus, Users, ChevronRight, Star, Shield, Zap, Crown, ExternalLink, Sparkles, AlertTriangle, Scale } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -352,6 +352,80 @@ export default async function BracketsHomePage() {
                 <span className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>{rule}</span>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.015)', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="px-5 pt-5 pb-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Scale className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.35)' }} />
+              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.35)' }}>Legal Disclaimer</h3>
+            </div>
+          </div>
+          <div className="px-5 pb-5 space-y-4">
+            <div className="rounded-xl p-4" style={{ background: 'rgba(239,68,68,0.03)', border: '1px solid rgba(239,68,68,0.08)' }}>
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#ef4444' }} />
+                <div>
+                  <div className="text-xs font-bold mb-1" style={{ color: '#ef4444' }}>Not Gambling &mdash; No Prizes, No Wagering</div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    AllFantasy does not promote, facilitate, or constitute gambling in any form. AllFantasy does not offer, award, distribute, or guarantee any prizes, monetary or otherwise. AllFantasy does not hold, manage, escrow, or custody any user funds, entry fees, or wagers at any time. No real money, cryptocurrency, or item of monetary value is at stake when participating in any bracket pool or challenge on this platform. Participation is entirely free and for entertainment purposes only.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ background: 'rgba(59,130,246,0.03)', border: '1px solid rgba(59,130,246,0.08)' }}>
+              <div className="flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#3b82f6' }} />
+                <div>
+                  <div className="text-xs font-bold mb-1" style={{ color: '#3b82f6' }}>AI Features &mdash; Experimental, Not an Advantage</div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    The artificial intelligence features provided within AllFantasy, including but not limited to matchup analysis, win probabilities, AI recommendations, and pick assistance, are experimental in nature and are provided solely for the purpose of exploring and testing the concept of AI-assisted sports analysis. These AI features do not provide any competitive advantage, guaranteed accuracy, or predictive reliability. AI-generated insights are for informational and entertainment purposes only and should not be relied upon for any decision-making, financial or otherwise. AllFantasy makes no representations or warranties regarding the accuracy, completeness, or reliability of any AI-generated content. Users acknowledge that AI outputs may be incorrect, incomplete, or misleading, and that all bracket selections are made solely at the user&apos;s own discretion.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ background: 'rgba(34,197,94,0.03)', border: '1px solid rgba(34,197,94,0.08)' }}>
+              <div className="flex items-start gap-2.5">
+                <Shield className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#22c55e' }} />
+                <div>
+                  <div className="text-xs font-bold mb-1" style={{ color: '#22c55e' }}>Donations &mdash; Voluntary & Non-Refundable</div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    AllFantasy operates as a free platform. Any financial transactions processed through AllFantasy are strictly voluntary donations made by users to support the continued development and operation of the platform. Donations do not grant any additional features, advantages, access, or preferential treatment. Donations are non-refundable and are not tied to any product, service, or outcome. AllFantasy is not a payment processor for league dues or prize pools. Any league dues, side bets, or payout arrangements between users are handled entirely through third-party services (such as FanCred) and are solely the responsibility of the users involved. AllFantasy bears no liability for any third-party transactions.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ background: 'rgba(251,146,60,0.03)', border: '1px solid rgba(251,146,60,0.08)' }}>
+              <div className="flex items-start gap-2.5">
+                <ExternalLink className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#fb923c' }} />
+                <div>
+                  <div className="text-xs font-bold mb-1" style={{ color: '#fb923c' }}>Third-Party Services</div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    AllFantasy may provide links to third-party services, including but not limited to FanCred (fancred.app), for the purpose of facilitating league dues and payouts between users. AllFantasy is not affiliated with, endorsed by, or responsible for any third-party service. Any transactions conducted through third-party platforms are governed by those platforms&apos; respective terms of service, privacy policies, and applicable laws. AllFantasy disclaims all liability for any losses, disputes, or damages arising from the use of third-party services.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="flex items-start gap-2.5">
+                <Trophy className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'rgba(255,255,255,0.3)' }} />
+                <div>
+                  <div className="text-xs font-bold mb-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Limitation of Liability</div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    AllFantasy is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo; without warranties of any kind, express or implied. To the fullest extent permitted by applicable law, AllFantasy, its operators, affiliates, and contributors shall not be liable for any direct, indirect, incidental, consequential, or punitive damages arising from the use of or inability to use this platform, including but not limited to reliance on AI-generated content, loss of data, or any financial losses incurred through third-party services. By using AllFantasy, you acknowledge that you have read, understood, and agree to be bound by this disclaimer.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-center pt-1" style={{ color: 'rgba(255,255,255,0.2)' }}>
+              Last updated: February 2026. AllFantasy reserves the right to modify this disclaimer at any time.
+            </p>
           </div>
         </div>
 
