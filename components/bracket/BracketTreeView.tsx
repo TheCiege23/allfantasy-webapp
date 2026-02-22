@@ -39,25 +39,7 @@ type Props = {
   compact?: boolean
 }
 
-const REGION_ORDER_LEFT = ["West", "East"]
-const REGION_ORDER_RIGHT = ["South", "Midwest"]
 const ALL_REGIONS = ["West", "East", "South", "Midwest"]
-
-const ROUND_LABELS: Record<number, string> = {
-  1: "R1",
-  2: "R2",
-  3: "SWEET 16",
-  4: "ELITE 8",
-  5: "FINAL 4",
-  6: "CHAMPIONSHIP",
-}
-
-const REGION_LABELS: Record<string, string> = {
-  West: "WEST",
-  East: "EAST",
-  South: "SOUTH",
-  Midwest: "MIDWEST",
-}
 
 const REGION_SHORT: Record<string, string> = {
   West: "W",
@@ -132,11 +114,9 @@ function cascadeClearInvalidPicks(
 function getGameResult(node: Node): { winner: string | null; isComplete: boolean } {
   const g = node.game
   if (!g) return { winner: null, isComplete: false }
-
   const status = (g.status || '').toLowerCase().trim()
   const terminalStatuses = ['completed', 'final', 'closed', 'finished', 'post', 'ft']
   const isTerminal = terminalStatuses.some(s => status.includes(s))
-
   if (!isTerminal && g.homeScore != null && g.awayScore != null && g.homeScore !== g.awayScore) {
     const gameTime = g.startTime ? new Date(g.startTime) : null
     if (gameTime && (Date.now() - gameTime.getTime()) > 4 * 60 * 60 * 1000) {
@@ -146,9 +126,7 @@ function getGameResult(node: Node): { winner: string | null; isComplete: boolean
       return { winner: winnerName, isComplete: true }
     }
   }
-
   if (!isTerminal) return { winner: null, isComplete: false }
-
   if (g.homeScore != null && g.awayScore != null && g.homeScore !== g.awayScore) {
     const winnerName = g.homeScore > g.awayScore
       ? (node.homeTeamName || g.homeTeam || '')
@@ -158,38 +136,64 @@ function getGameResult(node: Node): { winner: string | null; isComplete: boolean
   return { winner: null, isComplete: false }
 }
 
-function teamInitial(name: string | null): string {
-  if (!name) return "?"
-  return name.substring(0, 2).toUpperCase()
+const CW = 96
+const CH = 28
+const TH = 14
+const VG = 4
+const CG = 16
+const REGION_H = 8 * CH + 7 * VG
+const REGION_W = 4 * CW + 3 * CG
+const REGION_V_GAP = 28
+const CENTER_W = 140
+const FULL_H = 2 * REGION_H + REGION_V_GAP
+const FULL_W = 2 * REGION_W + CENTER_W
+
+function calcCenters(count: number): number[] {
+  const c: number[] = []
+  for (let i = 0; i < count; i++) c.push(i * (CH + VG) + TH)
+  return c
 }
 
-const MATCHUP_H = 56
-const MATCHUP_GAP = 6
-const ROUND_W = 150
-const CONNECTOR_W = 24
+function mergedCenters(prev: number[]): number[] {
+  const c: number[] = []
+  for (let i = 0; i < prev.length; i += 2) {
+    c.push((prev[i] + prev[i + 1]) / 2)
+  }
+  return c
+}
 
-function MatchupCell({
+function regionPositions() {
+  const r1 = calcCenters(8)
+  const r2 = mergedCenters(r1)
+  const r3 = mergedCenters(r2)
+  const r4 = mergedCenters(r3)
+  return { 1: r1, 2: r2, 3: r3, 4: r4 }
+}
+
+const POS = regionPositions()
+
+function MiniCell({
   node,
   picks,
   seedMap,
   effective,
   locked,
-  savingNode,
   onPick,
   readOnly,
-  compact,
   sleeperTeams,
+  x,
+  y,
 }: {
   node: Node
   picks: Record<string, string | null>
   seedMap: Map<string, number>
   effective: Map<string, { home: string | null; away: string | null }>
   locked: boolean
-  savingNode: string | null
   onPick: (node: Node, team: string) => void
   readOnly?: boolean
-  compact?: boolean
   sleeperTeams?: Set<string>
+  x: number
+  y: number
 }) {
   const picked = picks[node.id] ?? null
   const eff = effective.get(node.id)
@@ -199,111 +203,78 @@ function MatchupCell({
   const awaySeed = awayName ? (seedMap.get(awayName) ?? node.seedAway) : node.seedAway
   const homePicked = !!homeName && picked === homeName
   const awayPicked = !!awayName && picked === awayName
-  const saving = savingNode === node.id
-  const cellH = compact ? 44 : MATCHUP_H
-  const cellW = compact ? 130 : ROUND_W
 
   const { winner, isComplete } = getGameResult(node)
   const homeCorrect = isComplete && homePicked && winner === homeName
   const awayCorrect = isComplete && awayPicked && winner === awayName
   const homeWrong = isComplete && homePicked && winner !== homeName
   const awayWrong = isComplete && awayPicked && winner !== awayName
-  const homeEliminated = isComplete && winner !== homeName
-  const awayEliminated = isComplete && winner !== awayName
 
-  function TeamRow({ name, seed, isPicked, side, isCorrect, isWrong, isElim }: {
-    name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'
-    isCorrect: boolean; isWrong: boolean; isElim: boolean
+  const canClick = !readOnly && !locked
+
+  function pickBg(isPicked: boolean, correct: boolean, wrong: boolean): string {
+    if (correct) return 'rgba(34,197,94,0.15)'
+    if (wrong) return 'rgba(239,68,68,0.1)'
+    if (isPicked) return 'rgba(251,146,60,0.18)'
+    return 'transparent'
+  }
+
+  function pickColor(name: string | null, isPicked: boolean, correct: boolean, wrong: boolean, isSleeper: boolean): string {
+    if (!name) return 'rgba(255,255,255,0.12)'
+    if (correct) return '#22c55e'
+    if (wrong) return 'rgba(239,68,68,0.5)'
+    if (isPicked) return '#fb923c'
+    if (isSleeper) return '#c084fc'
+    return 'rgba(255,255,255,0.75)'
+  }
+
+  function seedColor(isSleeper: boolean): string {
+    return isSleeper ? '#a855f7' : 'rgba(255,255,255,0.25)'
+  }
+
+  function TeamRow({ name, seed, isPicked, side, correct, wrong }: {
+    name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'; correct: boolean; wrong: boolean
   }) {
-    const canClick = !readOnly && !locked && !!name
     const isSleeper = !!(name && sleeperTeams?.has(name))
-    const rowH = cellH / 2
-
-    let bgColor = 'transparent'
-    if (isCorrect) bgColor = 'rgba(34,197,94,0.12)'
-    else if (isWrong) bgColor = 'rgba(239,68,68,0.08)'
-    else if (isPicked) bgColor = 'rgba(251,146,60,0.15)'
-
-    let nameColor = 'rgba(255,255,255,0.85)'
-    if (isElim && !isPicked) nameColor = 'rgba(255,255,255,0.25)'
-    else if (isWrong) nameColor = 'rgba(239,68,68,0.5)'
-    else if (isCorrect) nameColor = '#22c55e'
-    else if (isPicked) nameColor = '#fb923c'
-    else if (isSleeper) nameColor = '#c084fc'
-    else if (!name) nameColor = 'rgba(255,255,255,0.12)'
-
+    const clickable = canClick && !!name
     return (
       <button
-        disabled={!canClick}
+        disabled={!clickable}
         onClick={() => name && onPick(node, name)}
-        className="w-full flex items-center gap-1.5 text-left transition-all duration-150"
+        className="w-full flex items-center text-left"
         style={{
-          height: rowH,
-          background: bgColor,
-          borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.06)' : undefined,
-          cursor: canClick ? 'pointer' : 'default',
-          paddingLeft: compact ? 4 : 6,
-          paddingRight: compact ? 4 : 8,
+          height: TH,
+          background: pickBg(isPicked, correct, wrong),
+          borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.04)' : undefined,
+          cursor: clickable ? 'pointer' : 'default',
+          paddingLeft: 4,
+          paddingRight: 4,
+          gap: 3,
         }}
       >
-        <div
-          className="shrink-0 rounded flex items-center justify-center font-bold"
-          style={{
-            width: compact ? 16 : 20,
-            height: compact ? 16 : 20,
-            fontSize: compact ? 8 : 9,
-            background: name
-              ? (isPicked ? 'rgba(251,146,60,0.25)' : isSleeper ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.06)')
-              : 'rgba(255,255,255,0.03)',
-            color: name
-              ? (isPicked ? '#fb923c' : isSleeper ? '#a855f7' : 'rgba(255,255,255,0.3)')
-              : 'rgba(255,255,255,0.08)',
-          }}
-        >
-          {name ? teamInitial(name) : ''}
-        </div>
-
         {seed != null && (
-          <span
-            className="font-bold shrink-0"
-            style={{
-              fontSize: compact ? 9 : 10,
-              width: compact ? 12 : 14,
-              color: isSleeper ? '#a855f7' : 'rgba(255,255,255,0.3)',
-            }}
-          >
+          <span style={{ fontSize: 8, fontWeight: 700, color: seedColor(isSleeper), width: 10, flexShrink: 0 }}>
             {seed}
           </span>
         )}
-
         <span
-          className="font-medium truncate flex-1"
           style={{
-            fontSize: compact ? 10 : 11,
-            color: nameColor,
-            textDecoration: (isElim && isPicked && isWrong) ? 'line-through' : undefined,
+            fontSize: 9,
+            fontWeight: 500,
+            color: pickColor(name, isPicked, correct, wrong, isSleeper),
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            flex: 1,
+            textDecoration: wrong ? 'line-through' : undefined,
           }}
         >
-          {name || (compact ? '' : 'TBD')}
+          {name || ''}
         </span>
-
-        {isSleeper && !compact && (
-          <Sparkles className="w-3 h-3 shrink-0" style={{ color: '#a855f7' }} />
-        )}
-
-        {isCorrect && (
-          <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(34,197,94,0.2)' }}>
-            <Check className="w-2.5 h-2.5" style={{ color: '#22c55e' }} />
-          </div>
-        )}
-        {isWrong && (
-          <div className="w-4 h-4 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.15)' }}>
-            <X className="w-2.5 h-2.5" style={{ color: '#ef4444' }} />
-          </div>
-        )}
-
-        {node.game && !isCorrect && !isWrong && (
-          <span className="font-bold shrink-0 ml-0.5 tabular-nums" style={{ fontSize: compact ? 9 : 10, color: 'rgba(255,255,255,0.35)' }}>
+        {correct && <Check style={{ width: 8, height: 8, color: '#22c55e', flexShrink: 0 }} />}
+        {wrong && <X style={{ width: 8, height: 8, color: '#ef4444', flexShrink: 0 }} />}
+        {node.game && !correct && !wrong && (
+          <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
             {side === 'home' ? (node.game.homeScore ?? '') : (node.game.awayScore ?? '')}
           </span>
         )}
@@ -311,152 +282,30 @@ function MatchupCell({
     )
   }
 
+  const hasPick = !!picked
+  let borderColor = 'rgba(255,255,255,0.07)'
+  if (homeCorrect || awayCorrect) borderColor = 'rgba(34,197,94,0.3)'
+  else if (homeWrong || awayWrong) borderColor = 'rgba(239,68,68,0.2)'
+  else if (hasPick) borderColor = 'rgba(251,146,60,0.25)'
+
   return (
     <div
-      className="rounded-lg overflow-hidden transition-shadow duration-150"
+      className="absolute rounded-md overflow-hidden"
       style={{
-        width: cellW,
-        height: cellH,
-        border: picked
-          ? (homeCorrect || awayCorrect ? '1px solid rgba(34,197,94,0.3)' : homeWrong || awayWrong ? '1px solid rgba(239,68,68,0.2)' : '1px solid rgba(251,146,60,0.25)')
-          : '1px solid rgba(255,255,255,0.07)',
-        background: '#161b22',
-        boxShadow: picked ? '0 0 12px rgba(251,146,60,0.06)' : '0 1px 3px rgba(0,0,0,0.3)',
+        left: x,
+        top: y,
+        width: CW,
+        height: CH,
+        background: '#1c2333',
+        border: `1px solid ${borderColor}`,
       }}
     >
-      <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" isCorrect={homeCorrect} isWrong={homeWrong} isElim={homeEliminated} />
-      <TeamRow name={awayName} seed={awaySeed} isPicked={awayPicked} side="away" isCorrect={awayCorrect} isWrong={awayWrong} isElim={awayEliminated} />
+      <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" correct={homeCorrect} wrong={homeWrong} />
+      <TeamRow name={awayName} seed={awaySeed} isPicked={awayPicked} side="away" correct={awayCorrect} wrong={awayWrong} />
     </div>
   )
 }
 
-function RegionBracket({
-  region,
-  nodes,
-  picks,
-  seedMap,
-  effective,
-  savingNode,
-  onPick,
-  direction,
-  readOnly,
-  sleeperTeams,
-}: {
-  region: string
-  nodes: Node[]
-  picks: Record<string, string | null>
-  seedMap: Map<string, number>
-  effective: Map<string, { home: string | null; away: string | null }>
-  savingNode: string | null
-  onPick: (node: Node, team: string) => void
-  direction: 'ltr' | 'rtl'
-  readOnly?: boolean
-  sleeperTeams?: Set<string>
-}) {
-  const byRound: Record<number, Node[]> = { 1: [], 2: [], 3: [], 4: [] }
-  for (const n of nodes) {
-    if (byRound[n.round]) byRound[n.round].push(n)
-  }
-  Object.values(byRound).forEach((arr) => arr.sort((a, b) => a.slot.localeCompare(b.slot)))
-
-  const rounds = direction === 'ltr' ? [1, 2, 3, 4] : [4, 3, 2, 1]
-
-  const r1Count = byRound[1].length || 8
-  const totalHeight = r1Count * (MATCHUP_H + MATCHUP_GAP) - MATCHUP_GAP
-
-  function getMatchupY(round: number, idx: number, total: number): number {
-    const blockH = totalHeight / total
-    return blockH * idx + (blockH - MATCHUP_H) / 2
-  }
-
-  const totalW = rounds.length * (ROUND_W + CONNECTOR_W) - CONNECTOR_W
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-3 px-1">
-        <div
-          className="px-2.5 py-1 rounded-md font-bold text-[11px] uppercase tracking-wider"
-          style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.15)' }}
-        >
-          {REGION_LABELS[region]}
-        </div>
-        <div className="flex gap-0" style={{ direction: direction === 'rtl' ? 'rtl' : 'ltr' }}>
-          {rounds.map((r) => (
-            <div key={r} className="text-center" style={{ width: ROUND_W + CONNECTOR_W }}>
-              <span className="text-[9px] font-semibold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                {ROUND_LABELS[r]}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="relative" style={{ width: totalW + CONNECTOR_W, height: totalHeight }}>
-        <svg
-          className="absolute inset-0 pointer-events-none"
-          width={totalW + CONNECTOR_W}
-          height={totalHeight}
-        >
-          {rounds.map((round, roundIdx) => {
-            if (roundIdx === rounds.length - 1) return null
-            const nextRound = rounds[roundIdx + 1]
-            const currentNodes = byRound[round]
-            const nextNodes = byRound[nextRound]
-            if (!currentNodes.length || !nextNodes.length) return null
-
-            return currentNodes.map((n, nIdx) => {
-              const pairIdx = Math.floor(nIdx / 2)
-
-              const currentY = getMatchupY(round, nIdx, currentNodes.length) + MATCHUP_H / 2
-              const nextY = getMatchupY(nextRound, pairIdx, nextNodes.length) + MATCHUP_H / 2
-
-              const currentX = roundIdx * (ROUND_W + CONNECTOR_W) + ROUND_W
-              const nextX = (roundIdx + 1) * (ROUND_W + CONNECTOR_W)
-              const midX = (currentX + nextX) / 2
-
-              return (
-                <g key={n.id}>
-                  <line x1={currentX} y1={currentY} x2={midX} y2={currentY} stroke="rgba(255,255,255,0.1)" strokeWidth={1.5} />
-                  <line x1={midX} y1={currentY} x2={midX} y2={nextY} stroke="rgba(255,255,255,0.1)" strokeWidth={1.5} />
-                  {nIdx % 2 === 0 && (
-                    <line x1={midX} y1={nextY} x2={nextX} y2={nextY} stroke="rgba(255,255,255,0.1)" strokeWidth={1.5} />
-                  )}
-                </g>
-              )
-            })
-          })}
-        </svg>
-
-        {rounds.map((round, roundIdx) => {
-          const roundNodes = byRound[round]
-          return roundNodes.map((n, idx) => {
-            const y = getMatchupY(round, idx, roundNodes.length)
-            const x = roundIdx * (ROUND_W + CONNECTOR_W)
-            return (
-              <div
-                key={n.id}
-                className="absolute"
-                style={{ top: y, left: x }}
-              >
-                <MatchupCell
-                  node={n}
-                  picks={picks}
-                  seedMap={seedMap}
-                  effective={effective}
-                  locked={isPickLocked(n)}
-                  savingNode={savingNode}
-                  onPick={onPick}
-                  readOnly={readOnly}
-                  sleeperTeams={sleeperTeams}
-                />
-              </div>
-            )
-          })
-        })}
-      </div>
-    </div>
-  )
-}
 
 const STRATEGY_TIPS = [
   "Lower seeds (1-4) historically dominate late rounds. No team seeded 12+ has ever made the Final Four.",
@@ -476,7 +325,6 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const [showTips, setShowTips] = useState(false)
   const [autoFilling, setAutoFilling] = useState(false)
 
-  const scrollRef = useRef<HTMLDivElement>(null)
   const regionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const seedMap = useMemo(() => buildSeedMap(nodes), [nodes])
@@ -504,18 +352,15 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
       if (!n.region) fin.push(n)
       else reg[n.region]?.push(n)
     }
+    for (const r of ALL_REGIONS) {
+      reg[r].sort((a, b) => a.round - b.round || a.slot.localeCompare(b.slot))
+    }
     fin.sort((a, b) => a.round - b.round || a.slot.localeCompare(b.slot))
     return { byRegion: reg, finals: fin }
   }, [nodesWithLive])
 
-  const totalPicks = useMemo(() => {
-    return Object.values(picks).filter(Boolean).length
-  }, [picks])
-
-  const totalGames = useMemo(() => {
-    return nodesWithLive.filter(n => n.round >= 1).length
-  }, [nodesWithLive])
-
+  const totalPicks = useMemo(() => Object.values(picks).filter(Boolean).length, [picks])
+  const totalGames = useMemo(() => nodesWithLive.filter(n => n.round >= 1).length, [nodesWithLive])
   const progressPct = totalGames > 0 ? Math.round((totalPicks / totalGames) * 100) : 0
 
   const autoFill = useCallback(async () => {
@@ -527,9 +372,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ entryId }),
       })
-      if (res.ok) {
-        window.location.reload()
-      }
+      if (res.ok) window.location.reload()
     } catch {}
     setAutoFilling(false)
   }, [entryId, readOnly, autoFilling])
@@ -542,16 +385,13 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     const cleaned = cascadeClearInvalidPicks(nodesWithLive, tentative)
     setPicks(cleaned)
     setSavingNode(node.id)
-
     const res = await fetch(`/api/bracket/entries/${entryId}/pick`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ nodeId: node.id, pickedTeamName: teamName }),
     })
     setSavingNode(null)
-    if (!res.ok) {
-      setPicks((p) => ({ ...p, [node.id]: prev }))
-    }
+    if (!res.ok) setPicks((p) => ({ ...p, [node.id]: prev }))
   }, [picks, nodesWithLive, entryId, readOnly])
 
   function scrollToRegion(region: string) {
@@ -559,6 +399,111 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     const el = regionRefs.current[region]
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
+
+  function renderRegionCells(
+    region: string,
+    direction: 'ltr' | 'rtl',
+    offsetX: number,
+    offsetY: number,
+  ) {
+    const regionNodes = byRegion[region] || []
+    const byRound: Record<number, Node[]> = { 1: [], 2: [], 3: [], 4: [] }
+    for (const n of regionNodes) {
+      if (byRound[n.round]) byRound[n.round].push(n)
+    }
+    Object.values(byRound).forEach(arr => arr.sort((a, b) => a.slot.localeCompare(b.slot)))
+
+    const cells: JSX.Element[] = []
+    for (let r = 1; r <= 4; r++) {
+      const roundNodes = byRound[r]
+      const centers = POS[r as keyof typeof POS]
+      for (let i = 0; i < roundNodes.length && i < centers.length; i++) {
+        let x: number
+        if (direction === 'ltr') {
+          x = offsetX + (r - 1) * (CW + CG)
+        } else {
+          x = offsetX + (4 - r) * (CW + CG)
+        }
+        const y = offsetY + centers[i] - TH
+        cells.push(
+          <MiniCell
+            key={roundNodes[i].id}
+            node={roundNodes[i]}
+            picks={picks}
+            seedMap={seedMap}
+            effective={effective}
+            locked={isPickLocked(roundNodes[i])}
+            onPick={submitPick}
+            readOnly={readOnly}
+            sleeperTeams={sleeperTeams}
+            x={x}
+            y={y}
+          />
+        )
+      }
+    }
+    return cells
+  }
+
+  function renderRegionLines(
+    direction: 'ltr' | 'rtl',
+    offsetX: number,
+    offsetY: number,
+  ) {
+    const lines: JSX.Element[] = []
+    for (let ri = 0; ri < 3; ri++) {
+      const r = ri + 1
+      const centers = POS[r as keyof typeof POS]
+      const nextCenters = POS[(r + 1) as keyof typeof POS]
+      for (let i = 0; i < centers.length; i++) {
+        const pairIdx = Math.floor(i / 2)
+        const cy = offsetY + centers[i]
+        const ny = offsetY + nextCenters[pairIdx]
+
+        let sx: number, ex: number
+        if (direction === 'ltr') {
+          sx = offsetX + ri * (CW + CG) + CW
+          ex = offsetX + (ri + 1) * (CW + CG)
+        } else {
+          sx = offsetX + (3 - ri) * (CW + CG)
+          ex = offsetX + (3 - ri - 1) * (CW + CG) + CW
+        }
+        const mx = (sx + ex) / 2
+
+        lines.push(
+          <line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        )
+        lines.push(
+          <line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+        )
+        if (i % 2 === 0) {
+          lines.push(
+            <line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+          )
+        }
+      }
+    }
+    return lines
+  }
+
+  const leftX = 0
+  const rightX = REGION_W + CENTER_W
+  const topY = 0
+  const botY = REGION_H + REGION_V_GAP
+
+  const e8TopCy = topY + POS[4][0]
+  const e8BotCy = botY + POS[4][0]
+
+  const centerX = REGION_W
+  const centerMidY = FULL_H / 2
+
+  const ffNodes = finals.filter(n => n.round === 5)
+  const champNodes = finals.filter(n => n.round === 6)
+  const allFinals = [...ffNodes, ...champNodes]
+
+  const ff0Y = centerMidY - CH - 20
+  const ff1Y = centerMidY + 20
+  const champY = centerMidY - TH
 
   if (compact) {
     return (
@@ -574,21 +519,6 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
             <div className="h-full rounded-full transition-all duration-300" style={{ width: `${progressPct}%`, background: '#fb923c' }} />
           </div>
         </div>
-        <div className="flex justify-center gap-1 px-3 pb-3">
-          {ALL_REGIONS.map(r => {
-            const regionNodes = byRegion[r] || []
-            const regionPicks = regionNodes.filter(n => picks[n.id]).length
-            const regionTotal = regionNodes.length
-            return (
-              <div key={r} className="text-center flex-1">
-                <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.2)' }}>{REGION_SHORT[r]}</div>
-                <div className="text-[10px] font-semibold mt-0.5" style={{ color: regionPicks === regionTotal && regionTotal > 0 ? '#22c55e' : '#fb923c' }}>
-                  {regionPicks}/{regionTotal}
-                </div>
-              </div>
-            )
-          })}
-        </div>
       </div>
     )
   }
@@ -597,13 +527,11 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold">My Bracket</h2>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.15)' }}>
-              <span className="text-xs font-bold" style={{ color: '#fb923c' }}>{totalPicks}</span>
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
-              <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.4)' }}>{totalGames}</span>
-            </div>
+          <h2 className="text-base font-bold">My Bracket</h2>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full" style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.15)' }}>
+            <span className="text-xs font-bold" style={{ color: '#fb923c' }}>{totalPicks}</span>
+            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>/</span>
+            <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.4)' }}>{totalGames}</span>
           </div>
           {sleeperTeams.size > 0 && (
             <span className="flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.2)' }}>
@@ -654,170 +582,181 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
       )}
 
       <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${progressPct}%`, background: progressPct === 100 ? '#22c55e' : '#fb923c' }}
-        />
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, background: progressPct === 100 ? '#22c55e' : '#fb923c' }} />
       </div>
 
-      {/* Desktop full bracket */}
-      <div className="hidden xl:block">
+      {/* DESKTOP: Full bracket tree */}
+      <div className="hidden lg:block">
         <div
-          ref={scrollRef}
           className="overflow-auto rounded-xl"
           style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}
         >
-          <div className="p-6">
-            <div className="flex items-start gap-0 justify-center" style={{ minWidth: '1400px' }}>
-              <div className="space-y-8">
-                {REGION_ORDER_LEFT.map((region) => (
-                  <div key={region} ref={(el) => { regionRefs.current[region] = el }}>
-                    <RegionBracket
-                      region={region}
-                      nodes={byRegion[region]}
-                      picks={picks}
-                      seedMap={seedMap}
-                      effective={effective}
-                      savingNode={savingNode}
-                      onPick={submitPick}
-                      direction="ltr"
-                      readOnly={readOnly}
-                      sleeperTeams={sleeperTeams}
-                    />
-                  </div>
-                ))}
+          <div style={{ padding: 24, minWidth: FULL_W + 48 }}>
+            <div className="relative" style={{ width: FULL_W, height: FULL_H, margin: '0 auto' }}>
+
+              <svg
+                className="absolute inset-0 pointer-events-none"
+                width={FULL_W}
+                height={FULL_H}
+                style={{ overflow: 'visible' }}
+              >
+                {/* West (top-left, LTR) */}
+                {renderRegionLines('ltr', leftX, topY)}
+                {/* East (bottom-left, LTR) */}
+                {renderRegionLines('ltr', leftX, botY)}
+                {/* South (top-right, RTL) */}
+                {renderRegionLines('rtl', rightX, topY)}
+                {/* Midwest (bottom-right, RTL) */}
+                {renderRegionLines('rtl', rightX, botY)}
+
+                {/* E8 to center connector lines */}
+                {/* West E8 (top-left) → center left */}
+                <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                {/* East E8 (bottom-left) → center left */}
+                <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                {/* South E8 (top-right) → center right */}
+                <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                {/* Midwest E8 (bottom-right) → center right */}
+                <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+
+                {/* FF to Championship */}
+                <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+              </svg>
+
+              {/* Region watermark labels */}
+              <div className="absolute pointer-events-none" style={{ left: leftX + REGION_W * 0.45, top: topY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
+                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>W</span>
+              </div>
+              <div className="absolute pointer-events-none" style={{ left: leftX + REGION_W * 0.45, top: botY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
+                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>E</span>
+              </div>
+              <div className="absolute pointer-events-none" style={{ left: rightX + REGION_W * 0.55, top: topY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
+                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>S</span>
+              </div>
+              <div className="absolute pointer-events-none" style={{ left: rightX + REGION_W * 0.55, top: botY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
+                <span style={{ fontSize: 40, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>MW</span>
               </div>
 
-              <div className="flex flex-col items-center justify-center px-6" style={{ minWidth: 220, paddingTop: '15%' }}>
-                <div className="text-center mb-4">
+              {/* Matchup cells per region */}
+              {renderRegionCells('West', 'ltr', leftX, topY)}
+              {renderRegionCells('East', 'ltr', leftX, botY)}
+              {renderRegionCells('South', 'rtl', rightX, topY)}
+              {renderRegionCells('Midwest', 'rtl', rightX, botY)}
+
+              {/* Center: Final Four games (round 5) */}
+              {ffNodes.map((n, i) => (
+                <MiniCell
+                  key={n.id}
+                  node={n}
+                  picks={picks}
+                  seedMap={seedMap}
+                  effective={effective}
+                  locked={isPickLocked(n)}
+                  onPick={submitPick}
+                  readOnly={readOnly}
+                  sleeperTeams={sleeperTeams}
+                  x={centerX + (CENTER_W - CW) / 2}
+                  y={i === 0 ? ff0Y : ff1Y}
+                />
+              ))}
+
+              {/* Championship game (round 6) */}
+              {champNodes.map((n) => (
+                <MiniCell
+                  key={n.id}
+                  node={n}
+                  picks={picks}
+                  seedMap={seedMap}
+                  effective={effective}
+                  locked={isPickLocked(n)}
+                  onPick={submitPick}
+                  readOnly={readOnly}
+                  sleeperTeams={sleeperTeams}
+                  x={centerX + (CENTER_W - CW) / 2}
+                  y={champY}
+                />
+              ))}
+
+              {/* Trophy */}
+              <div
+                className="absolute flex items-center justify-center rounded-xl"
+                style={{
+                  left: centerX + (CENTER_W - 44) / 2,
+                  top: champY + CH + 8,
+                  width: 44,
+                  height: 44,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                }}
+              >
+                <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.25)' }} />
+              </div>
+
+              {/* Champion pick label */}
+              {(() => {
+                const champNode = champNodes[0] || ffNodes[ffNodes.length - 1]
+                const champPick = champNode ? picks[champNode.id] : null
+                if (!champPick) return null
+                return (
                   <div
-                    className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                    style={{ color: 'rgba(255,255,255,0.25)' }}
+                    className="absolute text-center"
+                    style={{
+                      left: centerX,
+                      top: champY + CH + 56,
+                      width: CENTER_W,
+                    }}
                   >
-                    FINAL FOUR
+                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>Champion</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#fb923c', marginTop: 2 }}>{champPick}</div>
                   </div>
-                  <div className="w-12 h-0.5 mx-auto mt-2 rounded-full" style={{ background: 'rgba(251,146,60,0.3)' }} />
+                )
+              })()}
+
+              {allFinals.length === 0 && (
+                <div
+                  className="absolute flex items-center justify-center rounded-xl"
+                  style={{
+                    left: centerX + (CENTER_W - 44) / 2,
+                    top: FULL_H / 2 - 22,
+                    width: 44,
+                    height: 44,
+                    background: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}
+                >
+                  <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.25)' }} />
                 </div>
-
-                <div className="space-y-4">
-                  {finals.filter(n => n.round === 5).map((n) => (
-                    <MatchupCell
-                      key={n.id}
-                      node={n}
-                      picks={picks}
-                      seedMap={seedMap}
-                      effective={effective}
-                      locked={isPickLocked(n)}
-                      savingNode={savingNode}
-                      onPick={submitPick}
-                      readOnly={readOnly}
-                      sleeperTeams={sleeperTeams}
-                    />
-                  ))}
-                </div>
-
-                <div className="mt-6 flex flex-col items-center">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.2em] mb-3" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                    CHAMPIONSHIP
-                  </div>
-                  {finals.filter(n => n.round === 6).map((n) => (
-                    <MatchupCell
-                      key={n.id}
-                      node={n}
-                      picks={picks}
-                      seedMap={seedMap}
-                      effective={effective}
-                      locked={isPickLocked(n)}
-                      savingNode={savingNode}
-                      onPick={submitPick}
-                      readOnly={readOnly}
-                      sleeperTeams={sleeperTeams}
-                    />
-                  ))}
-                  {finals.filter(n => n.round === 6).length === 0 && finals.length > 0 && null}
-
-                  <div className="mt-4">
-                    <div
-                      className="w-14 h-14 rounded-2xl flex items-center justify-center"
-                      style={{
-                        background: 'linear-gradient(135deg, rgba(251,146,60,0.15), rgba(251,146,60,0.05))',
-                        border: '2px solid rgba(251,146,60,0.25)',
-                        boxShadow: '0 0 20px rgba(251,146,60,0.08)',
-                      }}
-                    >
-                      <Trophy className="w-7 h-7" style={{ color: '#fb923c' }} />
-                    </div>
-                  </div>
-
-                  {picks && (() => {
-                    const champNode = finals.find(n => n.round === 6)
-                    const champPick = champNode ? picks[champNode.id] : null
-                    if (!champPick) return null
-                    return (
-                      <div className="mt-2 text-center">
-                        <div className="text-[10px] font-semibold" style={{ color: 'rgba(255,255,255,0.3)' }}>Champion Pick</div>
-                        <div className="text-sm font-bold mt-0.5" style={{ color: '#fb923c' }}>{champPick}</div>
-                      </div>
-                    )
-                  })()}
-                </div>
-
-                {finals.length === 0 && (
-                  <div className="text-[11px] text-center py-8" style={{ color: 'rgba(255,255,255,0.15)' }}>
-                    Final Four &amp; Championship<br/>games appear here
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-8">
-                {REGION_ORDER_RIGHT.map((region) => (
-                  <div key={region} ref={(el) => { regionRefs.current[region] = el }}>
-                    <RegionBracket
-                      region={region}
-                      nodes={byRegion[region]}
-                      picks={picks}
-                      seedMap={seedMap}
-                      effective={effective}
-                      savingNode={savingNode}
-                      onPick={submitPick}
-                      direction="rtl"
-                      readOnly={readOnly}
-                      sleeperTeams={sleeperTeams}
-                    />
-                  </div>
-                ))}
-              </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile / Tablet view */}
-      <div className="xl:hidden">
+      {/* MOBILE: Region-by-region scrollable */}
+      <div className="lg:hidden">
         <div className="rounded-xl overflow-hidden" style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
-          {/* Region pills */}
-          <div className="flex gap-1.5 p-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex gap-1 p-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
             {ALL_REGIONS.map((r) => {
               const isActive = activeRegion === r
-              const regionNodes = byRegion[r] || []
-              const regionPicks = regionNodes.filter(n => picks[n.id]).length
-              const regionTotal = regionNodes.length
-              const complete = regionPicks === regionTotal && regionTotal > 0
+              const rNodes = byRegion[r] || []
+              const rPicks = rNodes.filter(n => picks[n.id]).length
+              const rTotal = rNodes.length
               return (
                 <button
                   key={r}
                   onClick={() => scrollToRegion(r)}
-                  className="flex-1 py-2 rounded-lg text-center transition-all"
+                  className="flex-1 py-1.5 rounded-lg text-center transition-all"
                   style={{
-                    background: isActive ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.03)',
-                    border: isActive ? '1px solid rgba(251,146,60,0.25)' : '1px solid rgba(255,255,255,0.04)',
+                    background: isActive ? 'rgba(251,146,60,0.12)' : 'transparent',
+                    border: isActive ? '1px solid rgba(251,146,60,0.2)' : '1px solid transparent',
                   }}
                 >
-                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: isActive ? '#fb923c' : 'rgba(255,255,255,0.35)' }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: isActive ? '#fb923c' : 'rgba(255,255,255,0.3)' }}>
                     {REGION_SHORT[r]}
                   </div>
-                  <div className="text-[9px] mt-0.5 font-semibold" style={{ color: complete ? '#22c55e' : 'rgba(255,255,255,0.2)' }}>
-                    {regionPicks}/{regionTotal}
+                  <div style={{ fontSize: 8, fontWeight: 600, color: rPicks === rTotal && rTotal > 0 ? '#22c55e' : 'rgba(255,255,255,0.15)', marginTop: 1 }}>
+                    {rPicks}/{rTotal}
                   </div>
                 </button>
               )
@@ -825,117 +764,113 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
             <button
               onClick={() => {
                 setActiveRegion('finals')
-                const el = regionRefs.current['finals']
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                regionRefs.current['finals']?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }}
-              className="flex-1 py-2 rounded-lg text-center transition-all"
+              className="flex-1 py-1.5 rounded-lg text-center transition-all"
               style={{
-                background: activeRegion === 'finals' ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.03)',
-                border: activeRegion === 'finals' ? '1px solid rgba(251,146,60,0.25)' : '1px solid rgba(255,255,255,0.04)',
+                background: activeRegion === 'finals' ? 'rgba(251,146,60,0.12)' : 'transparent',
+                border: activeRegion === 'finals' ? '1px solid rgba(251,146,60,0.2)' : '1px solid transparent',
               }}
             >
-              <div className="text-[10px] font-bold" style={{ color: activeRegion === 'finals' ? '#fb923c' : 'rgba(255,255,255,0.35)' }}>
-                <Trophy className="w-3 h-3 mx-auto" />
-              </div>
-              <div className="text-[9px] mt-0.5 font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>F4</div>
+              <Trophy style={{ width: 12, height: 12, margin: '0 auto', color: activeRegion === 'finals' ? '#fb923c' : 'rgba(255,255,255,0.3)' }} />
+              <div style={{ fontSize: 8, fontWeight: 600, color: 'rgba(255,255,255,0.15)', marginTop: 1 }}>F4</div>
             </button>
           </div>
 
-          {/* Round header */}
-          <div className="flex gap-0 px-3 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-            {[1, 2, 3, 4].map((r) => (
-              <div key={r} className="flex-1 text-center">
-                <div className="text-[9px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.2)' }}>{ROUND_LABELS[r]}</div>
-              </div>
-            ))}
-          </div>
+          <div className="p-3 space-y-5">
+            {ALL_REGIONS.map((region) => {
+              const regionNodes = byRegion[region] || []
+              const byRound: Record<number, Node[]> = { 1: [], 2: [], 3: [], 4: [] }
+              for (const n of regionNodes) { if (byRound[n.round]) byRound[n.round].push(n) }
+              Object.values(byRound).forEach(arr => arr.sort((a, b) => a.slot.localeCompare(b.slot)))
 
-          <div className="p-3 space-y-6">
-            {ALL_REGIONS.map((region) => (
-              <div key={region} ref={(el) => { regionRefs.current[region] = el }}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div
-                    className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
-                    style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}
-                  >
-                    {REGION_LABELS[region]}
+              return (
+                <div key={region} ref={(el) => { regionRefs.current[region] = el }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div
+                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                      style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}
+                    >
+                      {REGION_SHORT[region]}
+                    </div>
+                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.04)' }} />
                   </div>
-                  <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.04)' }} />
-                </div>
-                <div className="overflow-x-auto pb-2">
-                  <div className="flex gap-2" style={{ minWidth: 4 * 136 }}>
-                    {[1, 2, 3, 4].map((round) => {
-                      const roundNodes = (byRegion[region] || []).filter(n => n.round === round).sort((a, b) => a.slot.localeCompare(b.slot))
-                      return (
-                        <div key={round} className="space-y-1.5 flex-1" style={{ minWidth: 130 }}>
-                          {roundNodes.map((n) => (
-                            <MatchupCell
-                              key={n.id}
-                              node={n}
-                              picks={picks}
-                              seedMap={seedMap}
-                              effective={effective}
-                              locked={isPickLocked(n)}
-                              savingNode={savingNode}
-                              onPick={submitPick}
-                              readOnly={readOnly}
-                              compact
-                              sleeperTeams={sleeperTeams}
-                            />
-                          ))}
-                        </div>
-                      )
-                    })}
+                  <div className="overflow-x-auto pb-1">
+                    <div className="flex gap-1.5" style={{ minWidth: 4 * 120 }}>
+                      {[1, 2, 3, 4].map(round => {
+                        const rn = byRound[round]
+                        return (
+                          <div key={round} className="space-y-1" style={{ minWidth: 115, flex: 1 }}>
+                            {rn.map(n => {
+                              const picked = picks[n.id] ?? null
+                              const eff2 = effective.get(n.id)
+                              const home = eff2?.home ?? n.homeTeamName
+                              const away = eff2?.away ?? n.awayTeamName
+                              const hSeed = home ? seedMap.get(home) ?? n.seedHome : n.seedHome
+                              const aSeed = away ? seedMap.get(away) ?? n.seedAway : n.seedAway
+                              const hPick = !!home && picked === home
+                              const aPick = !!away && picked === away
+                              const canC = !readOnly && !isPickLocked(n)
+                              return (
+                                <div key={n.id} className="rounded-md overflow-hidden" style={{ background: '#1c2333', border: `1px solid ${picked ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
+                                  <button disabled={!canC || !home} onClick={() => home && submitPick(n, home)}
+                                    className="w-full flex items-center text-left" style={{ height: 16, paddingLeft: 4, paddingRight: 4, borderBottom: '1px solid rgba(255,255,255,0.04)', background: hPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && home ? 'pointer' : 'default' }}>
+                                    {hSeed != null && <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 12, flexShrink: 0 }}>{hSeed}</span>}
+                                    <span style={{ fontSize: 9, fontWeight: 500, color: hPick ? '#fb923c' : home ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{home || ''}</span>
+                                  </button>
+                                  <button disabled={!canC || !away} onClick={() => away && submitPick(n, away)}
+                                    className="w-full flex items-center text-left" style={{ height: 16, paddingLeft: 4, paddingRight: 4, background: aPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && away ? 'pointer' : 'default' }}>
+                                    {aSeed != null && <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 12, flexShrink: 0 }}>{aSeed}</span>}
+                                    <span style={{ fontSize: 9, fontWeight: 500, color: aPick ? '#fb923c' : away ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{away || ''}</span>
+                                  </button>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
 
             <div ref={(el) => { regionRefs.current['finals'] = el }}>
-              <div className="flex items-center gap-2 mb-3">
-                <div
-                  className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
-                  style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}
-                >
-                  FINAL FOUR & CHAMPIONSHIP
+              <div className="flex items-center gap-2 mb-2">
+                <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase" style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}>
+                  FINAL FOUR
                 </div>
                 <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.04)' }} />
               </div>
-              <div className="flex flex-col items-center gap-3">
-                {finals.map((n) => (
-                  <MatchupCell
-                    key={n.id}
-                    node={n}
-                    picks={picks}
-                    seedMap={seedMap}
-                    effective={effective}
-                    locked={isPickLocked(n)}
-                    savingNode={savingNode}
-                    onPick={submitPick}
-                    readOnly={readOnly}
-                    sleeperTeams={sleeperTeams}
-                  />
-                ))}
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center mt-2"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(251,146,60,0.15), rgba(251,146,60,0.05))',
-                    border: '2px solid rgba(251,146,60,0.25)',
-                  }}
-                >
-                  <Trophy className="w-6 h-6" style={{ color: '#fb923c' }} />
-                </div>
-                {picks && (() => {
-                  const champNode = finals.find(n => n.round === 6)
-                  const champPick = champNode ? picks[champNode.id] : null
-                  if (!champPick) return null
+              <div className="flex flex-col items-center gap-2">
+                {finals.map(n => {
+                  const picked = picks[n.id] ?? null
+                  const eff2 = effective.get(n.id)
+                  const home = eff2?.home ?? n.homeTeamName
+                  const away = eff2?.away ?? n.awayTeamName
+                  const hSeed = home ? seedMap.get(home) ?? n.seedHome : n.seedHome
+                  const aSeed = away ? seedMap.get(away) ?? n.seedAway : n.seedAway
+                  const hPick = !!home && picked === home
+                  const aPick = !!away && picked === away
+                  const canC = !readOnly && !isPickLocked(n)
                   return (
-                    <div className="text-center">
-                      <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>Champion</div>
-                      <div className="text-sm font-bold" style={{ color: '#fb923c' }}>{champPick}</div>
+                    <div key={n.id} className="rounded-md overflow-hidden" style={{ width: 140, background: '#1c2333', border: `1px solid ${picked ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
+                      <button disabled={!canC || !home} onClick={() => home && submitPick(n, home)}
+                        className="w-full flex items-center text-left" style={{ height: 18, paddingLeft: 5, paddingRight: 5, borderBottom: '1px solid rgba(255,255,255,0.04)', background: hPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && home ? 'pointer' : 'default' }}>
+                        {hSeed != null && <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 14, flexShrink: 0 }}>{hSeed}</span>}
+                        <span style={{ fontSize: 10, fontWeight: 500, color: hPick ? '#fb923c' : home ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{home || 'TBD'}</span>
+                      </button>
+                      <button disabled={!canC || !away} onClick={() => away && submitPick(n, away)}
+                        className="w-full flex items-center text-left" style={{ height: 18, paddingLeft: 5, paddingRight: 5, background: aPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && away ? 'pointer' : 'default' }}>
+                        {aSeed != null && <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 14, flexShrink: 0 }}>{aSeed}</span>}
+                        <span style={{ fontSize: 10, fontWeight: 500, color: aPick ? '#fb923c' : away ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{away || 'TBD'}</span>
+                      </button>
                     </div>
                   )
-                })()}
+                })}
+                <div className="flex items-center justify-center rounded-xl" style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
+                  <Trophy style={{ width: 20, height: 20, color: 'rgba(255,255,255,0.25)' }} />
+                </div>
               </div>
             </div>
           </div>
