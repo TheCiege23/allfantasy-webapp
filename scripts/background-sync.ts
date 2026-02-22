@@ -1,4 +1,4 @@
-const BASE_URL = process.env.REPLIT_DEV_DOMAIN
+const BACKGROUND_SYNC_BASE_URL = process.env.REPLIT_DEV_DOMAIN
   ? `https://${process.env.REPLIT_DEV_DOMAIN}`
   : 'http://localhost:5000';
 
@@ -22,7 +22,7 @@ interface SyncTask {
 const syncTasks: SyncTask[] = [
   {
     name: 'Live Scores',
-    url: `${BASE_URL}/api/sports/live-scores?refresh=true`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/live-scores?refresh=true`,
     method: 'GET',
     intervalMs: 2 * 60 * 1000,
     requiresAuth: false,
@@ -35,7 +35,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'News',
-    url: `${BASE_URL}/api/sports/news?refresh=true`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/news?refresh=true`,
     method: 'GET',
     intervalMs: 30 * 60 * 1000,
     requiresAuth: false,
@@ -48,7 +48,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Injuries',
-    url: `${BASE_URL}/api/sports/injuries?refresh=true`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/injuries?refresh=true`,
     method: 'GET',
     intervalMs: 6 * 60 * 60 * 1000,
     requiresAuth: false,
@@ -61,7 +61,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Trending Players Sync',
-    url: `${BASE_URL}/api/sports/trending?refresh=true`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/trending?refresh=true`,
     method: 'GET',
     intervalMs: 2 * 60 * 60 * 1000,
     requiresAuth: false,
@@ -74,7 +74,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Depth Charts Sync',
-    url: `${BASE_URL}/api/sports/depth-charts?refresh=true`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/depth-charts?refresh=true`,
     method: 'GET',
     intervalMs: 12 * 60 * 60 * 1000,
     requiresAuth: false,
@@ -87,7 +87,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Team Stats Sync',
-    url: `${BASE_URL}/api/sports/team-stats?refresh=true`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/team-stats?refresh=true`,
     method: 'GET',
     intervalMs: 24 * 60 * 60 * 1000,
     requiresAuth: false,
@@ -100,7 +100,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'ESPN Rosters Sync',
-    url: `${BASE_URL}/api/sports/espn-rosters`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/espn-rosters`,
     method: 'GET',
     intervalMs: 24 * 60 * 60 * 1000,
     requiresAuth: false,
@@ -113,7 +113,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Full Data Sync (Teams + Schedule)',
-    url: `${BASE_URL}/api/sports/sync`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/sports/sync`,
     method: 'POST',
     intervalMs: 24 * 60 * 60 * 1000,
     body: { type: 'all', source: 'all' },
@@ -127,7 +127,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'NCAA Bracket Auto-Import',
-    url: `${BASE_URL}/api/bracket/workers/auto-import`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/bracket/workers/auto-import`,
     method: 'POST',
     intervalMs: 30 * 60 * 1000,
     body: {},
@@ -141,7 +141,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Devy Player Sync',
-    url: `${BASE_URL}/api/admin/devy-sync`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/admin/devy-sync`,
     method: 'POST',
     intervalMs: 24 * 60 * 60 * 1000,
     body: {},
@@ -155,7 +155,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Weekly Auto-Recalibration',
-    url: `${BASE_URL}/api/admin/recalibration`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/admin/recalibration`,
     method: 'POST',
     intervalMs: 7 * 24 * 60 * 60 * 1000,
     body: { season: '2025' },
@@ -169,7 +169,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Weekly Weight Re-Learning',
-    url: `${BASE_URL}/api/admin/weekly-weights`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/admin/weekly-weights`,
     method: 'POST',
     intervalMs: 7 * 24 * 60 * 60 * 1000,
     body: {},
@@ -183,7 +183,7 @@ const syncTasks: SyncTask[] = [
   },
   {
     name: 'Weekly Backtest + Param Learning',
-    url: `${BASE_URL}/api/admin/weekly-backtest`,
+    url: `${BACKGROUND_SYNC_BASE_URL}/api/admin/weekly-backtest`,
     method: 'POST',
     intervalMs: 7 * 24 * 60 * 60 * 1000,
     body: { season: '2025' },
@@ -308,7 +308,7 @@ function formatInterval(ms: number): string {
 
 async function main(): Promise<void> {
   console.log('[BackgroundSync] Starting background sync service...');
-  console.log(`[BackgroundSync] Base URL: ${BASE_URL}`);
+  console.log(`[BackgroundSync] Base URL: ${BACKGROUND_SYNC_BASE_URL}`);
   console.log('[BackgroundSync] Schedule:');
   for (const task of syncTasks) {
     console.log(`  - ${task.name}: every ${formatInterval(task.intervalMs)} [${task.phase}]`);
