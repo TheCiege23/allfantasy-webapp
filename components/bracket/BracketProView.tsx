@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useCallback } from "react"
-import { Timer, Trophy } from "lucide-react"
+import { Timer, Trophy, Lock, Loader2 } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 
 type Game = {
@@ -37,7 +37,8 @@ type Props = {
   initialPicks: Record<string, string | null>
 }
 
-const REGION_ORDER = ["East", "West", "South", "Midwest"]
+const REGION_ORDER = ["West", "East", "South", "Midwest"]
+const REGION_ABBREV: Record<string, string> = { West: "W", East: "E", South: "S", Midwest: "MW" }
 const ROUND_COLS = [
   { round: 1, label: "R64" },
   { round: 2, label: "R32" },
@@ -214,6 +215,59 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     }
   }, [picks, nodesWithLive, effective, entryId])
 
+  function TeamButton({ node, name, seed, isPicked, locked, isPropagated, score }: {
+    node: Node; name: string | null; seed: number | null; isPicked: boolean; locked: boolean; isPropagated: boolean; score: number | null | undefined
+  }) {
+    const isSaving = savingNode === node.id
+    const canClick = !!name && !locked && !isSaving
+    return (
+      <button
+        disabled={!canClick}
+        onClick={() => name && submitPick(node, name)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          width: '100%',
+          padding: '7px 10px',
+          borderRadius: 8,
+          border: isPicked
+            ? '1.5px solid rgba(56,189,248,0.6)'
+            : '1px solid rgba(255,255,255,0.08)',
+          background: isPicked
+            ? 'linear-gradient(135deg, rgba(56,189,248,0.15) 0%, rgba(139,92,246,0.12) 100%)'
+            : 'rgba(255,255,255,0.03)',
+          cursor: canClick ? 'pointer' : 'default',
+          opacity: (!name && isPropagated) ? 0.35 : locked && !isPicked ? 0.55 : 1,
+          transition: 'all 0.15s ease',
+          textAlign: 'left',
+        }}
+      >
+        <span style={{
+          fontSize: 12,
+          fontWeight: isPicked ? 600 : 400,
+          color: !name ? 'rgba(255,255,255,0.2)' : isPicked ? '#e0f2fe' : 'rgba(255,255,255,0.75)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          fontStyle: !name ? 'italic' : undefined,
+        }}>
+          {name ? teamLabel(name, seed) : 'TBD'}
+        </span>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: 'rgba(255,255,255,0.3)',
+          flexShrink: 0,
+          fontVariantNumeric: 'tabular-nums',
+        }}>
+          {score ?? '-'}
+        </span>
+      </button>
+    )
+  }
+
   function GameCard({ node, compact = false }: { node: Node; compact?: boolean }) {
     const picked = picks[node.id] ?? null
     const locked = isPickLocked(node)
@@ -229,61 +283,65 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     const awayPicked = !!awayName && picked === awayName
 
     const isPropagated = node.round > 1 && (!node.homeTeamName || !node.awayTeamName)
+    const isSaving = savingNode === node.id
 
     return (
-      <div className="rounded-lg border border-slate-500/30 bg-slate-700/45 p-2 shadow-sm backdrop-blur">
+      <div style={{
+        borderRadius: 10,
+        border: '1px solid rgba(255,255,255,0.07)',
+        background: '#1e2740',
+        padding: compact ? 6 : 8,
+        position: 'relative',
+      }}>
         {!compact && (
-          <div className="flex items-center justify-between">
-            <div className="text-[10px] text-slate-300">{node.slot}</div>
-            {node.game?.status && <div className="text-[10px] text-slate-300">{node.game.status}</div>}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+          }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>{node.slot}</span>
+            {node.game?.status && (
+              <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>{node.game.status}</span>
+            )}
           </div>
         )}
 
-        <div className="mt-2 space-y-2">
-          <button
-            disabled={!homeName || locked}
-            onClick={() => homeName && submitPick(node, homeName)}
-            className={[
-              "w-full rounded-md border px-2 py-1.5 text-left text-xs transition",
-              locked ? "cursor-not-allowed opacity-60" : homeName ? "hover:border-cyan-300/70 cursor-pointer" : "cursor-default",
-              homePicked
-                ? "border-cyan-300/80 bg-gradient-to-r from-cyan-500/20 to-violet-500/20 text-white"
-                : "border-slate-400/30 bg-slate-800/40 text-slate-200",
-              !homeName && isPropagated ? "opacity-40" : "",
-            ].join(" ")}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className={`truncate ${!homeName ? "italic text-white/30" : ""}`}>
-                {teamLabel(homeName, homeSeed)}
-              </span>
-              <span className="text-[10px] text-slate-200">{node.game?.homeScore ?? "-"}</span>
-            </div>
-          </button>
-
-          <button
-            disabled={!awayName || locked}
-            onClick={() => awayName && submitPick(node, awayName)}
-            className={[
-              "w-full rounded-md border px-2 py-1.5 text-left text-xs transition",
-              locked ? "cursor-not-allowed opacity-60" : awayName ? "hover:border-cyan-300/70 cursor-pointer" : "cursor-default",
-              awayPicked
-                ? "border-cyan-300/80 bg-gradient-to-r from-cyan-500/20 to-violet-500/20 text-white"
-                : "border-slate-400/30 bg-slate-800/40 text-slate-200",
-              !awayName && isPropagated ? "opacity-40" : "",
-            ].join(" ")}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className={`truncate ${!awayName ? "italic text-white/30" : ""}`}>
-                {teamLabel(awayName, awaySeed)}
-              </span>
-              <span className="text-[10px] text-slate-200">{node.game?.awayScore ?? "-"}</span>
-            </div>
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 4 : 6 }}>
+          <TeamButton
+            node={node}
+            name={homeName}
+            seed={homeSeed}
+            isPicked={homePicked}
+            locked={locked}
+            isPropagated={isPropagated}
+            score={node.game?.homeScore}
+          />
+          <TeamButton
+            node={node}
+            name={awayName}
+            seed={awaySeed}
+            isPicked={awayPicked}
+            locked={locked}
+            isPropagated={isPropagated}
+            score={node.game?.awayScore}
+          />
         </div>
 
         {!compact && (
-          <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-400">
-            <span>{locked ? "Locked" : savingNode === node.id ? "Saving..." : homeName && awayName ? "Pick winner" : "Waiting for picks"}</span>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginTop: 6,
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.25)',
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {locked && <Lock style={{ width: 10, height: 10 }} />}
+              {isSaving && <Loader2 style={{ width: 10, height: 10, animation: 'spin 1s linear infinite' }} />}
+              {locked ? "Locked" : isSaving ? "Saving..." : homeName && awayName ? "Pick winner" : "Waiting for picks"}
+            </span>
             <span>{node.game?.startTime ? new Date(node.game.startTime).toLocaleString() : ""}</span>
           </div>
         )}
@@ -297,19 +355,86 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     for (const n of list) if (byRound[n.round]) byRound[n.round].push(n)
     Object.values(byRound).forEach((arr) => arr.sort((a, b) => a.slot.localeCompare(b.slot)))
 
+    const abbrev = REGION_ABBREV[region] ?? region
+
     return (
-      <div className="rounded-xl border border-slate-600/30 bg-slate-900/40 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <div className="text-sm font-semibold text-slate-100">{region}</div>
-          <div className="text-[10px] text-slate-400">Live</div>
+      <div style={{
+        borderRadius: 14,
+        border: '1px solid rgba(255,255,255,0.06)',
+        background: '#151d30',
+        padding: 16,
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          fontSize: abbrev.length > 1 ? 80 : 96,
+          fontWeight: 900,
+          color: 'rgba(255,255,255,0.03)',
+          letterSpacing: 8,
+          pointerEvents: 'none',
+          userSelect: 'none',
+        }}>
+          {abbrev}
         </div>
-        <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(4, minmax(110px, 1fr))" }}>
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 12,
+          position: 'relative',
+          zIndex: 1,
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+          }}>
+            <span style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: 'rgba(255,255,255,0.9)',
+              letterSpacing: 0.3,
+            }}>{region}</span>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 600,
+              color: 'rgba(56,189,248,0.6)',
+              background: 'rgba(56,189,248,0.08)',
+              padding: '2px 8px',
+              borderRadius: 6,
+              letterSpacing: 0.5,
+            }}>{abbrev}</span>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, minmax(120px, 1fr))',
+          gap: 10,
+          position: 'relative',
+          zIndex: 1,
+        }}>
           {ROUND_COLS.map((c) => (
-            <div key={`${region}-${c.round}`} className="space-y-1.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{c.label}</div>
-              {byRound[c.round].map((n) => (
-                <GameCard key={n.id} node={n} compact />
-              ))}
+            <div key={`${region}-${c.round}`}>
+              <div style={{
+                fontSize: 10,
+                fontWeight: 700,
+                textTransform: 'uppercase' as const,
+                letterSpacing: 1.2,
+                color: 'rgba(255,255,255,0.25)',
+                marginBottom: 8,
+                paddingLeft: 2,
+              }}>{c.label}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {byRound[c.round].map((n) => (
+                  <GameCard key={n.id} node={n} compact />
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -318,18 +443,79 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   }
 
   function FinalsCenter() {
+    const ffNodes = finals.filter(n => n.round === 5)
+    const champNodes = finals.filter(n => n.round === 6)
+    const champPick = champNodes[0] ? picks[champNodes[0].id] : null
+
     return (
-      <div className="rounded-2xl border border-cyan-400/30 bg-gradient-to-b from-slate-800/70 to-slate-900/60 p-3">
-        <div className="mb-2 text-center text-xs font-semibold uppercase tracking-[0.16em] text-slate-300">Championship</div>
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-300/40 bg-cyan-500/10 text-cyan-200">
-          <Trophy className="h-5 w-5" />
+      <div style={{
+        borderRadius: 16,
+        border: '1px solid rgba(56,189,248,0.15)',
+        background: 'linear-gradient(180deg, #1a2238 0%, #151d30 100%)',
+        padding: 16,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}>
+        <div style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase' as const,
+          letterSpacing: 3,
+          color: 'rgba(255,255,255,0.4)',
+          marginBottom: 12,
+        }}>Championship</div>
+
+        <div style={{
+          width: 48,
+          height: 48,
+          borderRadius: 14,
+          border: '1.5px solid rgba(56,189,248,0.25)',
+          background: 'rgba(56,189,248,0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 16,
+        }}>
+          <Trophy style={{ width: 22, height: 22, color: 'rgba(56,189,248,0.5)' }} />
         </div>
-        <div className="space-y-2">
-          {finals.map((n) => (
-            <GameCard key={n.id} node={n} />
-          ))}
+
+        {champPick && (
+          <div style={{
+            textAlign: 'center',
+            marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' as const, letterSpacing: 1.5 }}>Champion</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#38bdf8', marginTop: 2 }}>{champPick}</div>
+          </div>
+        )}
+
+        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {ffNodes.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' as const, letterSpacing: 1 }}>Final Four</div>
+              {ffNodes.map((n) => <GameCard key={n.id} node={n} />)}
+            </div>
+          )}
+
+          {champNodes.length > 0 && (
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', marginBottom: 6, textTransform: 'uppercase' as const, letterSpacing: 1 }}>National Championship</div>
+              {champNodes.map((n) => <GameCard key={n.id} node={n} />)}
+            </div>
+          )}
+
           {finals.length === 0 && (
-            <div className="rounded-lg border border-dashed border-slate-500/40 p-3 text-center text-xs text-slate-400">Final Four slots will appear here</div>
+            <div style={{
+              borderRadius: 10,
+              border: '1px dashed rgba(255,255,255,0.1)',
+              padding: 16,
+              textAlign: 'center',
+              fontSize: 12,
+              color: 'rgba(255,255,255,0.2)',
+            }}>
+              Final Four slots will appear here
+            </div>
           )}
         </div>
       </div>
@@ -339,9 +525,18 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   function FirstFourBlock() {
     if (!firstFour.length) return null
     return (
-      <div className="rounded-2xl border border-slate-600/30 bg-slate-900/40 p-4">
-        <div className="text-sm font-semibold text-slate-200">First Four</div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div style={{
+        borderRadius: 14,
+        border: '1px solid rgba(255,255,255,0.06)',
+        background: '#151d30',
+        padding: 16,
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,255,255,0.7)', marginBottom: 12 }}>First Four</div>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+          gap: 10,
+        }}>
           {firstFour.map((n) => <GameCard key={n.id} node={n} />)}
         </div>
       </div>
@@ -349,34 +544,61 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   }
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-slate-600/30 bg-gradient-to-r from-indigo-950/80 via-slate-800/70 to-slate-800/80 p-4">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 rounded-lg border border-slate-500/30 bg-slate-700/40 p-2 text-slate-200">
-            <Timer className="h-5 w-5" />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{
+        borderRadius: 14,
+        border: '1px solid rgba(255,255,255,0.06)',
+        background: 'linear-gradient(135deg, #1a1f4e 0%, #1a2238 50%, #151d30 100%)',
+        padding: 16,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <div style={{
+          width: 40,
+          height: 40,
+          borderRadius: 12,
+          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(255,255,255,0.04)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Timer style={{ width: 20, height: 20, color: 'rgba(255,255,255,0.4)' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
+            Brackets open on {openDate}
           </div>
-          <div>
-            <div className="text-lg font-semibold text-white">Brackets open on {openDate}</div>
-            <div className="text-sm text-slate-300">{waitingForSelection ? "Waiting for Selection Sunday" : "Make your picks before games lock"}</div>
+          <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+            {waitingForSelection ? "Waiting for Selection Sunday" : "Make your picks before games lock"}
           </div>
         </div>
       </div>
 
       <FirstFourBlock />
 
-      <div className="hidden xl:grid grid-cols-[1fr_320px_1fr] gap-4 rounded-2xl border border-slate-700/30 bg-[#13163b]/70 p-4">
-        <div className="space-y-4">
+      <div className="hidden xl:grid" style={{
+        gridTemplateColumns: '1fr 320px 1fr',
+        gap: 16,
+        borderRadius: 16,
+        border: '1px solid rgba(255,255,255,0.05)',
+        background: '#111827',
+        padding: 16,
+      }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <RegionMini region="West" />
           <RegionMini region="East" />
         </div>
         <FinalsCenter />
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <RegionMini region="South" />
           <RegionMini region="Midwest" />
         </div>
       </div>
 
-      <div className="xl:hidden space-y-4">
+      <div className="xl:hidden" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {REGION_ORDER.map((region) => (
           <RegionMini key={region} region={region} />
         ))}
