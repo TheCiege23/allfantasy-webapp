@@ -1,10 +1,10 @@
 "use client"
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react"
-import { Timer, Trophy, ZoomIn, ZoomOut, Maximize2, Sparkles } from "lucide-react"
+import { Timer, Trophy, Sparkles } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
-import { MatchupCardOverlay } from "./MatchupCardOverlay"
-import Image from "next/image"
+import { PickWizard } from "./PickWizard"
+import { PickAssistCard } from "./PickAssistCard"
 
 type Game = {
   id: string
@@ -41,15 +41,15 @@ type Props = {
 
 const ALL_REGIONS = ["West", "East", "South", "Midwest"]
 
-const CW = 110
-const CH = 34
-const TH = 17
+const CW = 120
+const CH = 36
+const TH = 18
 const VG = 6
-const CG = 20
+const CG = 22
 const REGION_H = 8 * CH + 7 * VG
 const REGION_W = 4 * CW + 3 * CG
-const REGION_V_GAP = 36
-const CENTER_W = 180
+const REGION_V_GAP = 40
+const CENTER_W = 200
 const FULL_H = 2 * REGION_H + REGION_V_GAP
 const FULL_W = 2 * REGION_W + CENTER_W
 
@@ -67,15 +67,13 @@ function mergedCenters(prev: number[]): number[] {
   return c
 }
 
-function regionPositions() {
+const POS = (() => {
   const r1 = calcCenters(8)
   const r2 = mergedCenters(r1)
   const r3 = mergedCenters(r2)
   const r4 = mergedCenters(r3)
-  return { 1: r1, 2: r2, 3: r3, 4: r4 }
-}
-
-const POS = regionPositions()
+  return { 1: r1, 2: r2, 3: r3, 4: r4 } as Record<number, number[]>
+})()
 
 function isPickLocked(node: Node) {
   if (!node.game?.startTime) return false
@@ -147,18 +145,16 @@ function isBracketReleased(nodes: Node[]): boolean {
 }
 
 function MiniCell({
-  node, picks, seedMap, effective, locked, onPick, onTap, x, y, bracketReleased,
+  node, picks, seedMap, effective, x, y, bracketReleased, onClick,
 }: {
   node: Node
   picks: Record<string, string | null>
   seedMap: Map<string, number>
   effective: Map<string, { home: string | null; away: string | null }>
-  locked: boolean
-  onPick: (node: Node, team: string) => void
-  onTap: (node: Node) => void
   x: number
   y: number
   bracketReleased: boolean
+  onClick: () => void
 }) {
   const picked = picks[node.id] ?? null
   const eff = effective.get(node.id)
@@ -168,79 +164,52 @@ function MiniCell({
   const awaySeed = awayName ? (seedMap.get(awayName) ?? node.seedAway) : node.seedAway
   const homePicked = !!homeName && picked === homeName
   const awayPicked = !!awayName && picked === awayName
-  const canClick = !locked
-
   const isR1 = node.round === 1
+  const hasBothTeams = !!homeName && !!awayName
+
+  let borderColor = 'rgba(255,255,255,0.08)'
+  if (homePicked || awayPicked) borderColor = 'rgba(251,146,60,0.35)'
 
   function TeamRow({ name, seed, isPicked, side }: {
     name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'
   }) {
-    const clickable = canClick && !!name
     const showSeedOnly = !bracketReleased && isR1 && !name && seed != null
-
     return (
-      <button
-        disabled={!clickable}
-        onClick={(e) => {
-          e.stopPropagation()
-          if (name) onPick(node, name)
-        }}
-        style={{
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          textAlign: 'left',
-          height: TH,
-          background: isPicked ? 'rgba(56,189,248,0.12)' : 'transparent',
-          borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.04)' : undefined,
-          cursor: clickable ? 'pointer' : 'default',
-          paddingLeft: 5,
-          paddingRight: 5,
-          gap: 4,
-          border: 'none',
-          outline: 'none',
-        }}
-      >
+      <div style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        height: TH,
+        background: isPicked ? 'rgba(251,146,60,0.1)' : 'transparent',
+        borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.04)' : undefined,
+        paddingLeft: 5,
+        paddingRight: 5,
+        gap: 4,
+      }}>
         {seed != null && (
-          <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 12, flexShrink: 0, textAlign: 'right' }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 14, flexShrink: 0, textAlign: 'right' }}>
             {seed}
           </span>
         )}
-        {showSeedOnly ? (
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)', fontStyle: 'italic', flex: 1 }}>
-            ---
-          </span>
-        ) : (
-          <span style={{
-            fontSize: 10,
-            fontWeight: isPicked ? 600 : 400,
-            color: !name ? 'rgba(255,255,255,0.12)' : isPicked ? '#7dd3fc' : 'rgba(255,255,255,0.6)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            flex: 1,
-            fontStyle: !name ? 'italic' : undefined,
-          }}>
-            {name || ''}
-          </span>
-        )}
-        {node.game && (
-          <span style={{ fontSize: 9, fontWeight: 600, color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>
-            {side === 'home' ? (node.game.homeScore ?? '') : (node.game.awayScore ?? '')}
-          </span>
-        )}
-      </button>
+        <span style={{
+          fontSize: 10,
+          fontWeight: isPicked ? 600 : 400,
+          color: showSeedOnly ? 'rgba(255,255,255,0.15)' : !name ? 'rgba(255,255,255,0.1)' : isPicked ? '#fb923c' : 'rgba(255,255,255,0.6)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          flex: 1,
+          fontStyle: !name && !showSeedOnly ? 'italic' : undefined,
+        }}>
+          {showSeedOnly ? '---' : name || ''}
+        </span>
+      </div>
     )
   }
 
-  let borderColor = 'rgba(255,255,255,0.08)'
-  if (homePicked || awayPicked) borderColor = 'rgba(56,189,248,0.25)'
-
-  const hasBothTeams = !!homeName && !!awayName
-
   return (
     <div
-      onClick={() => { if (hasBothTeams) onTap(node) }}
+      onClick={onClick}
       style={{
         position: 'absolute',
         left: x,
@@ -251,7 +220,7 @@ function MiniCell({
         borderRadius: 8,
         border: `1px solid ${borderColor}`,
         overflow: 'hidden',
-        cursor: hasBothTeams ? 'pointer' : 'default',
+        cursor: 'pointer',
       }}
     >
       <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" />
@@ -262,19 +231,10 @@ function MiniCell({
 
 export function BracketProView({ tournamentId, leagueId, entryId, nodes, initialPicks }: Props) {
   const { data: live } = useBracketLive({ tournamentId, leagueId, enabled: true, intervalMs: 12000 })
-
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks)
-  const [savingNode, setSavingNode] = useState<string | null>(null)
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
-
-  const [zoom, setZoom] = useState(0.55)
-  const [panX, setPanX] = useState(0)
-  const [panY, setPanY] = useState(0)
-  const [isPanning, setIsPanning] = useState(false)
-  const [hasAutoFit, setHasAutoFit] = useState(false)
-  const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
+  const [wizardNode, setWizardNode] = useState<Node | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const touchStartRef = useRef<{ touches: Array<{ x: number; y: number }>; zoom: number; panX: number; panY: number } | null>(null)
+  const [scale, setScale] = useState(1)
 
   const seedMap = useMemo(() => buildSeedMap(nodes), [nodes])
 
@@ -287,7 +247,6 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   }, [nodes, live?.games])
 
   const effective = useMemo(() => computeEffectiveTeams(nodesWithLive, picks), [nodesWithLive, picks])
-
   const bracketReleased = useMemo(() => isBracketReleased(nodesWithLive), [nodesWithLive])
 
   const { byRegion, finals, firstFour } = useMemo(() => {
@@ -300,9 +259,7 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
       else if (!n.region) fin.push(n)
       else reg[n.region]?.push(n)
     }
-    for (const r of ALL_REGIONS) {
-      reg[r].sort((a, b) => a.round - b.round || a.slot.localeCompare(b.slot))
-    }
+    for (const r of ALL_REGIONS) reg[r].sort((a, b) => a.round - b.round || a.slot.localeCompare(b.slot))
     ff.sort((a, b) => a.slot.localeCompare(b.slot))
     fin.sort((a, b) => a.round - b.round || a.slot.localeCompare(b.slot))
     return { byRegion: reg, finals: fin, firstFour: ff }
@@ -317,6 +274,9 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     return new Date(starts[0]).toLocaleDateString(undefined, { month: "long", day: "numeric" })
   }, [nodesWithLive])
 
+  const totalPicks = Object.values(picks).filter(Boolean).length
+  const totalGames = nodesWithLive.filter(n => n.round >= 1).length
+
   const submitPick = useCallback(async (node: Node, teamName: string) => {
     if (!teamName) return
     if (isPickLocked(node)) return
@@ -324,13 +284,11 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     const tentative = { ...picks, [node.id]: teamName }
     const cleaned = cascadeClearInvalidPicks(nodesWithLive, tentative)
     setPicks(cleaned)
-    setSavingNode(node.id)
     const res = await fetch(`/api/bracket/entries/${entryId}/pick`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ nodeId: node.id, pickedTeamName: teamName }),
     })
-    setSavingNode(null)
     if (!res.ok) {
       setPicks((p) => ({ ...p, [node.id]: prev }))
       const j = await res.json().catch(() => ({}))
@@ -338,105 +296,24 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     }
   }, [picks, nodesWithLive, entryId])
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      const delta = e.deltaY > 0 ? -0.08 : 0.08
-      setZoom((z) => Math.max(0.25, Math.min(2, z + delta)))
-    } else {
-      setPanX((x) => x - e.deltaX)
-      setPanY((y) => y - e.deltaY)
-    }
-  }, [])
-
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    const tag = (e.target as HTMLElement).tagName?.toLowerCase()
-    if (tag === 'button') return
-    if (e.button === 0) {
-      setIsPanning(true)
-      panStartRef.current = { x: e.clientX, y: e.clientY, panX, panY }
-      ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
-    }
-  }, [panX, panY])
-
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isPanning) return
-    setPanX(panStartRef.current.panX + (e.clientX - panStartRef.current.x))
-    setPanY(panStartRef.current.panY + (e.clientY - panStartRef.current.y))
-  }, [isPanning])
-
-  const handlePointerUp = useCallback(() => setIsPanning(false), [])
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length >= 2) {
-      e.preventDefault()
-      touchStartRef.current = {
-        touches: Array.from(e.touches).map(t => ({ x: t.clientX, y: t.clientY })),
-        zoom, panX, panY,
-      }
-    }
-  }, [zoom, panX, panY])
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length >= 2 && touchStartRef.current) {
-      e.preventDefault()
-      const startDist = Math.hypot(
-        touchStartRef.current.touches[1].x - touchStartRef.current.touches[0].x,
-        touchStartRef.current.touches[1].y - touchStartRef.current.touches[0].y
-      )
-      const curDist = Math.hypot(
-        e.touches[1].clientX - e.touches[0].clientX,
-        e.touches[1].clientY - e.touches[0].clientY
-      )
-      setZoom(Math.max(0.25, Math.min(2, touchStartRef.current.zoom * (curDist / startDist))))
-      const curCx = (e.touches[0].clientX + e.touches[1].clientX) / 2
-      const curCy = (e.touches[0].clientY + e.touches[1].clientY) / 2
-      const startCx = (touchStartRef.current.touches[0].x + touchStartRef.current.touches[1].x) / 2
-      const startCy = (touchStartRef.current.touches[0].y + touchStartRef.current.touches[1].y) / 2
-      setPanX(touchStartRef.current.panX + (curCx - startCx))
-      setPanY(touchStartRef.current.panY + (curCy - startCy))
-    }
-  }, [])
-
-  const handleTouchEnd = useCallback(() => { touchStartRef.current = null }, [])
-
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
-    const fit = () => {
+    const measure = () => {
       const cw = el.clientWidth
-      if (cw > 0) {
-        const fitZoom = Math.min(1, (cw - 16) / FULL_W)
-        setZoom(Math.max(0.25, fitZoom))
-        setPanX(0)
-        setPanY(0)
-        setHasAutoFit(true)
+      if (cw > 0 && cw < FULL_W) {
+        setScale(cw / FULL_W)
+      } else {
+        setScale(1)
       }
     }
-    const ro = new ResizeObserver(() => { if (!hasAutoFit) fit() })
+    measure()
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
-    if (!hasAutoFit) fit()
     return () => ro.disconnect()
-  }, [hasAutoFit])
-
-  const resetView = useCallback(() => {
-    const el = containerRef.current
-    if (el) {
-      const fitZoom = Math.min(1, (el.clientWidth - 16) / FULL_W)
-      setZoom(Math.max(0.25, fitZoom))
-    } else {
-      setZoom(0.55)
-    }
-    setPanX(0)
-    setPanY(0)
   }, [])
 
-  function renderRegionCells(
-    region: string,
-    direction: 'ltr' | 'rtl',
-    offsetX: number,
-    offsetY: number,
-  ) {
+  function renderRegionCells(region: string, direction: 'ltr' | 'rtl', offsetX: number, offsetY: number) {
     const regionNodes = byRegion[region] || []
     const byRound: Record<number, Node[]> = { 1: [], 2: [], 3: [], 4: [] }
     for (const n of regionNodes) {
@@ -447,14 +324,11 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     const cells: JSX.Element[] = []
     for (let r = 1; r <= 4; r++) {
       const roundNodes = byRound[r]
-      const centers = POS[r as keyof typeof POS]
+      const centers = POS[r]
       for (let i = 0; i < roundNodes.length && i < centers.length; i++) {
-        let x: number
-        if (direction === 'ltr') {
-          x = offsetX + (r - 1) * (CW + CG)
-        } else {
-          x = offsetX + (4 - r) * (CW + CG)
-        }
+        const x = direction === 'ltr'
+          ? offsetX + (r - 1) * (CW + CG)
+          : offsetX + (4 - r) * (CW + CG)
         const y = offsetY + centers[i] - TH
         cells.push(
           <MiniCell
@@ -463,12 +337,15 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
             picks={picks}
             seedMap={seedMap}
             effective={effective}
-            locked={isPickLocked(roundNodes[i])}
-            onPick={submitPick}
-            onTap={(n) => setSelectedNode(n)}
             x={x}
             y={y}
             bracketReleased={bracketReleased}
+            onClick={() => {
+              const e = effective.get(roundNodes[i].id)
+              const h = e?.home ?? roundNodes[i].homeTeamName
+              const a = e?.away ?? roundNodes[i].awayTeamName
+              if (h && a) setWizardNode(roundNodes[i])
+            }}
           />
         )
       }
@@ -476,21 +353,16 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
     return cells
   }
 
-  function renderRegionLines(
-    direction: 'ltr' | 'rtl',
-    offsetX: number,
-    offsetY: number,
-  ) {
+  function renderRegionLines(direction: 'ltr' | 'rtl', offsetX: number, offsetY: number) {
     const lines: JSX.Element[] = []
     for (let ri = 0; ri < 3; ri++) {
       const r = ri + 1
-      const centers = POS[r as keyof typeof POS]
-      const nextCenters = POS[(r + 1) as keyof typeof POS]
+      const centers = POS[r]
+      const nextCenters = POS[r + 1]
       for (let i = 0; i < centers.length; i++) {
         const pairIdx = Math.floor(i / 2)
         const cy = offsetY + centers[i]
         const ny = offsetY + nextCenters[pairIdx]
-
         let sx: number, ex: number
         if (direction === 'ltr') {
           sx = offsetX + ri * (CW + CG) + CW
@@ -500,17 +372,10 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
           ex = offsetX + (3 - ri - 1) * (CW + CG) + CW
         }
         const mx = (sx + ex) / 2
-
-        lines.push(
-          <line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-        )
-        lines.push(
-          <line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-        )
+        lines.push(<line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />)
+        lines.push(<line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />)
         if (i % 2 === 0) {
-          lines.push(
-            <line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-          )
+          lines.push(<line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />)
         }
       }
     }
@@ -521,21 +386,15 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
   const rightX = REGION_W + CENTER_W
   const topY = 0
   const botY = REGION_H + REGION_V_GAP
-
   const e8TopCy = topY + POS[4][0]
   const e8BotCy = botY + POS[4][0]
-
   const centerX = REGION_W
   const centerMidY = FULL_H / 2
-
   const ffNodes = finals.filter(n => n.round === 5)
   const champNodes = finals.filter(n => n.round === 6)
-
-  const ff0Y = centerMidY - CH - 24
-  const ff1Y = centerMidY + 24
+  const ff0Y = centerMidY - CH - 28
+  const ff1Y = centerMidY + 28
   const champY = centerMidY - TH
-
-  const selectedEff = selectedNode ? effective.get(selectedNode.id) : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -549,232 +408,135 @@ export function BracketProView({ tournamentId, leagueId, entryId, nodes, initial
         gap: 12,
       }}>
         <div style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
+          width: 36, height: 36, borderRadius: 10,
           border: '1px solid rgba(255,255,255,0.08)',
           background: 'rgba(255,255,255,0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
           <Timer style={{ width: 18, height: 18, color: 'rgba(255,255,255,0.5)' }} />
         </div>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: 'rgba(255,255,255,0.9)' }}>
-            {bracketReleased ? `Brackets open - ${openDate}` : `Brackets open on ${openDate}`}
+            {bracketReleased ? `Brackets open \u2022 ${openDate}` : `Brackets open on ${openDate}`}
           </div>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 1 }}>
-            {bracketReleased ? "Make your picks before games lock" : "Waiting for Selection Sunday"}
+            {bracketReleased ? "Tap any matchup to make your pick" : "Waiting for Selection Sunday"}
           </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#fb923c' }}>{totalPicks}</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>/ {totalGames}</div>
         </div>
       </div>
 
-      {firstFour.length > 0 && (
-        <div style={{
-          borderRadius: 12,
-          border: '1px solid rgba(255,255,255,0.06)',
+      <PickAssistCard entryId={entryId} />
+
+      <div
+        ref={containerRef}
+        style={{
+          borderRadius: 14,
           background: '#1a1f2e',
-          padding: 14,
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.6)', marginBottom: 10 }}>First Four</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-            {firstFour.map((n) => {
-              const picked = picks[n.id] ?? null
-              const eff = effective.get(n.id)
-              const homeName = eff?.home ?? n.homeTeamName
-              const awayName = eff?.away ?? n.awayTeamName
-              const homeSeed = homeName ? (seedMap.get(homeName) ?? n.seedHome) : n.seedHome
-              const awaySeed = awayName ? (seedMap.get(awayName) ?? n.seedAway) : n.seedAway
-              const locked = isPickLocked(n)
-              return (
-                <div key={n.id} style={{ borderRadius: 8, background: '#2a3348', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                  {[{ name: homeName, seed: homeSeed, isPicked: !!homeName && picked === homeName, side: 'home' as const },
-                    { name: awayName, seed: awaySeed, isPicked: !!awayName && picked === awayName, side: 'away' as const }].map((t) => (
-                    <button
-                      key={t.side}
-                      disabled={!t.name || locked}
-                      onClick={() => t.name && submitPick(n, t.name)}
-                      style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 4, height: 20,
-                        paddingLeft: 6, paddingRight: 6,
-                        background: t.isPicked ? 'rgba(56,189,248,0.12)' : 'transparent',
-                        borderBottom: t.side === 'home' ? '1px solid rgba(255,255,255,0.04)' : undefined,
-                        cursor: t.name && !locked ? 'pointer' : 'default',
-                        border: 'none', outline: 'none', textAlign: 'left',
-                      }}
-                    >
-                      {t.seed != null && <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 12 }}>{t.seed}</span>}
-                      <span style={{ fontSize: 10, fontWeight: t.isPicked ? 600 : 400, color: !t.name ? 'rgba(255,255,255,0.12)' : t.isPicked ? '#7dd3fc' : 'rgba(255,255,255,0.6)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
-                        {t.name || 'TBD'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      <div>
+          border: '1px solid rgba(255,255,255,0.05)',
+          overflow: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          height: Math.ceil(FULL_H * scale) + 2,
+        }}
+      >
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          marginBottom: 6,
-          justifyContent: 'flex-end',
-          flexWrap: 'wrap',
+          width: FULL_W,
+          height: FULL_H,
+          position: 'relative',
+          transform: `scale(${scale})`,
+          transformOrigin: 'top left',
         }}>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(z => Math.max(0.25, z - 0.12))} style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
-            <ZoomOut style={{ width: 13, height: 13, color: 'rgba(255,255,255,0.35)' }} />
-          </button>
-          <button onClick={() => setZoom(z => Math.min(2, z + 0.12))} style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
-            <ZoomIn style={{ width: 13, height: 13, color: 'rgba(255,255,255,0.35)' }} />
-          </button>
-          <button onClick={resetView} style={{ width: 26, height: 26, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)', cursor: 'pointer' }}>
-            <Maximize2 style={{ width: 13, height: 13, color: 'rgba(255,255,255,0.35)' }} />
-          </button>
-        </div>
+          <svg width={FULL_W} height={FULL_H} style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}>
+            {renderRegionLines('ltr', leftX, topY)}
+            {renderRegionLines('ltr', leftX, botY)}
+            {renderRegionLines('rtl', rightX, topY)}
+            {renderRegionLines('rtl', rightX, botY)}
+            <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+            <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+            <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+            <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+            <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+            <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
+          </svg>
 
-        <div
-          ref={containerRef}
-          style={{
-            overflow: 'hidden',
-            borderRadius: 14,
-            background: '#1a1f2e',
-            border: '1px solid rgba(255,255,255,0.05)',
-            cursor: isPanning ? 'grabbing' : 'grab',
-            userSelect: 'none',
-            position: 'relative',
-          }}
-          onWheel={handleWheel}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
+          <div style={{ position: 'absolute', left: leftX + REGION_W * 0.45, top: topY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 60, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>W</span>
+          </div>
+          <div style={{ position: 'absolute', left: leftX + REGION_W * 0.45, top: botY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 60, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>E</span>
+          </div>
+          <div style={{ position: 'absolute', left: rightX + REGION_W * 0.55, top: topY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 60, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>S</span>
+          </div>
+          <div style={{ position: 'absolute', left: rightX + REGION_W * 0.55, top: botY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
+            <span style={{ fontSize: 52, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>MW</span>
+          </div>
+
+          {renderRegionCells('West', 'ltr', leftX, topY)}
+          {renderRegionCells('East', 'ltr', leftX, botY)}
+          {renderRegionCells('South', 'rtl', rightX, topY)}
+          {renderRegionCells('Midwest', 'rtl', rightX, botY)}
+
+          {ffNodes.map((n, i) => (
+            <MiniCell
+              key={n.id}
+              node={n}
+              picks={picks}
+              seedMap={seedMap}
+              effective={effective}
+              x={centerX + (CENTER_W - CW) / 2}
+              y={i === 0 ? ff0Y : ff1Y}
+              bracketReleased={bracketReleased}
+              onClick={() => setWizardNode(n)}
+            />
+          ))}
+
+          {champNodes.map((n) => (
+            <MiniCell
+              key={n.id}
+              node={n}
+              picks={picks}
+              seedMap={seedMap}
+              effective={effective}
+              x={centerX + (CENTER_W - CW) / 2}
+              y={champY}
+              bracketReleased={bracketReleased}
+              onClick={() => setWizardNode(n)}
+            />
+          ))}
+
           <div style={{
-            padding: '8px',
-            transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
-            transformOrigin: 'top left',
-            transition: isPanning ? 'none' : 'transform 0.15s ease',
-            width: FULL_W,
-            height: FULL_H,
-            position: 'relative',
+            position: 'absolute',
+            left: centerX + (CENTER_W - 80) / 2,
+            top: centerMidY - 40,
+            width: 80, height: 80,
+            borderRadius: 18,
+            background: 'linear-gradient(135deg, #2a3348, #1e2740)',
+            border: '1px solid rgba(255,255,255,0.10)',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 3,
+            pointerEvents: 'none',
           }}>
-
-              <svg
-                width={FULL_W}
-                height={FULL_H}
-                style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }}
-              >
-                {renderRegionLines('ltr', leftX, topY)}
-                {renderRegionLines('ltr', leftX, botY)}
-                {renderRegionLines('rtl', rightX, topY)}
-                {renderRegionLines('rtl', rightX, botY)}
-
-                <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-                <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-                <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-                <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-
-                <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-                <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.10)" strokeWidth={1} />
-              </svg>
-
-              <div style={{ position: 'absolute', left: leftX + REGION_W * 0.45, top: topY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>W</span>
-              </div>
-              <div style={{ position: 'absolute', left: leftX + REGION_W * 0.45, top: botY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>E</span>
-              </div>
-              <div style={{ position: 'absolute', left: rightX + REGION_W * 0.55, top: topY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>S</span>
-              </div>
-              <div style={{ position: 'absolute', left: rightX + REGION_W * 0.55, top: botY + REGION_H * 0.42, transform: 'translate(-50%,-50%)', pointerEvents: 'none' }}>
-                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 6 }}>MW</span>
-              </div>
-
-              {renderRegionCells('West', 'ltr', leftX, topY)}
-              {renderRegionCells('East', 'ltr', leftX, botY)}
-              {renderRegionCells('South', 'rtl', rightX, topY)}
-              {renderRegionCells('Midwest', 'rtl', rightX, botY)}
-
-              {ffNodes.map((n, i) => (
-                <MiniCell
-                  key={n.id}
-                  node={n}
-                  picks={picks}
-                  seedMap={seedMap}
-                  effective={effective}
-                  locked={isPickLocked(n)}
-                  onPick={submitPick}
-                  onTap={(nd) => setSelectedNode(nd)}
-                  x={centerX + (CENTER_W - CW) / 2}
-                  y={i === 0 ? ff0Y : ff1Y}
-                  bracketReleased={bracketReleased}
-                />
-              ))}
-
-              {champNodes.map((n) => (
-                <MiniCell
-                  key={n.id}
-                  node={n}
-                  picks={picks}
-                  seedMap={seedMap}
-                  effective={effective}
-                  locked={isPickLocked(n)}
-                  onPick={submitPick}
-                  onTap={(nd) => setSelectedNode(nd)}
-                  x={centerX + (CENTER_W - CW) / 2}
-                  y={champY}
-                  bracketReleased={bracketReleased}
-                />
-              ))}
-
-              <div style={{
-                position: 'absolute',
-                left: centerX + (CENTER_W - 72) / 2,
-                top: centerMidY - 36,
-                width: 72,
-                height: 72,
-                borderRadius: 16,
-                background: 'linear-gradient(135deg, #2a3348, #1e2740)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 2,
-                pointerEvents: 'none',
-              }}>
-                <Trophy style={{ width: 20, height: 20, color: 'rgba(251,146,60,0.6)' }} />
-                <img
-                  src="/af-crest.png"
-                  alt="AF"
-                  style={{ width: 22, height: 22, objectFit: 'contain', opacity: 0.5 }}
-                />
-              </div>
-
+            <Trophy style={{ width: 22, height: 22, color: 'rgba(251,146,60,0.6)' }} />
+            <img src="/af-crest.png" alt="AF" style={{ width: 24, height: 24, objectFit: 'contain', opacity: 0.5 }} />
           </div>
         </div>
+
       </div>
 
-      {selectedNode && selectedEff && (
-        <MatchupCardOverlay
-          node={selectedNode}
-          effective={{ home: selectedEff.home, away: selectedEff.away }}
-          picked={picks[selectedNode.id] ?? null}
+      {wizardNode && (
+        <PickWizard
+          nodes={nodesWithLive}
+          startNode={wizardNode}
+          picks={picks}
           seedMap={seedMap}
-          locked={isPickLocked(selectedNode)}
-          onPick={submitPick}
-          onClose={() => setSelectedNode(null)}
+          effective={effective}
           entryId={entryId}
+          onPick={submitPick}
+          onClose={() => setWizardNode(null)}
         />
       )}
     </div>
