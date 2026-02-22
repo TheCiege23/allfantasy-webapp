@@ -10,12 +10,13 @@ interface PositionData {
   color: string
   marketValue: number
   playerName?: string
+  managerName?: string | null
 }
 
 interface PositionWARCurve {
   position: string
   color: string
-  data: { rank: number; war: number }[]
+  data: { rank: number; war: number; playerName: string; managerName: string | null }[]
 }
 
 export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format", tool: "LegacyRankingsLeagueFormat" })(async (request: NextRequest) => {
@@ -95,30 +96,40 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format
       fcByNameMap.set(p.player.name.toLowerCase(), p)
     }
 
+    const usersRes = await fetch(`https://api.sleeper.app/v1/league/${league_id}/users`)
+    const usersData = usersRes.ok ? await usersRes.json() : []
+    const userMap = new Map(usersData.map((u: any) => [u.user_id, u]))
+
     const rosteredPlayerIds = new Set<string>()
+    const playerToManager = new Map<string, string>()
     for (const roster of rosters) {
+      const ownerInfo: any = userMap.get(roster.owner_id)
+      const managerName = ownerInfo?.display_name || `Team ${roster.roster_id}`
       const playerIds = roster.players || []
       for (const pid of playerIds) {
         if (typeof pid === 'string' && !pid.match(/^\d{4}_/)) {
           rosteredPlayerIds.add(pid)
+          playerToManager.set(pid, managerName)
         }
       }
     }
 
-    const fcByPosition: Record<string, Array<{ name: string; value: number; positionRank: number; sleeperId: string; isRostered: boolean }>> = {
+    const fcByPosition: Record<string, Array<{ name: string; value: number; positionRank: number; sleeperId: string; isRostered: boolean; managerName: string | null }>> = {
       QB: [], RB: [], WR: [], TE: [],
     }
 
     for (const fc of fcPlayers) {
       const pos = fc.player.position
       if (!['QB', 'RB', 'WR', 'TE'].includes(pos)) continue
-      const isRostered = !!(fc.player.sleeperId && rosteredPlayerIds.has(fc.player.sleeperId))
+      const sid = fc.player.sleeperId || ''
+      const isRostered = !!(sid && rosteredPlayerIds.has(sid))
       fcByPosition[pos].push({
         name: fc.player.name,
         value: fc.value,
         positionRank: fc.positionRank,
-        sleeperId: fc.player.sleeperId || '',
+        sleeperId: sid,
         isRostered,
+        managerName: isRostered ? (playerToManager.get(sid) || null) : null,
       })
     }
 
@@ -139,6 +150,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format
       const lastName = String(sleeperPlayer.last_name || '').trim()
       const name = `${firstName} ${lastName}`.trim()
 
+      const mgr = playerToManager.get(pid) || null
       const nameMatch = fcByNameMap.get(name.toLowerCase())
       if (nameMatch && !fcByPosition[pos].some(p => p.name.toLowerCase() === name.toLowerCase())) {
         fcByPosition[pos].push({
@@ -147,6 +159,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format
           positionRank: nameMatch.positionRank,
           sleeperId: pid,
           isRostered: true,
+          managerName: mgr,
         })
       } else if (!nameMatch) {
         fcByPosition[pos].push({
@@ -155,6 +168,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format
           positionRank: 999,
           sleeperId: pid,
           isRostered: true,
+          managerName: mgr,
         })
       }
 
@@ -184,13 +198,13 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format
       const replacementValue = replacementIdx >= 0 ? group[Math.max(0, replacementIdx)].value : 0
       const divisor = Math.max(replacementValue, 200)
 
-      const curveData: { rank: number; war: number }[] = []
+      const curveData: { rank: number; war: number; playerName: string; managerName: string | null }[] = []
       for (let i = 0; i < group.length; i++) {
         const player = group[i]
         const war = (player.value - replacementValue) / divisor
 
         const warRounded = Math.round(war * 100) / 100
-        curveData.push({ rank: i + 1, war: warRounded })
+        curveData.push({ rank: i + 1, war: warRounded, playerName: player.name, managerName: player.managerName })
 
         scatterData.push({
           position: pos,
@@ -199,6 +213,7 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/rankings/league-format
           color: positionColors[pos],
           marketValue: Math.round(player.value),
           playerName: player.name,
+          managerName: player.managerName,
         })
       }
 

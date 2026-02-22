@@ -1243,6 +1243,17 @@ function AFLegacyContent() {
   const [leagueFormatData, setLeagueFormatData] = useState<any>(null)
   const [leagueFormatLoading, setLeagueFormatLoading] = useState(false)
   const [leagueFormatPreset, setLeagueFormatPreset] = useState('WAR View')
+  const [warTooltip, setWarTooltip] = useState<{ x: number; y: number; playerName: string; managerName: string | null; position: string; war: number; rank: number } | null>(null)
+  const [scatterTooltip, setScatterTooltip] = useState<{ x: number; y: number; playerName: string; managerName: string | null; position: string; war: number; marketValue: number } | null>(null)
+
+  const getTooltipPos = (e: React.MouseEvent, containerRef: React.RefObject<HTMLDivElement | null>) => {
+    const container = containerRef.current
+    if (!container) return { x: 0, y: 0 }
+    const rect = container.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+  const warChartRef = useRef<HTMLDivElement>(null)
+  const scatterChartRef = useRef<HTMLDivElement>(null)
 
   // Manager Compare state
   const [compareOpponent, setCompareOpponent] = useState('')
@@ -14558,11 +14569,9 @@ function AFLegacyContent() {
                                                     const d = Math.abs(mouseX - c.x)
                                                     if (d < minDist) { minDist = d; nearest = c }
                                                   }
-                                                  const scaleX = svgRect.width / 800
-                                                  const scaleY = svgRect.height / 300
                                                   setChartTooltip({
-                                                    x: (nearest.x * scaleX) + (svgRect.left - rect.left),
-                                                    y: (nearest.y * scaleY) + (svgRect.top - rect.top),
+                                                    x: e.clientX - rect.left,
+                                                    y: e.clientY - rect.top,
                                                     name: team.teamName,
                                                     rating: nearest.rating,
                                                     week: nearest.week,
@@ -14594,19 +14603,13 @@ function AFLegacyContent() {
                                                     const container = chartContainerRef.current
                                                     if (container) {
                                                       const rect = container.getBoundingClientRect()
-                                                      const svgEl = container.querySelector('svg')
-                                                      if (svgEl) {
-                                                        const svgRect = svgEl.getBoundingClientRect()
-                                                        const scaleX = svgRect.width / 800
-                                                        const scaleY = svgRect.height / 300
-                                                        setChartTooltip({
-                                                          x: (c.x * scaleX) + (svgRect.left - rect.left),
-                                                          y: (c.y * scaleY) + (svgRect.top - rect.top),
-                                                          name: team.teamName,
-                                                          rating: c.rating,
-                                                          week: c.week,
-                                                        })
-                                                      }
+                                                      setChartTooltip({
+                                                        x: e.clientX - rect.left,
+                                                        y: e.clientY - rect.top,
+                                                        name: team.teamName,
+                                                        rating: c.rating,
+                                                        week: c.week,
+                                                      })
                                                     }
                                                   }}
                                                 />
@@ -14728,7 +14731,19 @@ function AFLegacyContent() {
                                             </span>
                                           ))}
                                         </div>
-                                        <div className="relative h-48 sm:h-56">
+                                        <div ref={warChartRef} className="relative h-48 sm:h-56" onMouseLeave={() => setWarTooltip(null)}>
+                                          {warTooltip && (
+                                            <div
+                                              className="absolute z-20 pointer-events-none px-3 py-2 rounded-lg bg-slate-800/95 border border-slate-600/60 shadow-xl backdrop-blur-sm"
+                                              style={{ left: `${warTooltip.x}px`, top: `${warTooltip.y - 65}px`, transform: 'translateX(-50%)' }}
+                                            >
+                                              <div className="text-xs font-bold text-white">{warTooltip.playerName}</div>
+                                              <div className="text-[10px] text-slate-300">{warTooltip.position} #{warTooltip.rank} — WAR: {warTooltip.war.toFixed(2)}</div>
+                                              {warTooltip.managerName && (
+                                                <div className="text-[10px] text-cyan-300 mt-0.5">Manager: {warTooltip.managerName}</div>
+                                              )}
+                                            </div>
+                                          )}
                                           <svg viewBox="0 0 400 200" className="w-full h-full" preserveAspectRatio="none">
                                             {/* Y-axis labels */}
                                             <text x="20" y="25" fill="#64748b" fontSize="9">3.0</text>
@@ -14750,21 +14765,49 @@ function AFLegacyContent() {
                                             
                                             {/* WAR Curves */}
                                             {leagueFormatData.warCurves?.map((curve: any) => {
-                                              const points = curve.data.slice(0, 30).map((d: any, i: number) => {
-                                                const x = 40 + (i / 29) * 350
-                                                const y = 140 - (d.war / 3.5) * 120
-                                                return `${x},${Math.max(20, Math.min(180, y))}`
-                                              }).join(' ')
+                                              const coords = curve.data.slice(0, 30).map((d: any, i: number) => ({
+                                                x: 40 + (i / 29) * 350,
+                                                y: Math.max(20, Math.min(180, 140 - (d.war / 3.5) * 120)),
+                                                playerName: d.playerName || `${curve.position} #${i + 1}`,
+                                                managerName: d.managerName || null,
+                                                war: d.war,
+                                                rank: i + 1,
+                                              }))
+                                              const points = coords.map((c: any) => `${c.x},${c.y}`).join(' ')
                                               
                                               return (
-                                                <polyline
-                                                  key={curve.position}
-                                                  points={points}
-                                                  fill="none"
-                                                  stroke={curve.color}
-                                                  strokeWidth="2"
-                                                  strokeLinecap="round"
-                                                />
+                                                <g key={curve.position}>
+                                                  <polyline
+                                                    points={points}
+                                                    fill="none"
+                                                    stroke={curve.color}
+                                                    strokeWidth="2"
+                                                    strokeLinecap="round"
+                                                  />
+                                                  {/* Invisible data points for hover */}
+                                                  {coords.map((c: any, ci: number) => (
+                                                    <circle
+                                                      key={ci}
+                                                      cx={c.x}
+                                                      cy={c.y}
+                                                      r="6"
+                                                      fill="transparent"
+                                                      style={{ cursor: 'pointer' }}
+                                                      onMouseEnter={(e) => {
+                                                        const pos = getTooltipPos(e, warChartRef)
+                                                        setWarTooltip({
+                                                          ...pos,
+                                                          playerName: c.playerName,
+                                                          managerName: c.managerName,
+                                                          position: curve.position,
+                                                          war: c.war,
+                                                          rank: c.rank,
+                                                        })
+                                                      }}
+                                                      onMouseLeave={() => setWarTooltip(null)}
+                                                    />
+                                                  ))}
+                                                </g>
                                               )
                                             })}
                                           </svg>
@@ -14784,7 +14827,19 @@ function AFLegacyContent() {
                                             </span>
                                           ))}
                                         </div>
-                                        <div className="relative h-48 sm:h-56">
+                                        <div ref={scatterChartRef} className="relative h-48 sm:h-56" onMouseLeave={() => setScatterTooltip(null)}>
+                                          {scatterTooltip && (
+                                            <div
+                                              className="absolute z-20 pointer-events-none px-3 py-2 rounded-lg bg-slate-800/95 border border-slate-600/60 shadow-xl backdrop-blur-sm"
+                                              style={{ left: `${scatterTooltip.x}px`, top: `${scatterTooltip.y - 70}px`, transform: 'translateX(-50%)' }}
+                                            >
+                                              <div className="text-xs font-bold text-white">{scatterTooltip.playerName}</div>
+                                              <div className="text-[10px] text-slate-300">{scatterTooltip.position} — WAR: {scatterTooltip.war.toFixed(2)} · Value: {scatterTooltip.marketValue.toLocaleString()}</div>
+                                              {scatterTooltip.managerName && (
+                                                <div className="text-[10px] text-cyan-300 mt-0.5">Manager: {scatterTooltip.managerName}</div>
+                                              )}
+                                            </div>
+                                          )}
                                           <svg viewBox="0 0 400 200" className="w-full h-full" preserveAspectRatio="none">
                                             {/* Y-axis labels */}
                                             <text x="20" y="25" fill="#64748b" fontSize="9">3.0</text>
@@ -14811,20 +14866,8 @@ function AFLegacyContent() {
                                               <line key={i} x1="40" y1={20 + i * 40} x2="390" y2={20 + i * 40} stroke="#334155" strokeWidth="0.5" strokeDasharray="2" />
                                             ))}
                                             
-                                            {/* Scatter Points */}
-                                            {leagueFormatData.scatterData?.slice(0, 80).map((point: any, i: number) => (
-                                              <circle
-                                                key={i}
-                                                cx={40 + (point.marketValue / 10000) * 350}
-                                                cy={Math.max(20, Math.min(180, 140 - (point.war / 3.5) * 120))}
-                                                r="3"
-                                                fill={point.color}
-                                                opacity="0.7"
-                                              />
-                                            ))}
-                                            
-                                            {/* Trend lines */}
-                                            {leagueFormatData.warCurves?.map((curve: any, idx: number) => {
+                                            {/* Trend lines (behind scatter points) */}
+                                            {leagueFormatData.warCurves?.map((curve: any) => {
                                               const positions = leagueFormatData.scatterData?.filter((p: any) => p.position === curve.position).slice(0, 20)
                                               if (!positions?.length) return null
                                               
@@ -14842,6 +14885,35 @@ function AFLegacyContent() {
                                                   strokeWidth="1.5"
                                                   strokeDasharray="4"
                                                   opacity="0.6"
+                                                />
+                                              )
+                                            })}
+                                            
+                                            {/* Scatter Points with hover */}
+                                            {leagueFormatData.scatterData?.slice(0, 80).map((point: any, i: number) => {
+                                              const cx = 40 + (point.marketValue / 10000) * 350
+                                              const cy = Math.max(20, Math.min(180, 140 - (point.war / 3.5) * 120))
+                                              return (
+                                                <circle
+                                                  key={i}
+                                                  cx={cx}
+                                                  cy={cy}
+                                                  r="5"
+                                                  fill={point.color}
+                                                  opacity="0.7"
+                                                  style={{ cursor: 'pointer' }}
+                                                  onMouseEnter={(e) => {
+                                                    const pos = getTooltipPos(e, scatterChartRef)
+                                                    setScatterTooltip({
+                                                      ...pos,
+                                                      playerName: point.playerName || 'Unknown',
+                                                      managerName: point.managerName || null,
+                                                      position: point.position,
+                                                      war: point.war,
+                                                      marketValue: point.marketValue,
+                                                    })
+                                                  }}
+                                                  onMouseLeave={() => setScatterTooltip(null)}
                                                 />
                                               )
                                             })}
