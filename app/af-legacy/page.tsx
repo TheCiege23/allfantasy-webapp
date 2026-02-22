@@ -1253,6 +1253,11 @@ function AFLegacyContent() {
   const [playerSearchError, setPlayerSearchError] = useState('')
   const [playerSearchResults, setPlayerSearchResults] = useState<any[]>([])
   const [selectedPlayerCard, setSelectedPlayerCard] = useState<any | null>(null)
+  const [playerDb, setPlayerDb] = useState<{ id: string; name: string; position: string; team: string | null }[]>([])
+  const [playerDbLoaded, setPlayerDbLoaded] = useState(false)
+  const [autoSuggestions, setAutoSuggestions] = useState<{ id: string; name: string; position: string; team: string | null }[]>([])
+  const [showAutoSuggestions, setShowAutoSuggestions] = useState(false)
+  const autoSuggestRef = useRef<HTMLDivElement>(null)
 
   // Social Pulse state
   const [pulsePlayerInput, setPulsePlayerInput] = useState('')
@@ -3544,8 +3549,71 @@ function AFLegacyContent() {
     }
   }
 
+  useEffect(() => {
+    if (playerDbLoaded) return
+    const loadPlayerDb = async () => {
+      try {
+        const res = await fetch('/api/legacy/players')
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.players) {
+          const arr = Object.entries(data.players)
+            .map(([id, p]: [string, any]) => ({
+              id,
+              name: p.name || '',
+              position: p.position || '',
+              team: p.team || null,
+            }))
+            .filter((p) => p.name && ['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'DL', 'LB', 'DB'].includes(p.position))
+          setPlayerDb(arr)
+          setPlayerDbLoaded(true)
+        }
+      } catch {}
+    }
+    loadPlayerDb()
+  }, [playerDbLoaded])
+
+  useEffect(() => {
+    const q = playerSearchQuery.trim().toLowerCase()
+    if (q.length < 2) {
+      setAutoSuggestions([])
+      setShowAutoSuggestions(false)
+      return
+    }
+    const parts = q.split(/\s+/)
+    const matches = playerDb
+      .filter((p) => {
+        const name = p.name.toLowerCase()
+        return parts.every((part) => name.includes(part))
+      })
+      .sort((a, b) => {
+        const posOrder: Record<string, number> = { QB: 0, RB: 1, WR: 2, TE: 3, K: 4, DEF: 5 }
+        const aTeam = a.team ? 0 : 1
+        const bTeam = b.team ? 0 : 1
+        if (aTeam !== bTeam) return aTeam - bTeam
+        const aPos = posOrder[a.position] ?? 6
+        const bPos = posOrder[b.position] ?? 6
+        if (aPos !== bPos) return aPos - bPos
+        return a.name.localeCompare(b.name)
+      })
+      .slice(0, 8)
+    setAutoSuggestions(matches)
+    setShowAutoSuggestions(matches.length > 0)
+  }, [playerSearchQuery, playerDb])
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (autoSuggestRef.current && !autoSuggestRef.current.contains(e.target as Node)) {
+        setShowAutoSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const searchPlayers = async () => {
     if (!username || !playerSearchQuery || playerSearchQuery.length < 2) return
+    setShowAutoSuggestions(false)
     setPlayerSearchLoading(true)
     setPlayerSearchError('')
     setPlayerSearchResults([])
@@ -12416,14 +12484,42 @@ function AFLegacyContent() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-3 mb-6">
-                      <input
-                        type="text"
-                        placeholder="Search player name (e.g., Ja'Marr Chase)"
-                        value={playerSearchQuery}
-                        onChange={(e) => setPlayerSearchQuery(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && searchPlayers()}
-                        className="flex-1 px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white placeholder-white/40 focus:border-cyan-500/50 focus:outline-none min-h-[48px]"
-                      />
+                      <div className="relative flex-1" ref={autoSuggestRef}>
+                        <input
+                          type="text"
+                          placeholder="Search player name (e.g., Ja'Marr Chase)"
+                          value={playerSearchQuery}
+                          onChange={(e) => setPlayerSearchQuery(e.target.value)}
+                          onFocus={() => { if (autoSuggestions.length > 0) setShowAutoSuggestions(true) }}
+                          onKeyDown={(e) => e.key === 'Enter' && searchPlayers()}
+                          autoComplete="off"
+                          className="w-full px-4 py-3 bg-black/40 border border-white/10 rounded-xl text-white placeholder-white/40 focus:border-cyan-500/50 focus:outline-none min-h-[48px]"
+                        />
+                        {showAutoSuggestions && autoSuggestions.length > 0 && (
+                          <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-[#1a1a2e] border border-cyan-500/30 rounded-xl shadow-2xl shadow-cyan-500/10 overflow-hidden max-h-[320px] overflow-y-auto">
+                            {autoSuggestions.map((p) => (
+                              <button
+                                key={p.id}
+                                onClick={() => {
+                                  setPlayerSearchQuery(p.name)
+                                  setShowAutoSuggestions(false)
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-cyan-500/10 transition text-left"
+                              >
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  p.position === 'QB' ? 'bg-red-500/30 text-red-300' :
+                                  p.position === 'RB' ? 'bg-green-500/30 text-green-300' :
+                                  p.position === 'WR' ? 'bg-blue-500/30 text-blue-300' :
+                                  p.position === 'TE' ? 'bg-orange-500/30 text-orange-300' :
+                                  'bg-gray-500/30 text-gray-300'
+                                }`}>{p.position}</span>
+                                <span className="text-sm text-white font-medium truncate">{p.name}</span>
+                                {p.team && <span className="text-xs text-white/40 ml-auto flex-shrink-0">{p.team}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={searchPlayers}
                         disabled={playerSearchLoading || playerSearchQuery.length < 2}
