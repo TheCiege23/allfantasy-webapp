@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
 import { requireVerifiedUser } from "@/lib/auth-guard"
+import {
+  computeWinProbability,
+  computePickDistribution,
+  computeSleeperScore,
+  computeLeverage,
+} from "@/lib/brackets/intelligence/data-engine"
+import {
+  recommendPick,
+  DEFAULT_RISK_PROFILE,
+  type RiskProfile,
+} from "@/lib/brackets/intelligence/strategy-engine"
+import { narrateMatchup } from "@/lib/brackets/intelligence/ai-narrator"
 
 export const runtime = "nodejs"
-
-function computeWinProb(seedA: number | null, seedB: number | null): { home: number; away: number } {
-  if (seedA == null || seedB == null) return { home: 50, away: 50 }
-  const diff = seedB - seedA
-  const homeProb = Math.max(15, Math.min(85, 50 + diff * 4.5))
-  return { home: Math.round(homeProb), away: Math.round(100 - homeProb) }
-}
 
 function buildAnalysis(
   teamA: string,
@@ -75,20 +81,78 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({} as any))
-  const { teamA, teamB, round, seedA, seedB, nodeId } = body
+  const { teamA, teamB, round, seedA, seedB, nodeId, tournamentId, withNarrative } = body
 
   if (!teamA || !teamB) {
     return NextResponse.json({ error: "Missing teamA or teamB" }, { status: 400 })
   }
 
-  const winProbability = computeWinProb(seedA ?? null, seedB ?? null)
+  const winProb = computeWinProbability(seedA ?? null, seedB ?? null)
   const { analysis, claims, confidence } = buildAnalysis(
-    teamA,
-    teamB,
-    seedA ?? null,
-    seedB ?? null,
-    round ?? 1
+    teamA, teamB, seedA ?? null, seedB ?? null, round ?? 1
   )
+
+  let pickDistribution: { publicPctA: number; publicPctB: number } | null = null
+  let leverage = null
+  let sleeper = null
+  let strategy = null
+  let aiNarrative: string | undefined
+
+  if (tournamentId && nodeId) {
+    const distributions = await computePickDistribution(tournamentId, [nodeId])
+    const dist = distributions.get(nodeId)
+
+    if (dist) {
+      const totalPicks = dist.total
+      const pctA = totalPicks > 0 ? (dist.picks[teamA] ?? 0) / totalPicks : 0.5
+      const pctB = totalPicks > 0 ? (dist.picks[teamB] ?? 0) / totalPicks : 0.5
+
+      pickDistribution = { publicPctA: Math.round(pctA * 100) / 100, publicPctB: Math.round(pctB * 100) / 100 }
+
+      leverage = computeLeverage(
+        nodeId, teamA, teamB,
+        { ...dist, publicPctA: pctA, publicPctB: pctB },
+        round ?? 1
+      )
+
+      const sleeperA = computeSleeperScore(teamA, seedA ?? null, seedB ?? null, pctA)
+      const sleeperB = computeSleeperScore(teamB, seedB ?? null, seedA ?? null, pctB)
+      sleeper = sleeperA.score > sleeperB.score ? sleeperA : sleeperB.score > 0 ? sleeperB : null
+
+      const savedProfile = await prisma.bracketRiskProfile.findUnique({
+        where: { userId: auth.userId },
+      })
+      const profile: RiskProfile = savedProfile
+        ? {
+            riskTolerance: savedProfile.riskTolerance as RiskProfile["riskTolerance"],
+            poolCount: savedProfile.poolCount,
+            poolSizeEstimate: savedProfile.poolSizeEstimate,
+            goal: savedProfile.goal as RiskProfile["goal"],
+          }
+        : DEFAULT_RISK_PROFILE
+
+      strategy = recommendPick(
+        teamA, teamB,
+        seedA ?? null, seedB ?? null,
+        pctA, pctB,
+        profile, round ?? 1
+      )
+
+      if (withNarrative) {
+        aiNarrative = await narrateMatchup({
+          teamA, teamB,
+          winProbA: winProb.teamA,
+          winProbB: winProb.teamB,
+          publicPickPctA: pctA,
+          publicPickPctB: pctB,
+          seedA: seedA ?? null,
+          seedB: seedB ?? null,
+          round: round ?? 1,
+          leverageScore: leverage.score,
+        })
+      }
+    }
+  }
 
   const sources = claims
     .filter((c) => c.source)
@@ -100,12 +164,20 @@ export async function POST(req: Request) {
     teamA,
     teamB,
     round: round ?? 1,
-    winProbability,
+    winProbability: {
+      home: Math.round(winProb.teamA * 100),
+      away: Math.round(winProb.teamB * 100),
+    },
+    pickDistribution,
+    leverage,
+    sleeper,
+    strategy,
     analysis,
+    aiNarrative,
     claims,
     confidence,
     sources,
     lastUpdated: new Date().toISOString(),
-    dataDisclaimer: "Analysis based on historical seed performance data. Individual team stats may not be available from current data provider.",
+    dataDisclaimer: "Analysis based on historical seed performance data and pool pick distribution.",
   })
 }

@@ -33,6 +33,7 @@ The core architecture is based on a `One Engine API` that integrates a One Scori
 -   **Manager Psychology Profiles:** AI-powered psychological analysis of league managers based on their activity.
 -   **Game Theory Counter Builder:** Generates mathematically optimized counter offers.
 -   **NCAA Bracket Challenge (Sleeper-Style):** Full March Madness bracket system with dark navy theme, simplified pool creation, BracketTreeView, multiple scoring modes, interactive canvas, and SSE Live Updates.
+-   **Bracket Intelligence System (3-Layer Architecture):** Data Engine (deterministic math), Strategy Engine (risk-profiled recommendations), AI Narrator (LLM explanations). Features: AI Pick Advisor with public pick % + leverage, Smart Sleeper Detection, Risk Profile Builder, Bracket Uniqueness Score, Bracket Health Score, Monte Carlo Win Probability, Auto Multi-Bracket Generator (safe/balanced/upset/chaos), AI Story Mode, AI Trash Talk Bot, Post-Tournament Insights. All probabilities are deterministic — AI only explains, never computes.
 -   **Trade Improvement AI (Dual-Brain):** Utilizes Agentic Grok and GPT-4o for parallel synthesis.
 -   **Unified Canonical Context (v1):** All trade tools share a `TradeDecisionContextV1` for consistent data.
 -   **Data Quality Features:** Includes Source Freshness Scoring, Data Coverage Tier Scoring, and Confidence Guard Gates.

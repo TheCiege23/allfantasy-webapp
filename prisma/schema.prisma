@@ -2226,6 +2226,7 @@ model AppUser {
   bracketLeagueMessages BracketLeagueMessage[] @relation("BracketLeagueMessages")
   bracketMessageReactions BracketMessageReaction[] @relation("BracketMessageReactions")
   bracketPayments      BracketPayment[]       @relation("BracketPayments")
+  bracketRiskProfile   BracketRiskProfile?    @relation("BracketRiskProfile")
 
   @@map("app_users")
 }
@@ -2456,6 +2457,21 @@ model BracketFeedEvent {
   @@index([tournamentId, createdAt])
   @@index([leagueId, createdAt])
   @@map("bracket_feed_events")
+}
+
+model BracketRiskProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  riskTolerance    String   @default("balanced")
+  poolCount        Int      @default(1)
+  poolSizeEstimate Int      @default(20)
+  goal             String   @default("mincash")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user AppUser @relation("BracketRiskProfile", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("bracket_risk_profiles")
 }
 
 model SimulationResult {
