@@ -12,7 +12,7 @@ type Props = {
 type SimStatus =
   | { state: "idle" }
   | { state: "queued"; jobId: string }
-  | { state: "running"; jobId: string }
+  | { state: "running"; jobId: string; progress: number }
   | { state: "done"; jobId: string; result: any }
   | { state: "error"; message: string }
 
@@ -48,8 +48,8 @@ export function LabDashboardShell({ userId, tournamentId, tournamentName }: Prop
   }
 
   async function pollResult(jobId: string) {
-    setStatus({ state: "running", jobId })
-    for (let i = 0; i < 60; i++) {
+    setStatus({ state: "running", jobId, progress: 0 })
+    for (let i = 0; i < 120; i++) {
       await new Promise((r) => setTimeout(r, 1500))
       try {
         const res = await fetch(`/api/lab/simulations/status?jobId=${encodeURIComponent(jobId)}`)
@@ -62,6 +62,11 @@ export function LabDashboardShell({ userId, tournamentId, tournamentName }: Prop
         if (data.state === "failed") {
           setStatus({ state: "error", message: data.error ?? "Job failed" })
           return
+        }
+        if (data.state === "active") {
+          setStatus({ state: "running", jobId, progress: data.progress ?? 0 })
+        } else if (data.state === "waiting" || data.state === "delayed") {
+          setStatus({ state: "queued", jobId })
         }
       } catch {}
     }
@@ -241,9 +246,17 @@ function SimPanel({
         {status.state === "running" && (
           <div className="mt-3">
             <div className="w-full rounded-full h-1.5 overflow-hidden" style={{ background: "rgba(255,255,255,0.06)" }}>
-              <div className="h-full rounded-full animate-pulse" style={{ background: "linear-gradient(90deg, #06b6d4, #8b5cf6)", width: "60%" }} />
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{
+                  background: "linear-gradient(90deg, #06b6d4, #8b5cf6)",
+                  width: `${Math.max(5, status.progress)}%`,
+                }}
+              />
             </div>
-            <p className="text-xs text-white/40 mt-1.5">Simulating tournament outcomes...</p>
+            <p className="text-xs text-white/40 mt-1.5">
+              Simulating tournament outcomes... {status.progress > 0 ? `${status.progress}%` : ""}
+            </p>
           </div>
         )}
 

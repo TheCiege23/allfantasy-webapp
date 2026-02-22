@@ -19,6 +19,14 @@ args = "Next.js Dev Server"
 task = "workflow.run"
 args = "Background Sync"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Redis Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Simulation Worker"
+
 [[workflows.workflow]]
 name = "Next.js Dev Server"
 author = "agent"
@@ -42,9 +50,40 @@ outputType = "console"
 task = "shell.exec"
 args = "npx --yes tsx scripts/background-sync.ts"
 
+[[workflows.workflow]]
+name = "Redis Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "redis-server --port 6000 --save \"\" --appendonly no"
+waitForPort = 6000
+
+[[workflows.workflow]]
+name = "Simulation Worker"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx --yes tsx scripts/start-worker.ts"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 6379
+externalPort = 3000
+
+[[ports]]
+localPort = 6000
+externalPort = 6000
 
 [nix]
 channel = "stable-25_05"
