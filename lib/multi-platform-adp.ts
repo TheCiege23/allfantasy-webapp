@@ -89,9 +89,14 @@ function parseCSVLine(line: string): string[] {
 export function loadMultiPlatformADP(): MultiPlatformADP[] {
   if (cache) return cache
 
-  const csvPath = path.join(process.cwd(), 'data', 'nfl-adp-multiplatform.csv')
+  const candidates = [
+    path.join(process.cwd(), 'data', 'nfl-adp-multiplatform.csv'),
+    path.join(__dirname, '..', 'data', 'nfl-adp-multiplatform.csv'),
+    path.join(__dirname, '..', '..', 'data', 'nfl-adp-multiplatform.csv'),
+  ]
+  const csvPath = candidates.find(p => fs.existsSync(p)) || candidates[0]
   if (!fs.existsSync(csvPath)) {
-    console.warn('[MULTI-ADP] CSV not found at', csvPath)
+    console.warn('[MULTI-ADP] CSV not found, tried:', candidates.join(', '))
     return []
   }
 
