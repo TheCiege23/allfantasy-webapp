@@ -48,9 +48,23 @@ const ROUND_LABELS: Record<number, string> = {
   6: "Championship",
 }
 
+const AF_BLUE = "#3b82f6"
+const AF_BLUE_BG = "rgba(59,130,246,0.12)"
+const AF_BLUE_BORDER = "rgba(59,130,246,0.4)"
+const AF_BLUE_LIGHT = "rgba(59,130,246,0.2)"
+
 function isPickLocked(node: Node) {
   if (!node.game?.startTime) return false
   return new Date(node.game.startTime) <= new Date()
+}
+
+function getTopSeed(node: Node, seedMap: Map<string, number>, effective: Map<string, { home: string | null; away: string | null }>): number {
+  const eff = effective.get(node.id)
+  const homeName = eff?.home ?? node.homeTeamName
+  const awayName = eff?.away ?? node.awayTeamName
+  const hSeed = homeName ? (seedMap.get(homeName) ?? node.seedHome ?? 99) : (node.seedHome ?? 99)
+  const aSeed = awayName ? (seedMap.get(awayName) ?? node.seedAway ?? 99) : (node.seedAway ?? 99)
+  return Math.min(hSeed, aSeed)
 }
 
 export function PickWizard({ nodes, startNode, picks, seedMap, effective, entryId, onPick, onClose }: Props) {
@@ -59,13 +73,16 @@ export function PickWizard({ nodes, startNode, picks, seedMap, effective, entryI
       .filter(n => n.round >= 1)
       .sort((a, b) => {
         if (a.round !== b.round) return a.round - b.round
+        const seedA = getTopSeed(a, seedMap, effective)
+        const seedB = getTopSeed(b, seedMap, effective)
+        if (seedA !== seedB) return seedA - seedB
         const regionOrder = ["West", "East", "South", "Midwest", null]
         const ra = regionOrder.indexOf(a.region)
         const rb = regionOrder.indexOf(b.region)
         if (ra !== rb) return ra - rb
         return a.slot.localeCompare(b.slot)
       }),
-    [nodes]
+    [nodes, seedMap, effective]
   )
 
   const [currentIdx, setCurrentIdx] = useState(() => {
@@ -174,25 +191,26 @@ export function PickWizard({ nodes, startNode, picks, seedMap, effective, entryI
         onClick={() => handlePick(name)}
         className="w-full rounded-2xl p-5 transition-all active:scale-[0.98]"
         style={{
-          background: isPicked ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.03)',
-          border: isPicked ? '2px solid rgba(251,146,60,0.4)' : '2px solid rgba(255,255,255,0.08)',
+          background: isPicked ? AF_BLUE_BG : 'rgba(255,255,255,0.03)',
+          border: isPicked ? `2px solid ${AF_BLUE_BORDER}` : '2px solid rgba(255,255,255,0.08)',
           cursor: canPick ? 'pointer' : 'default',
           opacity: pickAnimating && !isPicked ? 0.4 : 1,
           transform: pickAnimating && isPicked ? 'scale(1.02)' : undefined,
+          boxShadow: isPicked ? `0 0 20px rgba(59,130,246,0.15)` : undefined,
         }}
       >
         <div className="flex items-center gap-4">
           <div
             className="w-14 h-14 rounded-xl flex items-center justify-center font-black text-xl"
             style={{
-              background: isPicked ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)',
-              color: isPicked ? '#fb923c' : 'rgba(255,255,255,0.4)',
+              background: isPicked ? AF_BLUE_LIGHT : 'rgba(255,255,255,0.06)',
+              color: isPicked ? AF_BLUE : 'rgba(255,255,255,0.4)',
             }}
           >
             {seed ?? "?"}
           </div>
           <div className="flex-1 text-left">
-            <div className="font-bold text-lg" style={{ color: isPicked ? '#fb923c' : 'rgba(255,255,255,0.9)' }}>
+            <div className="font-bold text-lg" style={{ color: isPicked ? AF_BLUE : 'rgba(255,255,255,0.9)' }}>
               {name}
             </div>
             <div className="flex items-center gap-2 mt-1">
@@ -202,15 +220,15 @@ export function PickWizard({ nodes, startNode, picks, seedMap, effective, entryI
                 </span>
               )}
               {isPicked && (
-                <span className="text-[10px] font-bold" style={{ color: '#22c55e' }}>
-                  SELECTED
+                <span className="text-[10px] font-bold flex items-center gap-1" style={{ color: AF_BLUE }}>
+                  <Trophy className="w-3 h-3" /> WINNER
                 </span>
               )}
             </div>
           </div>
           {winProb != null && (
             <div className="text-right">
-              <div className="text-2xl font-black" style={{ color: isPicked ? '#fb923c' : 'rgba(255,255,255,0.5)' }}>
+              <div className="text-2xl font-black" style={{ color: isPicked ? AF_BLUE : 'rgba(255,255,255,0.5)' }}>
                 {Math.round(winProb)}%
               </div>
               <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>win prob</div>
@@ -219,7 +237,7 @@ export function PickWizard({ nodes, startNode, picks, seedMap, effective, entryI
         </div>
         {winProb != null && (
           <div className="mt-3 h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${winProb}%`, background: isPicked ? '#fb923c' : 'rgba(255,255,255,0.15)' }} />
+            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${winProb}%`, background: isPicked ? AF_BLUE : 'rgba(255,255,255,0.15)' }} />
           </div>
         )}
       </button>
@@ -227,155 +245,175 @@ export function PickWizard({ nodes, startNode, picks, seedMap, effective, entryI
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0d1117' }}>
-      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <button onClick={onClose} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)' }}>
-          <X className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.5)' }} />
-        </button>
-        <div className="text-center">
-          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#fb923c' }}>
-            {ROUND_LABELS[currentNode.round] || `Round ${currentNode.round}`}
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)' }} onClick={onClose}>
+      <div
+        className="relative w-full max-w-md mx-4 flex flex-col"
+        style={{
+          background: '#141a26',
+          borderRadius: 20,
+          border: '1px solid rgba(59,130,246,0.15)',
+          boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 40px rgba(59,130,246,0.08)',
+          maxHeight: '90vh',
+          animation: 'wizardPop 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <style>{`
+          @keyframes wizardPop {
+            0% { opacity: 0; transform: scale(0.92) translateY(20px); }
+            100% { opacity: 1; transform: scale(1) translateY(0); }
+          }
+        `}</style>
+
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="flex items-center gap-2">
+            <button onClick={goPrev} disabled={currentIdx === 0} className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-20 transition-opacity" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <ChevronLeft className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
+            </button>
+            <button onClick={goNext} disabled={currentIdx >= pickableNodes.length - 1} className="w-8 h-8 rounded-lg flex items-center justify-center disabled:opacity-20 transition-opacity" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <ChevronRight className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
+            </button>
           </div>
-          <div className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-            {currentNode.region && `${currentNode.region} Region`}
-            {currentNode.region && ` \u2022 `}
-            {pickedInRound}/{totalInRound} picked
+          <div className="text-center flex-1">
+            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: AF_BLUE }}>
+              {ROUND_LABELS[currentNode.round] || `Round ${currentNode.round}`}
+            </div>
+            <div className="text-[10px] mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              {currentNode.region && `${currentNode.region} Region`}
+              {currentNode.region && ` \u2022 `}
+              {pickedInRound}/{totalInRound} picked
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-1">
-          <button onClick={goPrev} disabled={currentIdx === 0} className="w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-20" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <ChevronLeft className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.5)' }} />
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors" style={{ background: 'rgba(255,255,255,0.04)' }}>
+            <X className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
           </button>
-          <button onClick={goNext} disabled={currentIdx >= pickableNodes.length - 1} className="w-9 h-9 rounded-xl flex items-center justify-center disabled:opacity-20" style={{ background: 'rgba(255,255,255,0.04)' }}>
-            <ChevronRight className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.5)' }} />
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
-        <div className="text-center mb-2">
-          <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
-            Choose the winner
-          </div>
         </div>
 
-        <TeamCard name={homeName} seed={homeSeed} isPicked={picked === homeName} side="home" />
-
-        <div className="flex items-center gap-3 justify-center">
-          <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
-          <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.12)' }}>VS</span>
-          <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
-        </div>
-
-        <TeamCard name={awayName} seed={awaySeed} isPicked={picked === awayName} side="away" />
-
-        {!hasBothTeams && (
-          <div className="text-center rounded-xl p-4" style={{ background: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.08)' }}>
-            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              This matchup requires winners from previous rounds. Fill out earlier games first.
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-3" style={{ maxHeight: 'calc(90vh - 110px)' }}>
+          <div className="text-center mb-1">
+            <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              Choose the winner
             </div>
           </div>
-        )}
 
-        {locked && hasBothTeams && (
-          <div className="text-center rounded-xl p-3" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
-            <div className="text-xs font-semibold" style={{ color: '#ef4444' }}>
-              Picks are locked for this matchup
-            </div>
+          <TeamCard name={homeName} seed={homeSeed} isPicked={picked === homeName} side="home" />
+
+          <div className="flex items-center gap-3 justify-center py-1">
+            <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
+            <span className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.12)' }}>VS</span>
+            <div className="h-px flex-1" style={{ background: 'rgba(255,255,255,0.06)' }} />
           </div>
-        )}
 
-        {loadingAi === currentNode.id && (
-          <div className="rounded-xl p-4" style={{ background: 'rgba(6,182,212,0.03)', border: '1px solid rgba(6,182,212,0.08)' }}>
-            <div className="flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'rgba(6,182,212,0.3)', borderTopColor: 'transparent' }} />
-              <span className="text-xs" style={{ color: 'rgba(6,182,212,0.6)' }}>Loading AI analysis...</span>
-            </div>
-          </div>
-        )}
+          <TeamCard name={awayName} seed={awaySeed} isPicked={picked === awayName} side="away" />
 
-        {ai?.analysis && (
-          <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(6,182,212,0.03)', border: '1px solid rgba(6,182,212,0.10)' }}>
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4" style={{ color: '#22d3ee' }} />
-              <span className="text-xs font-bold" style={{ color: '#22d3ee' }}>AI Matchup Analysis</span>
-              {ai.confidence && (
-                <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}>
-                  {ai.confidence}% conf
-                </span>
-              )}
-            </div>
-            <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
-              {ai.analysis}
-            </p>
-
-            {ai.keyFactors?.length > 0 && (
-              <div className="space-y-1.5">
-                <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>Key Factors</div>
-                {ai.keyFactors.slice(0, 3).map((f: string, i: number) => (
-                  <div key={i} className="flex items-start gap-2">
-                    <div className="w-1 h-1 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#22d3ee' }} />
-                    <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{f}</span>
-                  </div>
-                ))}
+          {!hasBothTeams && (
+            <div className="text-center rounded-xl p-4" style={{ background: 'rgba(59,130,246,0.04)', border: '1px solid rgba(59,130,246,0.08)' }}>
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                This matchup requires winners from previous rounds. Fill out earlier games first.
               </div>
-            )}
+            </div>
+          )}
 
-            {ai.sources?.length > 0 && (
-              <details className="group">
-                <summary className="text-[10px] font-semibold cursor-pointer" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                  Sources ({ai.sources.length})
-                </summary>
-                <div className="mt-1 space-y-1">
-                  {ai.sources.map((s: any, i: number) => (
-                    <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="block text-[10px] underline" style={{ color: 'rgba(6,182,212,0.6)' }}>
-                      {s.title || s.url}
-                    </a>
+          {locked && hasBothTeams && (
+            <div className="text-center rounded-xl p-3" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.12)' }}>
+              <div className="text-xs font-semibold" style={{ color: '#ef4444' }}>
+                Picks are locked for this matchup
+              </div>
+            </div>
+          )}
+
+          {loadingAi === currentNode.id && (
+            <div className="rounded-xl p-4" style={{ background: 'rgba(6,182,212,0.03)', border: '1px solid rgba(6,182,212,0.08)' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: 'rgba(6,182,212,0.3)', borderTopColor: 'transparent' }} />
+                <span className="text-xs" style={{ color: 'rgba(6,182,212,0.6)' }}>Loading AI analysis...</span>
+              </div>
+            </div>
+          )}
+
+          {ai?.analysis && (
+            <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(6,182,212,0.03)', border: '1px solid rgba(6,182,212,0.10)' }}>
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: '#22d3ee' }} />
+                <span className="text-xs font-bold" style={{ color: '#22d3ee' }}>AI Matchup Analysis</span>
+                {ai.confidence && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}>
+                    {ai.confidence}% conf
+                  </span>
+                )}
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                {ai.analysis}
+              </p>
+
+              {ai.keyFactors?.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>Key Factors</div>
+                  {ai.keyFactors.slice(0, 3).map((f: string, i: number) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <div className="w-1 h-1 rounded-full mt-1.5 flex-shrink-0" style={{ background: '#22d3ee' }} />
+                      <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.4)' }}>{f}</span>
+                    </div>
                   ))}
                 </div>
-              </details>
-            )}
-          </div>
-        )}
+              )}
 
-        {ai?.recommendation && (
-          <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(251,146,60,0.03)', border: '1px solid rgba(251,146,60,0.10)' }}>
-            <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4" style={{ color: '#fb923c' }} />
-              <span className="text-xs font-bold" style={{ color: '#fb923c' }}>AI Recommendation</span>
+              {ai.sources?.length > 0 && (
+                <details className="group">
+                  <summary className="text-[10px] font-semibold cursor-pointer" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                    Sources ({ai.sources.length})
+                  </summary>
+                  <div className="mt-1 space-y-1">
+                    {ai.sources.map((s: any, i: number) => (
+                      <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" className="block text-[10px] underline" style={{ color: 'rgba(6,182,212,0.6)' }}>
+                        {s.title || s.url}
+                      </a>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
-            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
-              {ai.recommendation}
-            </p>
-          </div>
-        )}
-      </div>
+          )}
 
-      <div className="px-4 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(13,17,23,0.95)' }}>
-        <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          {currentIdx + 1} of {pickableNodes.length}
+          {ai?.recommendation && (
+            <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(59,130,246,0.03)', border: '1px solid rgba(59,130,246,0.10)' }}>
+              <div className="flex items-center gap-2">
+                <Shield className="w-4 h-4" style={{ color: AF_BLUE }} />
+                <span className="text-xs font-bold" style={{ color: AF_BLUE }}>AI Recommendation</span>
+              </div>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>
+                {ai.recommendation}
+              </p>
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5">
-          {pickableNodes.slice(Math.max(0, currentIdx - 2), currentIdx + 3).map((n, i) => {
-            const actualIdx = Math.max(0, currentIdx - 2) + i
-            const isPicked = !!picks[n.id]
-            const isCurrent = actualIdx === currentIdx
-            return (
-              <button
-                key={n.id}
-                onClick={() => setCurrentIdx(actualIdx)}
-                className="rounded-full transition-all"
-                style={{
-                  width: isCurrent ? 16 : 6,
-                  height: 6,
-                  background: isCurrent ? '#fb923c' : isPicked ? 'rgba(34,197,94,0.5)' : 'rgba(255,255,255,0.1)',
-                }}
-              />
-            )
-          })}
-        </div>
-        <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          {Object.values(picks).filter(Boolean).length} picked
+
+        <div className="px-5 py-3 flex items-center justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            {currentIdx + 1} of {pickableNodes.length}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {pickableNodes.slice(Math.max(0, currentIdx - 3), currentIdx + 4).map((n, i) => {
+              const actualIdx = Math.max(0, currentIdx - 3) + i
+              const isPicked = !!picks[n.id]
+              const isCurrent = actualIdx === currentIdx
+              return (
+                <button
+                  key={n.id}
+                  onClick={() => setCurrentIdx(actualIdx)}
+                  className="rounded-full transition-all"
+                  style={{
+                    width: isCurrent ? 16 : 6,
+                    height: 6,
+                    background: isCurrent ? AF_BLUE : isPicked ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.1)',
+                  }}
+                />
+              )
+            })}
+          </div>
+          <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+            {Object.values(picks).filter(Boolean).length} picked
+          </div>
         </div>
       </div>
     </div>

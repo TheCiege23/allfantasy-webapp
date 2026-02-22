@@ -168,7 +168,7 @@ function MiniCell({
   const hasBothTeams = !!homeName && !!awayName
 
   let borderColor = 'rgba(255,255,255,0.08)'
-  if (homePicked || awayPicked) borderColor = 'rgba(251,146,60,0.35)'
+  if (homePicked || awayPicked) borderColor = 'rgba(59,130,246,0.4)'
 
   function TeamRow({ name, seed, isPicked, side }: {
     name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'
@@ -180,7 +180,7 @@ function MiniCell({
         display: 'flex',
         alignItems: 'center',
         height: TH,
-        background: isPicked ? 'rgba(251,146,60,0.1)' : 'transparent',
+        background: isPicked ? 'rgba(59,130,246,0.12)' : 'transparent',
         borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.04)' : undefined,
         paddingLeft: 5,
         paddingRight: 5,
@@ -194,7 +194,7 @@ function MiniCell({
         <span style={{
           fontSize: 10,
           fontWeight: isPicked ? 600 : 400,
-          color: showSeedOnly ? 'rgba(255,255,255,0.15)' : !name ? 'rgba(255,255,255,0.1)' : isPicked ? '#fb923c' : 'rgba(255,255,255,0.6)',
+          color: showSeedOnly ? 'rgba(255,255,255,0.15)' : !name ? 'rgba(255,255,255,0.1)' : isPicked ? '#3b82f6' : 'rgba(255,255,255,0.6)',
           overflow: 'hidden',
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
