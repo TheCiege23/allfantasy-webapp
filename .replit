@@ -74,6 +74,7 @@ TRADE_AI_MODE = "both"
 TRADE_AI_PRIMARY = "openai"
 TRADE_AI_TIMEOUT_MS = "15000"
 TRADE_ANALYZER_MODE = "both"
+NEXT_PUBLIC_FANCRED_URL = "https://fancred.com"
 
 [userenv.development]
 DEV_SIM_TOKEN = "dev_sim_9c2f6b3a3d6e4f1b8a0c"

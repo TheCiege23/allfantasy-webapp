@@ -44,6 +44,9 @@ export async function PATCH(
         updatedRules[field] = body[field]
       }
     }
+    if (body.scoringMode) {
+      updatedRules.mode = body.scoringMode
+    }
 
     await (prisma as any).bracketLeague.update({
       where: { id: leagueId },

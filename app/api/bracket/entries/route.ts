@@ -37,11 +37,23 @@ export async function POST(req: Request) {
       tournamentId: true,
       scoringRules: true,
       ownerId: true,
+      tournament: { select: { lockAt: true } },
     },
   })
 
   if (!league) {
     return NextResponse.json({ error: "LEAGUE_NOT_FOUND" }, { status: 404 })
+  }
+
+  const lockAt = league.tournament?.lockAt
+  if (lockAt && new Date(lockAt) <= new Date()) {
+    return NextResponse.json(
+      {
+        error: "BRACKET_LOCKED",
+        message: "Brackets are locked. The tournament has already started.",
+      },
+      { status: 409 }
+    )
   }
 
   const rules = (league.scoringRules || {}) as any

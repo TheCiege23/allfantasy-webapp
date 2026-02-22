@@ -6,6 +6,7 @@ import { BracketTreeView } from "./BracketTreeView"
 import { PoolStandings } from "./PoolStandings"
 import { GameScores } from "./GameScores"
 import { PoolBrackets } from "./PoolBrackets"
+import { LiveModeView } from "./LiveModeView"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 import CopyJoinCode from "@/app/brackets/leagues/[leagueId]/CopyJoinCode"
 import CreateEntryButton from "@/app/brackets/leagues/[leagueId]/CreateEntryButton"
@@ -59,11 +60,12 @@ type Props = {
   scoringMode?: string
 }
 
-type TabId = "pool" | "brackets" | "global"
+type TabId = "pool" | "brackets" | "live" | "global"
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "pool", label: "POOL" },
   { id: "brackets", label: "BRACKETS" },
+  { id: "live", label: "LIVE" },
   { id: "global", label: "GLOBAL" },
 ]
 
@@ -131,6 +133,14 @@ export function LeagueHomeTabs(props: Props) {
             leagueId={props.leagueId}
             currentUserId={props.currentUserId}
             allPicks={props.initialPicks}
+          />
+        )}
+        {activeTab === "live" && (
+          <LiveModeView
+            games={games}
+            standings={standings}
+            currentUserId={props.currentUserId}
+            scoringMode={props.scoringMode}
           />
         )}
         {activeTab === "global" && (
@@ -262,7 +272,7 @@ function PoolTab({
           entriesPerUserFree={entriesPerUserFree}
           maxEntriesPerUser={maxEntriesPerUser}
           maxManagers={maxManagers}
-          scoringMode={(scoringMode as ScoringMode) || 'standard'}
+          scoringMode={normalizeScoringMode(scoringMode)}
         />
       )}
 
@@ -362,33 +372,52 @@ function InviteSection({
   )
 }
 
-type ScoringMode = 'standard' | 'upset_bonus' | 'seed_weighted'
+type ScoringMode = 'momentum' | 'accuracy_boldness' | 'streak_survival'
+
+const VALID_SCORING_MODES: ScoringMode[] = ['momentum', 'accuracy_boldness', 'streak_survival']
+
+function normalizeScoringMode(raw: string | undefined | null): ScoringMode {
+  if (raw && VALID_SCORING_MODES.includes(raw as ScoringMode)) return raw as ScoringMode
+  if (raw === 'standard' || raw === 'upset_bonus') return 'momentum'
+  if (raw === 'seed_weighted') return 'accuracy_boldness'
+  return 'momentum'
+}
 
 const SCORING_MODES: { id: ScoringMode; label: string; desc: string }[] = [
-  { id: 'standard', label: 'Standard', desc: '1/2/4/8/16/32 pts per round' },
-  { id: 'upset_bonus', label: 'Upset Bonus', desc: 'Standard + bonus for lower seed wins' },
-  { id: 'seed_weighted', label: 'Seed Weighted', desc: 'Points = seed of winning team' },
+  { id: 'momentum', label: 'Momentum', desc: 'Round base + seed-gap upset bonus' },
+  { id: 'accuracy_boldness', label: 'Accuracy + Boldness', desc: 'Round base + uniqueness bonus within league' },
+  { id: 'streak_survival', label: 'Streak & Survival', desc: 'Streak bonuses scaling deeper' },
 ]
 
 function getScoringTable(mode: ScoringMode) {
-  if (mode === 'upset_bonus') {
+  if (mode === 'momentum') {
     return [
-      { round: "Round 1 (32)", pts: "1 + seed bonus", total: "32+" },
-      { round: "Round 2 (16)", pts: "2 + seed bonus", total: "32+" },
-      { round: "Sweet 16 (8)", pts: "4 + seed bonus", total: "32+" },
-      { round: "Elite 8 (4)", pts: "8 + seed bonus", total: "32+" },
-      { round: "Final Four (2)", pts: "16 + seed bonus", total: "32+" },
-      { round: "Championship (1)", pts: "32 + seed bonus", total: "32+" },
+      { round: "Round 1 (32)", pts: "1 + upset bonus", total: "32+" },
+      { round: "Round 2 (16)", pts: "2 + upset bonus", total: "32+" },
+      { round: "Sweet 16 (8)", pts: "4 + upset bonus", total: "32+" },
+      { round: "Elite 8 (4)", pts: "8 + upset bonus", total: "32+" },
+      { round: "Final Four (2)", pts: "16 + upset bonus", total: "32+" },
+      { round: "Championship (1)", pts: "32 + upset bonus", total: "32+" },
     ]
   }
-  if (mode === 'seed_weighted') {
+  if (mode === 'accuracy_boldness') {
     return [
-      { round: "Round 1 (32)", pts: "= seed #", total: "varies" },
-      { round: "Round 2 (16)", pts: "= seed # x2", total: "varies" },
-      { round: "Sweet 16 (8)", pts: "= seed # x4", total: "varies" },
-      { round: "Elite 8 (4)", pts: "= seed # x8", total: "varies" },
-      { round: "Final Four (2)", pts: "= seed # x16", total: "varies" },
-      { round: "Championship (1)", pts: "= seed # x32", total: "varies" },
+      { round: "Round 1 (32)", pts: "1 + uniqueness bonus", total: "32+" },
+      { round: "Round 2 (16)", pts: "2 + uniqueness bonus", total: "32+" },
+      { round: "Sweet 16 (8)", pts: "4 + uniqueness bonus", total: "32+" },
+      { round: "Elite 8 (4)", pts: "8 + uniqueness bonus", total: "32+" },
+      { round: "Final Four (2)", pts: "16 + uniqueness bonus", total: "32+" },
+      { round: "Championship (1)", pts: "32 + uniqueness bonus", total: "32+" },
+    ]
+  }
+  if (mode === 'streak_survival') {
+    return [
+      { round: "Round 1 (32)", pts: "1 x streak mult", total: "32+" },
+      { round: "Round 2 (16)", pts: "2 x streak mult", total: "32+" },
+      { round: "Sweet 16 (8)", pts: "4 x streak mult", total: "32+" },
+      { round: "Elite 8 (4)", pts: "8 x streak mult", total: "32+" },
+      { round: "Final Four (2)", pts: "16 x streak mult", total: "32+" },
+      { round: "Championship (1)", pts: "32 x streak mult", total: "32+" },
     ]
   }
   return [
@@ -499,49 +528,52 @@ function SettingsPanel({
           </tbody>
         </table>
 
-        {scoringMode === 'upset_bonus' && (
+        {scoringMode === 'momentum' && (
           <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-            Upset bonus = winning team&apos;s seed number. E.g., if 12-seed wins, +12 bonus points.
+            Upset bonus scales with seed gap and round depth. Rewards correctly picking upsets deeper in the tournament.
           </div>
         )}
-        {scoringMode === 'seed_weighted' && (
+        {scoringMode === 'accuracy_boldness' && (
           <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-            Points = winner&apos;s seed x round multiplier. Rewards picking upsets correctly.
+            Uniqueness bonus rewards bold picks that fewer league members made. More unique correct picks earn more points.
+          </div>
+        )}
+        {scoringMode === 'streak_survival' && (
+          <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+            Streak multipliers: 2nd correct = 1.5x, 3rd = 2x, 4th+ = 2.5x. Consecutive correct picks compound your points.
           </div>
         )}
       </div>
 
       {isPaidLeague && (
-        <div className="space-y-3">
-          <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.12)' }}>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'rgba(251,146,60,0.15)' }}>
-                <span className="text-xs" style={{ color: '#fb923c' }}>$</span>
-              </div>
-              <span className="text-sm font-semibold" style={{ color: '#fb923c' }}>Paid League</span>
+        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.12)' }}>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'rgba(251,146,60,0.15)' }}>
+              <span className="text-xs" style={{ color: '#fb923c' }}>$</span>
             </div>
-            <div className="text-xs space-y-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              <div>$2 hosting fee for first bracket</div>
-              <div>Includes 3 brackets. Unlock unlimited for $3.</div>
-            </div>
+            <span className="text-sm font-semibold" style={{ color: '#fb923c' }}>Paid League</span>
           </div>
-
-          <a
-            href="https://fancred.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block rounded-xl p-3 text-center transition-all hover:opacity-80"
-            style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}
-          >
-            <div className="text-xs font-semibold" style={{ color: '#818cf8' }}>
-              Pay League Dues on FanCred &rarr;
-            </div>
-            <div className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
-              Dues and payouts are handled on FanCred. This app only hosts brackets.
-            </div>
-          </a>
+          <div className="text-xs space-y-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            <div>$2 hosting fee for first bracket</div>
+            <div>Includes 3 brackets. Unlock unlimited for $3.</div>
+          </div>
         </div>
       )}
+
+      <a
+        href={process.env.NEXT_PUBLIC_FANCRED_URL || "https://fancred.com"}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block rounded-xl p-3 text-center transition-all hover:opacity-80"
+        style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.15)' }}
+      >
+        <div className="text-xs font-semibold" style={{ color: '#818cf8' }}>
+          Pay League Dues on FanCred &rarr;
+        </div>
+        <div className="text-[9px] mt-1" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          Dues and payouts are handled on FanCred. This app only hosts brackets.
+        </div>
+      </a>
     </div>
   )
 }
@@ -842,6 +874,33 @@ function ChatBar({
           const prevMsg = idx > 0 ? messages[idx - 1] : null
           const sameSender = prevMsg && (prevMsg.user?.id || prevMsg.userId) === (m.user?.id || m.userId)
           const isReaction = QUICK_REACTIONS.includes(m.message)
+
+          let systemMsg: { type: string; content: string } | null = null
+          try {
+            const parsed = JSON.parse(m.message)
+            if (parsed.isSystem) systemMsg = parsed
+          } catch {}
+
+          if (systemMsg) {
+            const typeColors: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+              UPSET_ALERT: { bg: 'rgba(251,146,60,0.08)', border: 'rgba(251,146,60,0.2)', text: '#fb923c', icon: '🚨' },
+              BRACKET_BUSTED: { bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)', text: '#ef4444', icon: '💥' },
+              BIG_SWING: { bg: 'rgba(99,102,241,0.08)', border: 'rgba(99,102,241,0.2)', text: '#818cf8', icon: '📊' },
+              LEAD_CHANGE: { bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.2)', text: '#22c55e', icon: '👑' },
+              TOURNAMENT_READY: { bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.2)', text: '#3b82f6', icon: '🏀' },
+              BRACKET_LOCKED: { bg: 'rgba(234,179,8,0.08)', border: 'rgba(234,179,8,0.2)', text: '#eab308', icon: '🔒' },
+            }
+            const style = typeColors[systemMsg.type] || typeColors.TOURNAMENT_READY
+            return (
+              <div key={m.id} className="flex justify-center my-1">
+                <div className="rounded-lg px-3 py-1.5 text-center max-w-[85%]" style={{ background: style.bg, border: `1px solid ${style.border}` }}>
+                  <span className="text-[11px] font-semibold" style={{ color: style.text }}>
+                    {style.icon} {systemMsg.content}
+                  </span>
+                </div>
+              </div>
+            )
+          }
 
           if (isReaction) {
             return (
