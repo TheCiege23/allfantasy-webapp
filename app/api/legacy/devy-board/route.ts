@@ -242,7 +242,10 @@ export const POST = withApiUsage({ endpoint: "/api/legacy/devy-board", tool: "Le
       if (safeCandidates.length < 6) {
         const aiFallback = await generateFromAI(biggestNeed, teamDirection, isSF, isTEP, totalTeams, firstPick, leagueType)
         const dbResults = safeCandidates.map(toResult)
-        topTargets = [...dbResults, ...(aiFallback.topTargets || [])].slice(0, 6)
+        const verifiedAiTargets = (aiFallback.topTargets || []).filter((p: any) =>
+          !dbResults.find((d: DevyPlayerResult) => d.name.toLowerCase() === p.name?.toLowerCase())
+        )
+        topTargets = [...dbResults, ...verifiedAiTargets].slice(0, 6)
         fallbacks = aiFallback.fallbacks || []
         projectedPicksAhead = aiFallback.projectedPicksAhead || []
         updateReasons = [
@@ -351,13 +354,132 @@ function generateWhyBullets(player: any, biggestNeed: string, teamDirection: str
   return bullets.slice(0, 3)
 }
 
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\b/g, '').replace(/[^a-z]/g, '').trim()
+}
+
+interface DevyVerificationData {
+  eligibleNames: Set<string>
+  graduateNames: Set<string>
+  graduateList: string
+  backfillPlayers: any[]
+}
+
+async function loadVerificationData(): Promise<DevyVerificationData> {
+  const [graduates, eligibles] = await Promise.all([
+    prisma.devyPlayer.findMany({
+      where: { OR: [{ graduatedToNFL: true }, { league: 'NFL' }, { devyEligible: false }] },
+      select: { name: true, nflTeam: true },
+    }),
+    prisma.devyPlayer.findMany({
+      where: { devyEligible: true, graduatedToNFL: false, league: 'NCAA' },
+      select: { name: true, position: true, school: true, devyValue: true },
+      orderBy: { devyValue: 'desc' },
+      take: 200,
+    }),
+  ])
+
+  return {
+    eligibleNames: new Set(eligibles.map(p => normalizeName(p.name))),
+    graduateNames: new Set(graduates.map(p => normalizeName(p.name))),
+    graduateList: graduates.slice(0, 50).map(p => `${p.name} (${p.nflTeam || 'NFL'})`).join(', '),
+    backfillPlayers: eligibles,
+  }
+}
+
+function verifyAndBackfill(
+  aiResult: any,
+  verification: DevyVerificationData,
+  biggestNeed: string,
+  secondaryNeed?: string,
+): any {
+  function isAllowed(playerEntry: { name: string; school?: string; position?: string }): boolean {
+    const norm = normalizeName(playerEntry.name)
+    if (verification.graduateNames.has(norm)) return false
+    if (!verification.eligibleNames.has(norm)) return false
+    return true
+  }
+
+  if (Array.isArray(aiResult.topTargets)) {
+    aiResult.topTargets = aiResult.topTargets.filter((p: any) => isAllowed(p))
+  }
+  if (Array.isArray(aiResult.fallbacks)) {
+    aiResult.fallbacks = aiResult.fallbacks.filter((p: any) => isAllowed(p))
+  }
+  if (Array.isArray(aiResult.projectedPicksAhead)) {
+    aiResult.projectedPicksAhead = aiResult.projectedPicksAhead.filter((p: any) => isAllowed(p))
+  }
+
+  const existingNames = new Set([
+    ...(aiResult.topTargets || []).map((p: any) => normalizeName(p.name)),
+    ...(aiResult.fallbacks || []).map((p: any) => normalizeName(p.name)),
+  ])
+
+  if ((aiResult.topTargets?.length || 0) < 6) {
+    const needed = 6 - (aiResult.topTargets?.length || 0)
+    const backfill = verification.backfillPlayers
+      .filter(p => !existingNames.has(normalizeName(p.name)))
+      .sort((a, b) => {
+        const aMatch = a.position === biggestNeed ? 2 : a.position === secondaryNeed ? 1 : 0
+        const bMatch = b.position === biggestNeed ? 2 : b.position === secondaryNeed ? 1 : 0
+        if (bMatch !== aMatch) return bMatch - aMatch
+        return (b.devyValue || 0) - (a.devyValue || 0)
+      })
+      .slice(0, needed)
+      .map(p => ({
+        name: p.name,
+        position: p.position,
+        school: p.school,
+        tier: assignTier(p.devyValue || 0),
+        draftValue: Math.round((p.devyValue || 0) / 100),
+        availabilityPct: 50,
+        whyBullets: ['Database-verified college prospect', `${p.position} with strong production`],
+        needMatch: p.position === biggestNeed ? 'Strong' as const : p.position === secondaryNeed ? 'Medium' as const : 'Low' as const,
+        badge: 'NCAA' as const,
+      }))
+
+    aiResult.topTargets = [...(aiResult.topTargets || []), ...backfill].slice(0, 6)
+    for (const p of backfill) existingNames.add(normalizeName(p.name))
+  }
+
+  if ((aiResult.fallbacks?.length || 0) < 2) {
+    const needed = 3 - (aiResult.fallbacks?.length || 0)
+    const backfill = verification.backfillPlayers
+      .filter(p => !existingNames.has(normalizeName(p.name)))
+      .slice(0, needed)
+      .map(p => ({
+        name: p.name,
+        position: p.position,
+        school: p.school,
+        tier: 'Sleeper' as const,
+        draftValue: Math.round((p.devyValue || 0) / 100),
+        availabilityPct: 70,
+        whyBullets: ['Database-verified college prospect', 'Sleeper value pick'],
+        needMatch: 'Low' as const,
+        badge: 'NCAA' as const,
+      }))
+
+    aiResult.fallbacks = [...(aiResult.fallbacks || []), ...backfill].slice(0, 3)
+  }
+
+  return aiResult
+}
+
 async function generateFromAI(biggestNeed: string, teamDirection: string, isSF: boolean, isTEP: boolean, totalTeams: number, firstPick: string, leagueType: string) {
   const currentYear = new Date().getFullYear()
+  const verification = await loadVerificationData()
 
   try {
     const prompt = `You are a fantasy football devy draft expert. Today is February ${currentYear}. Generate draft recommendations for a ${leagueType} league.
 
-CRITICAL: Only recommend college players CURRENTLY still in college for the ${currentYear} season.
+CRITICAL RULES:
+1. ONLY recommend college players who are CURRENTLY enrolled in college for the ${currentYear} season.
+2. Do NOT include any player who was drafted into the NFL in any previous draft.
+3. Do NOT include any player currently on an NFL roster.
+4. Players who declared for the NFL Draft and were selected are NOT eligible.
+
+KNOWN NFL PLAYERS TO EXCLUDE (these have already graduated to the NFL):
+${verification.graduateList}
 
 League Context:
 - Format: ${leagueType} (${isSF ? 'Superflex' : '1QB'})
@@ -385,9 +507,11 @@ Return ONLY valid JSON.`
 
     const content = completion.choices[0]?.message?.content || ''
     const cleaned = content.replace(/```json\n?|\n?```/g, '').trim()
-    return JSON.parse(cleaned)
+    const parsed = JSON.parse(cleaned)
+    return verifyAndBackfill(parsed, verification, biggestNeed)
   } catch {
-    return generateFallbackData(biggestNeed, teamDirection, isSF)
+    const fallback = generateFallbackData(biggestNeed, teamDirection, isSF)
+    return verifyAndBackfill(fallback, verification, biggestNeed)
   }
 }
 
