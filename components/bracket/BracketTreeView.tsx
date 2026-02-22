@@ -42,13 +42,6 @@ type Props = {
 
 const ALL_REGIONS = ["West", "East", "South", "Midwest"]
 
-const REGION_SHORT: Record<string, string> = {
-  West: "W",
-  East: "E",
-  South: "S",
-  Midwest: "MW",
-}
-
 function isPickLocked(node: Node): boolean {
   if (!node.game?.startTime) return false
   return new Date(node.game.startTime) <= new Date()
@@ -380,20 +373,18 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
 
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks)
   const [savingNode, setSavingNode] = useState<string | null>(null)
-  const [activeRegion, setActiveRegion] = useState<string>("West")
   const [showTips, setShowTips] = useState(false)
   const [autoFilling, setAutoFilling] = useState(false)
   const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
 
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState(0.55)
   const [panX, setPanX] = useState(0)
   const [panY, setPanY] = useState(0)
   const [isPanning, setIsPanning] = useState(false)
+  const [hasAutoFit, setHasAutoFit] = useState(false)
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 })
   const canvasContainerRef = useRef<HTMLDivElement | null>(null)
-
-  const regionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   const seedMap = useMemo(() => buildSeedMap(nodes), [nodes])
 
@@ -480,7 +471,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const touchStartRef = useRef<{ touches: Array<{ x: number; y: number }>; zoom: number; panX: number; panY: number } | null>(null)
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.button === 1 || (e.button === 0 && (e.altKey || e.pointerType === "touch"))) {
+    if (e.button === 1 || (e.button === 0 && (e.altKey || e.pointerType === "touch")) || (e.button === 0 && e.pointerType === "mouse")) {
       e.preventDefault()
       setIsPanning(true)
       panStartRef.current = { x: e.clientX, y: e.clientY, panX, panY }
@@ -539,8 +530,38 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     touchStartRef.current = null
   }, [])
 
+  useEffect(() => {
+    const el = canvasContainerRef.current
+    if (!el) return
+    const fitToContainer = () => {
+      const cw = el.clientWidth
+      if (cw > 0) {
+        const neededW = FULL_W + 48
+        const fitZoom = Math.min(1, cw / neededW)
+        setZoom(Math.max(0.3, fitZoom))
+        setPanX(0)
+        setPanY(0)
+        setHasAutoFit(true)
+      }
+    }
+    const ro = new ResizeObserver(() => {
+      if (!hasAutoFit) fitToContainer()
+    })
+    ro.observe(el)
+    if (!hasAutoFit) fitToContainer()
+    return () => ro.disconnect()
+  }, [hasAutoFit])
+
   const resetView = useCallback(() => {
-    setZoom(1)
+    const el = canvasContainerRef.current
+    if (el) {
+      const cw = el.clientWidth
+      const neededW = FULL_W + 48
+      const fitZoom = Math.min(1, cw / neededW)
+      setZoom(Math.max(0.3, fitZoom))
+    } else {
+      setZoom(0.55)
+    }
     setPanX(0)
     setPanY(0)
   }, [])
@@ -549,12 +570,6 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     if (!selectedNode) return null
     return nodesWithLive.find((n) => n.id === selectedNode) ?? null
   }, [selectedNode, nodesWithLive])
-
-  function scrollToRegion(region: string) {
-    setActiveRegion(region)
-    const el = regionRefs.current[region]
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
   function renderRegionCells(
     region: string,
@@ -754,9 +769,8 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progressPct}%`, background: progressPct === 100 ? '#22c55e' : '#fb923c' }} />
       </div>
 
-      {/* DESKTOP: Full bracket tree with pan/zoom */}
-      <div className="hidden lg:block">
-        <div className="flex items-center gap-2 mb-2 justify-end">
+      <div>
+        <div className="flex items-center gap-2 mb-2 justify-end flex-wrap">
           <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
             {Math.round(zoom * 100)}%
           </span>
@@ -769,7 +783,8 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
           <button onClick={resetView} className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
             <Maximize2 className="w-3.5 h-3.5" style={{ color: 'rgba(255,255,255,0.4)' }} />
           </button>
-          <span className="text-[9px] ml-2" style={{ color: 'rgba(255,255,255,0.15)' }}>Scroll to pan | Ctrl+scroll to zoom | Double-click matchup for details</span>
+          <span className="hidden sm:inline text-[9px] ml-2" style={{ color: 'rgba(255,255,255,0.15)' }}>Scroll to pan | Ctrl+scroll to zoom | Double-click matchup for details</span>
+          <span className="sm:hidden text-[9px] ml-2" style={{ color: 'rgba(255,255,255,0.15)' }}>Pinch to zoom | Drag to pan</span>
         </div>
         <div
           ref={canvasContainerRef}
@@ -932,150 +947,6 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.25)' }} />
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* MOBILE: Region-by-region scrollable */}
-      <div className="lg:hidden">
-        <div className="rounded-xl overflow-hidden" style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="flex gap-1 p-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            {ALL_REGIONS.map((r) => {
-              const isActive = activeRegion === r
-              const rNodes = byRegion[r] || []
-              const rPicks = rNodes.filter(n => picks[n.id]).length
-              const rTotal = rNodes.length
-              return (
-                <button
-                  key={r}
-                  onClick={() => scrollToRegion(r)}
-                  className="flex-1 py-1.5 rounded-lg text-center transition-all"
-                  style={{
-                    background: isActive ? 'rgba(251,146,60,0.12)' : 'transparent',
-                    border: isActive ? '1px solid rgba(251,146,60,0.2)' : '1px solid transparent',
-                  }}
-                >
-                  <div style={{ fontSize: 10, fontWeight: 700, color: isActive ? '#fb923c' : 'rgba(255,255,255,0.3)' }}>
-                    {REGION_SHORT[r]}
-                  </div>
-                  <div style={{ fontSize: 8, fontWeight: 600, color: rPicks === rTotal && rTotal > 0 ? '#22c55e' : 'rgba(255,255,255,0.15)', marginTop: 1 }}>
-                    {rPicks}/{rTotal}
-                  </div>
-                </button>
-              )
-            })}
-            <button
-              onClick={() => {
-                setActiveRegion('finals')
-                regionRefs.current['finals']?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-              }}
-              className="flex-1 py-1.5 rounded-lg text-center transition-all"
-              style={{
-                background: activeRegion === 'finals' ? 'rgba(251,146,60,0.12)' : 'transparent',
-                border: activeRegion === 'finals' ? '1px solid rgba(251,146,60,0.2)' : '1px solid transparent',
-              }}
-            >
-              <Trophy style={{ width: 12, height: 12, margin: '0 auto', color: activeRegion === 'finals' ? '#fb923c' : 'rgba(255,255,255,0.3)' }} />
-              <div style={{ fontSize: 8, fontWeight: 600, color: 'rgba(255,255,255,0.15)', marginTop: 1 }}>F4</div>
-            </button>
-          </div>
-
-          <div className="p-3 space-y-5">
-            {ALL_REGIONS.map((region) => {
-              const regionNodes = byRegion[region] || []
-              const byRound: Record<number, Node[]> = { 1: [], 2: [], 3: [], 4: [] }
-              for (const n of regionNodes) { if (byRound[n.round]) byRound[n.round].push(n) }
-              Object.values(byRound).forEach(arr => arr.sort((a, b) => a.slot.localeCompare(b.slot)))
-
-              return (
-                <div key={region} ref={(el) => { regionRefs.current[region] = el }}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div
-                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
-                      style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}
-                    >
-                      {REGION_SHORT[region]}
-                    </div>
-                    <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.04)' }} />
-                  </div>
-                  <div className="overflow-x-auto pb-1">
-                    <div className="flex gap-1.5" style={{ minWidth: 4 * 120 }}>
-                      {[1, 2, 3, 4].map(round => {
-                        const rn = byRound[round]
-                        return (
-                          <div key={round} className="space-y-1" style={{ minWidth: 115, flex: 1 }}>
-                            {rn.map(n => {
-                              const picked = picks[n.id] ?? null
-                              const eff2 = effective.get(n.id)
-                              const home = eff2?.home ?? n.homeTeamName
-                              const away = eff2?.away ?? n.awayTeamName
-                              const hSeed = home ? seedMap.get(home) ?? n.seedHome : n.seedHome
-                              const aSeed = away ? seedMap.get(away) ?? n.seedAway : n.seedAway
-                              const hPick = !!home && picked === home
-                              const aPick = !!away && picked === away
-                              const canC = !readOnly && !isPickLocked(n)
-                              return (
-                                <div key={n.id} className="rounded-md overflow-hidden" style={{ background: '#1c2333', border: `1px solid ${picked ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
-                                  <button disabled={!canC || !home} onClick={() => home && submitPick(n, home)}
-                                    className="w-full flex items-center text-left" style={{ height: 16, paddingLeft: 4, paddingRight: 4, borderBottom: '1px solid rgba(255,255,255,0.04)', background: hPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && home ? 'pointer' : 'default' }}>
-                                    {hSeed != null && <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 12, flexShrink: 0 }}>{hSeed}</span>}
-                                    <span style={{ fontSize: 9, fontWeight: 500, color: hPick ? '#fb923c' : home ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{home || ''}</span>
-                                  </button>
-                                  <button disabled={!canC || !away} onClick={() => away && submitPick(n, away)}
-                                    className="w-full flex items-center text-left" style={{ height: 16, paddingLeft: 4, paddingRight: 4, background: aPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && away ? 'pointer' : 'default' }}>
-                                    {aSeed != null && <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 12, flexShrink: 0 }}>{aSeed}</span>}
-                                    <span style={{ fontSize: 9, fontWeight: 500, color: aPick ? '#fb923c' : away ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{away || ''}</span>
-                                  </button>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-
-            <div ref={(el) => { regionRefs.current['finals'] = el }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase" style={{ background: 'rgba(251,146,60,0.1)', color: '#fb923c' }}>
-                  FINAL FOUR
-                </div>
-                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.04)' }} />
-              </div>
-              <div className="flex flex-col items-center gap-2">
-                {finals.map(n => {
-                  const picked = picks[n.id] ?? null
-                  const eff2 = effective.get(n.id)
-                  const home = eff2?.home ?? n.homeTeamName
-                  const away = eff2?.away ?? n.awayTeamName
-                  const hSeed = home ? seedMap.get(home) ?? n.seedHome : n.seedHome
-                  const aSeed = away ? seedMap.get(away) ?? n.seedAway : n.seedAway
-                  const hPick = !!home && picked === home
-                  const aPick = !!away && picked === away
-                  const canC = !readOnly && !isPickLocked(n)
-                  return (
-                    <div key={n.id} className="rounded-md overflow-hidden" style={{ width: 140, background: '#1c2333', border: `1px solid ${picked ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}` }}>
-                      <button disabled={!canC || !home} onClick={() => home && submitPick(n, home)}
-                        className="w-full flex items-center text-left" style={{ height: 18, paddingLeft: 5, paddingRight: 5, borderBottom: '1px solid rgba(255,255,255,0.04)', background: hPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && home ? 'pointer' : 'default' }}>
-                        {hSeed != null && <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 14, flexShrink: 0 }}>{hSeed}</span>}
-                        <span style={{ fontSize: 10, fontWeight: 500, color: hPick ? '#fb923c' : home ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{home || 'TBD'}</span>
-                      </button>
-                      <button disabled={!canC || !away} onClick={() => away && submitPick(n, away)}
-                        className="w-full flex items-center text-left" style={{ height: 18, paddingLeft: 5, paddingRight: 5, background: aPick ? 'rgba(251,146,60,0.15)' : 'transparent', cursor: canC && away ? 'pointer' : 'default' }}>
-                        {aSeed != null && <span style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', width: 14, flexShrink: 0 }}>{aSeed}</span>}
-                        <span style={{ fontSize: 10, fontWeight: 500, color: aPick ? '#fb923c' : away ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{away || 'TBD'}</span>
-                      </button>
-                    </div>
-                  )
-                })}
-                <div className="flex items-center justify-center rounded-xl" style={{ width: 40, height: 40, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', marginTop: 8 }}>
-                  <Trophy style={{ width: 20, height: 20, color: 'rgba(255,255,255,0.25)' }} />
-                </div>
-              </div>
             </div>
           </div>
         </div>
