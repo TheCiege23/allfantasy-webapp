@@ -4325,7 +4325,7 @@ function AFLegacyContent() {
           const rostersByName: Record<string, Array<{ playerId: string; name: string; position: string; team: string }>> = {}
           const managerMap = new Map((data.managers || []).map((m: any) => [String(m.rosterId), m.displayName]))
           for (const [rid, players] of Object.entries(data.rosters)) {
-            const name = managerMap.get(rid) || `Team ${rid}`
+            const name: string = String(managerMap.get(rid) || `Team ${rid}`)
             rostersByName[name] = (players as any[]).map((p: any) => ({
               playerId: p.playerId || '',
               name: p.name || 'Unknown',
