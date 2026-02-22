@@ -337,7 +337,12 @@ function InsufficientData({ count, needed }: { count: number; needed: number }) 
 }
 
 function CalibrationHealthSection({ data }: { data: CalibrationHealth }) {
-  if (data.totalPaired < 5) return <InsufficientData count={data.totalPaired} needed={5} />;
+  if (data.totalPaired < 5) return (
+    <div className="space-y-4">
+      <InsufficientData count={data.totalPaired} needed={5} />
+      {data.alerts.length > 0 && <AlertList alerts={data.alerts} />}
+    </div>
+  );
 
   const curveData = data.reliabilityCurve.map((b) => ({
     name: b.bucketLabel,
@@ -503,7 +508,12 @@ function SegmentDriftSection({
   onDrilldown: (segmentKey: string, segmentValue: string) => void;
 }) {
   if (data.heatmap.length === 0)
-    return <InsufficientData count={0} needed={10} />;
+    return (
+      <div className="space-y-4">
+        <InsufficientData count={0} needed={10} />
+        {data.alerts.length > 0 && <AlertList alerts={data.alerts} />}
+      </div>
+    );
 
   return (
     <div className="space-y-6">
@@ -623,7 +633,12 @@ function SegmentDriftSection({
 
 function FeatureDriftSection({ data }: { data: FeatureDriftData }) {
   if (data.features.length === 0)
-    return <InsufficientData count={0} needed={10} />;
+    return (
+      <div className="space-y-4">
+        <InsufficientData count={0} needed={10} />
+        {data.alerts.length > 0 && <AlertList alerts={data.alerts} />}
+      </div>
+    );
 
   const featureLabels: Record<string, string> = {
     lineupImpact: "Lineup Impact",
@@ -775,7 +790,12 @@ function FeatureDriftSection({ data }: { data: FeatureDriftData }) {
 
 function RankingQualitySection({ data }: { data: RankingData }) {
   if (data.totalPaired < 10)
-    return <InsufficientData count={data.totalPaired} needed={10} />;
+    return (
+      <div className="space-y-4">
+        <InsufficientData count={data.totalPaired} needed={10} />
+        {data.alerts.length > 0 && <AlertList alerts={data.alerts} />}
+      </div>
+    );
 
   const aucStatus: "good" | "warning" | "critical" =
     data.auc < 0.62 ? "critical" : data.auc < 0.70 ? "warning" : "good";
@@ -869,7 +889,12 @@ function RankingQualitySection({ data }: { data: RankingData }) {
 
 function NarrativeIntegritySection({ data }: { data: NarrativeData }) {
   if (data.totalValidations === 0)
-    return <InsufficientData count={0} needed={1} />;
+    return (
+      <div className="space-y-4">
+        <InsufficientData count={0} needed={1} />
+        {data.alerts.length > 0 && <AlertList alerts={data.alerts} />}
+      </div>
+    );
 
   const failStatus: "good" | "warning" | "critical" =
     data.failureRate > 0.03
@@ -1456,6 +1481,8 @@ export default function AdminCalibration() {
   const [segment, setSegment] = useState("");
   const [drilldown, setDrilldown] = useState<DrilldownData | null>(null);
   const [drilldownLoading, setDrilldownLoading] = useState(false);
+  const [recalibrating, setRecalibrating] = useState(false);
+  const [recalResult, setRecalResult] = useState<{ success: boolean; message: string } | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<SectionId>>(
     new Set(["calibration", "segment", "feature", "ranking", "narrative", "recalibration"])
   );
@@ -1496,6 +1523,34 @@ export default function AdminCalibration() {
       setDrilldownLoading(false);
     }
   }, [daysBack]);
+
+  const forceRecalibrate = useCallback(async () => {
+    setRecalibrating(true);
+    setRecalResult(null);
+    try {
+      const res = await fetch("/api/admin/recalibration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ season: 2025 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setRecalResult({
+        success: true,
+        message: json.applied
+          ? `Recalibration applied: b0 updated from ${json.oldB0?.toFixed(3) ?? "?"} to ${json.newB0?.toFixed(3) ?? "?"} (${json.sampleSize ?? 0} samples)`
+          : json.reason || "Recalibration completed — no changes needed",
+      });
+      fetchData();
+    } catch (err: any) {
+      setRecalResult({
+        success: false,
+        message: err.message || "Recalibration failed",
+      });
+    } finally {
+      setRecalibrating(false);
+    }
+  }, [fetchData]);
 
   useEffect(() => {
     fetchData();
@@ -1587,6 +1642,14 @@ export default function AdminCalibration() {
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               Refresh
             </button>
+            <button
+              onClick={forceRecalibrate}
+              disabled={recalibrating}
+              className="flex items-center gap-2 rounded-lg bg-amber-600 hover:bg-amber-500 px-4 py-2 text-sm font-medium transition disabled:opacity-50"
+            >
+              <Shield className={`h-4 w-4 ${recalibrating ? "animate-pulse" : ""}`} />
+              {recalibrating ? "Recalibrating..." : "Force Recalibrate"}
+            </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-white/50">Quick filters:</span>
@@ -1620,13 +1683,48 @@ export default function AdminCalibration() {
 
       {allAlerts.length > 0 && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
-          <div className="flex items-center gap-2 text-amber-400 text-sm font-semibold mb-2">
-            <AlertTriangle className="h-4 w-4" />
-            {allAlerts.length} Active Alert{allAlerts.length !== 1 ? "s" : ""}
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-amber-400 text-sm font-semibold mb-2">
+                <AlertTriangle className="h-4 w-4" />
+                {allAlerts.length} Active Alert{allAlerts.length !== 1 ? "s" : ""}
+              </div>
+              <div className="text-xs text-amber-300/70">
+                {allAlerts.filter((a) => a.severity === "critical").length} critical,{" "}
+                {allAlerts.filter((a) => a.severity === "warning").length} warnings
+              </div>
+            </div>
+            <button
+              onClick={forceRecalibrate}
+              disabled={recalibrating}
+              className="flex items-center gap-2 rounded-lg bg-amber-600 hover:bg-amber-500 px-4 py-2 text-sm font-medium transition disabled:opacity-50 shrink-0"
+            >
+              <Shield className={`h-4 w-4 ${recalibrating ? "animate-pulse" : ""}`} />
+              {recalibrating ? "Recalibrating..." : "Recalibrate Now"}
+            </button>
           </div>
-          <div className="text-xs text-amber-300/70">
-            {allAlerts.filter((a) => a.severity === "critical").length} critical,{" "}
-            {allAlerts.filter((a) => a.severity === "warning").length} warnings
+          <div className="mt-3 space-y-1.5">
+            {allAlerts.map((a, i) => (
+              <div key={i} className={`rounded-lg border px-3 py-2 text-xs ${a.severity === "critical" ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>
+                <span className="font-medium uppercase mr-2">{a.severity}</span>
+                {a.message}
+                <span className="ml-2 opacity-60">({a.metric}: {typeof a.value === "number" ? a.value.toFixed(4) : a.value} / threshold: {a.threshold})</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recalResult && (
+        <div className={`rounded-xl border p-4 text-sm ${recalResult.success ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" : "border-red-500/30 bg-red-500/10 text-red-300"}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {recalResult.success ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+              {recalResult.message}
+            </div>
+            <button onClick={() => setRecalResult(null)} className="text-white/40 hover:text-white/70 transition">
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
       )}
