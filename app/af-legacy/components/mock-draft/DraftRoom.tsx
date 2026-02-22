@@ -19,6 +19,7 @@ import {
   User,
   Maximize2,
   Minimize2,
+  Lock,
 } from 'lucide-react'
 
 interface DraftRoomProps {
@@ -59,6 +60,14 @@ interface DraftRoomProps {
   onAiAutoPickModeChange?: (mode: 'off' | 'bpa' | 'needs') => void
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
+  leagueType?: 'redraft' | 'dynasty'
+  onLeagueTypeChange?: (v: 'redraft' | 'dynasty') => void
+  draftOrderMode?: 'randomize' | 'manual'
+  onDraftOrderModeChange?: (v: 'randomize' | 'manual') => void
+  onManualOrderChange?: (managerId: string, newSlot: number) => void
+  aiAutoQueue?: boolean
+  onAiAutoQueueChange?: (v: boolean) => void
+  onAiTradePropose?: (fromManager: string, toManager: string, give: string[], receive: string[]) => Promise<{ accepted: boolean; reasoning: string } | null>
 }
 
 const POS_DOT: Record<string, string> = {
@@ -136,6 +145,14 @@ export default function DraftRoom(props: DraftRoomProps) {
     onAiAutoPickModeChange,
     isFullscreen = false,
     onToggleFullscreen,
+    leagueType = 'dynasty',
+    onLeagueTypeChange,
+    draftOrderMode = 'randomize',
+    onDraftOrderModeChange,
+    onManualOrderChange,
+    aiAutoQueue = false,
+    onAiAutoQueueChange,
+    onAiTradePropose,
   } = props
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -145,12 +162,15 @@ export default function DraftRoom(props: DraftRoomProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('board')
   const [queue, setQueue] = useState<Array<{ name: string; position: string; team?: string | null }>>([])
-  const [chatMessages, setChatMessages] = useState<Array<{ from: string; text: string }>>([])
+  const [tradeProposals, setTradeProposals] = useState<Array<{ id: string; from: string; to: string; give: string[]; receive: string[]; status: 'pending' | 'accepted' | 'declined'; reasoning?: string }>>([])
+  const [chatMessages, setChatMessages] = useState<Array<{ from: string; text: string; isPrivate?: boolean; tradeProposal?: { id: string; from: string; to: string; give: string[]; receive: string[]; status: 'pending' | 'accepted' | 'declined'; reasoning?: string } }>>([])
   const [chatInput, setChatInput] = useState('')
   const [showCurrentRoster, setShowCurrentRoster] = useState(false)
+  const [aiSuggestionCooldown, setAiSuggestionCooldown] = useState(false)
 
   const settingsRef = useRef<HTMLDivElement>(null)
   const boardScrollRef = useRef<HTMLDivElement>(null)
+  const lastTradeProposalPick = useRef<number>(0)
 
   const slots = rosterSlots && rosterSlots.length > 0 ? rosterSlots : DEFAULT_ROSTER_SLOTS
 
@@ -353,6 +373,103 @@ export default function DraftRoom(props: DraftRoomProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    if (!isDraftStarted || draftComplete || !onAiDmSuggestion || aiSuggestionCooldown) return
+    if (!currentPickInfo) return
+
+    let picksUntilUserTurn = 0
+    let found = false
+    for (let i = currentOverall; i <= Math.min(currentOverall + teamCount * 2, totalPicks); i++) {
+      const info = getPickManager(i)
+      if (info.managerName === username) {
+        found = true
+        break
+      }
+      picksUntilUserTurn++
+    }
+    if (!found || picksUntilUserTurn > 3) return
+
+    const timer = setTimeout(async () => {
+      const myRoster = draftPicks
+        .filter(p => p.manager === username)
+        .map(p => ({ position: p.position }))
+      const importedMyRoster = importedRosters?.[username] || []
+      const fullRoster = [...importedMyRoster.map(p => ({ position: p.position })), ...myRoster]
+      const undraftedPlayers = availablePlayers.filter(p => !draftedNames.has(p.name))
+      const round = Math.ceil(currentOverall / teamCount)
+      const pick = ((currentOverall - 1) % teamCount) + 1
+      try {
+        const result = await onAiDmSuggestion(fullRoster, undraftedPlayers, round, pick)
+        if (result) {
+          const msgs = result.suggestions.map((s: any) => ({
+            from: '🔒 Private',
+            text: `${s.type === 'need' ? '🎯' : s.type === 'bpa' ? '⭐' : '💰'} ${s.player} (${s.position}) - ${s.reason}`,
+            isPrivate: true,
+          }))
+          if (result.aiInsight) {
+            msgs.push({ from: '🔒 Private', text: result.aiInsight, isPrivate: true })
+          }
+          setChatMessages(prev => [...prev, ...msgs])
+
+          if (aiAutoQueue && result.suggestions) {
+            const newQueueItems = result.suggestions
+              .map((s: any) => {
+                const player = availablePlayers.find(p => p.name === s.player && !draftedNames.has(p.name))
+                return player ? { name: player.name, position: player.position, team: player.team } : null
+              })
+              .filter((p: any): p is NonNullable<typeof p> => p !== null)
+            setQueue(prev => {
+              const existingNames = new Set(prev.map(q => q.name))
+              const toAdd = newQueueItems.filter((p: any) => !existingNames.has(p.name))
+              return [...prev, ...toAdd]
+            })
+          }
+        }
+      } catch {}
+      setAiSuggestionCooldown(true)
+      setTimeout(() => setAiSuggestionCooldown(false), 30000)
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [isDraftStarted, draftComplete, onAiDmSuggestion, aiSuggestionCooldown, currentPickInfo, currentOverall, teamCount, totalPicks, getPickManager, username, draftPicks, importedRosters, availablePlayers, draftedNames, aiAutoQueue])
+
+  useEffect(() => {
+    if (!isDraftStarted || draftComplete || !onAiTradePropose) return
+    const currentRound = Math.ceil(currentOverall / teamCount)
+    if (currentRound < 2) return
+    const picksSinceRound2 = currentOverall - (2 * teamCount)
+    if (picksSinceRound2 <= 0 || picksSinceRound2 % 5 !== 0) return
+    if (lastTradeProposalPick.current >= currentOverall) return
+    lastTradeProposalPick.current = currentOverall
+
+    const otherManagers = managers.filter(m => m.displayName !== username)
+    if (otherManagers.length === 0) return
+    const randomManager = otherManagers[Math.floor(Math.random() * otherManagers.length)]
+
+    const myRoster = draftPicks.filter(p => p.manager === username).map(p => p.playerName)
+    const theirRoster = draftPicks.filter(p => p.manager === randomManager.displayName).map(p => p.playerName)
+    if (myRoster.length < 2 || theirRoster.length < 2) return
+
+    const give = [myRoster[Math.floor(Math.random() * myRoster.length)]]
+    const receive = [theirRoster[Math.floor(Math.random() * theirRoster.length)]]
+
+    const proposalId = `trade-${currentOverall}-${Date.now()}`
+    const proposal = {
+      id: proposalId,
+      from: randomManager.displayName,
+      to: username,
+      give: receive,
+      receive: give,
+      status: 'pending' as const,
+    }
+    setTradeProposals(prev => [...prev, proposal])
+    setChatMessages(prev => [...prev, {
+      from: '🤖 Trade Bot',
+      text: `${randomManager.displayName} proposes a trade!`,
+      tradeProposal: proposal,
+    }])
+  }, [isDraftStarted, draftComplete, onAiTradePropose, currentOverall, teamCount, managers, username, draftPicks])
+
   const removeFromQueue = (idx: number) => {
     setQueue(prev => prev.filter((_, i) => i !== idx))
   }
@@ -547,6 +664,20 @@ export default function DraftRoom(props: DraftRoomProps) {
                 </select>
               </label>
 
+              <label className="block">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>League Type</span>
+                <select
+                  value={leagueType}
+                  onChange={e => onLeagueTypeChange?.(e.target.value as any)}
+                  className="mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs text-white"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  disabled={isDraftStarted}
+                >
+                  <option value="redraft">Redraft</option>
+                  <option value="dynasty">Dynasty</option>
+                </select>
+              </label>
+
               <label className="flex items-center justify-between">
                 <span className="text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>3rd Round Reversal</span>
                 <button
@@ -562,16 +693,35 @@ export default function DraftRoom(props: DraftRoomProps) {
                 </button>
               </label>
 
-              {!isDraftStarted && (
-                <button
-                  onClick={onRandomizeOrder}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-medium transition"
-                  style={{ background: 'rgba(14,165,233,0.1)', color: '#0ea5e9', border: '1px solid rgba(14,165,233,0.2)' }}
-                >
-                  <Shuffle className="w-3.5 h-3.5" />
-                  Randomize Draft Order
-                </button>
-              )}
+              <div className="space-y-2">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>Draft Order</span>
+                <div className="flex gap-1">
+                  {(['randomize', 'manual'] as const).map(mode => (
+                    <button key={mode} onClick={() => { onDraftOrderModeChange?.(mode); if (mode === 'randomize') onRandomizeOrder() }}
+                      className="flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium transition"
+                      style={{ background: draftOrderMode === mode ? 'rgba(14,165,233,0.2)' : 'rgba(255,255,255,0.04)',
+                               color: draftOrderMode === mode ? '#0ea5e9' : 'rgba(255,255,255,0.5)',
+                               border: draftOrderMode === mode ? '1px solid rgba(14,165,233,0.3)' : '1px solid transparent' }}
+                      disabled={isDraftStarted}
+                    >
+                      {mode === 'randomize' ? 'Random' : 'Manual'}
+                    </button>
+                  ))}
+                </div>
+                {draftOrderMode === 'manual' && !isDraftStarted && (
+                  <div className="space-y-1 max-h-48 overflow-auto">
+                    {sortedManagers.map((mgr, idx) => (
+                      <div key={mgr.id} className="flex items-center gap-2 px-2 py-1 rounded-lg text-[10px]" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                        <select value={mgr.draftSlot ?? idx + 1} onChange={e => onManualOrderChange?.(mgr.id, Number(e.target.value))}
+                          className="w-10 text-center rounded px-1 py-0.5 text-[10px] text-white" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                          {Array.from({ length: managers.length }, (_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
+                        </select>
+                        <span className="text-white truncate flex-1">{mgr.displayName}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -848,6 +998,17 @@ export default function DraftRoom(props: DraftRoomProps) {
               {mode === 'off' ? 'OFF' : mode === 'bpa' ? 'BPA' : 'NEEDS'}
             </button>
           ))}
+          <button
+            onClick={() => onAiAutoQueueChange?.(!aiAutoQueue)}
+            className="px-1.5 py-0.5 rounded text-[9px] font-medium transition ml-1"
+            style={{
+              background: aiAutoQueue ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.04)',
+              color: aiAutoQueue ? '#a855f7' : 'rgba(255,255,255,0.35)',
+              border: aiAutoQueue ? '1px solid rgba(168,85,247,0.3)' : '1px solid transparent',
+            }}
+          >
+            AI Q
+          </button>
         </div>
       </div>
 
@@ -964,12 +1125,71 @@ export default function DraftRoom(props: DraftRoomProps) {
           {chatMessages.length === 0 ? (
             <p className="text-[10px] text-center py-4" style={{ color: 'rgba(255,255,255,0.2)' }}>No messages yet</p>
           ) : (
-            chatMessages.map((msg, i) => (
-              <div key={i} className="text-[10px]">
-                <span className="font-medium" style={{ color: '#0ea5e9' }}>{msg.from}: </span>
-                <span style={{ color: 'rgba(255,255,255,0.7)' }}>{msg.text}</span>
-              </div>
-            ))
+            chatMessages.map((msg, i) => {
+              if (msg.tradeProposal) {
+                const tp = msg.tradeProposal
+                const currentTp = tradeProposals.find(t => t.id === tp.id)
+                const status = currentTp?.status || tp.status
+                return (
+                  <div key={i} className="rounded-lg p-2 space-y-1.5" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                    <div className="text-[10px] font-bold" style={{ color: '#f59e0b' }}>📦 Trade Proposal from {tp.from}</div>
+                    <div className="flex gap-2 text-[9px]">
+                      <div className="flex-1">
+                        <div style={{ color: 'rgba(255,255,255,0.4)' }}>You give:</div>
+                        {tp.receive.map((p, j) => <div key={j} className="text-white">{p}</div>)}
+                      </div>
+                      <div className="flex-1">
+                        <div style={{ color: 'rgba(255,255,255,0.4)' }}>You get:</div>
+                        {tp.give.map((p, j) => <div key={j} className="text-white">{p}</div>)}
+                      </div>
+                    </div>
+                    {status === 'pending' ? (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={async () => {
+                            if (onAiTradePropose) {
+                              const result = await onAiTradePropose(tp.from, tp.to, tp.give, tp.receive)
+                              const finalStatus = result?.accepted ? 'accepted' : 'declined'
+                              setTradeProposals(prev => prev.map(t => t.id === tp.id ? { ...t, status: finalStatus, reasoning: result?.reasoning } : t))
+                              setChatMessages(prev => [...prev, { from: '🤖 Trade Bot', text: result?.accepted ? `Trade accepted! ${result?.reasoning || ''}` : `Trade declined. ${result?.reasoning || ''}` }])
+                            } else {
+                              setTradeProposals(prev => prev.map(t => t.id === tp.id ? { ...t, status: 'accepted' } : t))
+                            }
+                          }}
+                          className="flex-1 px-2 py-1 rounded text-[9px] font-medium"
+                          style={{ background: 'rgba(16,185,129,0.2)', color: '#10b981', border: '1px solid rgba(16,185,129,0.3)' }}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => {
+                            setTradeProposals(prev => prev.map(t => t.id === tp.id ? { ...t, status: 'declined' } : t))
+                            setChatMessages(prev => [...prev, { from: '🤖 Trade Bot', text: 'Trade declined.' }])
+                          }}
+                          className="flex-1 px-2 py-1 rounded text-[9px] font-medium"
+                          style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[9px] font-medium" style={{ color: status === 'accepted' ? '#10b981' : '#ef4444' }}>
+                        {status === 'accepted' ? '✅ Accepted' : '❌ Declined'}
+                        {currentTp?.reasoning && <span className="ml-1" style={{ color: 'rgba(255,255,255,0.5)' }}>— {currentTp.reasoning}</span>}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
+
+              return (
+                <div key={i} className="text-[10px] rounded px-1.5 py-0.5" style={{ background: msg.isPrivate ? 'rgba(168,85,247,0.08)' : 'transparent' }}>
+                  {msg.isPrivate && <Lock className="w-2.5 h-2.5 inline mr-0.5" style={{ color: '#a855f7' }} />}
+                  <span className="font-medium" style={{ color: msg.isPrivate ? '#a855f7' : '#0ea5e9' }}>{msg.from}: </span>
+                  <span style={{ color: 'rgba(255,255,255,0.7)' }}>{msg.text}</span>
+                </div>
+              )
+            })
           )}
         </div>
         <div className="px-2 py-2 flex gap-1.5">

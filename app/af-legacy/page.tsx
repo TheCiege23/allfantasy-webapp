@@ -1310,6 +1310,9 @@ function AFLegacyContent() {
   const [mockAiAutoPickMode, setMockAiAutoPickMode] = useState<'off' | 'bpa' | 'needs'>('off')
   const [mockIsFullscreen, setMockIsFullscreen] = useState(false)
   const [mockImportedLeagueSettings, setMockImportedLeagueSettings] = useState<{ isDynasty?: boolean; isSF?: boolean; rosterPositions?: string[] } | null>(null)
+  const [mockLeagueType, setMockLeagueType] = useState<'redraft' | 'dynasty'>('dynasty')
+  const [mockDraftOrderMode, setMockDraftOrderMode] = useState<'randomize' | 'manual'>('randomize')
+  const [mockAiAutoQueue, setMockAiAutoQueue] = useState(false)
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Feedback modal state
@@ -17817,6 +17820,28 @@ function AFLegacyContent() {
                         isFullscreen={mockIsFullscreen}
                         onToggleFullscreen={() => setMockIsFullscreen(f => !f)}
                         rosterSlots={mockImportedLeagueSettings?.rosterPositions}
+                        leagueType={mockLeagueType}
+                        onLeagueTypeChange={setMockLeagueType}
+                        draftOrderMode={mockDraftOrderMode}
+                        onDraftOrderModeChange={setMockDraftOrderMode}
+                        onManualOrderChange={(managerId: string, newSlot: number) => {
+                          setMockManagers(prev => {
+                            const normalized = prev.map((m, i) => ({ ...m, draftSlot: m.draftSlot ?? i + 1 }))
+                            const source = normalized.find(m => m.id === managerId)
+                            if (!source) return prev
+                            const oldSlot = source.draftSlot
+                            return normalized.map(m => {
+                              if (m.id === managerId) return { ...m, draftSlot: newSlot }
+                              if (m.draftSlot === newSlot) return { ...m, draftSlot: oldSlot }
+                              return m
+                            })
+                          })
+                        }}
+                        aiAutoQueue={mockAiAutoQueue}
+                        onAiAutoQueueChange={setMockAiAutoQueue}
+                        onAiTradePropose={async (fromManager: string, toManager: string, give: string[], receive: string[]) => {
+                          return { accepted: Math.random() > 0.4, reasoning: `${fromManager} evaluated the trade and ${Math.random() > 0.4 ? 'accepts' : 'declines'} based on roster needs.` }
+                        }}
                         onAiPick={async (managerName, teamRoster, available) => {
                           try {
                             const res = await fetch('/api/mock-draft/ai-pick', {
