@@ -31,6 +31,32 @@ type LegacyToolStat = {
   uniqueUsers: number;
 };
 
+type PeriodToolStat = {
+  tool: string;
+  toolLabel: string;
+  uses: number;
+  uniqueUsers: number;
+};
+
+type TimePeriod = {
+  key: string;
+  label: string;
+  hours: number;
+  totalUses: number;
+  uniqueUsers: number;
+  newUsers: number;
+  repeatUsers: number;
+  tools: PeriodToolStat[];
+};
+
+type SessionInsights = {
+  totalSessions: number;
+  avgDurationMinutes: number;
+  medianDurationMinutes: number;
+  multiToolSessions: number;
+  multiToolRate: number;
+};
+
 type LegacyUsageResponse = {
   ok: boolean;
   summary: {
@@ -38,6 +64,9 @@ type LegacyUsageResponse = {
     totalUniqueUsers: number;
   };
   tools: LegacyToolStat[];
+  periods: TimePeriod[];
+  sessionInsights: SessionInsights;
+  timePeriods: { key: string; label: string }[];
 };
 
 type RetentionCohort = {
@@ -1252,6 +1281,8 @@ export default function AdminAnalytics() {
 
   const [legacyUsage, setLegacyUsage] = useState<LegacyUsageResponse | null>(null);
   const [legacyLoading, setLegacyLoading] = useState(false);
+  const [selectedPeriod, setSelectedPeriod] = useState("24h");
+  const [legacyView, setLegacyView] = useState<"overview" | "tools" | "sessions">("overview");
 
   async function loadLegacyUsage() {
     setLegacyLoading(true);
@@ -1275,6 +1306,11 @@ export default function AdminAnalytics() {
   useEffect(() => {
     loadLegacyUsage();
   }, []);
+
+  const activePeriod = useMemo(() => {
+    if (!legacyUsage?.periods) return null;
+    return legacyUsage.periods.find(p => p.key === selectedPeriod) || null;
+  }, [legacyUsage, selectedPeriod]);
 
   const queryString = useMemo(() => {
     const sp = new URLSearchParams();
@@ -1336,17 +1372,17 @@ export default function AdminAnalytics() {
     <div className="w-full">
       <RetentionPanel />
 
-      {/* Legacy Tool Usage Stats */}
+      {/* Legacy Tool Usage Dashboard */}
       <div className="mb-8">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <h2 className="text-base sm:text-xl font-semibold" style={{ color: "var(--text)" }}>Legacy Tool Usage</h2>
+            <h2 className="text-base sm:text-xl font-semibold" style={{ color: "var(--text)" }}>Legacy Tool Traffic Dashboard</h2>
             <p className="text-sm" style={{ color: "var(--muted)" }}>
-              Simple usage view: which legacy tools are used most and by how many unique users
+              Real-time usage metrics across all legacy tools — traffic, engagement, and user activity
             </p>
           </div>
           <button
-            className="px-3 py-2 rounded-lg border"
+            className="px-3 py-2 rounded-lg border text-sm"
             style={{ borderColor: "var(--border)", background: "transparent" }}
             onClick={() => loadLegacyUsage()}
             disabled={legacyLoading}
@@ -1357,70 +1393,300 @@ export default function AdminAnalytics() {
 
         {legacyUsage && (
           <>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            {/* All-time summary cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
               <div className="p-4 rounded-xl border border-cyan-500/20 bg-cyan-500/5">
-                <div className="text-xl sm:text-2xl font-bold text-cyan-300">{legacyUsage.summary.totalToolUses.toLocaleString()}</div>
-                <div className="text-sm" style={{ color: "var(--muted)" }}>Total Tool Uses</div>
+                <div className="text-2xl font-bold text-cyan-300 tabular-nums">{legacyUsage.summary.totalToolUses.toLocaleString()}</div>
+                <div className="text-xs" style={{ color: "var(--muted)" }}>Total Tool Uses (All Time)</div>
               </div>
               <div className="p-4 rounded-xl border border-purple-500/20 bg-purple-500/5">
-                <div className="text-xl sm:text-2xl font-bold text-purple-300">{legacyUsage.summary.totalUniqueUsers.toLocaleString()}</div>
-                <div className="text-sm" style={{ color: "var(--muted)" }}>Unique Users</div>
+                <div className="text-2xl font-bold text-purple-300 tabular-nums">{legacyUsage.summary.totalUniqueUsers.toLocaleString()}</div>
+                <div className="text-xs" style={{ color: "var(--muted)" }}>Unique Users (All Time)</div>
+              </div>
+              <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                <div className="text-2xl font-bold text-amber-300 tabular-nums">{legacyUsage.sessionInsights?.avgDurationMinutes ?? 0} min</div>
+                <div className="text-xs" style={{ color: "var(--muted)" }}>Avg Session Duration</div>
+              </div>
+              <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                <div className="text-2xl font-bold text-emerald-300 tabular-nums">{legacyUsage.sessionInsights?.multiToolRate ?? 0}%</div>
+                <div className="text-xs" style={{ color: "var(--muted)" }}>Multi-Tool Sessions</div>
               </div>
             </div>
 
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
-              {/* Desktop table */}
-              <div className="hidden md:block">
-                <table className="w-full text-sm">
-                  <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
-                    <tr className="text-left">
-                      <th className="p-3">Tool</th>
-                      <th className="p-3 text-right">Total Uses</th>
-                      <th className="p-3 text-right">Unique Users</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {legacyUsage.tools.map((tool) => (
-                      <tr key={tool.tool} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
-                        <td className="p-3 font-medium">{tool.toolLabel}</td>
-                        <td className="p-3 text-right tabular-nums">{tool.totalUses.toLocaleString()}</td>
-                        <td className="p-3 text-right tabular-nums">{tool.uniqueUsers.toLocaleString()}</td>
-                      </tr>
-                    ))}
-                    {legacyUsage.tools.length === 0 && (
-                      <tr>
-                        <td colSpan={3} className="p-6 text-center" style={{ color: "var(--muted)" }}>
-                          No tool usage data yet
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+            {/* View tabs */}
+            <div className="flex gap-1 mb-4 p-1 rounded-lg w-fit" style={{ background: "color-mix(in srgb, var(--text) 8%, transparent)" }}>
+              {([
+                { key: "overview" as const, label: "Time Periods" },
+                { key: "tools" as const, label: "All Tools" },
+                { key: "sessions" as const, label: "Sessions" },
+              ]).map(tab => (
+                <button
+                  key={tab.key}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${legacyView === tab.key ? "text-white" : ""}`}
+                  style={{
+                    background: legacyView === tab.key ? "var(--accent)" : "transparent",
+                    color: legacyView === tab.key ? "white" : "var(--muted)",
+                  }}
+                  onClick={() => setLegacyView(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
 
-              {/* Mobile cards */}
-              <div className="md:hidden space-y-2 p-3">
-                {legacyUsage.tools.map((tool) => (
-                  <div key={tool.tool} className="p-3 rounded-lg border" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
-                    <div className="font-medium mb-2">{tool.toolLabel}</div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span style={{ color: "var(--muted)" }}>Total Uses</span>
-                      <span className="tabular-nums font-medium">{tool.totalUses.toLocaleString()}</span>
+            {/* === TIME PERIODS VIEW === */}
+            {legacyView === "overview" && (
+              <div className="space-y-4">
+                {/* Period selector */}
+                <div className="flex flex-wrap gap-2">
+                  {(legacyUsage.timePeriods || []).map(tp => (
+                    <button
+                      key={tp.key}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${selectedPeriod === tp.key ? "border-cyan-400 text-cyan-300" : ""}`}
+                      style={{
+                        borderColor: selectedPeriod === tp.key ? undefined : "var(--border)",
+                        background: selectedPeriod === tp.key ? "rgba(34,211,238,0.1)" : "transparent",
+                        color: selectedPeriod === tp.key ? undefined : "var(--text)",
+                      }}
+                      onClick={() => setSelectedPeriod(tp.key)}
+                    >
+                      {tp.label}
+                    </button>
+                  ))}
+                </div>
+
+                {activePeriod && (
+                  <>
+                    {/* Period stats row */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="p-3 rounded-xl border" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                        <div className="text-xl font-bold tabular-nums" style={{ color: "var(--text)" }}>{activePeriod.totalUses.toLocaleString()}</div>
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>Uses ({activePeriod.label})</div>
+                      </div>
+                      <div className="p-3 rounded-xl border" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                        <div className="text-xl font-bold tabular-nums" style={{ color: "var(--text)" }}>{activePeriod.uniqueUsers.toLocaleString()}</div>
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>Unique Users</div>
+                      </div>
+                      <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                        <div className="text-xl font-bold text-emerald-300 tabular-nums">{activePeriod.newUsers.toLocaleString()}</div>
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>New Users</div>
+                      </div>
+                      <div className="p-3 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                        <div className="text-xl font-bold text-blue-300 tabular-nums">{activePeriod.repeatUsers.toLocaleString()}</div>
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>Repeat Users</div>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-sm mt-1">
-                      <span style={{ color: "var(--muted)" }}>Unique Users</span>
-                      <span className="tabular-nums font-medium">{tool.uniqueUsers.toLocaleString()}</span>
+
+                    {/* Traffic comparison across all periods */}
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                      <div className="p-3 text-sm font-medium" style={{ background: "color-mix(in srgb, var(--text) 5%, transparent)", borderBottom: "1px solid var(--border)" }}>
+                        Traffic Comparison Across All Periods
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                            <tr>
+                              <th className="p-3 text-left text-xs font-medium" style={{ color: "var(--muted)" }}>Period</th>
+                              <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Uses</th>
+                              <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Users</th>
+                              <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>New</th>
+                              <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Repeat</th>
+                              <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Repeat %</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(legacyUsage.periods || []).map(p => {
+                              const repeatPct = p.uniqueUsers > 0 ? Math.round((p.repeatUsers / p.uniqueUsers) * 100) : 0;
+                              const isActive = p.key === selectedPeriod;
+                              return (
+                                <tr
+                                  key={p.key}
+                                  className={`border-b last:border-b-0 cursor-pointer transition-colors ${isActive ? "bg-cyan-500/10" : "hover:bg-white/5"}`}
+                                  style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}
+                                  onClick={() => setSelectedPeriod(p.key)}
+                                >
+                                  <td className="p-3 font-medium" style={{ color: isActive ? "#67e8f9" : "var(--text)" }}>{p.label}</td>
+                                  <td className="p-3 text-right tabular-nums">{p.totalUses.toLocaleString()}</td>
+                                  <td className="p-3 text-right tabular-nums">{p.uniqueUsers.toLocaleString()}</td>
+                                  <td className="p-3 text-right tabular-nums text-emerald-400">{p.newUsers.toLocaleString()}</td>
+                                  <td className="p-3 text-right tabular-nums text-blue-400">{p.repeatUsers.toLocaleString()}</td>
+                                  <td className="p-3 text-right tabular-nums">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${repeatPct >= 50 ? "bg-blue-500/20 text-blue-300" : "bg-gray-500/20 text-gray-300"}`}>
+                                      {repeatPct}%
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {legacyUsage.tools.length === 0 && (
-                  <div className="p-6 text-center" style={{ color: "var(--muted)" }}>
-                    No tool usage data yet
-                  </div>
+
+                    {/* Tool breakdown for selected period */}
+                    {activePeriod.tools.length > 0 && (
+                      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                        <div className="p-3 text-sm font-medium" style={{ background: "color-mix(in srgb, var(--text) 5%, transparent)", borderBottom: "1px solid var(--border)" }}>
+                          Tool Breakdown — {activePeriod.label}
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                              <tr>
+                                <th className="p-3 text-left text-xs font-medium" style={{ color: "var(--muted)" }}>Tool</th>
+                                <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Uses</th>
+                                <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Users</th>
+                                <th className="p-3 text-left text-xs font-medium" style={{ color: "var(--muted)" }}>Activity</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {activePeriod.tools.map(t => {
+                                const maxUses = activePeriod.tools[0]?.uses || 1;
+                                const barWidth = Math.max(4, Math.round((t.uses / maxUses) * 100));
+                                return (
+                                  <tr key={t.tool} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                                    <td className="p-3 font-medium">{t.toolLabel}</td>
+                                    <td className="p-3 text-right tabular-nums">{t.uses.toLocaleString()}</td>
+                                    <td className="p-3 text-right tabular-nums">{t.uniqueUsers.toLocaleString()}</td>
+                                    <td className="p-3">
+                                      <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--text) 10%, transparent)" }}>
+                                        <div className="h-full rounded-full bg-cyan-500 transition-all" style={{ width: `${barWidth}%` }} />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {activePeriod.tools.length === 0 && (
+                      <div className="p-8 text-center rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+                        No tool activity in the last {activePeriod.label.toLowerCase()}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-            </div>
+            )}
+
+            {/* === ALL TOOLS VIEW === */}
+            {legacyView === "tools" && (
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                <div className="p-3 text-sm font-medium" style={{ background: "color-mix(in srgb, var(--text) 5%, transparent)", borderBottom: "1px solid var(--border)" }}>
+                  All-Time Tool Usage — {legacyUsage.tools.filter(t => t.totalUses > 0).length} active tools
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead style={{ borderBottom: "1px solid var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                      <tr>
+                        <th className="p-3 text-left text-xs font-medium" style={{ color: "var(--muted)" }}>#</th>
+                        <th className="p-3 text-left text-xs font-medium" style={{ color: "var(--muted)" }}>Tool</th>
+                        <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Total Uses</th>
+                        <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Unique Users</th>
+                        <th className="p-3 text-right text-xs font-medium" style={{ color: "var(--muted)" }}>Avg Uses/User</th>
+                        <th className="p-3 text-left text-xs font-medium" style={{ color: "var(--muted)" }}>Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {legacyUsage.tools.map((tool, idx) => {
+                        const avgPerUser = tool.uniqueUsers > 0 ? (tool.totalUses / tool.uniqueUsers).toFixed(1) : "0";
+                        const shareOfTotal = legacyUsage!.summary.totalToolUses > 0
+                          ? Math.round((tool.totalUses / legacyUsage!.summary.totalToolUses) * 100)
+                          : 0;
+                        return (
+                          <tr key={tool.tool} className="border-b last:border-b-0" style={{ borderColor: "color-mix(in srgb, var(--text) 5%, transparent)" }}>
+                            <td className="p-3 tabular-nums" style={{ color: "var(--muted)" }}>{idx + 1}</td>
+                            <td className="p-3 font-medium">{tool.toolLabel}</td>
+                            <td className="p-3 text-right tabular-nums font-medium">{tool.totalUses.toLocaleString()}</td>
+                            <td className="p-3 text-right tabular-nums">{tool.uniqueUsers.toLocaleString()}</td>
+                            <td className="p-3 text-right tabular-nums">{avgPerUser}</td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <div className="w-16 h-2 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--text) 10%, transparent)" }}>
+                                  <div className="h-full rounded-full bg-purple-500 transition-all" style={{ width: `${shareOfTotal}%` }} />
+                                </div>
+                                <span className="text-xs tabular-nums" style={{ color: "var(--muted)" }}>{shareOfTotal}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {legacyUsage.tools.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center" style={{ color: "var(--muted)" }}>
+                            No tool usage data yet
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* === SESSIONS VIEW === */}
+            {legacyView === "sessions" && legacyUsage.sessionInsights && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="p-4 rounded-xl border" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                    <div className="text-2xl font-bold tabular-nums" style={{ color: "var(--text)" }}>{legacyUsage.sessionInsights.totalSessions.toLocaleString()}</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Total Sessions (7d)</div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-500/5">
+                    <div className="text-2xl font-bold text-amber-300 tabular-nums">{legacyUsage.sessionInsights.avgDurationMinutes} min</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Avg Session Duration</div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-orange-500/20 bg-orange-500/5">
+                    <div className="text-2xl font-bold text-orange-300 tabular-nums">{legacyUsage.sessionInsights.medianDurationMinutes} min</div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Median Session Duration</div>
+                  </div>
+                  <div className="p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                    <div className="text-2xl font-bold text-emerald-300 tabular-nums">
+                      {legacyUsage.sessionInsights.multiToolSessions.toLocaleString()}
+                      <span className="text-sm font-normal ml-1">({legacyUsage.sessionInsights.multiToolRate}%)</span>
+                    </div>
+                    <div className="text-xs" style={{ color: "var(--muted)" }}>Multi-Tool Sessions</div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border p-4" style={{ borderColor: "var(--border)", background: "color-mix(in srgb, var(--text) 3%, transparent)" }}>
+                  <h3 className="text-sm font-medium mb-3" style={{ color: "var(--text)" }}>Session Engagement Summary</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span style={{ color: "var(--muted)" }}>Multi-Tool Engagement</span>
+                        <span className="tabular-nums font-medium">{legacyUsage.sessionInsights.multiToolRate}%</span>
+                      </div>
+                      <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "color-mix(in srgb, var(--text) 10%, transparent)" }}>
+                        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${legacyUsage.sessionInsights.multiToolRate}%` }} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Users spend on average</div>
+                        <div className="text-lg font-bold" style={{ color: "var(--text)" }}>{legacyUsage.sessionInsights.avgDurationMinutes} minutes</div>
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>per session using legacy tools</div>
+                      </div>
+                      <div>
+                        <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Half of sessions last at least</div>
+                        <div className="text-lg font-bold" style={{ color: "var(--text)" }}>{legacyUsage.sessionInsights.medianDurationMinutes} minutes</div>
+                        <div className="text-xs" style={{ color: "var(--muted)" }}>median session duration</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
+        )}
+
+        {!legacyUsage && !legacyLoading && (
+          <div className="p-8 text-center rounded-xl border" style={{ borderColor: "var(--border)", color: "var(--muted)" }}>
+            Click Refresh to load legacy tool traffic data
+          </div>
         )}
       </div>
 
