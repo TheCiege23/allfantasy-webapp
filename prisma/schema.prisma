@@ -2224,6 +2224,7 @@ model AppUser {
   mockDrafts           MockDraft[]
   activeLeagueId       String?
   bracketLeagueMessages BracketLeagueMessage[] @relation("BracketLeagueMessages")
+  bracketMessageReactions BracketMessageReaction[] @relation("BracketMessageReactions")
   bracketPayments      BracketPayment[]       @relation("BracketPayments")
 
   @@map("app_users")
@@ -2385,18 +2386,40 @@ model BracketPick {
 }
 
 model BracketLeagueMessage {
-  id        String   @id @default(uuid())
-  leagueId  String
-  userId    String
-  message   String
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  leagueId   String
+  userId     String
+  message    String
+  type       String   @default("text")
+  replyToId  String?
+  imageUrl   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
 
-  league BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
-  user   AppUser       @relation("BracketLeagueMessages", fields: [userId], references: [id], onDelete: Cascade)
+  league    BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  user      AppUser       @relation("BracketLeagueMessages", fields: [userId], references: [id], onDelete: Cascade)
+  replyTo   BracketLeagueMessage?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   BracketLeagueMessage[] @relation("MessageReplies")
+  reactions BracketMessageReaction[]
 
   @@index([leagueId, createdAt])
   @@index([userId])
   @@map("bracket_league_messages")
+}
+
+model BracketMessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message BracketLeagueMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    AppUser              @relation("BracketMessageReactions", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@map("bracket_message_reactions")
 }
 
 model BracketPayment {
