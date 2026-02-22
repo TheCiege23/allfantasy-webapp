@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { selectBestProvider } from "@/lib/brackets/providers"
+import { checkUpsetImpact, checkChampEliminated, checkPerfectBrackets } from "@/lib/brackets/feed-engine"
 
 export const dynamic = "force-dynamic"
 
@@ -35,6 +36,8 @@ export async function POST(req: NextRequest) {
         round: true,
         homeTeamName: true,
         awayTeamName: true,
+        seedHome: true,
+        seedAway: true,
         nextNodeId: true,
         nextNodeSide: true,
       },
@@ -127,11 +130,30 @@ export async function POST(req: NextRequest) {
                   })
                   advanced++
                 }
+
+                const loser = nodeWinner === node.homeTeamName ? node.awayTeamName : node.homeTeamName
+                const winnerSeed = nodeWinner === node.homeTeamName ? node.seedHome : node.seedAway
+                const loserSeed = nodeWinner === node.homeTeamName ? node.seedAway : node.seedHome
+
+                try {
+                  if (loser && winnerSeed != null && loserSeed != null) {
+                    await checkUpsetImpact(tournamentId, nodeWinner, loser, winnerSeed, loserSeed, node.id)
+                    await checkChampEliminated(tournamentId, loser, loserSeed)
+                  }
+                } catch (feedErr) {
+                  console.error("[LiveIngest] Feed event error:", feedErr)
+                }
               }
             }
           }
         }
       }
+    }
+
+    try {
+      await checkPerfectBrackets(tournamentId)
+    } catch (feedErr) {
+      console.error("[LiveIngest] Perfect bracket check error:", feedErr)
     }
 
     const supportsPlayByPlay = caps.play_by_play && typeof provider.getPlayByPlay === "function"

@@ -56,60 +56,9 @@ export async function POST(req: Request) {
     )
   }
 
-  const rules = (league.scoringRules || {}) as any
-  const isPaidLeague = Boolean(rules.isPaidLeague)
-  const maxEntriesPerUser = Number(rules.maxEntriesPerUser ?? 10)
-
   const count = await (prisma as any).bracketEntry.count({
     where: { leagueId, userId: auth.userId },
   })
-
-  if (count >= maxEntriesPerUser) {
-    return NextResponse.json(
-      {
-        error: "ENTRY_LIMIT_REACHED",
-        message: `You have reached the maximum of ${maxEntriesPerUser} entries in this league.`,
-      },
-      { status: 409 }
-    )
-  }
-
-  if (isPaidLeague) {
-    const payments = await (prisma as any).bracketPayment.findMany({
-      where: {
-        userId: auth.userId,
-        leagueId,
-        tournamentId: league.tournamentId,
-        status: "completed",
-      },
-      select: { paymentType: true },
-    })
-
-    const hasPaidFirstBracket = payments.some((p: any) => p.paymentType === "first_bracket_fee")
-    const hasUnlimitedUnlock = payments.some((p: any) => p.paymentType === "unlimited_unlock")
-
-    if (count === 0 && !hasPaidFirstBracket) {
-      return NextResponse.json(
-        {
-          error: "PAYMENT_REQUIRED",
-          paymentType: "first_bracket_fee",
-          message: "A $2 hosting fee is required to create your first bracket in this paid league.",
-        },
-        { status: 402 }
-      )
-    }
-
-    if (count >= 3 && !hasUnlimitedUnlock) {
-      return NextResponse.json(
-        {
-          error: "PAYMENT_REQUIRED",
-          paymentType: "unlimited_unlock",
-          message: "You've used your 3 included brackets. Unlock unlimited brackets for $3.",
-        },
-        { status: 402 }
-      )
-    }
-  }
 
   const entry = await (prisma as any).bracketEntry.create({
     data: {

@@ -68,14 +68,11 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
 
   const body = await req.json()
-  const { name, season, sport, maxManagers, isPaidLeague, fancredEntryFee, fancredPaymentReference, scoringMode, isPublic, allowCopyBracket, pickVisibility, insuranceEnabled } = body as {
+  const { name, season, sport, maxManagers, scoringMode, isPublic, allowCopyBracket, pickVisibility, insuranceEnabled } = body as {
     name: string
     season: number
     sport: string
     maxManagers?: number
-    isPaidLeague?: boolean
-    fancredEntryFee?: number
-    fancredPaymentReference?: string
     scoringMode?: string
     isPublic?: boolean
     allowCopyBracket?: boolean
@@ -96,8 +93,6 @@ export async function POST(req: Request) {
     )
 
   const normalizedMaxManagers = Math.min(10000, Math.max(2, Number(maxManagers || 10000)))
-  const paidLeague = Boolean(isPaidLeague)
-  const normalizedEntryFee = paidLeague ? Math.max(0, Number(fancredEntryFee || 0)) : 0
 
   let joinCode = makeJoinCode()
   for (let i = 0; i < 5; i++) {
@@ -123,12 +118,6 @@ export async function POST(req: Request) {
       scoringRules: {
         mode: selectedMode,
         scoringMode: selectedMode,
-        entriesPerUserFree: 2,
-        maxEntriesPerUser: 10,
-        isPaidLeague: paidLeague,
-        fancredEntryFee: normalizedEntryFee,
-        fancredPaymentReference: fancredPaymentReference?.trim() || null,
-        commissionerPaymentConfirmedAt: null,
         allowCopyBracket: allowCopyBracket !== false,
         pickVisibility: pickVisibility === "hidden_until_lock" ? "hidden_until_lock" : "visible",
         insuranceEnabled: Boolean(insuranceEnabled),
@@ -146,6 +135,5 @@ export async function POST(req: Request) {
     leagueId: league.id,
     joinCode: league.joinCode,
     maxManagers: normalizedMaxManagers,
-    isPaidLeague: paidLeague,
   })
 }

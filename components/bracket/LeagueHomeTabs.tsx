@@ -53,19 +53,16 @@ type Props = {
   initialPicks: Record<string, Record<string, string | null>>
   joinCode: string
   maxManagers: number
-  isPaidLeague: boolean
-  paymentConfirmedAt: string | null
-  entriesPerUserFree: number
-  maxEntriesPerUser: number
   scoringMode?: string
 }
 
-type TabId = "pool" | "brackets" | "live" | "global" | "public"
+type TabId = "pool" | "brackets" | "live" | "feed" | "global" | "public"
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "pool", label: "POOL" },
   { id: "brackets", label: "BRACKETS" },
   { id: "live", label: "LIVE" },
+  { id: "feed", label: "FEED" },
   { id: "global", label: "GLOBAL" },
   { id: "public", label: "PUBLIC" },
 ]
@@ -144,6 +141,9 @@ export function LeagueHomeTabs(props: Props) {
             scoringMode={props.scoringMode}
           />
         )}
+        {activeTab === "feed" && (
+          <FeedTab tournamentId={props.tournamentId} leagueId={props.leagueId} />
+        )}
         {activeTab === "global" && (
           <GlobalTab tournamentId={props.tournamentId} currentUserId={props.currentUserId} />
         )}
@@ -178,11 +178,7 @@ function PoolTab({
   inviteOpen,
   setInviteOpen,
   joinCode,
-  isPaidLeague,
-  paymentConfirmedAt,
   isOwner,
-  entriesPerUserFree,
-  maxEntriesPerUser,
   maxManagers,
   members,
   scoringMode,
@@ -269,12 +265,8 @@ function PoolTab({
       {settingsOpen && (
         <SettingsPanel
           joinCode={joinCode}
-          isPaidLeague={isPaidLeague}
-          paymentConfirmedAt={paymentConfirmedAt}
           isOwner={isOwner}
           leagueId={leagueId}
-          entriesPerUserFree={entriesPerUserFree}
-          maxEntriesPerUser={maxEntriesPerUser}
           maxManagers={maxManagers}
           scoringMode={normalizeScoringMode(scoringMode)}
         />
@@ -447,22 +439,14 @@ function getScoringTable(mode: ScoringMode) {
 
 function SettingsPanel({
   joinCode,
-  isPaidLeague,
-  paymentConfirmedAt,
   isOwner,
   leagueId,
-  entriesPerUserFree,
-  maxEntriesPerUser,
   maxManagers,
   scoringMode: initialScoringMode,
 }: {
   joinCode: string
-  isPaidLeague: boolean
-  paymentConfirmedAt: string | null
   isOwner: boolean
   leagueId: string
-  entriesPerUserFree: number
-  maxEntriesPerUser: number
   maxManagers: number
   scoringMode: ScoringMode
 }) {
@@ -491,7 +475,7 @@ function SettingsPanel({
         <div className="px-4 py-3 flex items-center gap-4 text-sm" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
           <div className="flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
             <Settings className="w-4 h-4" />
-            {maxEntriesPerUser} Max Bracket{maxEntriesPerUser !== 1 ? 's' : ''}
+            Unlimited Brackets
           </div>
           <div style={{ color: 'rgba(255,255,255,0.6)' }}>Show Champ Pick</div>
         </div>
@@ -565,21 +549,6 @@ function SettingsPanel({
         )}
       </div>
 
-      {isPaidLeague && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(251,146,60,0.04)', border: '1px solid rgba(251,146,60,0.12)' }}>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: 'rgba(251,146,60,0.15)' }}>
-              <span className="text-xs" style={{ color: '#fb923c' }}>$</span>
-            </div>
-            <span className="text-sm font-semibold" style={{ color: '#fb923c' }}>Paid League</span>
-          </div>
-          <div className="text-xs space-y-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-            <div>$2 hosting fee for first bracket</div>
-            <div>Includes 3 brackets. Unlock unlimited for $3.</div>
-          </div>
-        </div>
-      )}
-
       <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="text-[10px] font-semibold uppercase tracking-wider px-4 py-2" style={{ color: 'rgba(255,255,255,0.3)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
           Entry Controls
@@ -627,6 +596,64 @@ function SettingsPanel({
           Dues and payouts are handled on FanCred. This app only hosts brackets.
         </div>
       </a>
+
+      <DonateSection />
+    </div>
+  )
+}
+
+function DonateSection() {
+  const [loading, setLoading] = useState(false)
+  const [amount, setAmount] = useState(500)
+
+  async function handleDonate(amountCents: number) {
+    setLoading(true)
+    try {
+      const res = await fetch("/api/bracket/donate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amountCents }),
+      })
+      const data = await res.json()
+      if (data.url) window.location.href = data.url
+    } catch {}
+    setLoading(false)
+  }
+
+  return (
+    <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.1)' }}>
+      <div className="text-center space-y-1">
+        <div className="text-xs font-semibold" style={{ color: '#f87171' }}>
+          Support FanCred Brackets
+        </div>
+        <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          All brackets are free forever. Donations help keep it running.
+        </div>
+      </div>
+      <div className="flex gap-2">
+        {[{ label: "$3", value: 300 }, { label: "$5", value: 500 }, { label: "$10", value: 1000 }].map(p => (
+          <button
+            key={p.value}
+            onClick={() => setAmount(p.value)}
+            className="flex-1 rounded-lg py-2 text-xs font-bold transition"
+            style={{
+              background: amount === p.value ? 'rgba(239,68,68,0.12)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${amount === p.value ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)'}`,
+              color: amount === p.value ? '#f87171' : 'rgba(255,255,255,0.5)',
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <button
+        onClick={() => handleDonate(amount)}
+        disabled={loading}
+        className="w-full rounded-lg py-2 text-xs font-bold transition disabled:opacity-50"
+        style={{ background: 'rgba(239,68,68,0.15)', color: '#f87171', border: '1px solid rgba(239,68,68,0.2)' }}
+      >
+        {loading ? "Processing..." : `Donate $${(amount / 100).toFixed(0)}`}
+      </button>
     </div>
   )
 }
@@ -694,6 +721,109 @@ function EntryControlRow({
       </button>
     </div>
   )
+}
+
+const FEED_EVENT_STYLES: Record<string, { icon: string; bg: string; border: string; text: string }> = {
+  UPSET_BUSTED: { icon: '💥', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.15)', text: '#ef4444' },
+  CHAMP_ELIMINATED: { icon: '💀', bg: 'rgba(139,92,246,0.06)', border: 'rgba(139,92,246,0.15)', text: '#a78bfa' },
+  PERFECT_TRACKER: { icon: '✨', bg: 'rgba(251,146,60,0.06)', border: 'rgba(251,146,60,0.15)', text: '#fb923c' },
+  LEAD_CHANGE: { icon: '👑', bg: 'rgba(34,197,94,0.06)', border: 'rgba(34,197,94,0.15)', text: '#22c55e' },
+  BIG_UPSET: { icon: '🚨', bg: 'rgba(234,179,8,0.06)', border: 'rgba(234,179,8,0.15)', text: '#eab308' },
+}
+
+function FeedTab({ tournamentId, leagueId }: { tournamentId: string; leagueId: string }) {
+  const [events, setEvents] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'all' | 'league'>('all')
+
+  useEffect(() => {
+    setLoading(true)
+    const params = new URLSearchParams({ tournamentId, limit: '30' })
+    if (tab === 'league') params.set('leagueId', leagueId)
+    fetch(`/api/bracket/feed?${params}`)
+      .then(r => r.json())
+      .then(data => setEvents(data.events || []))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [tournamentId, leagueId, tab])
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        {(['all', 'league'] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className="px-4 py-1.5 rounded-lg text-xs font-semibold transition"
+            style={{
+              background: tab === t ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${tab === t ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}`,
+              color: tab === t ? '#fb923c' : 'rgba(255,255,255,0.4)',
+            }}
+          >
+            {t === 'all' ? 'Global Feed' : 'Pool Feed'}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="rounded-xl p-8 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading feed...</div>
+        </div>
+      ) : events.length === 0 ? (
+        <div className="rounded-xl p-8 text-center space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-3xl">🏀</div>
+          <h3 className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>No Events Yet</h3>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            Bracket-busting moments will appear here as games are played.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {events.map((event: any) => {
+            const style = FEED_EVENT_STYLES[event.eventType] || FEED_EVENT_STYLES.BIG_UPSET
+            const time = new Date(event.createdAt)
+            const timeAgo = formatFeedTime(time)
+            return (
+              <div
+                key={event.id}
+                className="rounded-xl p-3.5 space-y-1.5 transition-all"
+                style={{ background: style.bg, border: `1px solid ${style.border}` }}
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className="text-xl flex-shrink-0">{style.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold" style={{ color: style.text }}>
+                      {event.headline}
+                    </div>
+                    {event.detail && (
+                      <div className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.45)' }}>
+                        {event.detail}
+                      </div>
+                    )}
+                    <div className="text-[10px] mt-1.5 flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                      <span>{timeAgo}</span>
+                      {event.leagueId && <span className="px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}>Pool</span>}
+                      {!event.leagueId && <span className="px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.05)' }}>Global</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function formatFeedTime(d: Date): string {
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  if (diff < 60000) return 'just now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
 function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; currentUserId: string }) {
@@ -930,9 +1060,9 @@ function PublicPoolsTab({ tournamentId }: { tournamentId: string }) {
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(251,146,60,0.08)', color: '#fb923c' }}>
                       {SCORING_MODES.find(m => m.id === pool.scoringMode)?.label || pool.scoringMode}
                     </span>
-                    {pool.isPaidLeague && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.08)', color: '#eab308' }}>
-                        Paid
+                    {pool.memberCount >= 50 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(34,197,94,0.08)', color: '#22c55e' }}>
+                        Popular
                       </span>
                     )}
                   </div>

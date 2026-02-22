@@ -2420,6 +2420,21 @@ model BracketPayment {
   @@index([stripeSessionId])
 }
 
+model BracketFeedEvent {
+  id            String   @id @default(uuid())
+  tournamentId  String
+  leagueId      String?
+  eventType     String
+  headline      String
+  detail        String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([tournamentId, createdAt])
+  @@index([leagueId, createdAt])
+  @@map("bracket_feed_events")
+}
+
 enum VerificationMethod {
   EMAIL
   PHONE
