@@ -1300,8 +1300,12 @@ function AFLegacyContent() {
   const [mockAllowAiTrades, setMockAllowAiTrades] = useState(true)
   const [mockAllowFuturePickTrades, setMockAllowFuturePickTrades] = useState(true)
   const [mockTimezone, setMockTimezone] = useState('America/New_York')
-  const [mockManagers, setMockManagers] = useState<Array<{ id: string; displayName: string; avatar?: string; draftSlot?: number | null }>>([])
+  const [mockManagers, setMockManagers] = useState<Array<{ id: string; displayName: string; avatar?: string; draftSlot?: number | null }>>(() =>
+    Array.from({ length: 12 }, (_, i) => ({ id: `default-${i + 1}`, displayName: `Team ${i + 1}`, draftSlot: i + 1 }))
+  )
   const [mockManagersLoading, setMockManagersLoading] = useState(false)
+  const [mockSleeperImportLoading, setMockSleeperImportLoading] = useState(false)
+  const [mockImportedLeagueName, setMockImportedLeagueName] = useState<string>('')
   const [mockDraftPicks, setMockDraftPicks] = useState<Array<{ overall: number; round: number; slot: number; manager: string; playerName: string; position: string; pickedAt: string }>>([])
   const [mockNflPool, setMockNflPool] = useState<Array<{ name: string; position: string; team?: string | null; adp?: number }>>([])
   const [mockNflPoolLoading, setMockNflPoolLoading] = useState(false)
@@ -4375,9 +4379,8 @@ function AFLegacyContent() {
 
   useEffect(() => {
     const selectedLeague = leagues.find(l => l.league_id === mockDraftLeagueId)
-    if (!selectedLeague) return
 
-    const type = selectedLeague.type?.toLowerCase().includes('dynasty') ? 'dynasty' : 'redraft'
+    const type = selectedLeague?.type?.toLowerCase().includes('dynasty') ? 'dynasty' : mockLeagueType
     const poolMap: Record<string, string> = { 'rookie': 'rookie', 'vet': 'vet', 'both': 'combined' }
     const pool = poolMap[mockDraftType] || 'all'
     setMockNflPoolLoading(true)
@@ -4392,7 +4395,7 @@ function AFLegacyContent() {
       }))))
       .catch(() => setMockNflPool([]))
       .finally(() => setMockNflPoolLoading(false))
-  }, [mockDraftLeagueId, leagues, mockDraftType])
+  }, [mockDraftLeagueId, leagues, mockDraftType, mockLeagueType])
 
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode; badge?: string }> = [
     { id: 'overview' as Tab, label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
@@ -17765,7 +17768,7 @@ function AFLegacyContent() {
 
                     return (
                       <DraftRoom
-                        leagueName={selectedLeague?.name || 'Mock Draft Room'}
+                        leagueName={mockImportedLeagueName || selectedLeague?.name || 'AllFantasy Mock Draft'}
                         username={username || 'Guest'}
                         leagues={leagues.map(l => ({ league_id: l.league_id, name: l.name, team_count: l.team_count }))}
                         selectedLeagueId={mockDraftLeagueId}
@@ -17841,6 +17844,75 @@ function AFLegacyContent() {
                         onAiAutoQueueChange={setMockAiAutoQueue}
                         onAiTradePropose={async (fromManager: string, toManager: string, give: string[], receive: string[]) => {
                           return { accepted: Math.random() > 0.4, reasoning: `${fromManager} evaluated the trade and ${Math.random() > 0.4 ? 'accepts' : 'declines'} based on roster needs.` }
+                        }}
+                        sleeperImportLoading={mockSleeperImportLoading}
+                        onSleeperImport={async (sleeperId: string) => {
+                          setMockSleeperImportLoading(true)
+                          try {
+                            const res = await fetch('/api/mock-draft/league-import', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ league_id: sleeperId }),
+                            })
+                            if (!res.ok) {
+                              const errData = await res.json().catch(() => ({}))
+                              return { success: false, error: errData?.error || `Import failed (${res.status})` }
+                            }
+                            const data = await res.json()
+                            let importedLeagueName = data.leagueSettings?.name || ''
+                            let importedTeamCount = 0
+                            if (data.managers && Array.isArray(data.managers) && data.managers.length > 0) {
+                              importedTeamCount = data.managers.length
+                              setMockManagers(data.managers.map((m: any) => ({
+                                id: String(m.userId || m.rosterId),
+                                displayName: m.displayName || `Team ${m.rosterId}`,
+                                avatar: m.avatar || undefined,
+                                draftSlot: m.draftSlot ?? null,
+                              })))
+                            }
+                            if (data.rosters && typeof data.rosters === 'object') {
+                              const rostersByName: Record<string, Array<{ playerId: string; name: string; position: string; team: string }>> = {}
+                              const managerMap = new Map((data.managers || []).map((m: any) => [String(m.rosterId), m.displayName]))
+                              for (const [rid, players] of Object.entries(data.rosters)) {
+                                const name: string = String(managerMap.get(rid) || `Team ${rid}`)
+                                rostersByName[name] = (players as any[]).map((p: any) => ({
+                                  playerId: p.playerId || '',
+                                  name: p.name || 'Unknown',
+                                  position: p.position || '?',
+                                  team: p.team || '',
+                                }))
+                              }
+                              setMockImportedRosters(rostersByName)
+                            }
+                            if (Array.isArray(data.tradedPicks)) {
+                              setMockTradedPicks(data.tradedPicks.map((tp: any) => ({
+                                season: tp.season || '',
+                                round: tp.round || 0,
+                                originalRosterId: tp.originalRosterId || 0,
+                                previousOwner: tp.previousOwner || '',
+                                newOwner: tp.newOwner || '',
+                              })))
+                            }
+                            if (data.leagueSettings) {
+                              setMockImportedLeagueSettings({
+                                isDynasty: data.leagueSettings.leagueType === 'dynasty',
+                                isSF: data.leagueSettings.isSF || false,
+                                rosterPositions: data.leagueSettings.rosterPositions || undefined,
+                              })
+                              if (data.leagueSettings.leagueType === 'dynasty') {
+                                setMockLeagueType('dynasty')
+                              } else {
+                                setMockLeagueType('redraft')
+                              }
+                            }
+                            setMockDraftLeagueId(sleeperId)
+                            if (importedLeagueName) setMockImportedLeagueName(importedLeagueName)
+                            return { success: true, leagueName: importedLeagueName, teamCount: importedTeamCount }
+                          } catch (err: any) {
+                            return { success: false, error: err?.message || 'Failed to connect' }
+                          } finally {
+                            setMockSleeperImportLoading(false)
+                          }
                         }}
                         onAiPick={async (managerName, teamRoster, available) => {
                           try {

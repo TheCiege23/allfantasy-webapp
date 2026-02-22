@@ -68,6 +68,8 @@ interface DraftRoomProps {
   aiAutoQueue?: boolean
   onAiAutoQueueChange?: (v: boolean) => void
   onAiTradePropose?: (fromManager: string, toManager: string, give: string[], receive: string[]) => Promise<{ accepted: boolean; reasoning: string } | null>
+  onSleeperImport?: (leagueId: string) => Promise<{ success: boolean; leagueName?: string; teamCount?: number; error?: string }>
+  sleeperImportLoading?: boolean
 }
 
 const POS_DOT: Record<string, string> = {
@@ -153,6 +155,8 @@ export default function DraftRoom(props: DraftRoomProps) {
     aiAutoQueue = false,
     onAiAutoQueueChange,
     onAiTradePropose,
+    onSleeperImport,
+    sleeperImportLoading = false,
   } = props
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -167,6 +171,8 @@ export default function DraftRoom(props: DraftRoomProps) {
   const [chatInput, setChatInput] = useState('')
   const [showCurrentRoster, setShowCurrentRoster] = useState(false)
   const [aiSuggestionCooldown, setAiSuggestionCooldown] = useState(false)
+  const [sleeperImportId, setSleeperImportId] = useState('')
+  const [sleeperImportResult, setSleeperImportResult] = useState<{ success: boolean; message: string } | null>(null)
 
   const settingsRef = useRef<HTMLDivElement>(null)
   const boardScrollRef = useRef<HTMLDivElement>(null)
@@ -722,6 +728,54 @@ export default function DraftRoom(props: DraftRoomProps) {
                   </div>
                 )}
               </div>
+
+              {onSleeperImport && !isDraftStarted && (
+                <div className="space-y-2 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>Import from Sleeper</span>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={sleeperImportId}
+                      onChange={e => setSleeperImportId(e.target.value)}
+                      placeholder="Sleeper League ID"
+                      className="flex-1 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder:text-white/30"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!sleeperImportId.trim()) return
+                        setSleeperImportResult(null)
+                        const result = await onSleeperImport(sleeperImportId.trim())
+                        if (result.success) {
+                          setSleeperImportResult({ success: true, message: `Imported${result.leagueName ? ` "${result.leagueName}"` : ''} (${result.teamCount || '?'} teams)` })
+                        } else {
+                          setSleeperImportResult({ success: false, message: result.error || 'Import failed' })
+                        }
+                      }}
+                      disabled={sleeperImportLoading || !sleeperImportId.trim()}
+                      className="px-3 py-1.5 rounded-lg text-[10px] font-bold transition"
+                      style={{
+                        background: sleeperImportLoading ? 'rgba(255,255,255,0.05)' : 'rgba(14,165,233,0.2)',
+                        color: sleeperImportLoading ? 'rgba(255,255,255,0.3)' : '#0ea5e9',
+                        border: '1px solid rgba(14,165,233,0.3)',
+                      }}
+                    >
+                      {sleeperImportLoading ? 'Importing...' : 'Import'}
+                    </button>
+                  </div>
+                  {sleeperImportResult && (
+                    <div className="text-[10px] px-2 py-1 rounded" style={{
+                      background: sleeperImportResult.success ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                      color: sleeperImportResult.success ? '#10b981' : '#ef4444',
+                    }}>
+                      {sleeperImportResult.message}
+                    </div>
+                  )}
+                  <p className="text-[9px] leading-snug" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    Imports team names, rosters, draft order, and traded picks from your Sleeper league.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
