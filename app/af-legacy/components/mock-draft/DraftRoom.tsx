@@ -17,6 +17,8 @@ import {
   ListOrdered,
   LayoutGrid,
   User,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 
 interface DraftRoomProps {
@@ -46,6 +48,17 @@ interface DraftRoomProps {
   availablePlayers: Array<{ name: string; position: string; team?: string | null; adp?: number }>
   nflPoolLoading: boolean
   rosterSlots?: string[]
+  onAiPick?: (managerName: string, teamRoster: any[], available: any[]) => Promise<{ playerName: string; position: string; team: string; reasoning: string } | null>
+  onAiDmSuggestion?: (teamRoster: any[], available: any[], round: number, pick: number) => Promise<{ suggestions: any[]; aiInsight: string } | null>
+  importedRosters?: Record<string, Array<{ playerId: string; name: string; position: string; team: string }>>
+  tradedPicks?: Array<{ season: string; round: number; originalRosterId: number; previousOwner: string; newOwner: string }>
+  isRookieDraft?: boolean
+  isDynasty?: boolean
+  isSF?: boolean
+  aiAutoPickMode?: 'off' | 'bpa' | 'needs'
+  onAiAutoPickModeChange?: (mode: 'off' | 'bpa' | 'needs') => void
+  isFullscreen?: boolean
+  onToggleFullscreen?: () => void
 }
 
 const POS_DOT: Record<string, string> = {
@@ -112,6 +125,17 @@ export default function DraftRoom(props: DraftRoomProps) {
     availablePlayers,
     nflPoolLoading,
     rosterSlots,
+    onAiPick,
+    onAiDmSuggestion,
+    importedRosters,
+    tradedPicks,
+    isRookieDraft = false,
+    isDynasty = false,
+    isSF = false,
+    aiAutoPickMode = 'off',
+    onAiAutoPickModeChange,
+    isFullscreen = false,
+    onToggleFullscreen,
   } = props
 
   const [searchQuery, setSearchQuery] = useState('')
@@ -121,9 +145,9 @@ export default function DraftRoom(props: DraftRoomProps) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [mobileTab, setMobileTab] = useState<MobileTab>('board')
   const [queue, setQueue] = useState<Array<{ name: string; position: string; team?: string | null }>>([])
-  const [autoPick, setAutoPick] = useState(false)
   const [chatMessages, setChatMessages] = useState<Array<{ from: string; text: string }>>([])
   const [chatInput, setChatInput] = useState('')
+  const [showCurrentRoster, setShowCurrentRoster] = useState(false)
 
   const settingsRef = useRef<HTMLDivElement>(null)
   const boardScrollRef = useRef<HTMLDivElement>(null)
@@ -245,16 +269,79 @@ export default function DraftRoom(props: DraftRoomProps) {
   }, [slots, rosterDisplay])
 
   useEffect(() => {
-    if (autoPick && isUserTurn && isDraftStarted && !draftComplete && filteredPlayers.length > 0) {
-      const topPlayer = filteredPlayers[0]
-      if (topPlayer && !draftedNames.has(topPlayer.name)) {
+    if (aiAutoPickMode === 'off' || !isUserTurn || !isDraftStarted || draftComplete) return
+    const undraftedPlayers = availablePlayers.filter(p => !draftedNames.has(p.name))
+    if (undraftedPlayers.length === 0) return
+
+    const queuePick = queue.find(q => !draftedNames.has(q.name))
+    if (queuePick) {
+      const timer = setTimeout(() => {
+        onMakePick({ name: queuePick.name, position: queuePick.position, team: queuePick.team })
+        setQueue(prev => prev.filter(q => q.name !== queuePick.name))
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+
+    if (aiAutoPickMode === 'bpa') {
+      const topPlayer = undraftedPlayers[0]
+      if (topPlayer) {
         const timer = setTimeout(() => {
           onMakePick({ name: topPlayer.name, position: topPlayer.position, team: topPlayer.team })
         }, 500)
         return () => clearTimeout(timer)
       }
     }
-  }, [autoPick, isUserTurn, isDraftStarted, draftComplete, filteredPlayers, draftedNames, onMakePick])
+
+    if (aiAutoPickMode === 'needs' && onAiPick) {
+      const timer = setTimeout(async () => {
+        const myRoster = draftPicks
+          .filter(p => p.manager === username)
+          .map(p => ({ position: p.position }))
+        const importedMyRoster = importedRosters?.[username] || []
+        const fullRoster = [...importedMyRoster.map(p => ({ position: p.position })), ...myRoster]
+        try {
+          const result = await onAiPick(username, fullRoster, undraftedPlayers)
+          if (result) {
+            onMakePick({ name: result.playerName, position: result.position, team: result.team })
+            setChatMessages(prev => [...prev, { from: '🤖 AI', text: `Auto-picked ${result.playerName}: ${result.reasoning}` }])
+          }
+        } catch {
+          const fallback = undraftedPlayers[0]
+          if (fallback) onMakePick({ name: fallback.name, position: fallback.position, team: fallback.team })
+        }
+      }, 600)
+      return () => clearTimeout(timer)
+    }
+  }, [aiAutoPickMode, isUserTurn, isDraftStarted, draftComplete, availablePlayers, draftedNames, onMakePick, queue, onAiPick, draftPicks, username, importedRosters])
+
+  useEffect(() => {
+    if (!isDraftStarted || draftComplete || isUserTurn || !onAiPick) return
+    if (!currentPickInfo) return
+
+    const timer = setTimeout(async () => {
+      const managerRoster = draftPicks
+        .filter(p => p.manager === currentPickInfo.managerName)
+        .map(p => ({ position: p.position }))
+
+      const importedRoster = importedRosters?.[currentPickInfo.managerName] || []
+      const fullRoster = [...importedRoster.map(p => ({ position: p.position })), ...managerRoster]
+
+      const undraftedPlayers = availablePlayers.filter(p => !draftedNames.has(p.name))
+
+      try {
+        const result = await onAiPick(currentPickInfo.managerName, fullRoster, undraftedPlayers)
+        if (result) {
+          onMakePick({ name: result.playerName, position: result.position, team: result.team })
+          setChatMessages(prev => [...prev, { from: '🤖 AI', text: `${currentPickInfo.managerName} picks ${result.playerName}: ${result.reasoning}` }])
+        }
+      } catch {
+        const fallback = undraftedPlayers[0]
+        if (fallback) onMakePick({ name: fallback.name, position: fallback.position, team: fallback.team })
+      }
+    }, 1200 + Math.random() * 800)
+
+    return () => clearTimeout(timer)
+  }, [isDraftStarted, draftComplete, isUserTurn, currentPickInfo, onAiPick, draftPicks, availablePlayers, draftedNames, onMakePick, importedRosters])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -366,6 +453,20 @@ export default function DraftRoom(props: DraftRoomProps) {
           >
             <RotateCcw className="w-3 h-3" />
             Reset
+          </button>
+        )}
+
+        {onToggleFullscreen && (
+          <button
+            onClick={onToggleFullscreen}
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition"
+            style={{ background: 'rgba(255,255,255,0.05)' }}
+          >
+            {isFullscreen ? (
+              <Minimize2 className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
+            ) : (
+              <Maximize2 className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.5)' }} />
+            )}
           </button>
         )}
 
@@ -556,7 +657,21 @@ export default function DraftRoom(props: DraftRoomProps) {
                       }}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-[8px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{pickLabel}</span>
+                        <span className="text-[8px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                          {pickLabel}
+                          {(() => {
+                            const colMgr = sortedManagers[actualCol]
+                            const tp = tradedPicks?.find(t => t.round === round && (
+                              String(t.originalRosterId) === colMgr?.id ||
+                              t.previousOwner === colMgr?.displayName
+                            ))
+                            return tp ? (
+                              <span className="text-[7px] block" style={{ color: '#f59e0b' }}>
+                                via {tp.newOwner || '?'}
+                              </span>
+                            ) : null
+                          })()}
+                        </span>
                         {pick && (
                           <span className="text-[8px] font-semibold px-1 rounded" style={{ background: POS_BG[pick.position], color: POS_TEXT[pick.position] }}>
                             {pick.position}
@@ -718,19 +833,22 @@ export default function DraftRoom(props: DraftRoomProps) {
     <div className="flex flex-col h-full overflow-hidden" style={{ background: '#22252e' }}>
       <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <span className="text-xs font-bold text-white">QUEUE</span>
-        <label className="flex items-center gap-1.5 text-[10px] cursor-pointer" style={{ color: 'rgba(255,255,255,0.45)' }}>
-          <span>Auto-pick</span>
-          <button
-            onClick={() => setAutoPick(!autoPick)}
-            className="w-8 h-4 rounded-full transition relative"
-            style={{ background: autoPick ? '#0ea5e9' : 'rgba(255,255,255,0.15)' }}
-          >
-            <div
-              className="w-3 h-3 rounded-full bg-white absolute top-[2px] transition-all"
-              style={{ left: autoPick ? '16px' : '2px' }}
-            />
-          </button>
-        </label>
+        <div className="flex items-center gap-0.5">
+          {(['off', 'bpa', 'needs'] as const).map(mode => (
+            <button
+              key={mode}
+              onClick={() => onAiAutoPickModeChange?.(mode)}
+              className="px-1.5 py-0.5 rounded text-[9px] font-medium transition"
+              style={{
+                background: aiAutoPickMode === mode ? (mode === 'off' ? 'rgba(255,255,255,0.1)' : 'rgba(14,165,233,0.2)') : 'rgba(255,255,255,0.04)',
+                color: aiAutoPickMode === mode ? (mode === 'off' ? 'rgba(255,255,255,0.7)' : '#0ea5e9') : 'rgba(255,255,255,0.35)',
+                border: aiAutoPickMode === mode ? (mode === 'off' ? '1px solid rgba(255,255,255,0.15)' : '1px solid rgba(14,165,233,0.3)') : '1px solid transparent',
+              }}
+            >
+              {mode === 'off' ? 'OFF' : mode === 'bpa' ? 'BPA' : 'NEEDS'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto px-2 py-2 space-y-1">
@@ -782,6 +900,29 @@ export default function DraftRoom(props: DraftRoomProps) {
           <span className="text-xs font-bold text-white">RESULTS</span>
           <span className="ml-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.35)' }}>{myPicks.length}/{slots.length} filled</span>
         </div>
+        {isRookieDraft && importedRosters?.[username] && (
+          <div className="px-2 py-1" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={() => setShowCurrentRoster(!showCurrentRoster)}
+              className="flex items-center gap-1 text-[10px] font-bold w-full py-1"
+              style={{ color: 'rgba(255,255,255,0.5)' }}
+            >
+              <ChevronDown className={`w-3 h-3 transition ${showCurrentRoster ? '' : '-rotate-90'}`} />
+              CURRENT ROSTER ({importedRosters[username].length})
+            </button>
+            {showCurrentRoster && (
+              <div className="space-y-0.5 mt-1">
+                {importedRosters[username].map((p, i) => (
+                  <div key={i} className="flex items-center gap-2 px-2 py-1 rounded text-[10px]" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                    <span className="font-bold w-7 text-center py-0.5 rounded text-[8px]" style={{ background: POS_BG[p.position], color: POS_TEXT[p.position] }}>{p.position}</span>
+                    <span className="text-white truncate flex-1">{p.name}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>{p.team}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="px-2 py-1 space-y-0.5">
           {rosterDisplay.map((item, idx) => (
             <div
@@ -847,6 +988,37 @@ export default function DraftRoom(props: DraftRoomProps) {
             style={{ background: 'rgba(14,165,233,0.15)', color: '#0ea5e9' }}
           >
             Send
+          </button>
+          <button
+            onClick={async () => {
+              if (!onAiDmSuggestion) return
+              setChatMessages(prev => [...prev, { from: '🤖 AI', text: 'Analyzing your picks...' }])
+              const myRoster = draftPicks
+                .filter(p => p.manager === username)
+                .map(p => ({ position: p.position }))
+              const importedMyRoster = importedRosters?.[username] || []
+              const fullRoster = [...importedMyRoster.map(p => ({ position: p.position })), ...myRoster]
+              const undraftedPlayers = availablePlayers.filter(p => !draftedNames.has(p.name))
+              const round = Math.ceil(currentOverall / teamCount)
+              const pick = ((currentOverall - 1) % teamCount) + 1
+              const result = await onAiDmSuggestion(fullRoster, undraftedPlayers, round, pick)
+              if (result) {
+                const msgs = result.suggestions.map((s: any) => ({
+                  from: '🤖 AI',
+                  text: `${s.type === 'need' ? '🎯' : s.type === 'bpa' ? '⭐' : '💰'} ${s.player} (${s.position}) - ${s.reason}`
+                }))
+                if (result.aiInsight) {
+                  msgs.push({ from: '🤖 AI', text: result.aiInsight })
+                }
+                setChatMessages(prev => [...prev, ...msgs])
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-lg text-[10px] font-medium"
+            style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}
+            disabled={!isDraftStarted || draftComplete}
+          >
+            <Zap className="w-3 h-3 inline mr-0.5" />
+            Ask AI
           </button>
         </div>
       </div>

@@ -45,8 +45,52 @@ export async function GET(req: NextRequest) {
     }
 
     const type = (req.nextUrl.searchParams.get('type') || 'redraft') as 'dynasty' | 'redraft'
+    const pool = req.nextUrl.searchParams.get('pool') || 'all'
 
-    const entries = await getLiveADP(type, limit)
+    let entries: Awaited<ReturnType<typeof getLiveADP>> = []
+
+    if (pool === 'rookie') {
+      const [devyEntries, ffcRookies] = await Promise.all([
+        getLiveADP('devy', limit).catch(() => []),
+        fetchFFCADP('rookie', 12).then(r => r.players).catch(() => []),
+      ])
+      const nameSet = new Set<string>()
+      for (const e of devyEntries) {
+        nameSet.add(e.name.toLowerCase())
+        entries.push(e)
+      }
+      for (const e of ffcRookies) {
+        if (!nameSet.has(e.name.toLowerCase())) {
+          nameSet.add(e.name.toLowerCase())
+          entries.push(e)
+        }
+      }
+      entries.sort((a, b) => a.adp - b.adp)
+      entries = entries.slice(0, limit)
+    } else if (pool === 'vet') {
+      entries = await getLiveADP(type, limit)
+      entries = entries.filter(e => e.source !== 'devy' && e.source !== 'rookie-db')
+    } else if (pool === 'combined') {
+      const [nflEntries, devyEntries] = await Promise.all([
+        getLiveADP(type, limit),
+        getLiveADP('devy', Math.floor(limit / 2)).catch(() => []),
+      ])
+      const nameSet = new Set<string>()
+      for (const e of nflEntries) {
+        nameSet.add(e.name.toLowerCase())
+        entries.push(e)
+      }
+      for (const e of devyEntries) {
+        if (!nameSet.has(e.name.toLowerCase())) {
+          nameSet.add(e.name.toLowerCase())
+          entries.push(e)
+        }
+      }
+      entries.sort((a, b) => a.adp - b.adp)
+      entries = entries.slice(0, limit)
+    } else {
+      entries = await getLiveADP(type, limit)
+    }
 
     let sleeperIdMap: Record<string, string> = {}
     try {
@@ -69,9 +113,11 @@ export async function GET(req: NextRequest) {
         adpLow: e.adpLow,
         adpStdev: e.adpStdev,
         bye: e.bye,
+        isRookie: e.source === 'devy' || e.source === 'rookie-db',
       })),
       count: entries.length,
       type,
+      pool,
     })
   } catch (err: any) {
     console.error('[mock-draft/adp] Error:', err)

@@ -1305,6 +1305,11 @@ function AFLegacyContent() {
   const [mockDraftPicks, setMockDraftPicks] = useState<Array<{ overall: number; round: number; slot: number; manager: string; playerName: string; position: string; pickedAt: string }>>([])
   const [mockNflPool, setMockNflPool] = useState<Array<{ name: string; position: string; team?: string | null; adp?: number }>>([])
   const [mockNflPoolLoading, setMockNflPoolLoading] = useState(false)
+  const [mockImportedRosters, setMockImportedRosters] = useState<Record<string, Array<{ playerId: string; name: string; position: string; team: string }>>>({})
+  const [mockTradedPicks, setMockTradedPicks] = useState<Array<{ season: string; round: number; originalRosterId: number; previousOwner: string; newOwner: string }>>([])
+  const [mockAiAutoPickMode, setMockAiAutoPickMode] = useState<'off' | 'bpa' | 'needs'>('off')
+  const [mockIsFullscreen, setMockIsFullscreen] = useState(false)
+  const [mockImportedLeagueSettings, setMockImportedLeagueSettings] = useState<{ isDynasty?: boolean; isSF?: boolean; rosterPositions?: string[] } | null>(null)
   const chatContainerRef = useRef<HTMLDivElement>(null)
 
   // Feedback modal state
@@ -4306,6 +4311,63 @@ function AFLegacyContent() {
       finally { setMockManagersLoading(false) }
     }
     loadManagers()
+
+    const loadLeagueImport = async () => {
+      try {
+        const res = await fetch('/api/mock-draft/league-import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ league_id: mockDraftLeagueId }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        if (data.rosters && typeof data.rosters === 'object') {
+          const rostersByName: Record<string, Array<{ playerId: string; name: string; position: string; team: string }>> = {}
+          const managerMap = new Map((data.managers || []).map((m: any) => [String(m.rosterId), m.displayName]))
+          for (const [rid, players] of Object.entries(data.rosters)) {
+            const name = managerMap.get(rid) || `Team ${rid}`
+            rostersByName[name] = (players as any[]).map((p: any) => ({
+              playerId: p.playerId || '',
+              name: p.name || 'Unknown',
+              position: p.position || '?',
+              team: p.team || '',
+            }))
+          }
+          setMockImportedRosters(rostersByName)
+        }
+        if (Array.isArray(data.tradedPicks)) {
+          setMockTradedPicks(data.tradedPicks.map((tp: any) => ({
+            season: tp.season || '',
+            round: tp.round || 0,
+            originalRosterId: tp.originalRosterId || 0,
+            previousOwner: tp.previousOwner || '',
+            newOwner: tp.newOwner || '',
+          })))
+        }
+        if (data.leagueSettings) {
+          setMockImportedLeagueSettings({
+            isDynasty: data.leagueSettings.leagueType === 'dynasty',
+            isSF: data.leagueSettings.isSF || false,
+            rosterPositions: data.leagueSettings.rosterPositions || undefined,
+          })
+          if (data.leagueSettings.rosterPositions) {
+            const posOnly = (data.leagueSettings.rosterPositions as string[]).filter((s: string) => !['BN', 'IR', 'TAXI'].includes(s))
+            if (posOnly.length > 0 && posOnly.length <= 20) {
+              setMockDraftRounds(Math.max(mockDraftRounds, Math.ceil(posOnly.length / 2)))
+            }
+          }
+        }
+        if (data.managers && Array.isArray(data.managers) && data.managers.length > 0) {
+          setMockManagers(data.managers.map((m: any) => ({
+            id: String(m.userId || m.rosterId),
+            displayName: m.displayName || `Team ${m.rosterId}`,
+            avatar: m.avatar || undefined,
+            draftSlot: m.draftSlot ?? null,
+          })))
+        }
+      } catch {}
+    }
+    loadLeagueImport()
   }, [username, mockDraftLeagueId])
 
   useEffect(() => {
@@ -4313,18 +4375,21 @@ function AFLegacyContent() {
     if (!selectedLeague) return
 
     const type = selectedLeague.type?.toLowerCase().includes('dynasty') ? 'dynasty' : 'redraft'
+    const poolMap: Record<string, string> = { 'rookie': 'rookie', 'vet': 'vet', 'both': 'combined' }
+    const pool = poolMap[mockDraftType] || 'all'
     setMockNflPoolLoading(true)
-    fetch(`/api/mock-draft/adp?type=${type}&limit=300`)
+    fetch(`/api/mock-draft/adp?type=${type}&limit=300&pool=${pool}`)
       .then(r => r.json())
       .then(data => setMockNflPool((data?.entries || []).map((p: any) => ({
         name: p.name,
         position: p.position,
         team: p.team,
         adp: p.adp,
+        isRookie: p.isRookie || false,
       }))))
       .catch(() => setMockNflPool([]))
       .finally(() => setMockNflPoolLoading(false))
-  }, [mockDraftLeagueId, leagues])
+  }, [mockDraftLeagueId, leagues, mockDraftType])
 
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode; badge?: string }> = [
     { id: 'overview' as Tab, label: 'Overview', icon: <BarChart3 className="w-4 h-4" /> },
@@ -17674,7 +17739,7 @@ function AFLegacyContent() {
                 )}
 
                 {activeTab === 'mock-draft' && (
-                  <div className="-mx-3 sm:-mx-4 md:-mx-6 -mb-4 overflow-hidden" style={{ height: 'calc(100vh - 180px)', minHeight: '600px' }}>
+                  <div className={`${mockIsFullscreen ? 'fixed inset-0 z-[9999]' : '-mx-3 sm:-mx-4 md:-mx-6 -mb-4'} overflow-hidden`} style={mockIsFullscreen ? { background: '#1a1d26' } : { height: 'calc(100vh - 180px)', minHeight: '600px' }}>
                   {(() => {
                     const selectedLeague = leagues.find(l => l.league_id === mockDraftLeagueId) || leagues[0]
                     const teamCount = Math.max(8, Math.min(14, selectedLeague?.team_count || mockManagers.length || 12))
@@ -17742,6 +17807,66 @@ function AFLegacyContent() {
                         }}
                         availablePlayers={availablePool}
                         nflPoolLoading={mockNflPoolLoading}
+                        importedRosters={mockImportedRosters}
+                        tradedPicks={mockTradedPicks}
+                        isRookieDraft={mockDraftType === 'rookie'}
+                        isDynasty={mockImportedLeagueSettings?.isDynasty ?? selectedLeague?.type?.toLowerCase().includes('dynasty') ?? true}
+                        isSF={mockImportedLeagueSettings?.isSF ?? false}
+                        aiAutoPickMode={mockAiAutoPickMode}
+                        onAiAutoPickModeChange={setMockAiAutoPickMode}
+                        isFullscreen={mockIsFullscreen}
+                        onToggleFullscreen={() => setMockIsFullscreen(f => !f)}
+                        rosterSlots={mockImportedLeagueSettings?.rosterPositions}
+                        onAiPick={async (managerName, teamRoster, available) => {
+                          try {
+                            const res = await fetch('/api/mock-draft/ai-pick', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                action: 'pick',
+                                available: available.slice(0, 30),
+                                teamRoster,
+                                rosterSlots: mockImportedLeagueSettings?.rosterPositions || [],
+                                round: Math.ceil((mockDraftPicks.length + 1) / teamCount),
+                                pick: ((mockDraftPicks.length) % teamCount) + 1,
+                                totalRounds: mockDraftRounds,
+                                totalTeams: teamCount,
+                                managerName,
+                                isDynasty: mockImportedLeagueSettings?.isDynasty ?? true,
+                                isSF: mockImportedLeagueSettings?.isSF ?? false,
+                                isRookieDraft: mockDraftType === 'rookie',
+                                mode: 'needs',
+                              }),
+                            })
+                            const data = await res.json()
+                            if (data.pick) return { playerName: data.pick.playerName, position: data.pick.position, team: data.pick.team || '', reasoning: data.reasoning || '' }
+                          } catch {}
+                          return null
+                        }}
+                        onAiDmSuggestion={async (teamRoster, available, round, pick) => {
+                          try {
+                            const res = await fetch('/api/mock-draft/ai-pick', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                action: 'dm-suggestion',
+                                available: available.slice(0, 30),
+                                teamRoster,
+                                rosterSlots: mockImportedLeagueSettings?.rosterPositions || [],
+                                round,
+                                pick,
+                                totalRounds: mockDraftRounds,
+                                totalTeams: teamCount,
+                                isDynasty: mockImportedLeagueSettings?.isDynasty ?? true,
+                                isSF: mockImportedLeagueSettings?.isSF ?? false,
+                                isRookieDraft: mockDraftType === 'rookie',
+                              }),
+                            })
+                            const data = await res.json()
+                            return { suggestions: data.suggestions || [], aiInsight: data.aiInsight || '' }
+                          } catch {}
+                          return null
+                        }}
                       />
                     )
                   })()}
