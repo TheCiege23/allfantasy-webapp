@@ -86,6 +86,29 @@ async function processSimulation(job: Job<SimJobData>) {
 
   await redis.set(cacheKey, JSON.stringify(result), "EX", REDIS_TTL_SECONDS)
 
+  try {
+    await prisma.simulationResult.upsert({
+      where: { sim_bracket_tournament: { bracketId, tournamentId } },
+      create: {
+        bracketId,
+        tournamentId,
+        runs,
+        modelVersion: MODEL_VERSION,
+        scoringMode,
+        resultJson: result as any,
+        createdByUserId: userId,
+      },
+      update: {
+        runs,
+        modelVersion: MODEL_VERSION,
+        scoringMode,
+        resultJson: result as any,
+      },
+    })
+  } catch (dbErr: any) {
+    console.error(`[SimWorker] DB persist failed (non-fatal):`, dbErr.message)
+  }
+
   return { cacheKey, result, cached: false }
 }
 

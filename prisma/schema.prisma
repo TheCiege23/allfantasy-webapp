@@ -2458,6 +2458,24 @@ model BracketFeedEvent {
   @@map("bracket_feed_events")
 }
 
+model SimulationResult {
+  id              String   @id @default(uuid())
+  bracketId       String
+  tournamentId    String
+  runs            Int
+  modelVersion    String
+  scoringMode     String   @default("EDGE")
+  resultJson      Json
+  createdByUserId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([bracketId, tournamentId], name: "sim_bracket_tournament")
+  @@index([createdByUserId])
+  @@map("simulation_results")
+}
+
 enum VerificationMethod {
   EMAIL
   PHONE
