@@ -7,6 +7,7 @@ type Body = {
   mode: "donate" | "lab";
   amount: number;
   currency: "usd";
+  tournamentId?: string;
 };
 
 export async function POST(req: Request) {
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
         purchase_type: body.mode,
         framing: isLab ? "research_tools" : "support",
         userId: session.user.id,
+        ...(isLab && body.tournamentId ? { tournamentId: body.tournamentId } : {}),
       },
     });
 
