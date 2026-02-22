@@ -14279,63 +14279,106 @@ function AFLegacyContent() {
                                       </div>
                                     )}
                                     
+                                    {playoffForecastData.leagueInfo && (
+                                      <div className="flex flex-wrap gap-3 mb-4 text-xs">
+                                        <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                                          <span className="text-slate-400">Teams:</span> <span className="text-white font-medium">{playoffForecastData.leagueInfo.totalTeams}</span>
+                                        </div>
+                                        <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                                          <span className="text-slate-400">Playoff Spots:</span> <span className="text-white font-medium">{playoffForecastData.leagueInfo.playoffSpots}</span>
+                                        </div>
+                                        <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                                          <span className="text-slate-400">Week:</span> <span className="text-white font-medium">{playoffForecastData.leagueInfo.currentWeek || 0} / {playoffForecastData.leagueInfo.totalWeeks || '?'}</span>
+                                        </div>
+                                        <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                                          <span className="text-slate-400">Simulations:</span> <span className="text-white font-medium">5,000</span>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     {/* Forecast Table */}
                                     <div className="overflow-x-auto">
                                       <table className="w-full text-sm">
                                         <thead>
                                           <tr className="border-b border-slate-700/50">
-                                            <th className="px-2 py-3 text-left text-xs font-medium text-slate-400 w-16">Team Rating</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium text-slate-400 w-10">#</th>
                                             <th className="px-3 py-3 text-left text-xs font-medium text-slate-400">Team</th>
-                                            <th className="px-2 py-3 text-center text-xs font-medium text-slate-400 w-20">Current Record</th>
-                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-600/30 text-blue-200 w-24">Make Playoffs</th>
-                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-700/30 text-blue-200 w-24">Make Semi-Finals</th>
-                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-800/30 text-blue-200 w-24">Make Finals</th>
-                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-900/40 text-blue-200 w-20">Win Finals</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium text-slate-400 w-16">Record</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium text-slate-400 w-16">Pts For</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-600/20 text-blue-200 w-24">Playoffs</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-700/20 text-blue-200 w-24">Semis</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-800/20 text-blue-200 w-24">Finals</th>
+                                            <th className="px-2 py-3 text-center text-xs font-medium bg-blue-900/30 text-blue-200 w-20">Champ</th>
+                                            <th className="px-2 py-3 text-left text-xs font-medium text-slate-400 hidden lg:table-cell">Status</th>
                                           </tr>
                                         </thead>
                                         <tbody>
-                                          {playoffForecastData.forecasts?.map((team: any) => (
-                                            <tr key={team.userId} className={`border-b border-slate-800/50 ${team.isUser ? 'bg-yellow-500/10' : 'hover:bg-slate-800/30'}`}>
-                                              <td className="px-2 py-3 text-left font-bold text-white">{team.teamRating}</td>
-                                              <td className="px-3 py-3">
-                                                <div className={`font-medium ${team.isUser ? 'text-yellow-300' : 'text-white'}`}>
-                                                  {team.teamName}
-                                                  {team.sleeperUsername && team.sleeperUsername !== team.teamName && (
-                                                    <span className="text-slate-400 font-normal text-xs ml-1.5">@{team.sleeperUsername}</span>
-                                                  )}
+                                          {playoffForecastData.forecasts?.map((team: any) => {
+                                            const statusColors: Record<string, string> = {
+                                              clinched: 'text-emerald-400',
+                                              contending: 'text-blue-300',
+                                              longshot: 'text-amber-400',
+                                              eliminated: 'text-red-400',
+                                            }
+                                            const statusIcons: Record<string, string> = {
+                                              clinched: '✓',
+                                              contending: '~',
+                                              longshot: '!',
+                                              eliminated: '✗',
+                                            }
+                                            const rowBg = team.isUser
+                                              ? 'bg-yellow-500/10'
+                                              : team.status === 'eliminated'
+                                              ? 'bg-red-900/10 opacity-60'
+                                              : team.status === 'clinched'
+                                              ? 'bg-emerald-900/10'
+                                              : 'hover:bg-slate-800/30'
+
+                                            const probColor = (pct: number) => {
+                                              if (pct >= 75) return 'text-emerald-300 font-bold'
+                                              if (pct >= 50) return 'text-blue-300 font-semibold'
+                                              if (pct >= 25) return 'text-amber-300'
+                                              if (pct >= 10) return 'text-orange-400'
+                                              if (pct > 0) return 'text-red-400'
+                                              return 'text-slate-600'
+                                            }
+
+                                            const probBar = (pct: number) => {
+                                              const barColor = pct >= 75 ? 'bg-emerald-500' : pct >= 50 ? 'bg-blue-500' : pct >= 25 ? 'bg-amber-500' : pct >= 10 ? 'bg-orange-500' : 'bg-red-500'
+                                              return (
+                                                <div className="flex items-center gap-1.5">
+                                                  <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                                    <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                                                  </div>
+                                                  <span className={`text-xs tabular-nums ${probColor(pct)}`}>{pct}%</span>
                                                 </div>
-                                              </td>
-                                              <td className="px-2 py-3 text-center text-white">{team.currentRecord}</td>
-                                              <td className="px-2 py-3 text-center">
-                                                {team.probabilities.makePlayoffs >= 50 ? (
-                                                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-500/30 text-blue-200">✓</span>
-                                                ) : (
-                                                  <span className="text-slate-500">-</span>
-                                                )}
-                                              </td>
-                                              <td className="px-2 py-3 text-center">
-                                                {team.probabilities.makeSemiFinals >= 30 ? (
-                                                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-500/30 text-blue-200">✓</span>
-                                                ) : (
-                                                  <span className="text-slate-500">-</span>
-                                                )}
-                                              </td>
-                                              <td className="px-2 py-3 text-center">
-                                                {team.probabilities.makeFinals >= 20 ? (
-                                                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-500/30 text-blue-200">✓</span>
-                                                ) : (
-                                                  <span className="text-slate-500">-</span>
-                                                )}
-                                              </td>
-                                              <td className="px-2 py-3 text-center">
-                                                {team.probabilities.winFinals >= 10 ? (
-                                                  <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-blue-500/30 text-blue-200">✓</span>
-                                                ) : (
-                                                  <span className="text-slate-500">-</span>
-                                                )}
-                                              </td>
-                                            </tr>
-                                          ))}
+                                              )
+                                            }
+
+                                            return (
+                                              <tr key={team.userId} className={`border-b border-slate-800/50 ${rowBg}`}>
+                                                <td className="px-2 py-3 text-center text-xs text-slate-500 font-medium">{team.rank}</td>
+                                                <td className="px-3 py-3">
+                                                  <div className="flex items-center gap-2">
+                                                    <span className={`text-xs ${statusColors[team.status] || 'text-slate-400'}`}>{statusIcons[team.status] || ''}</span>
+                                                    <div>
+                                                      <div className={`font-medium text-sm ${team.isUser ? 'text-yellow-300' : 'text-white'}`}>
+                                                        {team.teamName}
+                                                      </div>
+                                                      <div className="text-[10px] text-slate-500 lg:hidden mt-0.5">{team.statusReason}</div>
+                                                    </div>
+                                                  </div>
+                                                </td>
+                                                <td className="px-2 py-3 text-center text-white text-xs font-medium">{team.currentRecord}</td>
+                                                <td className="px-2 py-3 text-center text-white/70 text-xs">{team.pointsFor > 0 ? team.pointsFor.toFixed(1) : '-'}</td>
+                                                <td className="px-2 py-3 text-center">{probBar(team.probabilities.makePlayoffs)}</td>
+                                                <td className="px-2 py-3 text-center">{probBar(team.probabilities.makeSemiFinals)}</td>
+                                                <td className="px-2 py-3 text-center">{probBar(team.probabilities.makeFinals)}</td>
+                                                <td className="px-2 py-3 text-center">{probBar(team.probabilities.winFinals)}</td>
+                                                <td className="px-2 py-3 text-left text-[11px] text-slate-400 hidden lg:table-cell max-w-[200px]">{team.statusReason}</td>
+                                              </tr>
+                                            )
+                                          })}
                                         </tbody>
                                       </table>
                                     </div>
