@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getUncachableStripeClient } from "@/lib/stripe-client";
+import { getActiveTournament } from "@/lib/tournament";
 
 type Body = {
   mode: "donate" | "lab";
   amount: number;
   currency: "usd";
-  tournamentId?: string;
 };
 
 export async function POST(req: Request) {
@@ -26,6 +26,14 @@ export async function POST(req: Request) {
     if (!body || !body.amount || body.amount <= 0) {
       return NextResponse.json(
         { error: "Invalid amount" },
+        { status: 400 }
+      );
+    }
+
+    const tournament = await getActiveTournament();
+    if (!tournament) {
+      return NextResponse.json(
+        { error: "No active tournament" },
         { status: 400 }
       );
     }
@@ -49,8 +57,8 @@ export async function POST(req: Request) {
 
     const productName = isLab ? "Bracket Lab Pass (Tournament)" : "Donation";
     const description = isLab
-      ? "Access to simulation and strategy exploration tools for this tournament."
-      : "Optional support to fund performance, servers, and data costs.";
+      ? "Access to simulation + strategy exploration tools for this tournament."
+      : "Optional support to fund servers, data costs, and performance improvements.";
 
     const stripe = await getUncachableStripeClient();
 
@@ -73,9 +81,8 @@ export async function POST(req: Request) {
       ],
       metadata: {
         purchase_type: body.mode,
-        framing: isLab ? "research_tools" : "support",
         userId: session.user.id,
-        ...(isLab && body.tournamentId ? { tournamentId: body.tournamentId } : {}),
+        tournamentId: tournament.id,
       },
     });
 
