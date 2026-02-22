@@ -783,6 +783,110 @@ export default function DraftRoom(props: DraftRoomProps) {
     </div>
   )
 
+  const mobileDraftBoard = (
+    <div className="flex-1 overflow-auto" style={{ minHeight: 0, background: '#1a1d26' }}>
+      <div className="px-2 py-2 space-y-3">
+        {Array.from({ length: draftRounds }, (_, roundIdx) => {
+          const round = roundIdx + 1
+          return (
+            <div key={round}>
+              <div className="flex items-center gap-2 mb-1.5 px-1">
+                <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.4)' }}>Round {round}</span>
+                <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
+              </div>
+              <div className="space-y-1">
+                {Array.from({ length: teamCount }, (_, colIdx) => {
+                  let actualCol = colIdx
+                  const isSnakeRd = draftFormat === 'snake' && round % 2 === 0
+                  const is3rrRd = enable3RR && round >= 3 && round % 2 === 1
+                  if (isSnakeRd || is3rrRd) {
+                    actualCol = teamCount - 1 - colIdx
+                  }
+                  const overall = (round - 1) * teamCount + colIdx + 1
+                  const pickLabel = `${round}.${(colIdx + 1).toString().padStart(2, '0')}`
+                  const mgr = sortedManagers[actualCol]
+                  const pick = draftPicks.find(p => p.round === round && (p.slot === actualCol + 1 || p.slot === actualCol))
+                  const isCurrent = overall === currentOverall && isDraftStarted && !draftComplete
+
+                  const tp = tradedPicks?.find(t => t.round === round && (
+                    String(t.originalRosterId) === mgr?.id ||
+                    t.previousOwner === mgr?.displayName
+                  ))
+
+                  return (
+                    <div
+                      key={`m-${round}-${colIdx}`}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg"
+                      style={{
+                        background: isCurrent
+                          ? 'rgba(14,165,233,0.15)'
+                          : pick
+                            ? 'rgba(255,255,255,0.04)'
+                            : 'rgba(255,255,255,0.02)',
+                        border: isCurrent ? '1px solid rgba(14,165,233,0.3)' : '1px solid rgba(255,255,255,0.04)',
+                      }}
+                    >
+                      <div className="w-8 shrink-0 text-center">
+                        <span className="text-[10px] font-bold" style={{ color: isCurrent ? '#0ea5e9' : 'rgba(255,255,255,0.3)' }}>
+                          {pickLabel}
+                        </span>
+                      </div>
+                      <div className="shrink-0">
+                        {mgr?.avatar ? (
+                          <img src={mgr.avatar} alt="" className="w-7 h-7 rounded-full" />
+                        ) : (
+                          <div
+                            className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold"
+                            style={{
+                              background: isCurrent ? 'rgba(14,165,233,0.3)' : 'rgba(255,255,255,0.1)',
+                              color: isCurrent ? '#0ea5e9' : 'rgba(255,255,255,0.5)',
+                            }}
+                          >
+                            {mgr?.displayName?.charAt(0)?.toUpperCase() || '?'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium truncate" style={{ color: isCurrent ? '#0ea5e9' : 'rgba(255,255,255,0.5)' }}>
+                            {mgr?.displayName || `Team ${actualCol + 1}`}
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'rgba(14,165,233,0.2)', color: '#0ea5e9' }}>
+                              OTC
+                            </span>
+                          )}
+                          {tp && (
+                            <span className="text-[8px] shrink-0" style={{ color: '#f59e0b' }}>via {tp.newOwner || '?'}</span>
+                          )}
+                        </div>
+                        {pick ? (
+                          <span className="text-[12px] font-semibold text-white truncate block">{pick.playerName}</span>
+                        ) : isCurrent ? (
+                          <span className="text-[11px] font-medium block" style={{ color: '#0ea5e9' }}>On the clock...</span>
+                        ) : (
+                          <span className="text-[11px]" style={{ color: 'rgba(255,255,255,0.15)' }}>—</span>
+                        )}
+                      </div>
+                      {pick && (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded shrink-0"
+                          style={{ background: POS_BG[pick.position], color: POS_TEXT[pick.position] }}
+                        >
+                          {pick.position}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
   const draftBoard = (
     <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
       <div ref={boardScrollRef} className="overflow-auto h-full" style={{ background: '#1a1d26' }}>
@@ -1345,7 +1449,7 @@ export default function DraftRoom(props: DraftRoomProps) {
       {/* Mobile layout */}
       <div className="flex md:hidden flex-col flex-1 overflow-hidden">
         <div className="flex-1 overflow-hidden">
-          {mobileTab === 'board' && draftBoard}
+          {mobileTab === 'board' && mobileDraftBoard}
           {mobileTab === 'players' && playerListPanel}
           {mobileTab === 'myteam' && resultsPanel}
         </div>
