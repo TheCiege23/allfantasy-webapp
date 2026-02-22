@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react"
-import { Trophy, Sparkles, Zap, Info, Check, X, ZoomIn, ZoomOut, Maximize2 } from "lucide-react"
+import { Trophy, Sparkles, Zap, Info, Check, X, ZoomIn, ZoomOut, Maximize2, Clock } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 import { MatchupCardOverlay } from "./MatchupCardOverlay"
 
@@ -130,15 +130,15 @@ function getGameResult(node: Node): { winner: string | null; isComplete: boolean
   return { winner: null, isComplete: false }
 }
 
-const CW = 96
-const CH = 28
-const TH = 14
-const VG = 4
-const CG = 16
+const CW = 120
+const CH = 36
+const TH = 18
+const VG = 6
+const CG = 24
 const REGION_H = 8 * CH + 7 * VG
 const REGION_W = 4 * CW + 3 * CG
-const REGION_V_GAP = 28
-const CENTER_W = 140
+const REGION_V_GAP = 40
+const CENTER_W = 180
 const FULL_H = 2 * REGION_H + REGION_V_GAP
 const FULL_W = 2 * REGION_W + CENTER_W
 
@@ -284,7 +284,7 @@ function MiniCell({
         }}
       >
         {seed != null && (
-          <span style={{ fontSize: 8, fontWeight: 700, color: seedColor(isSleeper), width: 10, flexShrink: 0 }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: seedColor(isSleeper), width: 10, flexShrink: 0 }}>
             {seed}
           </span>
         )}
@@ -293,7 +293,7 @@ function MiniCell({
         )}
         <span
           style={{
-            fontSize: 9,
+            fontSize: 10,
             fontWeight: isTeamHighlighted ? 700 : 500,
             color: pickColor(name, isPicked, correct, wrong, isSleeper, isUpset),
             overflow: 'hidden',
@@ -322,7 +322,7 @@ function MiniCell({
 
   const hasPick = !!picked
   const hasUpset = homeIsUpsetPick || awayIsUpsetPick
-  let borderColor = 'rgba(255,255,255,0.07)'
+  let borderColor = 'rgba(255,255,255,0.10)'
   if (isHighlighted) borderColor = 'rgba(251,146,60,0.5)'
   else if (homeCorrect || awayCorrect) borderColor = hasUpsetResult ? 'rgba(168,85,247,0.4)' : 'rgba(34,197,94,0.3)'
   else if (homeWrong || awayWrong) borderColor = 'rgba(239,68,68,0.2)'
@@ -337,13 +337,13 @@ function MiniCell({
 
   return (
     <div
-      className="absolute rounded-md overflow-hidden"
+      className="absolute rounded-lg overflow-hidden"
       style={{
         left: x,
         top: y,
         width: CW,
         height: CH,
-        background: '#1c2333',
+        background: '#252d3d',
         border: `1px solid ${borderColor}`,
         animation: upsetAnimation,
         opacity: isDimmed ? 0.3 : 1,
@@ -421,6 +421,11 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const totalPicks = useMemo(() => Object.values(picks).filter(Boolean).length, [picks])
   const totalGames = useMemo(() => nodesWithLive.filter(n => n.round >= 1).length, [nodesWithLive])
   const progressPct = totalGames > 0 ? Math.round((totalPicks / totalGames) * 100) : 0
+
+  const hasAnyResults = useMemo(() => nodesWithLive.some(n => {
+    const { isComplete } = getGameResult(n)
+    return isComplete
+  }), [nodesWithLive])
 
   const autoFill = useCallback(async () => {
     if (autoFilling || readOnly) return
@@ -645,14 +650,14 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
         const mx = (sx + ex) / 2
 
         lines.push(
-          <line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+          <line key={`${direction}-${r}-${i}-h1`} x1={sx} y1={cy} x2={mx} y2={cy} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
         )
         lines.push(
-          <line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+          <line key={`${direction}-${r}-${i}-v`} x1={mx} y1={cy} x2={mx} y2={ny} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
         )
         if (i % 2 === 0) {
           lines.push(
-            <line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+            <line key={`${direction}-${r}-${i}-h2`} x1={mx} y1={ny} x2={ex} y2={ny} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
           )
         }
       }
@@ -789,7 +794,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
         <div
           ref={canvasContainerRef}
           className="overflow-hidden rounded-xl select-none"
-          style={{ background: '#0d1117', border: '1px solid rgba(255,255,255,0.06)', cursor: isPanning ? 'grabbing' : 'grab' }}
+          style={{ background: '#141b2d', border: '1px solid rgba(255,255,255,0.06)', cursor: isPanning ? 'grabbing' : 'grab' }}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -805,6 +810,16 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
             transition: isPanning ? 'none' : 'transform 0.15s ease',
             minWidth: FULL_W + 48,
           }}>
+            {!hasAnyResults && (
+              <div className="flex items-center justify-center mb-4">
+                <div className="flex items-center gap-2 px-4 py-2 rounded-lg" style={{ background: '#252d3d', border: '1px solid rgba(255,255,255,0.10)' }}>
+                  <Clock style={{ width: 14, height: 14, color: 'rgba(255,255,255,0.4)' }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}>Brackets open on March 17th</span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>·</span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>Waiting for Selection Sunday</span>
+                </div>
+              </div>
+            )}
             <div className="relative" style={{ width: FULL_W, height: FULL_H, margin: '0 auto' }}>
 
               <svg
@@ -824,31 +839,31 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
 
                 {/* E8 to center connector lines */}
                 {/* West E8 (top-left) → center left */}
-                <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={leftX + REGION_W} y1={e8TopCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
                 {/* East E8 (bottom-left) → center left */}
-                <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={leftX + REGION_W} y1={e8BotCy} x2={centerX + (CENTER_W - CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
                 {/* South E8 (top-right) → center right */}
-                <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={rightX} y1={e8TopCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff0Y + TH} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
                 {/* Midwest E8 (bottom-right) → center right */}
-                <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={rightX} y1={e8BotCy} x2={centerX + (CENTER_W + CW) / 2} y2={ff1Y + TH} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
 
                 {/* FF to Championship */}
-                <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-                <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+                <line x1={centerX + CENTER_W / 2} y1={ff0Y + CH} x2={centerX + CENTER_W / 2} y2={champY} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
+                <line x1={centerX + CENTER_W / 2} y1={ff1Y} x2={centerX + CENTER_W / 2} y2={champY + CH} stroke="rgba(255,255,255,0.15)" strokeWidth={1} />
               </svg>
 
               {/* Region watermark labels */}
               <div className="absolute pointer-events-none" style={{ left: leftX + REGION_W * 0.45, top: topY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
-                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>W</span>
+                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.07)', letterSpacing: 4 }}>W</span>
               </div>
               <div className="absolute pointer-events-none" style={{ left: leftX + REGION_W * 0.45, top: botY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
-                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>E</span>
+                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.07)', letterSpacing: 4 }}>E</span>
               </div>
               <div className="absolute pointer-events-none" style={{ left: rightX + REGION_W * 0.55, top: topY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
-                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>S</span>
+                <span style={{ fontSize: 56, fontWeight: 900, color: 'rgba(255,255,255,0.07)', letterSpacing: 4 }}>S</span>
               </div>
               <div className="absolute pointer-events-none" style={{ left: rightX + REGION_W * 0.55, top: botY + REGION_H * 0.4, transform: 'translate(-50%,-50%)' }}>
-                <span style={{ fontSize: 40, fontWeight: 900, color: 'rgba(255,255,255,0.03)', letterSpacing: 4 }}>MW</span>
+                <span style={{ fontSize: 48, fontWeight: 900, color: 'rgba(255,255,255,0.07)', letterSpacing: 4 }}>MW</span>
               </div>
 
               {/* Matchup cells per region */}
@@ -901,15 +916,15 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
               <div
                 className="absolute flex items-center justify-center rounded-xl"
                 style={{
-                  left: centerX + (CENTER_W - 44) / 2,
-                  top: champY + CH + 8,
-                  width: 44,
-                  height: 44,
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  left: centerX + (CENTER_W - 52) / 2,
+                  top: centerMidY - 26,
+                  width: 52,
+                  height: 52,
+                  background: '#252d3d',
+                  border: '1px solid rgba(255,255,255,0.10)',
                 }}
               >
-                <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.25)' }} />
+                <Trophy style={{ width: 26, height: 26, color: 'rgba(255,255,255,0.35)' }} />
               </div>
 
               {/* Champion pick label */}
@@ -936,15 +951,15 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                 <div
                   className="absolute flex items-center justify-center rounded-xl"
                   style={{
-                    left: centerX + (CENTER_W - 44) / 2,
-                    top: FULL_H / 2 - 22,
-                    width: 44,
-                    height: 44,
-                    background: 'rgba(255,255,255,0.04)',
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    left: centerX + (CENTER_W - 52) / 2,
+                    top: FULL_H / 2 - 26,
+                    width: 52,
+                    height: 52,
+                    background: '#252d3d',
+                    border: '1px solid rgba(255,255,255,0.10)',
                   }}
                 >
-                  <Trophy style={{ width: 22, height: 22, color: 'rgba(255,255,255,0.25)' }} />
+                  <Trophy style={{ width: 26, height: 26, color: 'rgba(255,255,255,0.35)' }} />
                 </div>
               )}
             </div>

@@ -116,12 +116,12 @@ export function BracketView({ nodes, entryId, picks }: Props) {
     const isLocked = g?.startTime ? new Date(g.startTime) <= new Date() : false
 
     return (
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-800 shadow-sm">
+      <div className="rounded-xl border p-3 shadow-sm" style={{ background: '#252d3d', borderColor: 'rgba(255,255,255,0.10)' }}>
         <div className="flex items-center justify-between">
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          <div className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.4)' }}>
             {ROUND_LABEL[n.round] ?? `R${n.round}`}
           </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-500">
+          <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
             {n.slot}
           </div>
         </div>
@@ -133,17 +133,22 @@ export function BracketView({ nodes, entryId, picks }: Props) {
             className={[
               "w-full text-left rounded-lg border px-3 py-2 text-sm transition-colors",
               homePicked
-                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-400 font-medium"
-                : "border-gray-200 dark:border-gray-600",
+                ? "font-medium"
+                : "",
               !n.homeTeamName || isLocked
                 ? "opacity-50 cursor-not-allowed"
-                : "hover:border-gray-400 dark:hover:border-gray-500 cursor-pointer",
+                : "cursor-pointer",
             ].join(" ")}
+            style={{
+              borderColor: homePicked ? '#3b82f6' : 'rgba(255,255,255,0.10)',
+              background: homePicked ? 'rgba(59,130,246,0.15)' : 'transparent',
+              color: 'rgba(255,255,255,0.9)',
+            }}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate dark:text-gray-100">{home}</span>
+              <span className="truncate">{home}</span>
               {g && (
-                <span className="text-xs text-gray-600 dark:text-gray-400 tabular-nums">
+                <span className="text-xs tabular-nums" style={{ color: 'rgba(255,255,255,0.4)' }}>
                   {g.homeScore ?? "-"}
                 </span>
               )}
@@ -156,17 +161,22 @@ export function BracketView({ nodes, entryId, picks }: Props) {
             className={[
               "w-full text-left rounded-lg border px-3 py-2 text-sm transition-colors",
               awayPicked
-                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 dark:border-blue-400 font-medium"
-                : "border-gray-200 dark:border-gray-600",
+                ? "font-medium"
+                : "",
               !n.awayTeamName || isLocked
                 ? "opacity-50 cursor-not-allowed"
-                : "hover:border-gray-400 dark:hover:border-gray-500 cursor-pointer",
+                : "cursor-pointer",
             ].join(" ")}
+            style={{
+              borderColor: awayPicked ? '#3b82f6' : 'rgba(255,255,255,0.10)',
+              background: awayPicked ? 'rgba(59,130,246,0.15)' : 'transparent',
+              color: 'rgba(255,255,255,0.9)',
+            }}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="truncate dark:text-gray-100">{away}</span>
+              <span className="truncate">{away}</span>
               {g && (
-                <span className="text-xs text-gray-600 dark:text-gray-400 tabular-nums">
+                <span className="text-xs tabular-nums" style={{ color: 'rgba(255,255,255,0.4)' }}>
                   {g.awayScore ?? "-"}
                 </span>
               )}
@@ -175,7 +185,7 @@ export function BracketView({ nodes, entryId, picks }: Props) {
         </div>
 
         {g && (
-          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 flex items-center justify-between">
+          <div className="mt-2 text-xs flex items-center justify-between" style={{ color: 'rgba(255,255,255,0.35)' }}>
             <span className="truncate">{g.status ?? "—"}</span>
             <span className="truncate">
               {g.startTime
@@ -186,7 +196,7 @@ export function BracketView({ nodes, entryId, picks }: Props) {
         )}
 
         {isLocked && (
-          <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-400 font-medium">
+          <div className="mt-1 text-[11px] font-medium" style={{ color: '#fbbf24' }}>
             Locked
           </div>
         )}
@@ -203,8 +213,8 @@ export function BracketView({ nodes, entryId, picks }: Props) {
       byRound[r].sort((a, b) => a.slot.localeCompare(b.slot))
 
     return (
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-        <div className="text-lg font-semibold dark:text-gray-100">
+      <div className="rounded-2xl border p-4" style={{ background: '#1a2030', borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className="text-lg font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
           {region}
         </div>
         <div className="mt-4 overflow-x-auto">
@@ -216,7 +226,7 @@ export function BracketView({ nodes, entryId, picks }: Props) {
           >
             {rounds.map((r) => (
               <div key={r} className="space-y-3">
-                <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                <div className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>
                   {ROUND_LABEL[r]}
                 </div>
                 {byRound[r].map((n) => (
@@ -231,10 +241,10 @@ export function BracketView({ nodes, entryId, picks }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ background: '#141b2d' }}>
       {firstFour.length > 0 && (
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-          <div className="text-lg font-semibold dark:text-gray-100">
+        <div className="rounded-2xl border p-4" style={{ background: '#1a2030', borderColor: 'rgba(255,255,255,0.08)' }}>
+          <div className="text-lg font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
             First Four
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -251,8 +261,8 @@ export function BracketView({ nodes, entryId, picks }: Props) {
         ))}
       </div>
 
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-900">
-        <div className="text-lg font-semibold dark:text-gray-100">
+      <div className="rounded-2xl border p-4" style={{ background: '#1a2030', borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className="text-lg font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>
           Final Four & Championship
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
