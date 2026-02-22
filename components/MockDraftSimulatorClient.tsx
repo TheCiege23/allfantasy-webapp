@@ -222,6 +222,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
   const [isSimulating, setIsSimulating] = useState(false)
   const [customRounds, setCustomRounds] = useState(18)
   const [customScoring, setCustomScoring] = useState('default')
+  const [draftType, setDraftType] = useState<'snake' | 'linear' | 'auction'>('snake')
+  const [autopickMode, setAutopickMode] = useState<'queue-first' | 'bpa' | 'need-based'>('queue-first')
+  const [casualMode, setCasualMode] = useState(false)
   const [onClockPick, setOnClockPick] = useState<number | null>(null)
   const [tradeResult, setTradeResult] = useState<any>(null)
   const [isTrading, setIsTrading] = useState(false)
@@ -461,6 +464,9 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
       leagueId: selectedLeagueId,
       rounds: customRounds,
       scoringTweak: customScoring,
+      draftType,
+      autopickMode,
+      casualMode,
       useLiveADP: true,
     })
     if (data?.draftResults) {
@@ -844,6 +850,34 @@ export default function MockDraftSimulatorClient({ leagues }: { leagues: LeagueO
                 <SelectItem value="tep">TE Premium</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Draft Type</label>
+            <Select value={draftType} onValueChange={(v: 'snake' | 'linear' | 'auction') => setDraftType(v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="snake">Snake</SelectItem>
+                <SelectItem value="linear">Linear</SelectItem>
+                <SelectItem value="auction">Auction</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Autopick Mode</label>
+            <Select value={autopickMode} onValueChange={(v: 'queue-first' | 'bpa' | 'need-based') => setAutopickMode(v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="queue-first">Queue-first</SelectItem>
+                <SelectItem value="bpa">Best Player Available</SelectItem>
+                <SelectItem value="need-based">Need-based</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Validation Mode</label>
+            <Button type="button" variant={casualMode ? 'default' : 'outline'} className={casualMode ? 'w-full bg-amber-500 hover:bg-amber-400 text-black' : 'w-full'} onClick={() => setCasualMode(prev => !prev)}>
+              {casualMode ? 'Casual (warn only)' : 'Strict (enforce constraints)'}
+            </Button>
           </div>
           <div className="md:col-span-3">
             <label className="block text-sm text-gray-400 mb-2">Scenario Assumptions</label>
