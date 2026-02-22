@@ -60,10 +60,13 @@ async function processSimulation(job: Job<SimJobData>) {
 
   const nodeData = buildNodeData(nodes)
 
+  const scoringMode = (job.data as any).scoringMode ?? "EDGE"
+
   const simResult = await simulateTournamentRuns({
     runs,
     nodeData,
     pickMap,
+    scoringMode,
     onProgress: async (pct) => {
       await job.updateProgress(pct)
     },
@@ -73,7 +76,7 @@ async function processSimulation(job: Job<SimJobData>) {
 
   const result: SimulationResult = {
     ...simResult,
-    scoring: "FanCred EDGE: R64=1, R32=2, S16=5, E8=10, F4=18, CH=30 + Upset Delta Bonus",
+    scoring: `FanCred ${scoringMode}: R64=1, R32=2, S16=5, E8=10, F4=18, CH=30 + Upset Delta Bonus`,
     runs,
     bracketId,
     totalPicks: userPicks,

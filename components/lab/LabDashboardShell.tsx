@@ -278,6 +278,14 @@ function SimPanel({
                 <ResultStat label="Worst Run" value={String(status.result.summary.minScore ?? 0)} color="text-red-300" />
               </div>
             )}
+            {status.result?.summary?.p50 != null && (
+              <div className="grid gap-2 sm:grid-cols-4 mb-3">
+                <ResultStat label="Median (p50)" value={String(status.result.summary.p50)} color="text-blue-300" />
+                <ResultStat label="p90" value={String(status.result.summary.p90)} color="text-violet-300" />
+                <ResultStat label="p99" value={String(status.result.summary.p99)} color="text-pink-300" />
+                <ResultStat label="Volatility" value={String(status.result.summary.volatility)} color="text-orange-300" />
+              </div>
+            )}
             {status.result?.roundBreakdown && (
               <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3 mb-3">
                 <div className="text-[10px] uppercase tracking-wider text-white/40 mb-2">Avg Points by Round</div>
