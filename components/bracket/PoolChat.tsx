@@ -42,6 +42,21 @@ type ChatMessage = {
 
 const QUICK_REACTIONS = ['🔥', '💀', '😂', '🏀', '👀', '💪', '❤️', '👏']
 
+const EXTENDED_EMOJIS: { label: string; emojis: string[] }[] = [
+  {
+    label: "March Madness",
+    emojis: ['🏀', '🏆', '🎯', '🏅', '🥇', '🥈', '🥉', '🎪', '🏟️', '📋'],
+  },
+  {
+    label: "Sports & Action",
+    emojis: ['💪', '🔥', '⚡', '💥', '🚀', '🎯', '🙌', '👏', '✊', '🤝'],
+  },
+  {
+    label: "Feelings & Reactions",
+    emojis: ['😂', '🤣', '💀', '😤', '😱', '🤯', '😭', '🥶', '🫡', '👀', '😈', '🤡', '🫠', '🥹'],
+  },
+]
+
 const USER_COLORS = [
   '#fb923c', '#3b82f6', '#22c55e', '#a855f7', '#ec4899',
   '#14b8a6', '#f59e0b', '#ef4444', '#6366f1', '#84cc16',
@@ -461,7 +476,7 @@ export function PoolChat({
 
                     <div className={`absolute ${isMe ? "-left-16" : "-right-16"} top-0 opacity-0 group-hover/msg:opacity-100 flex items-center gap-0.5 transition-opacity`}>
                       <button
-                        onClick={() => setShowReactionsFor(showReactionsFor === m.id ? null : m.id)}
+                        onClick={() => { setShowReactionsFor(showReactionsFor === m.id ? null : m.id); setShowEmojiPicker(false) }}
                         className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-white/10 transition"
                         style={{ color: "rgba(255,255,255,0.3)" }}
                         title="React"
@@ -479,12 +494,39 @@ export function PoolChat({
                     </div>
 
                     {showReactionsFor === m.id && (
-                      <div className={`absolute ${isMe ? "right-0" : "left-0"} -top-9 flex items-center gap-0.5 rounded-full px-1.5 py-1 z-20`} style={{ background: "rgba(22,22,30,0.98)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
-                        {QUICK_REACTIONS.map((r) => (
-                          <button key={r} onClick={() => sendReaction(m.id, r)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10 transition text-sm hover:scale-125">
-                            {r}
-                          </button>
-                        ))}
+                      <div className={`absolute ${isMe ? "right-0" : "left-0"} z-20`} style={{ bottom: "100%", marginBottom: 4 }}>
+                        <div className="rounded-xl px-1.5 py-1" style={{ background: "rgba(22,22,30,0.98)", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
+                          <div className="flex items-center gap-0.5">
+                            {QUICK_REACTIONS.map((r) => (
+                              <button key={r} onClick={() => sendReaction(m.id, r)} className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10 transition text-sm hover:scale-125">
+                                {r}
+                              </button>
+                            ))}
+                            <button
+                              onClick={() => setShowEmojiPicker(showEmojiPicker ? false : true)}
+                              className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-white/10 transition text-[10px]"
+                              title="More emojis"
+                            >
+                              ＋
+                            </button>
+                          </div>
+                          {showEmojiPicker && (
+                            <div className="pt-1 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", maxWidth: 260 }}>
+                              {EXTENDED_EMOJIS.map((cat) => (
+                                <div key={cat.label} className="mb-1.5">
+                                  <div className="text-[9px] uppercase tracking-wider px-1 mb-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>{cat.label}</div>
+                                  <div className="flex flex-wrap gap-0.5">
+                                    {cat.emojis.map((e, i) => (
+                                      <button key={`${e}-${i}`} onClick={() => sendReaction(m.id, e)} className="w-7 h-7 rounded flex items-center justify-center hover:bg-white/10 transition text-sm hover:scale-125">
+                                        {e}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
