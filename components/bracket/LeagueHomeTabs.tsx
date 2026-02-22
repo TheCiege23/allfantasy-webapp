@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { Trophy, ChevronDown, MessageCircle, Pin, Send, X, Share2, Copy, Check, Settings } from "lucide-react"
 import { BracketTreeView } from "./BracketTreeView"
 import { PoolStandings } from "./PoolStandings"
@@ -57,6 +57,7 @@ type Props = {
   paymentConfirmedAt: string | null
   entriesPerUserFree: number
   maxEntriesPerUser: number
+  scoringMode?: string
 }
 
 type TabId = "pool" | "brackets" | "global"
@@ -171,6 +172,7 @@ function PoolTab({
   maxEntriesPerUser,
   maxManagers,
   members,
+  scoringMode,
 }: Props & {
   activeEntryId: string
   setActiveEntryId: (id: string) => void
@@ -261,6 +263,7 @@ function PoolTab({
           entriesPerUserFree={entriesPerUserFree}
           maxEntriesPerUser={maxEntriesPerUser}
           maxManagers={maxManagers}
+          scoringMode={(scoringMode as ScoringMode) || 'standard'}
         />
       )}
 
@@ -360,6 +363,45 @@ function InviteSection({
   )
 }
 
+type ScoringMode = 'standard' | 'upset_bonus' | 'seed_weighted'
+
+const SCORING_MODES: { id: ScoringMode; label: string; desc: string }[] = [
+  { id: 'standard', label: 'Standard', desc: '1/2/4/8/16/32 pts per round' },
+  { id: 'upset_bonus', label: 'Upset Bonus', desc: 'Standard + bonus for lower seed wins' },
+  { id: 'seed_weighted', label: 'Seed Weighted', desc: 'Points = seed of winning team' },
+]
+
+function getScoringTable(mode: ScoringMode) {
+  if (mode === 'upset_bonus') {
+    return [
+      { round: "Round 1 (32)", pts: "1 + seed bonus", total: "32+" },
+      { round: "Round 2 (16)", pts: "2 + seed bonus", total: "32+" },
+      { round: "Sweet 16 (8)", pts: "4 + seed bonus", total: "32+" },
+      { round: "Elite 8 (4)", pts: "8 + seed bonus", total: "32+" },
+      { round: "Final Four (2)", pts: "16 + seed bonus", total: "32+" },
+      { round: "Championship (1)", pts: "32 + seed bonus", total: "32+" },
+    ]
+  }
+  if (mode === 'seed_weighted') {
+    return [
+      { round: "Round 1 (32)", pts: "= seed #", total: "varies" },
+      { round: "Round 2 (16)", pts: "= seed # x2", total: "varies" },
+      { round: "Sweet 16 (8)", pts: "= seed # x4", total: "varies" },
+      { round: "Elite 8 (4)", pts: "= seed # x8", total: "varies" },
+      { round: "Final Four (2)", pts: "= seed # x16", total: "varies" },
+      { round: "Championship (1)", pts: "= seed # x32", total: "varies" },
+    ]
+  }
+  return [
+    { round: "Round 1 (32)", pts: "1", total: "32" },
+    { round: "Round 2 (16)", pts: "2", total: "32" },
+    { round: "Sweet 16 (8)", pts: "4", total: "32" },
+    { round: "Elite 8 (4)", pts: "8", total: "32" },
+    { round: "Final Four (2)", pts: "16", total: "32" },
+    { round: "Championship (1)", pts: "32", total: "32" },
+  ]
+}
+
 function SettingsPanel({
   joinCode,
   isPaidLeague,
@@ -369,6 +411,7 @@ function SettingsPanel({
   entriesPerUserFree,
   maxEntriesPerUser,
   maxManagers,
+  scoringMode: initialScoringMode,
 }: {
   joinCode: string
   isPaidLeague: boolean
@@ -378,15 +421,26 @@ function SettingsPanel({
   entriesPerUserFree: number
   maxEntriesPerUser: number
   maxManagers: number
+  scoringMode: ScoringMode
 }) {
-  const SCORING = [
-    { round: "Round 1 (32)", pts: 1, total: 32 },
-    { round: "Round 2 (16)", pts: 2, total: 32 },
-    { round: "Sweet 16 (8)", pts: 4, total: 32 },
-    { round: "Elite 8 (4)", pts: 8, total: 32 },
-    { round: "Final Four (2)", pts: 16, total: 32 },
-    { round: "Championship (1)", pts: 32, total: 32 },
-  ]
+  const [scoringMode, setScoringMode] = useState<ScoringMode>(initialScoringMode)
+  const [saving, setSaving] = useState(false)
+
+  async function updateScoringMode(mode: ScoringMode) {
+    setScoringMode(mode)
+    if (!isOwner) return
+    setSaving(true)
+    try {
+      await fetch(`/api/bracket/leagues/${leagueId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ scoringMode: mode }),
+      })
+    } catch {}
+    setSaving(false)
+  }
+
+  const scoring = getScoringTable(scoringMode)
 
   return (
     <div className="space-y-3">
@@ -399,6 +453,34 @@ function SettingsPanel({
           <div style={{ color: 'rgba(255,255,255,0.6)' }}>Show Champ Pick</div>
         </div>
 
+        <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <div className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Scoring Mode {saving && <span style={{ color: '#fb923c' }}>(saving...)</span>}
+          </div>
+          <div className="flex gap-2">
+            {SCORING_MODES.map(m => (
+              <button
+                key={m.id}
+                onClick={() => isOwner && updateScoringMode(m.id)}
+                className="flex-1 rounded-lg py-2 px-2 text-center transition-all"
+                style={{
+                  background: scoringMode === m.id ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.02)',
+                  border: `1px solid ${scoringMode === m.id ? 'rgba(251,146,60,0.3)' : 'rgba(255,255,255,0.06)'}`,
+                  cursor: isOwner ? 'pointer' : 'default',
+                  opacity: !isOwner && scoringMode !== m.id ? 0.4 : 1,
+                }}
+              >
+                <div className="text-[10px] font-bold" style={{ color: scoringMode === m.id ? '#fb923c' : 'rgba(255,255,255,0.6)' }}>
+                  {m.label}
+                </div>
+                <div className="text-[8px] mt-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  {m.desc}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <table className="w-full text-sm">
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
@@ -408,7 +490,7 @@ function SettingsPanel({
             </tr>
           </thead>
           <tbody>
-            {SCORING.map((s) => (
+            {scoring.map((s) => (
               <tr key={s.round} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <td className="px-4 py-2 text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{s.round}</td>
                 <td className="text-center px-4 py-2 text-xs font-bold" style={{ color: '#fb923c' }}>{s.pts}</td>
@@ -417,6 +499,17 @@ function SettingsPanel({
             ))}
           </tbody>
         </table>
+
+        {scoringMode === 'upset_bonus' && (
+          <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+            Upset bonus = winning team&apos;s seed number. E.g., if 12-seed wins, +12 bonus points.
+          </div>
+        )}
+        {scoringMode === 'seed_weighted' && (
+          <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+            Points = winner&apos;s seed x round multiplier. Rewards picking upsets correctly.
+          </div>
+        )}
       </div>
 
       {isPaidLeague && (
@@ -559,6 +652,18 @@ function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; curr
   )
 }
 
+const QUICK_REACTIONS = ['🔥', '💀', '😂', '🏀', '👀', '💪']
+
+function formatChatTime(iso: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
+  if (diff < 60000) return 'now'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 function ChatBar({
   leagueId,
   currentUserId,
@@ -573,17 +678,25 @@ function ChatBar({
   const [input, setInput] = useState("")
   const [sending, setSending] = useState(false)
   const [messages, setMessages] = useState<any[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showReactions, setShowReactions] = useState<string | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const lastSeenCount = useRef(0)
 
   async function fetchMessages() {
     try {
       const res = await fetch(`/api/bracket/leagues/${leagueId}/chat`)
       if (res.ok) {
         const data = await res.json()
-        setMessages(data.messages ?? [])
-        if (data.messages?.length > 0) {
-          const last = data.messages[data.messages.length - 1]
+        const msgs = data.messages ?? []
+        setMessages(msgs)
+        if (msgs.length > 0) {
+          const last = msgs[msgs.length - 1]
           const name = last.user?.displayName || last.user?.email || "Someone"
           setLatestMessage(`${name}: ${last.message?.length > 30 ? last.message.slice(0, 30) + "..." : last.message}`)
+        }
+        if (!expanded && msgs.length > lastSeenCount.current) {
+          setUnreadCount(msgs.length - lastSeenCount.current)
         }
       }
     } catch {}
@@ -605,76 +718,193 @@ function ChatBar({
     setSending(false)
   }
 
+  async function sendReaction(reaction: string) {
+    setShowReactions(null)
+    if (sending) return
+    setSending(true)
+    try {
+      await fetch(`/api/bracket/leagues/${leagueId}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: reaction }),
+      })
+      fetchMessages()
+    } catch {}
+    setSending(false)
+  }
+
   useEffect(() => { fetchMessages() }, [leagueId])
+
+  useEffect(() => {
+    if (expanded) {
+      lastSeenCount.current = messages.length
+      setUnreadCount(0)
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
+    }
+  }, [expanded, messages.length])
+
+  useEffect(() => {
+    const interval = setInterval(fetchMessages, 10000)
+    return () => clearInterval(interval)
+  }, [leagueId])
+
+  const onlineCount = Math.min(members.length, Math.max(1, Math.floor(members.length * 0.3)))
 
   if (!expanded) {
     return (
       <div
         onClick={() => { setExpanded(true); fetchMessages() }}
-        className="fixed bottom-0 left-0 right-0 z-30 px-4 py-3 flex items-center gap-3 cursor-pointer transition"
-        style={{ background: 'rgba(13,17,23,0.95)', backdropFilter: 'blur(12px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+        className="fixed bottom-0 left-0 right-0 z-30 px-4 py-3 flex items-center gap-3 cursor-pointer transition-all"
+        style={{ background: 'rgba(13,17,23,0.95)', backdropFilter: 'blur(12px)', borderTop: '1px solid rgba(255,255,255,0.08)' }}
       >
-        <MessageCircle className="h-5 w-5 text-white flex-shrink-0" />
+        <div className="relative flex-shrink-0">
+          <MessageCircle className="h-5 w-5 text-white" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white" style={{ background: '#ef4444' }}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </div>
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-semibold text-white">Chat</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-white">Chat</span>
+            <span className="flex items-center gap-1 text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#22c55e' }} />
+              {onlineCount} online
+            </span>
+          </div>
           {latestMessage ? (
-            <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.3)' }}>{latestMessage}</p>
+            <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.35)' }}>{latestMessage}</p>
           ) : (
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Be the first to say hi</p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Pin className="h-4 w-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>DM</span>
+        <div className="flex -space-x-1.5 flex-shrink-0">
+          {members.slice(0, 3).map(m => (
+            <div
+              key={m.id}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-[8px] font-bold"
+              style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c', border: '2px solid #0d1117' }}
+            >
+              {(m.user.displayName || m.user.email || '?').slice(0, 1).toUpperCase()}
+            </div>
+          ))}
         </div>
       </div>
     )
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30" style={{ background: 'rgba(13,17,23,0.98)', backdropFilter: 'blur(12px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-      <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-        <span className="text-sm font-semibold text-white flex items-center gap-2">
-          <MessageCircle className="h-4 w-4" />
-          Chat
-        </span>
-        <button onClick={() => setExpanded(false)} className="p-1 rounded-lg transition" style={{ color: 'rgba(255,255,255,0.4)' }}>
+    <div className="fixed bottom-0 left-0 right-0 z-30" style={{ background: 'rgba(13,17,23,0.98)', backdropFilter: 'blur(16px)', borderTop: '1px solid rgba(255,255,255,0.08)', maxHeight: '60vh' }}>
+      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2">
+          <MessageCircle className="h-4 w-4 text-white" />
+          <span className="text-sm font-semibold text-white">Pool Chat</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.35)' }}>
+            {members.length} members
+          </span>
+        </div>
+        <button onClick={() => setExpanded(false)} className="p-1.5 rounded-lg transition hover:bg-white/5" style={{ color: 'rgba(255,255,255,0.4)' }}>
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="max-h-48 overflow-y-auto px-4 py-2 space-y-2">
+      <div className="overflow-y-auto px-4 py-3 space-y-2.5" style={{ maxHeight: 'calc(60vh - 100px)' }}>
         {messages.length === 0 && (
-          <p className="text-xs text-center py-4" style={{ color: 'rgba(255,255,255,0.2)' }}>No messages yet. Start the conversation!</p>
+          <div className="text-center py-6 space-y-2">
+            <MessageCircle className="h-8 w-8 mx-auto" style={{ color: 'rgba(255,255,255,0.08)' }} />
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>No messages yet. Start the trash talk!</p>
+          </div>
         )}
-        {messages.map((m: any) => {
+        {messages.map((m: any, idx: number) => {
           const isMe = m.user?.id === currentUserId || m.userId === currentUserId
+          const prevMsg = idx > 0 ? messages[idx - 1] : null
+          const sameSender = prevMsg && (prevMsg.user?.id || prevMsg.userId) === (m.user?.id || m.userId)
+          const isReaction = QUICK_REACTIONS.includes(m.message)
+
+          if (isReaction) {
+            return (
+              <div key={m.id} className={`flex ${isMe ? 'justify-end' : ''}`}>
+                <div className="flex items-center gap-1.5">
+                  {!isMe && !sameSender && (
+                    <div className="w-5 h-5 rounded-full flex items-center justify-center text-[7px] font-bold" style={{ background: 'rgba(251,146,60,0.2)', color: '#fb923c' }}>
+                      {(m.user?.displayName || m.user?.email || "?").slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="text-lg">{m.message}</span>
+                </div>
+              </div>
+            )
+          }
+
           return (
-            <div key={m.id} className={`flex gap-2 ${isMe ? "justify-end" : ""}`}>
-              {!isMe && (
+            <div key={m.id} className={`flex gap-2 ${isMe ? "justify-end" : ""} group`}>
+              {!isMe && !sameSender && (
                 <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: 'rgba(251,146,60,0.2)' }}>
                   {(m.user?.displayName || m.user?.email || "?").slice(0, 2).toUpperCase()}
                 </div>
               )}
-              <div className="rounded-xl px-3 py-1.5 max-w-[70%]" style={{ background: isMe ? 'rgba(251,146,60,0.1)' : 'rgba(255,255,255,0.04)' }}>
-                {!isMe && (
-                  <div className="text-[10px] font-semibold mb-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                    {m.user?.displayName || m.user?.email || "Unknown"}
+              {!isMe && sameSender && <div className="w-6 flex-shrink-0" />}
+              <div className="max-w-[75%] relative">
+                {!isMe && !sameSender && (
+                  <div className="text-[10px] font-semibold mb-0.5 flex items-center gap-1.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                    {m.user?.displayName || m.user?.email?.split('@')[0] || "Unknown"}
+                    {m.createdAt && (
+                      <span style={{ color: 'rgba(255,255,255,0.15)' }}>{formatChatTime(m.createdAt)}</span>
+                    )}
                   </div>
                 )}
-                <div className="text-xs" style={{ color: 'rgba(255,255,255,0.8)' }}>{m.message}</div>
+                <div
+                  className={`rounded-2xl px-3 py-1.5 text-xs leading-relaxed ${isMe ? 'rounded-br-md' : 'rounded-bl-md'}`}
+                  style={{
+                    background: isMe ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.04)',
+                    color: isMe ? '#fbbf24' : 'rgba(255,255,255,0.8)',
+                  }}
+                >
+                  {m.message}
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowReactions(showReactions === m.id ? null : m.id) }}
+                  className="absolute -right-1 -top-1 opacity-0 group-hover:opacity-100 w-5 h-5 rounded-full flex items-center justify-center transition-opacity text-[10px]"
+                  style={{ background: 'rgba(255,255,255,0.1)' }}
+                >
+                  +
+                </button>
+                {showReactions === m.id && (
+                  <div className="absolute -top-8 right-0 flex items-center gap-0.5 rounded-full px-1.5 py-1 z-10" style={{ background: 'rgba(30,30,40,0.95)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    {QUICK_REACTIONS.map(r => (
+                      <button key={r} onClick={() => sendReaction(r)} className="w-6 h-6 rounded-full flex items-center justify-center hover:bg-white/10 transition text-sm">
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )
         })}
+        <div ref={messagesEndRef} />
       </div>
 
-      <form onSubmit={sendMessage} className="px-4 py-2 flex items-center gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+      <form onSubmit={sendMessage} className="px-4 py-2.5 flex items-center gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {QUICK_REACTIONS.slice(0, 3).map(r => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => sendReaction(r)}
+              className="w-7 h-7 rounded-full flex items-center justify-center transition text-sm hover:bg-white/10"
+            >
+              {r}
+            </button>
+          ))}
+        </div>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a message..."
-          className="flex-1 rounded-xl px-3 py-2 text-sm text-white outline-none"
+          maxLength={500}
+          className="flex-1 rounded-xl px-3 py-2 text-sm text-white outline-none placeholder-white/20"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
         />
         <button

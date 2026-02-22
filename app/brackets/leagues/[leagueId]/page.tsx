@@ -86,6 +86,7 @@ export default async function LeagueDetailPage({
   const maxEntriesPerUser = Number(rules.maxEntriesPerUser ?? 10)
   const isPaidLeague = Boolean(rules.isPaidLeague)
   const paymentConfirmedAt = rules.commissionerPaymentConfirmedAt as string | null
+  const scoringMode = String(rules.scoringMode || 'standard')
 
   return (
     <div className="min-h-screen text-white" style={{ background: '#0d1117' }}>
@@ -127,6 +128,7 @@ export default async function LeagueDetailPage({
           paymentConfirmedAt={paymentConfirmedAt}
           entriesPerUserFree={entriesPerUserFree}
           maxEntriesPerUser={maxEntriesPerUser}
+          scoringMode={scoringMode}
         />
       </div>
     </div>

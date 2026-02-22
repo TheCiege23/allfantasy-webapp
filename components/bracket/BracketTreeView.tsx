@@ -172,6 +172,22 @@ function regionPositions() {
 
 const POS = regionPositions()
 
+function isUpsetPick(seedMap: Map<string, number>, pickedTeam: string | null, otherTeam: string | null): boolean {
+  if (!pickedTeam || !otherTeam) return false
+  const pickedSeed = seedMap.get(pickedTeam)
+  const otherSeed = seedMap.get(otherTeam)
+  if (pickedSeed == null || otherSeed == null) return false
+  return pickedSeed > otherSeed && (pickedSeed - otherSeed) >= 3
+}
+
+function isUpsetResult(seedMap: Map<string, number>, winner: string | null, loser: string | null): boolean {
+  if (!winner || !loser) return false
+  const wSeed = seedMap.get(winner)
+  const lSeed = seedMap.get(loser)
+  if (wSeed == null || lSeed == null) return false
+  return wSeed > lSeed && (wSeed - lSeed) >= 3
+}
+
 function MiniCell({
   node,
   picks,
@@ -181,6 +197,8 @@ function MiniCell({
   onPick,
   readOnly,
   sleeperTeams,
+  highlightedTeam,
+  onHoverTeam,
   x,
   y,
 }: {
@@ -192,6 +210,8 @@ function MiniCell({
   onPick: (node: Node, team: string) => void
   readOnly?: boolean
   sleeperTeams?: Set<string>
+  highlightedTeam?: string | null
+  onHoverTeam?: (team: string | null) => void
   x: number
   y: number
 }) {
@@ -210,19 +230,31 @@ function MiniCell({
   const homeWrong = isComplete && homePicked && winner !== homeName
   const awayWrong = isComplete && awayPicked && winner !== awayName
 
+  const loser = isComplete && winner ? (winner === homeName ? awayName : homeName) : null
+  const hasUpsetResult = isComplete && isUpsetResult(seedMap, winner, loser)
+  const homeIsUpsetPick = homePicked && isUpsetPick(seedMap, homeName, awayName)
+  const awayIsUpsetPick = awayPicked && isUpsetPick(seedMap, awayName, homeName)
+
+  const isHighlighted = !!(highlightedTeam && (homeName === highlightedTeam || awayName === highlightedTeam))
+  const isDimmed = !!(highlightedTeam && !isHighlighted)
+
   const canClick = !readOnly && !locked
 
-  function pickBg(isPicked: boolean, correct: boolean, wrong: boolean): string {
+  function pickBg(isPicked: boolean, correct: boolean, wrong: boolean, isUpset: boolean): string {
+    if (correct && isUpset) return 'rgba(168,85,247,0.2)'
     if (correct) return 'rgba(34,197,94,0.15)'
     if (wrong) return 'rgba(239,68,68,0.1)'
+    if (isPicked && isUpset) return 'rgba(168,85,247,0.12)'
     if (isPicked) return 'rgba(251,146,60,0.18)'
     return 'transparent'
   }
 
-  function pickColor(name: string | null, isPicked: boolean, correct: boolean, wrong: boolean, isSleeper: boolean): string {
+  function pickColor(name: string | null, isPicked: boolean, correct: boolean, wrong: boolean, isSleeper: boolean, isUpset: boolean): string {
     if (!name) return 'rgba(255,255,255,0.12)'
+    if (correct && isUpset) return '#c084fc'
     if (correct) return '#22c55e'
     if (wrong) return 'rgba(239,68,68,0.5)'
+    if (isPicked && isUpset) return '#c084fc'
     if (isPicked) return '#fb923c'
     if (isSleeper) return '#c084fc'
     return 'rgba(255,255,255,0.75)'
@@ -232,19 +264,22 @@ function MiniCell({
     return isSleeper ? '#a855f7' : 'rgba(255,255,255,0.25)'
   }
 
-  function TeamRow({ name, seed, isPicked, side, correct, wrong }: {
-    name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'; correct: boolean; wrong: boolean
+  function TeamRow({ name, seed, isPicked, side, correct, wrong, isUpset }: {
+    name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away'; correct: boolean; wrong: boolean; isUpset: boolean
   }) {
     const isSleeper = !!(name && sleeperTeams?.has(name))
     const clickable = canClick && !!name
+    const isTeamHighlighted = highlightedTeam === name
     return (
       <button
         disabled={!clickable}
         onClick={() => name && onPick(node, name)}
+        onMouseEnter={() => name && onHoverTeam?.(name)}
+        onMouseLeave={() => onHoverTeam?.(null)}
         className="w-full flex items-center text-left"
         style={{
           height: TH,
-          background: pickBg(isPicked, correct, wrong),
+          background: isTeamHighlighted ? 'rgba(251,146,60,0.25)' : pickBg(isPicked, correct, wrong, isUpset),
           borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.04)' : undefined,
           cursor: clickable ? 'pointer' : 'default',
           paddingLeft: 4,
@@ -257,11 +292,14 @@ function MiniCell({
             {seed}
           </span>
         )}
+        {isSleeper && (
+          <span style={{ fontSize: 6, fontWeight: 800, color: '#a855f7', flexShrink: 0, lineHeight: 1, background: 'rgba(168,85,247,0.15)', borderRadius: 2, padding: '1px 2px' }}>S</span>
+        )}
         <span
           style={{
             fontSize: 9,
-            fontWeight: 500,
-            color: pickColor(name, isPicked, correct, wrong, isSleeper),
+            fontWeight: isTeamHighlighted ? 700 : 500,
+            color: pickColor(name, isPicked, correct, wrong, isSleeper, isUpset),
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -271,8 +309,12 @@ function MiniCell({
         >
           {name || ''}
         </span>
-        {correct && <Check style={{ width: 8, height: 8, color: '#22c55e', flexShrink: 0 }} />}
+        {correct && hasUpsetResult && <Zap style={{ width: 8, height: 8, color: '#c084fc', flexShrink: 0 }} />}
+        {correct && !hasUpsetResult && <Check style={{ width: 8, height: 8, color: '#22c55e', flexShrink: 0 }} />}
         {wrong && <X style={{ width: 8, height: 8, color: '#ef4444', flexShrink: 0 }} />}
+        {isUpset && !isComplete && !correct && !wrong && (
+          <span style={{ fontSize: 6, fontWeight: 800, color: '#c084fc', flexShrink: 0 }}>!</span>
+        )}
         {node.game && !correct && !wrong && (
           <span style={{ fontSize: 8, fontWeight: 700, color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
             {side === 'home' ? (node.game.homeScore ?? '') : (node.game.awayScore ?? '')}
@@ -283,10 +325,19 @@ function MiniCell({
   }
 
   const hasPick = !!picked
+  const hasUpset = homeIsUpsetPick || awayIsUpsetPick
   let borderColor = 'rgba(255,255,255,0.07)'
-  if (homeCorrect || awayCorrect) borderColor = 'rgba(34,197,94,0.3)'
+  if (isHighlighted) borderColor = 'rgba(251,146,60,0.5)'
+  else if (homeCorrect || awayCorrect) borderColor = hasUpsetResult ? 'rgba(168,85,247,0.4)' : 'rgba(34,197,94,0.3)'
   else if (homeWrong || awayWrong) borderColor = 'rgba(239,68,68,0.2)'
+  else if (hasUpset) borderColor = 'rgba(168,85,247,0.3)'
   else if (hasPick) borderColor = 'rgba(251,146,60,0.25)'
+
+  const upsetAnimation = (hasUpsetResult && (homeCorrect || awayCorrect))
+    ? 'bracket-upset-glow 2s ease-in-out infinite'
+    : hasUpset && !isComplete
+    ? 'bracket-upset-pulse 3s ease-in-out infinite'
+    : undefined
 
   return (
     <div
@@ -298,10 +349,13 @@ function MiniCell({
         height: CH,
         background: '#1c2333',
         border: `1px solid ${borderColor}`,
+        animation: upsetAnimation,
+        opacity: isDimmed ? 0.3 : 1,
+        transition: 'opacity 0.2s ease',
       }}
     >
-      <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" correct={homeCorrect} wrong={homeWrong} />
-      <TeamRow name={awayName} seed={awaySeed} isPicked={awayPicked} side="away" correct={awayCorrect} wrong={awayWrong} />
+      <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" correct={homeCorrect} wrong={homeWrong} isUpset={homeIsUpsetPick} />
+      <TeamRow name={awayName} seed={awaySeed} isPicked={awayPicked} side="away" correct={awayCorrect} wrong={awayWrong} isUpset={awayIsUpsetPick} />
     </div>
   )
 }
@@ -324,6 +378,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const [activeRegion, setActiveRegion] = useState<string>("West")
   const [showTips, setShowTips] = useState(false)
   const [autoFilling, setAutoFilling] = useState(false)
+  const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null)
 
   const regionRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
@@ -436,6 +491,8 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
             onPick={submitPick}
             readOnly={readOnly}
             sleeperTeams={sleeperTeams}
+            highlightedTeam={highlightedTeam}
+            onHoverTeam={setHighlightedTeam}
             x={x}
             y={y}
           />
@@ -525,6 +582,16 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
 
   return (
     <div className="space-y-3">
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes bracket-upset-glow {
+          0%, 100% { box-shadow: 0 0 4px rgba(168,85,247,0.3), inset 0 0 4px rgba(168,85,247,0.05); }
+          50% { box-shadow: 0 0 10px rgba(168,85,247,0.5), inset 0 0 8px rgba(168,85,247,0.1); }
+        }
+        @keyframes bracket-upset-pulse {
+          0%, 100% { box-shadow: 0 0 2px rgba(168,85,247,0.15); }
+          50% { box-shadow: 0 0 6px rgba(168,85,247,0.3); }
+        }
+      `}} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-base font-bold">My Bracket</h2>
@@ -656,6 +723,8 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   onPick={submitPick}
                   readOnly={readOnly}
                   sleeperTeams={sleeperTeams}
+                  highlightedTeam={highlightedTeam}
+                  onHoverTeam={setHighlightedTeam}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={i === 0 ? ff0Y : ff1Y}
                 />
@@ -673,6 +742,8 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   onPick={submitPick}
                   readOnly={readOnly}
                   sleeperTeams={sleeperTeams}
+                  highlightedTeam={highlightedTeam}
+                  onHoverTeam={setHighlightedTeam}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={champY}
                 />
