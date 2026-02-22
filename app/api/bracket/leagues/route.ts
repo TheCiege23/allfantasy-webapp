@@ -68,7 +68,7 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
 
   const body = await req.json()
-  const { name, season, sport, maxManagers, isPaidLeague, fancredEntryFee, fancredPaymentReference } = body as {
+  const { name, season, sport, maxManagers, isPaidLeague, fancredEntryFee, fancredPaymentReference, scoringMode, isPublic, allowCopyBracket, pickVisibility, insuranceEnabled } = body as {
     name: string
     season: number
     sport: string
@@ -76,6 +76,11 @@ export async function POST(req: Request) {
     isPaidLeague?: boolean
     fancredEntryFee?: number
     fancredPaymentReference?: string
+    scoringMode?: string
+    isPublic?: boolean
+    allowCopyBracket?: boolean
+    pickVisibility?: string
+    insuranceEnabled?: boolean
   }
   if (!name || !season || !sport)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 })
@@ -103,6 +108,10 @@ export async function POST(req: Request) {
     joinCode = makeJoinCode()
   }
 
+  const validModes = ["fancred_edge", "momentum", "accuracy_boldness", "streak_survival"]
+  const selectedMode = validModes.includes(scoringMode || "") ? scoringMode : "fancred_edge"
+  const isPrivateLeague = isPublic === true ? false : true
+
   const league = await (prisma as any).bracketLeague.create({
     data: {
       name,
@@ -110,13 +119,20 @@ export async function POST(req: Request) {
       ownerId: auth.userId,
       maxManagers: normalizedMaxManagers,
       joinCode,
+      isPrivate: isPrivateLeague,
       scoringRules: {
+        mode: selectedMode,
+        scoringMode: selectedMode,
         entriesPerUserFree: 2,
         maxEntriesPerUser: 10,
         isPaidLeague: paidLeague,
         fancredEntryFee: normalizedEntryFee,
         fancredPaymentReference: fancredPaymentReference?.trim() || null,
         commissionerPaymentConfirmedAt: null,
+        allowCopyBracket: allowCopyBracket !== false,
+        pickVisibility: pickVisibility === "hidden_until_lock" ? "hidden_until_lock" : "visible",
+        insuranceEnabled: Boolean(insuranceEnabled),
+        insurancePerEntry: 1,
       },
       members: {
         create: { userId: auth.userId, role: "ADMIN" },

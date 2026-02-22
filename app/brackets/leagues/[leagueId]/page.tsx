@@ -16,7 +16,7 @@ export default async function LeagueDetailPage({
   const league = await (prisma as any).bracketLeague.findUnique({
     where: { id: params.leagueId },
     include: {
-      tournament: { select: { id: true, name: true, season: true, sport: true } },
+      tournament: { select: { id: true, name: true, season: true, sport: true, lockAt: true } },
       owner: { select: { id: true, displayName: true, email: true } },
       members: {
         include: {
@@ -54,6 +54,10 @@ export default async function LeagueDetailPage({
   const allPicksByEntry: Record<string, Record<string, string | null>> = {}
   let nodesWithGame: any[] = []
 
+  const pickVisibility = (league.scoringRules as any)?.pickVisibility || "visible"
+  const isLocked = league.tournament?.lockAt ? new Date(league.tournament.lockAt) <= new Date() : false
+  const hideOtherPicks = pickVisibility === "hidden_until_lock" && !isLocked
+
   if (league.entries.length > 0) {
     const primaryEntry = userEntries[0] ?? league.entries[0]
     const bracketData = await getEntryBracketData(league.tournament.id, primaryEntry.id)
@@ -62,6 +66,10 @@ export default async function LeagueDetailPage({
 
     const remainingEntries = league.entries.filter((e: any) => e.id !== primaryEntry.id)
     for (const entry of remainingEntries) {
+      if (hideOtherPicks && entry.userId !== userId) {
+        allPicksByEntry[entry.id] = {}
+        continue
+      }
       const picks = await prisma.bracketPick.findMany({
         where: { entryId: entry.id },
         select: { nodeId: true, pickedTeamName: true },

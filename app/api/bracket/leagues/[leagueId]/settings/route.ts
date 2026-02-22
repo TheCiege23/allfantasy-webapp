@@ -36,6 +36,10 @@ export async function PATCH(
       "entriesPerUserFree",
       "maxEntriesPerUser",
       "isPaidLeague",
+      "allowCopyBracket",
+      "pickVisibility",
+      "insuranceEnabled",
+      "insurancePerEntry",
     ]
 
     const updatedRules = { ...currentRules }

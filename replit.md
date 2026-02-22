@@ -49,6 +49,11 @@ The core architecture is based on a `One Engine API` that integrates a One Scori
 -   **Definitive Player Classification Engine:** Classifies devy players into statuses.
 -   **CFBD v2 Enhanced Devy Intelligence:** Enriched devy valuations using college football data.
 -   **Stripe Payment Integration:** Handles payments for paid bracket pools.
+-   **FanCred EDGE Scoring Mode:** Headline scoring with R64=1, R32=2, S16=5, E8=10, F4=18, CH=30, Upset Delta Bonus, Leverage Bonus, and Insurance Token.
+-   **Public Pools Directory:** Browseable public leagues with scoring mode filters and one-tap join.
+-   **Global Leaderboard:** Points, percentile, accuracy%, risk index with league-aware scoring.
+-   **Entry Controls:** Allow/disallow bracket copying, pick visibility (hidden until lock), insurance token toggle.
+-   **Provider Adapter System:** Mock + HTTP providers with capability scoring and auto-selection.
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.

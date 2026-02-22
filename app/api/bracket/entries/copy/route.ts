@@ -36,6 +36,14 @@ export async function POST(req: NextRequest) {
   }
 
   const rules = (source.league.scoringRules || {}) as any
+
+  if (rules.allowCopyBracket === false) {
+    return NextResponse.json(
+      { error: "COPY_DISABLED", message: "Bracket copying is disabled for this league." },
+      { status: 403 }
+    )
+  }
+
   const maxEntries = Number(rules.maxEntriesPerUser ?? 10)
 
   const currentCount = await prisma.bracketEntry.count({

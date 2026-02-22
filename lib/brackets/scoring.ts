@@ -1,9 +1,13 @@
-export type ScoringMode = "momentum" | "accuracy_boldness" | "streak_survival"
+export type ScoringMode = "fancred_edge" | "momentum" | "accuracy_boldness" | "streak_survival"
 
 export type ScoringRules = {
   mode: ScoringMode
   maxEntriesPerUser?: number
   isPaidLeague?: boolean
+  insuranceEnabled?: boolean
+  insurancePerEntry?: number
+  allowCopyBracket?: boolean
+  pickVisibility?: "visible" | "hidden_until_lock"
 }
 
 export type PickResult = {
@@ -28,6 +32,95 @@ export function pointsForRound(round: number): number {
     case 6: return 32
     default: return 0
   }
+}
+
+export function edgePointsForRound(round: number): number {
+  switch (round) {
+    case 1: return 1
+    case 2: return 2
+    case 3: return 5
+    case 4: return 10
+    case 5: return 18
+    case 6: return 30
+    default: return 0
+  }
+}
+
+export function scoreFanCredEdge(
+  picks: PickResult[],
+  leagueDistribution: LeaguePickDistribution,
+  insuranceNodeId?: string | null
+): {
+  total: number
+  breakdown: Array<{
+    nodeId: string
+    base: number
+    upsetDelta: number
+    leverageBonus: number
+    insured: boolean
+    total: number
+  }>
+} {
+  const breakdown: Array<{
+    nodeId: string
+    base: number
+    upsetDelta: number
+    leverageBonus: number
+    insured: boolean
+    total: number
+  }> = []
+  let total = 0
+
+  for (const pick of picks) {
+    const isInsured = insuranceNodeId === pick.nodeId
+
+    if (pick.isCorrect !== true) {
+      breakdown.push({
+        nodeId: pick.nodeId,
+        base: 0,
+        upsetDelta: 0,
+        leverageBonus: 0,
+        insured: isInsured,
+        total: 0,
+      })
+      continue
+    }
+
+    const base = edgePointsForRound(pick.round)
+
+    let upsetDelta = 0
+    if (
+      pick.pickedSeed != null &&
+      pick.actualWinnerSeed != null &&
+      pick.pickedSeed > pick.actualWinnerSeed
+    ) {
+      upsetDelta = Math.min(8, pick.pickedSeed - pick.actualWinnerSeed)
+    }
+
+    let leverageBonus = 0
+    const nodeDist = leagueDistribution[pick.nodeId]
+    if (nodeDist && pick.pickedTeamName) {
+      const totalPickers = Object.values(nodeDist).reduce((a, b) => a + b, 0)
+      const thisPick = nodeDist[pick.pickedTeamName] ?? 0
+      if (totalPickers > 0) {
+        const pickPct = thisPick / totalPickers
+        leverageBonus = Math.min(6, Math.round(base * (1 - pickPct) * 10) / 10)
+      }
+    }
+
+    const pts = base + upsetDelta + leverageBonus
+    total += pts
+    breakdown.push({
+      nodeId: pick.nodeId,
+      base,
+      upsetDelta,
+      leverageBonus,
+      insured: isInsured,
+      total: pts,
+    })
+  }
+
+  return { total, breakdown }
 }
 
 export function scoreMomentum(picks: PickResult[]): {
@@ -151,9 +244,14 @@ export function scoreStreakSurvival(picks: PickResult[]): {
 export function scoreEntry(
   mode: ScoringMode,
   picks: PickResult[],
-  leagueDistribution?: LeaguePickDistribution
+  leagueDistribution?: LeaguePickDistribution,
+  insuranceNodeId?: string | null
 ): { total: number; details: any } {
   switch (mode) {
+    case "fancred_edge": {
+      const result = scoreFanCredEdge(picks, leagueDistribution || {}, insuranceNodeId)
+      return { total: result.total, details: result }
+    }
     case "momentum":
       return { total: scoreMomentum(picks).total, details: scoreMomentum(picks) }
     case "accuracy_boldness":
@@ -172,6 +270,10 @@ export function scoreEntry(
 }
 
 export const SCORING_MODE_INFO: Record<ScoringMode, { label: string; description: string }> = {
+  fancred_edge: {
+    label: "FanCred EDGE",
+    description: "Headline scoring: R64=1, R32=2, S16=5, E8=10, F4=18, CH=30. Upset Delta Bonus + Leverage Bonus from league pick rarity. Optional Insurance Token protects one pick.",
+  },
   momentum: {
     label: "Momentum Scoring",
     description: "Base points per round + upset seed-gap bonus. Rewards correctly picking underdogs with bonus points that scale by round depth.",

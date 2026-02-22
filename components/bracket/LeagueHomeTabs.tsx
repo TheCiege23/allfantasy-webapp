@@ -60,13 +60,14 @@ type Props = {
   scoringMode?: string
 }
 
-type TabId = "pool" | "brackets" | "live" | "global"
+type TabId = "pool" | "brackets" | "live" | "global" | "public"
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "pool", label: "POOL" },
   { id: "brackets", label: "BRACKETS" },
   { id: "live", label: "LIVE" },
   { id: "global", label: "GLOBAL" },
+  { id: "public", label: "PUBLIC" },
 ]
 
 export function LeagueHomeTabs(props: Props) {
@@ -145,6 +146,9 @@ export function LeagueHomeTabs(props: Props) {
         )}
         {activeTab === "global" && (
           <GlobalTab tournamentId={props.tournamentId} currentUserId={props.currentUserId} />
+        )}
+        {activeTab === "public" && (
+          <PublicPoolsTab tournamentId={props.tournamentId} />
         )}
       </div>
 
@@ -372,24 +376,35 @@ function InviteSection({
   )
 }
 
-type ScoringMode = 'momentum' | 'accuracy_boldness' | 'streak_survival'
+type ScoringMode = 'fancred_edge' | 'momentum' | 'accuracy_boldness' | 'streak_survival'
 
-const VALID_SCORING_MODES: ScoringMode[] = ['momentum', 'accuracy_boldness', 'streak_survival']
+const VALID_SCORING_MODES: ScoringMode[] = ['fancred_edge', 'momentum', 'accuracy_boldness', 'streak_survival']
 
 function normalizeScoringMode(raw: string | undefined | null): ScoringMode {
   if (raw && VALID_SCORING_MODES.includes(raw as ScoringMode)) return raw as ScoringMode
   if (raw === 'standard' || raw === 'upset_bonus') return 'momentum'
   if (raw === 'seed_weighted') return 'accuracy_boldness'
-  return 'momentum'
+  return 'fancred_edge'
 }
 
 const SCORING_MODES: { id: ScoringMode; label: string; desc: string }[] = [
+  { id: 'fancred_edge', label: 'FanCred EDGE', desc: 'Upset delta + leverage bonus + insurance' },
   { id: 'momentum', label: 'Momentum', desc: 'Round base + seed-gap upset bonus' },
   { id: 'accuracy_boldness', label: 'Accuracy + Boldness', desc: 'Round base + uniqueness bonus within league' },
   { id: 'streak_survival', label: 'Streak & Survival', desc: 'Streak bonuses scaling deeper' },
 ]
 
 function getScoringTable(mode: ScoringMode) {
+  if (mode === 'fancred_edge') {
+    return [
+      { round: "Round of 64 (32)", pts: "1 + upset + leverage", total: "32+" },
+      { round: "Round of 32 (16)", pts: "2 + upset + leverage", total: "32+" },
+      { round: "Sweet 16 (8)", pts: "5 + upset + leverage", total: "40+" },
+      { round: "Elite 8 (4)", pts: "10 + upset + leverage", total: "40+" },
+      { round: "Final Four (2)", pts: "18 + upset + leverage", total: "36+" },
+      { round: "Championship (1)", pts: "30 + upset + leverage", total: "30+" },
+    ]
+  }
   if (mode === 'momentum') {
     return [
       { round: "Round 1 (32)", pts: "1 + upset bonus", total: "32+" },
@@ -528,6 +543,11 @@ function SettingsPanel({
           </tbody>
         </table>
 
+        {scoringMode === 'fancred_edge' && (
+          <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
+            Upset Delta: +min(8, seed diff) when underdog wins. Leverage: +base x (1 - league pick %) capped at +6. Insurance Token: protect 1 pick per bracket (if enabled).
+          </div>
+        )}
         {scoringMode === 'momentum' && (
           <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
             Upset bonus scales with seed gap and round depth. Rewards correctly picking upsets deeper in the tournament.
@@ -560,6 +580,39 @@ function SettingsPanel({
         </div>
       )}
 
+      <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="text-[10px] font-semibold uppercase tracking-wider px-4 py-2" style={{ color: 'rgba(255,255,255,0.3)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          Entry Controls
+        </div>
+        <EntryControlRow
+          label="Allow Copy Bracket"
+          description="Let members copy existing brackets"
+          field="allowCopyBracket"
+          isOwner={isOwner}
+          leagueId={leagueId}
+          initialValue={true}
+        />
+        <EntryControlRow
+          label="Hide Picks Until Lock"
+          description="Other members' picks hidden until tournament locks"
+          field="pickVisibility"
+          isOwner={isOwner}
+          leagueId={leagueId}
+          initialValue={false}
+          valueMap={{ true: "hidden_until_lock", false: "visible" }}
+        />
+        {scoringMode === 'fancred_edge' && (
+          <EntryControlRow
+            label="Insurance Token"
+            description="Each bracket gets 1 pick protected from damage"
+            field="insuranceEnabled"
+            isOwner={isOwner}
+            leagueId={leagueId}
+            initialValue={false}
+          />
+        )}
+      </div>
+
       <a
         href={process.env.NEXT_PUBLIC_FANCRED_URL || "https://fancred.com"}
         target="_blank"
@@ -574,6 +627,71 @@ function SettingsPanel({
           Dues and payouts are handled on FanCred. This app only hosts brackets.
         </div>
       </a>
+    </div>
+  )
+}
+
+function EntryControlRow({
+  label,
+  description,
+  field,
+  isOwner,
+  leagueId,
+  initialValue,
+  valueMap,
+}: {
+  label: string
+  description: string
+  field: string
+  isOwner: boolean
+  leagueId: string
+  initialValue: boolean
+  valueMap?: Record<string, string>
+}) {
+  const [enabled, setEnabled] = useState(initialValue)
+  const [saving, setSaving] = useState(false)
+
+  async function toggle() {
+    if (!isOwner) return
+    const newVal = !enabled
+    setEnabled(newVal)
+    setSaving(true)
+    try {
+      const value = valueMap ? valueMap[String(newVal)] : newVal
+      await fetch(`/api/bracket/leagues/${leagueId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ [field]: value }),
+      })
+    } catch {}
+    setSaving(false)
+  }
+
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.7)' }}>
+          {label} {saving && <span className="text-[10px]" style={{ color: '#fb923c' }}>(saving...)</span>}
+        </div>
+        <div className="text-[10px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{description}</div>
+      </div>
+      <button
+        onClick={toggle}
+        disabled={!isOwner}
+        className="w-10 h-5 rounded-full relative transition-colors flex-shrink-0"
+        style={{
+          background: enabled ? 'rgba(251,146,60,0.3)' : 'rgba(255,255,255,0.08)',
+          cursor: isOwner ? 'pointer' : 'default',
+        }}
+      >
+        <div
+          className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+          style={{
+            left: enabled ? '22px' : '2px',
+            background: enabled ? '#fb923c' : 'rgba(255,255,255,0.3)',
+          }}
+        />
+      </button>
     </div>
   )
 }
@@ -633,12 +751,13 @@ function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; curr
       </div>
 
       <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center px-4 py-2 text-[10px] font-semibold uppercase tracking-wider" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}>
-          <div className="w-10 text-center">#</div>
+        <div className="flex items-center px-3 py-2 text-[9px] font-semibold uppercase tracking-wider" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}>
+          <div className="w-8 text-center">#</div>
           <div className="flex-1">Player</div>
-          <div className="w-16 text-center">Pts</div>
-          <div className="w-16 text-center">Max</div>
-          <div className="w-20 text-right">Champ</div>
+          <div className="w-12 text-center">Pts</div>
+          <div className="w-12 text-center">Acc%</div>
+          <div className="w-12 text-center">Risk</div>
+          <div className="w-12 text-center">%ile</div>
         </div>
 
         {rankings.map((r: any) => {
@@ -646,13 +765,13 @@ function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; curr
           return (
             <div
               key={r.entryId}
-              className="flex items-center px-4 py-2.5 transition"
+              className="flex items-center px-3 py-2.5 transition"
               style={{
                 borderBottom: '1px solid rgba(255,255,255,0.03)',
                 background: isMe ? 'rgba(251,146,60,0.06)' : undefined,
               }}
             >
-              <div className="w-10 text-center text-xs font-bold" style={{ color: r.rank <= 3 ? '#fb923c' : 'rgba(255,255,255,0.4)' }}>
+              <div className="w-8 text-center text-xs font-bold" style={{ color: r.rank <= 3 ? '#fb923c' : 'rgba(255,255,255,0.4)' }}>
                 {r.rank}
               </div>
               <div className="flex-1 min-w-0">
@@ -661,22 +780,186 @@ function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; curr
                   {isMe && <span className="ml-1 text-[10px]" style={{ color: 'rgba(251,146,60,0.6)' }}>(you)</span>}
                 </div>
                 <div className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                  {r.entryName} • {r.leagueName}
+                  {r.entryName} • {r.championPick || '—'}
                 </div>
               </div>
-              <div className="w-16 text-center text-xs font-bold" style={{ color: '#fb923c' }}>
+              <div className="w-12 text-center text-xs font-bold" style={{ color: '#fb923c' }}>
                 {r.totalPoints}
               </div>
-              <div className="w-16 text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                {r.maxPossible}
+              <div className="w-12 text-center text-[10px]" style={{ color: r.accuracy >= 60 ? '#22c55e' : 'rgba(255,255,255,0.4)' }}>
+                {r.accuracy}%
               </div>
-              <div className="w-20 text-right text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                {r.championPick || '—'}
+              <div className="w-12 text-center text-[10px]" style={{ color: r.riskIndex >= 30 ? '#818cf8' : 'rgba(255,255,255,0.4)' }}>
+                {r.riskIndex}%
+              </div>
+              <div className="w-12 text-center text-[10px]" style={{ color: r.percentile >= 90 ? '#fb923c' : 'rgba(255,255,255,0.3)' }}>
+                {r.percentile}
               </div>
             </div>
           )
         })}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-30 transition"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)' }}
+          >
+            Prev
+          </button>
+          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-30 transition"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)' }}
+          >
+            Next
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PublicPoolsTab({ tournamentId }: { tournamentId: string }) {
+  const [pools, setPools] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
+  const [total, setTotal] = useState(0)
+  const [filterMode, setFilterMode] = useState<string>("")
+  const [joining, setJoining] = useState<string | null>(null)
+
+  async function fetchPools(p: number) {
+    setLoading(true)
+    try {
+      let url = `/api/bracket/public-pools?tournamentId=${tournamentId}&page=${p}&limit=20`
+      if (filterMode) url += `&scoringMode=${filterMode}`
+      const res = await fetch(url)
+      if (res.ok) {
+        const data = await res.json()
+        setPools(data.pools ?? [])
+        setTotal(data.total ?? 0)
+        setTotalPages(data.totalPages ?? 0)
+      }
+    } catch {}
+    setLoading(false)
+  }
+
+  async function joinPool(joinCode: string) {
+    setJoining(joinCode)
+    try {
+      const res = await fetch('/api/bracket/leagues/join', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ joinCode }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.leagueId) {
+          window.location.href = `/brackets/leagues/${data.leagueId}`
+        }
+      }
+    } catch {}
+    setJoining(null)
+  }
+
+  useEffect(() => { fetchPools(page) }, [tournamentId, page, filterMode])
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between px-1">
+        <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          Public Pools
+        </div>
+        <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          {total} pool{total !== 1 ? 's' : ''}
+        </div>
+      </div>
+
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {[{ id: '', label: 'All' }, ...SCORING_MODES].map(m => (
+          <button
+            key={m.id}
+            onClick={() => { setFilterMode(m.id); setPage(1) }}
+            className="text-[10px] font-semibold px-3 py-1.5 rounded-full whitespace-nowrap transition"
+            style={{
+              background: filterMode === m.id ? 'rgba(251,146,60,0.15)' : 'rgba(255,255,255,0.03)',
+              color: filterMode === m.id ? '#fb923c' : 'rgba(255,255,255,0.4)',
+              border: `1px solid ${filterMode === m.id ? 'rgba(251,146,60,0.3)' : 'rgba(255,255,255,0.06)'}`,
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="rounded-xl p-8 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading pools...</div>
+        </div>
+      ) : pools.length === 0 ? (
+        <div className="rounded-xl p-8 text-center space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <Trophy className="h-10 w-10 mx-auto" style={{ color: 'rgba(251,146,60,0.3)' }} />
+          <h3 className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>No Public Pools</h3>
+          <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+            No public pools available yet. Create one and make it public!
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {pools.map((pool: any) => (
+            <div
+              key={pool.id}
+              className="rounded-xl p-3 transition"
+              style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-white truncate">{pool.name}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      by {pool.ownerName}
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(251,146,60,0.08)', color: '#fb923c' }}>
+                      {SCORING_MODES.find(m => m.id === pool.scoringMode)?.label || pool.scoringMode}
+                    </span>
+                    {pool.isPaidLeague && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(234,179,8,0.08)', color: '#eab308' }}>
+                        Paid
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                      {pool.memberCount}
+                    </div>
+                    <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                      / {pool.maxManagers}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => joinPool(pool.joinCode)}
+                    disabled={joining === pool.joinCode}
+                    className="text-[11px] font-semibold px-4 py-1.5 rounded-lg transition"
+                    style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)' }}
+                  >
+                    {joining === pool.joinCode ? '...' : 'Join'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-3 pt-2">

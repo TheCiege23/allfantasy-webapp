@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { scoreMomentum, scoreAccuracyBoldness, scoreStreakSurvival, type ScoringMode, type PickResult, type LeaguePickDistribution } from "@/lib/brackets/scoring"
+import { scoreMomentum, scoreAccuracyBoldness, scoreStreakSurvival, scoreFanCredEdge, type ScoringMode, type PickResult, type LeaguePickDistribution } from "@/lib/brackets/scoring"
 
 export const dynamic = "force-dynamic"
 
@@ -106,7 +106,9 @@ export async function GET(request: NextRequest) {
       const nodeRoundMap = new Map<string, number>()
       for (const n of nodes) nodeRoundMap.set(n.id, n.round)
 
-      const ROUND_PTS: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32 }
+      const ROUND_PTS_DEFAULT: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 8, 5: 16, 6: 32 }
+      const ROUND_PTS_EDGE: Record<number, number> = { 1: 1, 2: 2, 3: 5, 4: 10, 5: 18, 6: 30 }
+      const ROUND_PTS = scoringMode === "fancred_edge" ? ROUND_PTS_EDGE : ROUND_PTS_DEFAULT
 
       const seedMapLocal = new Map<string, number>()
       for (const n of nodes) {
@@ -117,7 +119,7 @@ export async function GET(request: NextRequest) {
       }
 
       let leagueDistribution: LeaguePickDistribution = {}
-      if (scoringMode === "accuracy_boldness") {
+      if (scoringMode === "accuracy_boldness" || scoringMode === "fancred_edge") {
         for (const entry of entries) {
           for (const pick of entry.picks) {
             if (!pick.pickedTeamName) continue
@@ -170,6 +172,12 @@ export async function GET(request: NextRequest) {
         let totalPoints = 0
         let details: any = null
         switch (scoringMode) {
+          case "fancred_edge": {
+            const result = scoreFanCredEdge(pickResults, leagueDistribution)
+            totalPoints = result.total
+            details = result
+            break
+          }
           case "accuracy_boldness": {
             const result = scoreAccuracyBoldness(pickResults, leagueDistribution)
             totalPoints = result.total
