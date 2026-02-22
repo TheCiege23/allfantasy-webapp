@@ -145,6 +145,36 @@ export async function GET(request: NextRequest) {
       standings.sort((a, b) => b.totalPoints - a.totalPoints)
     }
 
+    const seedMap = new Map<string, number>()
+    for (const node of nodes) {
+      if (node.round === 1) {
+        if (node.homeTeamName && node.seedHome != null) seedMap.set(node.homeTeamName, node.seedHome)
+        if (node.awayTeamName && node.seedAway != null) seedMap.set(node.awayTeamName, node.seedAway)
+      }
+    }
+
+    const SEED_EXPECTED_WINS: Record<number, number> = {
+      1: 4, 2: 3, 3: 2, 4: 2, 5: 1, 6: 1, 7: 1, 8: 1,
+      9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0, 15: 0, 16: 0,
+    }
+
+    const teamWins = new Map<string, number>()
+    for (const bn of bracketNodes) {
+      if (bn.winner) {
+        teamWins.set(bn.winner, (teamWins.get(bn.winner) ?? 0) + 1)
+      }
+    }
+
+    const sleeperTeams: string[] = []
+    for (const [team, wins] of teamWins.entries()) {
+      const seed = seedMap.get(team)
+      if (seed == null) continue
+      const baseline = SEED_EXPECTED_WINS[seed] ?? 0
+      if (wins > baseline) {
+        sleeperTeams.push(team)
+      }
+    }
+
     const hasLiveGames = bracketNodes.some(
       (n) => n.liveGame?.status === "in_progress"
     )
@@ -172,6 +202,7 @@ export async function GET(request: NextRequest) {
         games: gamesFlat,
         nodes: bracketNodes,
         standings,
+        sleeperTeams,
         hasLiveGames,
         pollIntervalMs: hasLiveGames ? 10000 : 60000,
       },

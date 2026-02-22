@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useCallback, useRef } from "react"
-import { Trophy } from "lucide-react"
+import { Trophy, Sparkles, Zap, Info } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 
 type Game = {
@@ -144,6 +144,7 @@ function MatchupCell({
   onPick,
   readOnly,
   compact,
+  sleeperTeams,
 }: {
   node: Node
   picks: Record<string, string | null>
@@ -154,6 +155,7 @@ function MatchupCell({
   onPick: (node: Node, team: string) => void
   readOnly?: boolean
   compact?: boolean
+  sleeperTeams?: Set<string>
 }) {
   const picked = picks[node.id] ?? null
   const eff = effective.get(node.id)
@@ -168,6 +170,7 @@ function MatchupCell({
 
   function TeamRow({ name, seed, isPicked, side }: { name: string | null; seed: number | null; isPicked: boolean; side: 'home' | 'away' }) {
     const canClick = !readOnly && !locked && !!name
+    const isSleeper = !!(name && sleeperTeams?.has(name))
     return (
       <button
         disabled={!canClick}
@@ -175,7 +178,7 @@ function MatchupCell({
         className="w-full flex items-center text-left transition-colors"
         style={{
           height: h / 2,
-          background: isPicked ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.03)',
+          background: isPicked ? 'rgba(251,146,60,0.2)' : isSleeper ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.03)',
           borderBottom: side === 'home' ? '1px solid rgba(255,255,255,0.06)' : undefined,
           cursor: canClick ? 'pointer' : 'default',
           paddingLeft: 6,
@@ -183,16 +186,19 @@ function MatchupCell({
         }}
       >
         {seed != null && (
-          <span className="text-[10px] font-bold w-4 shrink-0" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          <span className="text-[10px] font-bold w-4 shrink-0" style={{ color: isSleeper ? '#a855f7' : 'rgba(255,255,255,0.35)' }}>
             {seed}
           </span>
         )}
         <span
           className="text-[11px] font-medium truncate flex-1"
-          style={{ color: name ? (isPicked ? '#fb923c' : 'rgba(255,255,255,0.8)') : 'rgba(255,255,255,0.15)' }}
+          style={{ color: name ? (isPicked ? '#fb923c' : isSleeper ? '#c084fc' : 'rgba(255,255,255,0.8)') : 'rgba(255,255,255,0.15)' }}
         >
           {name || ''}
         </span>
+        {isSleeper && !compact && (
+          <Sparkles className="w-3 h-3 shrink-0 ml-0.5" style={{ color: '#a855f7' }} />
+        )}
         {node.game && (
           <span className="text-[10px] font-bold shrink-0 ml-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
             {side === 'home' ? (node.game.homeScore ?? '') : (node.game.awayScore ?? '')}
@@ -228,6 +234,7 @@ function RegionBracket({
   onPick,
   direction,
   readOnly,
+  sleeperTeams,
 }: {
   region: string
   nodes: Node[]
@@ -238,6 +245,7 @@ function RegionBracket({
   onPick: (node: Node, team: string) => void
   direction: 'ltr' | 'rtl'
   readOnly?: boolean
+  sleeperTeams?: Set<string>
 }) {
   const byRound: Record<number, Node[]> = { 1: [], 2: [], 3: [], 4: [] }
   for (const n of nodes) {
@@ -327,6 +335,7 @@ function RegionBracket({
                       savingNode={savingNode}
                       onPick={onPick}
                       readOnly={readOnly}
+                      sleeperTeams={sleeperTeams}
                     />
                   </div>
                 )
@@ -339,12 +348,23 @@ function RegionBracket({
   )
 }
 
+const STRATEGY_TIPS = [
+  "Lower seeds (1-4) historically dominate late rounds. No team seeded 12+ has ever made the Final Four.",
+  "7-11 seeds are classic 'sleeper' territory — they often pull early upsets but rarely go deep.",
+  "Every round is worth 32 total points. Late-round picks carry more weight per game.",
+  "Pick at least one upset in the 5-12 or 6-11 matchups — these happen frequently.",
+  "Only one champion since 1989 was seeded worse than 4th (7-seed UConn in 2014).",
+  "First Four play-in games don't count for bracket scoring — focus on Round 1 and beyond.",
+]
+
 export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initialPicks, readOnly, compact }: Props) {
   const { data: live } = useBracketLive({ tournamentId, leagueId, enabled: true, intervalMs: 15000 })
 
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks)
   const [savingNode, setSavingNode] = useState<string | null>(null)
   const [activeRegion, setActiveRegion] = useState<string | null>(null)
+  const [showTips, setShowTips] = useState(false)
+  const [autoFilling, setAutoFilling] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const regionRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -360,6 +380,11 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   }, [nodes, live?.games])
 
   const effective = useMemo(() => computeEffectiveTeams(nodesWithLive, picks), [nodesWithLive, picks])
+
+  const sleeperTeams = useMemo(() => {
+    const teams = (live as any)?.sleeperTeams as string[] | undefined
+    return new Set(teams ?? [])
+  }, [live])
 
   const { byRegion, finals } = useMemo(() => {
     const reg: Record<string, Node[]> = {}
@@ -380,6 +405,22 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const totalGames = useMemo(() => {
     return nodesWithLive.filter(n => n.round >= 1).length
   }, [nodesWithLive])
+
+  const autoFill = useCallback(async () => {
+    if (autoFilling || readOnly) return
+    setAutoFilling(true)
+    try {
+      const res = await fetch('/api/bracket/auto-fill', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ entryId }),
+      })
+      if (res.ok) {
+        window.location.reload()
+      }
+    } catch {}
+    setAutoFilling(false)
+  }, [entryId, readOnly, autoFilling])
 
   const submitPick = useCallback(async (node: Node, teamName: string) => {
     if (!teamName || readOnly) return
@@ -442,8 +483,46 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
         <div className="flex items-center gap-2">
           <h2 className="text-base font-bold">My Bracket</h2>
           <span className="text-sm" style={{ color: '#fb923c' }}>{totalPicks}/{totalGames}</span>
+          {sleeperTeams.size > 0 && (
+            <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.2)' }}>
+              <Sparkles className="w-3 h-3" />
+              {sleeperTeams.size} Sleeper{sleeperTeams.size > 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {!readOnly && totalPicks < totalGames && (
+            <button
+              onClick={autoFill}
+              disabled={autoFilling}
+              className="flex items-center gap-1 text-[11px] font-semibold px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+              style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)' }}
+            >
+              <Zap className="w-3 h-3" />
+              {autoFilling ? 'Filling...' : 'Auto-Fill'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowTips(!showTips)}
+            className="p-1.5 rounded-lg transition"
+            style={{ background: showTips ? 'rgba(251,146,60,0.15)' : 'rgba(255,255,255,0.05)', color: showTips ? '#fb923c' : 'rgba(255,255,255,0.4)' }}
+          >
+            <Info className="w-4 h-4" />
+          </button>
         </div>
       </div>
+
+      {showTips && (
+        <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(251,146,60,0.05)', border: '1px solid rgba(251,146,60,0.15)' }}>
+          <div className="text-xs font-semibold" style={{ color: '#fb923c' }}>Strategy Tips</div>
+          {STRATEGY_TIPS.map((tip, i) => (
+            <div key={i} className="flex items-start gap-2 text-[11px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
+              <span style={{ color: '#fb923c' }}>•</span>
+              <span>{tip}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="hidden xl:block">
         <div
@@ -465,6 +544,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                     onPick={submitPick}
                     direction="ltr"
                     readOnly={readOnly}
+                    sleeperTeams={sleeperTeams}
                   />
                 </div>
               ))}
@@ -486,6 +566,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                     savingNode={savingNode}
                     onPick={submitPick}
                     readOnly={readOnly}
+                    sleeperTeams={sleeperTeams}
                   />
                 ))}
               </div>
@@ -516,6 +597,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                     onPick={submitPick}
                     direction="rtl"
                     readOnly={readOnly}
+                    sleeperTeams={sleeperTeams}
                   />
                 </div>
               ))}
@@ -560,6 +642,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                               onPick={submitPick}
                               readOnly={readOnly}
                               compact
+                              sleeperTeams={sleeperTeams}
                             />
                           ))}
                         </div>
@@ -584,6 +667,7 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                     savingNode={savingNode}
                     onPick={submitPick}
                     readOnly={readOnly}
+                    sleeperTeams={sleeperTeams}
                   />
                 ))}
               </div>

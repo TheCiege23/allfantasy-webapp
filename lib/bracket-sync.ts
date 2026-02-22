@@ -488,6 +488,8 @@ export async function runBracketSync(season: number) {
     tournament.id
   )
 
+  await updateTournamentLockTime(tournament.id)
+
   return {
     ok: true as const,
     season,
@@ -498,5 +500,37 @@ export async function runBracketSync(season: number) {
     finalized,
     advanced,
     seeded,
+  }
+}
+
+async function updateTournamentLockTime(tournamentId: string) {
+  try {
+    const round1Nodes = await prisma.bracketNode.findMany({
+      where: { tournamentId, round: 1 },
+      select: { sportsGameId: true },
+    })
+
+    const gameIds = round1Nodes
+      .map((n) => n.sportsGameId)
+      .filter((id): id is string => id !== null)
+
+    if (gameIds.length === 0) return
+
+    const games = await prisma.sportsGame.findMany({
+      where: { id: { in: gameIds }, startTime: { not: null } },
+      select: { startTime: true },
+      orderBy: { startTime: "asc" },
+    })
+
+    if (games.length === 0 || !games[0].startTime) return
+
+    const earliestRound1Start = games[0].startTime
+
+    await prisma.bracketTournament.update({
+      where: { id: tournamentId },
+      data: { lockAt: earliestRound1Start },
+    })
+  } catch (err) {
+    console.error("[bracket-sync] Failed to update lockAt:", err)
   }
 }

@@ -134,7 +134,7 @@ export function LeagueHomeTabs(props: Props) {
           />
         )}
         {activeTab === "global" && (
-          <GlobalTab />
+          <GlobalTab tournamentId={props.tournamentId} currentUserId={props.currentUserId} />
         )}
       </div>
 
@@ -432,14 +432,129 @@ function SettingsPanel({
   )
 }
 
-function GlobalTab() {
+function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; currentUserId: string }) {
+  const [rankings, setRankings] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [totalEntries, setTotalEntries] = useState(0)
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(0)
+
+  async function fetchRankings(p: number) {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/bracket/global-rankings?tournamentId=${tournamentId}&page=${p}&limit=50`)
+      if (res.ok) {
+        const data = await res.json()
+        setRankings(data.rankings ?? [])
+        setTotalEntries(data.totalEntries ?? 0)
+        setTotalPages(data.totalPages ?? 0)
+      }
+    } catch {}
+    setLoading(false)
+  }
+
+  useEffect(() => { fetchRankings(page) }, [tournamentId, page])
+
+  if (loading) {
+    return (
+      <div className="rounded-xl p-8 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading global rankings...</div>
+      </div>
+    )
+  }
+
+  if (rankings.length === 0) {
+    return (
+      <div className="rounded-xl p-8 text-center space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <Trophy className="h-10 w-10 mx-auto" style={{ color: 'rgba(251,146,60,0.3)' }} />
+        <h3 className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>Global Leaderboard</h3>
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          No brackets submitted yet. Fill out your bracket to see global rankings!
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="rounded-xl p-8 text-center space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-      <Trophy className="h-10 w-10 mx-auto" style={{ color: 'rgba(251,146,60,0.3)' }} />
-      <h3 className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>Global Leaderboard</h3>
-      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-        See how your bracket stacks up against all AllFantasy players. Coming soon.
-      </p>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between px-1">
+        <div className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
+          Global Rankings
+        </div>
+        <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          {totalEntries.toLocaleString()} brackets
+        </div>
+      </div>
+
+      <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center px-4 py-2 text-[10px] font-semibold uppercase tracking-wider" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}>
+          <div className="w-10 text-center">#</div>
+          <div className="flex-1">Player</div>
+          <div className="w-16 text-center">Pts</div>
+          <div className="w-16 text-center">Max</div>
+          <div className="w-20 text-right">Champ</div>
+        </div>
+
+        {rankings.map((r: any) => {
+          const isMe = r.userId === currentUserId
+          return (
+            <div
+              key={r.entryId}
+              className="flex items-center px-4 py-2.5 transition"
+              style={{
+                borderBottom: '1px solid rgba(255,255,255,0.03)',
+                background: isMe ? 'rgba(251,146,60,0.06)' : undefined,
+              }}
+            >
+              <div className="w-10 text-center text-xs font-bold" style={{ color: r.rank <= 3 ? '#fb923c' : 'rgba(255,255,255,0.4)' }}>
+                {r.rank}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium truncate" style={{ color: isMe ? '#fb923c' : 'rgba(255,255,255,0.8)' }}>
+                  {r.displayName || 'Anonymous'}
+                  {isMe && <span className="ml-1 text-[10px]" style={{ color: 'rgba(251,146,60,0.6)' }}>(you)</span>}
+                </div>
+                <div className="text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                  {r.entryName} • {r.leagueName}
+                </div>
+              </div>
+              <div className="w-16 text-center text-xs font-bold" style={{ color: '#fb923c' }}>
+                {r.totalPoints}
+              </div>
+              <div className="w-16 text-center text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                {r.maxPossible}
+              </div>
+              <div className="w-20 text-right text-[10px] truncate" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                {r.championPick || '—'}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
+            className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-30 transition"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)' }}
+          >
+            Prev
+          </button>
+          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
+            className="text-xs px-3 py-1.5 rounded-lg disabled:opacity-30 transition"
+            style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.6)' }}
+          >
+            Next
+          </button>
+        </div>
+      )}
     </div>
   )
 }

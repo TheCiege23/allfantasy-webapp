@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       { status: 404 }
     )
 
-  const normalizedMaxManagers = Math.min(1000, Math.max(2, Number(maxManagers || 100)))
+  const normalizedMaxManagers = Math.min(10000, Math.max(2, Number(maxManagers || 10000)))
   const paidLeague = Boolean(isPaidLeague)
   const normalizedEntryFee = paidLeague ? Math.max(0, Number(fancredEntryFee || 0)) : 0
 
