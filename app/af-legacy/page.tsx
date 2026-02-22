@@ -1207,6 +1207,9 @@ function AFLegacyContent() {
   const [historicalRatingsData, setHistoricalRatingsData] = useState<any>(null)
   const [historicalRatingsLoading, setHistoricalRatingsLoading] = useState(false)
   const [historicalRatingsSeason, setHistoricalRatingsSeason] = useState<number>(new Date().getFullYear() - 1)
+  const [hoveredTeamId, setHoveredTeamId] = useState<string | null>(null)
+  const [chartTooltip, setChartTooltip] = useState<{ x: number; y: number; name: string; rating: number; week: number } | null>(null)
+  const chartContainerRef = useRef<HTMLDivElement>(null)
 
   // Compare Teams memoized data - ensures proper reactivity when teams change
   const compareTeamsData = useMemo(() => {
@@ -14401,7 +14404,12 @@ function AFLegacyContent() {
                                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/40 to-indigo-500/40 flex items-center justify-center text-xl">📈</div>
                                     <div>
                                       <h4 className="text-lg font-bold text-white">Historical Elo Adjusted ADP Rankings</h4>
-                                      <p className="text-xs text-white/50">Week 1</p>
+                                      <p className="text-xs text-white/50">
+                                        {historicalRatingsData?.leagueInfo?.maxWeek
+                                          ? `Weeks 1–${historicalRatingsData.leagueInfo.maxWeek} · ${historicalRatingsData.leagueInfo.totalTeams} teams`
+                                          : 'Loading...'
+                                        }
+                                      </p>
                                     </div>
                                   </div>
                                   <select
@@ -14437,56 +14445,194 @@ function AFLegacyContent() {
                                   <div className="space-y-4">
                                     {/* Team Legend */}
                                     <div className="flex flex-wrap gap-2 mb-4">
-                                      {historicalRatingsData.teamHistories?.map((team: any) => (
-                                        <div key={team.userId} className="flex items-center gap-1.5 px-2 py-1 rounded-lg" style={{ backgroundColor: `${team.color}20` }}>
-                                          <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: team.color }}></span>
-                                          <span className="text-xs text-white font-medium">{team.teamName} : {team.currentRating}</span>
-                                        </div>
-                                      ))}
+                                      {historicalRatingsData.teamHistories?.map((team: any) => {
+                                        const isActive = hoveredTeamId === team.userId
+                                        const isDimmed = hoveredTeamId !== null && !isActive
+                                        return (
+                                          <div
+                                            key={team.userId}
+                                            className="flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-pointer transition-all"
+                                            style={{
+                                              backgroundColor: isActive ? `${team.color}40` : `${team.color}20`,
+                                              opacity: isDimmed ? 0.4 : 1,
+                                              border: isActive ? `1px solid ${team.color}` : '1px solid transparent',
+                                            }}
+                                            onMouseEnter={() => setHoveredTeamId(team.userId)}
+                                            onMouseLeave={() => setHoveredTeamId(null)}
+                                            onClick={() => setHoveredTeamId(isActive ? null : team.userId)}
+                                          >
+                                            <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: team.color }}></span>
+                                            <span className="text-xs text-white font-medium">{team.teamName} : {team.currentRating}</span>
+                                          </div>
+                                        )
+                                      })}
                                     </div>
                                     
                                     {/* Chart Area */}
-                                    <div className="relative h-64 sm:h-80 bg-slate-900/50 rounded-xl border border-slate-700/30 p-4">
+                                    <div
+                                      ref={chartContainerRef}
+                                      className="relative h-64 sm:h-80 bg-slate-900/50 rounded-xl border border-slate-700/30 p-4"
+                                      onMouseLeave={() => { setHoveredTeamId(null); setChartTooltip(null) }}
+                                    >
+                                      {chartTooltip && (
+                                        <div
+                                          className="absolute z-20 pointer-events-none px-3 py-2 rounded-lg bg-slate-800/95 border border-slate-600/60 shadow-xl backdrop-blur-sm"
+                                          style={{ left: `${chartTooltip.x}px`, top: `${chartTooltip.y - 60}px`, transform: 'translateX(-50%)' }}
+                                        >
+                                          <div className="text-xs font-bold text-white">{chartTooltip.name}</div>
+                                          <div className="text-[10px] text-slate-300">Week {chartTooltip.week} — Rating: {chartTooltip.rating}</div>
+                                        </div>
+                                      )}
                                       <svg viewBox="0 0 800 300" className="w-full h-full" preserveAspectRatio="none">
                                         {/* Grid lines */}
-                                        {[0, 1, 2, 3, 4].map(i => (
-                                          <line key={i} x1="50" y1={50 + i * 50} x2="780" y2={50 + i * 50} stroke="#334155" strokeWidth="1" strokeDasharray="4" />
-                                        ))}
-                                        
-                                        {/* X-axis labels */}
-                                        {[1, 4, 7, 10, 13, 16].map((week, i) => (
-                                          <text key={i} x={50 + i * 146} y="290" fill="#64748b" fontSize="10" textAnchor="middle">Week {week}</text>
-                                        ))}
-                                        
-                                        {/* Lines for each team */}
-                                        {historicalRatingsData.teamHistories?.map((team: any) => {
+                                        {[0, 1, 2, 3, 4].map(i => {
                                           const maxRating = Math.max(...historicalRatingsData.teamHistories.flatMap((t: any) => t.weeklyRatings.map((w: any) => w.rating)))
                                           const minRating = Math.min(...historicalRatingsData.teamHistories.flatMap((t: any) => t.weeklyRatings.map((w: any) => w.rating)))
                                           const range = maxRating - minRating || 1
+                                          const ratingLabel = Math.round(maxRating - (i / 4) * range)
+                                          return (
+                                            <g key={i}>
+                                              <line x1="50" y1={50 + i * 50} x2="780" y2={50 + i * 50} stroke="#334155" strokeWidth="1" strokeDasharray="4" />
+                                              <text x="45" y={54 + i * 50} fill="#64748b" fontSize="9" textAnchor="end">{ratingLabel}</text>
+                                            </g>
+                                          )
+                                        })}
+                                        
+                                        {/* X-axis labels */}
+                                        {(() => {
+                                          const maxW = historicalRatingsData.leagueInfo?.maxWeek || 18
+                                          const tickWeeks = maxW <= 6 ? Array.from({ length: maxW }, (_, i) => i + 1) : [1, 4, 7, 10, 13, 16].filter(w => w <= maxW)
+                                          return tickWeeks.map((week) => (
+                                            <text key={week} x={50 + (week / maxW) * 730} y="290" fill="#64748b" fontSize="10" textAnchor="middle">Week {week}</text>
+                                          ))
+                                        })()}
+                                        
+                                        {/* Lines for each team — non-hovered first, hovered on top */}
+                                        {historicalRatingsData.teamHistories
+                                          ?.slice()
+                                          .sort((a: any, b: any) => {
+                                            if (a.userId === hoveredTeamId) return 1
+                                            if (b.userId === hoveredTeamId) return -1
+                                            return 0
+                                          })
+                                          .map((team: any) => {
+                                          const maxRating = Math.max(...historicalRatingsData.teamHistories.flatMap((t: any) => t.weeklyRatings.map((w: any) => w.rating)))
+                                          const minRating = Math.min(...historicalRatingsData.teamHistories.flatMap((t: any) => t.weeklyRatings.map((w: any) => w.rating)))
+                                          const range = maxRating - minRating || 1
+                                          const maxWeek = historicalRatingsData.leagueInfo?.maxWeek || 18
+                                          const isHovered = hoveredTeamId === team.userId
+                                          const isDimmed = hoveredTeamId !== null && !isHovered
                                           
-                                          const points = team.weeklyRatings.map((w: any, i: number) => {
-                                            const x = 50 + (w.week / (historicalRatingsData.leagueInfo?.maxWeek || 18)) * 730
-                                            const y = 250 - ((w.rating - minRating) / range) * 200
-                                            return `${x},${y}`
-                                          }).join(' ')
+                                          const coords = team.weeklyRatings.map((w: any) => ({
+                                            x: 50 + (w.week / maxWeek) * 730,
+                                            y: 250 - ((w.rating - minRating) / range) * 200,
+                                            week: w.week,
+                                            rating: w.rating,
+                                          }))
+                                          const points = coords.map((c: any) => `${c.x},${c.y}`).join(' ')
                                           
                                           return (
-                                            <g key={team.userId}>
+                                            <g key={team.userId} style={{ opacity: isDimmed ? 0.15 : 1, transition: 'opacity 0.2s' }}>
+                                              {/* Invisible wider hitbox for easier hovering */}
+                                              <polyline
+                                                points={points}
+                                                fill="none"
+                                                stroke="transparent"
+                                                strokeWidth="16"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                style={{ cursor: 'pointer' }}
+                                                onMouseEnter={() => setHoveredTeamId(team.userId)}
+                                                onMouseLeave={() => { setChartTooltip(null) }}
+                                                onMouseMove={(e) => {
+                                                  const container = chartContainerRef.current
+                                                  if (!container || coords.length === 0) return
+                                                  const svgEl = container.querySelector('svg')
+                                                  if (!svgEl) return
+                                                  const svgRect = svgEl.getBoundingClientRect()
+                                                  const rect = container.getBoundingClientRect()
+                                                  const mouseX = ((e.clientX - svgRect.left) / svgRect.width) * 800
+                                                  let nearest = coords[0]
+                                                  let minDist = Math.abs(mouseX - nearest.x)
+                                                  for (const c of coords) {
+                                                    const d = Math.abs(mouseX - c.x)
+                                                    if (d < minDist) { minDist = d; nearest = c }
+                                                  }
+                                                  const scaleX = svgRect.width / 800
+                                                  const scaleY = svgRect.height / 300
+                                                  setChartTooltip({
+                                                    x: (nearest.x * scaleX) + (svgRect.left - rect.left),
+                                                    y: (nearest.y * scaleY) + (svgRect.top - rect.top),
+                                                    name: team.teamName,
+                                                    rating: nearest.rating,
+                                                    week: nearest.week,
+                                                  })
+                                                }}
+                                                onClick={() => setHoveredTeamId(isHovered ? null : team.userId)}
+                                              />
                                               <polyline
                                                 points={points}
                                                 fill="none"
                                                 stroke={team.color}
-                                                strokeWidth="2"
+                                                strokeWidth={isHovered ? 3.5 : 2}
                                                 strokeLinecap="round"
                                                 strokeLinejoin="round"
+                                                style={{ pointerEvents: 'none', filter: isHovered ? `drop-shadow(0 0 6px ${team.color})` : 'none' }}
                                               />
-                                              {team.weeklyRatings.length > 0 && (
+                                              {/* Data points — show all when hovered, only endpoint when not */}
+                                              {isHovered ? coords.map((c: any, ci: number) => (
                                                 <circle
-                                                  cx={50 + (team.weeklyRatings[team.weeklyRatings.length - 1].week / (historicalRatingsData.leagueInfo?.maxWeek || 18)) * 730}
-                                                  cy={250 - ((team.weeklyRatings[team.weeklyRatings.length - 1].rating - minRating) / range) * 200}
-                                                  r="4"
+                                                  key={ci}
+                                                  cx={c.x}
+                                                  cy={c.y}
+                                                  r="5"
                                                   fill={team.color}
+                                                  stroke="#1e293b"
+                                                  strokeWidth="2"
+                                                  style={{ cursor: 'pointer' }}
+                                                  onMouseEnter={(e) => {
+                                                    const container = chartContainerRef.current
+                                                    if (container) {
+                                                      const rect = container.getBoundingClientRect()
+                                                      const svgEl = container.querySelector('svg')
+                                                      if (svgEl) {
+                                                        const svgRect = svgEl.getBoundingClientRect()
+                                                        const scaleX = svgRect.width / 800
+                                                        const scaleY = svgRect.height / 300
+                                                        setChartTooltip({
+                                                          x: (c.x * scaleX) + (svgRect.left - rect.left),
+                                                          y: (c.y * scaleY) + (svgRect.top - rect.top),
+                                                          name: team.teamName,
+                                                          rating: c.rating,
+                                                          week: c.week,
+                                                        })
+                                                      }
+                                                    }
+                                                  }}
                                                 />
+                                              )) : (
+                                                coords.length > 0 && (
+                                                  <circle
+                                                    cx={coords[coords.length - 1].x}
+                                                    cy={coords[coords.length - 1].y}
+                                                    r="4"
+                                                    fill={team.color}
+                                                    style={{ pointerEvents: 'none' }}
+                                                  />
+                                                )
+                                              )}
+                                              {/* Team name label at end of line when hovered */}
+                                              {isHovered && coords.length > 0 && (
+                                                <text
+                                                  x={Math.min(coords[coords.length - 1].x + 8, 790)}
+                                                  y={coords[coords.length - 1].y + 4}
+                                                  fill={team.color}
+                                                  fontSize="11"
+                                                  fontWeight="bold"
+                                                  style={{ pointerEvents: 'none' }}
+                                                >
+                                                  {team.teamName}
+                                                </text>
                                               )}
                                             </g>
                                           )
