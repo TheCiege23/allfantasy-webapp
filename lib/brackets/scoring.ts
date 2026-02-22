@@ -271,7 +271,7 @@ export function scoreEntry(
 
 export const SCORING_MODE_INFO: Record<ScoringMode, { label: string; description: string }> = {
   fancred_edge: {
-    label: "FanCred EDGE",
+    label: "AF March Madness",
     description: "Headline scoring: R64=1, R32=2, S16=5, E8=10, F4=18, CH=30. Upset Delta Bonus + Leverage Bonus from league pick rarity. Optional Insurance Token protects one pick.",
   },
   momentum: {

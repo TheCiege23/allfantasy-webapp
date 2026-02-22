@@ -381,7 +381,7 @@ function normalizeScoringMode(raw: string | undefined | null): ScoringMode {
 }
 
 const SCORING_MODES: { id: ScoringMode; label: string; desc: string }[] = [
-  { id: 'fancred_edge', label: 'FanCred EDGE', desc: 'Upset delta + leverage bonus + insurance' },
+  { id: 'fancred_edge', label: 'AF March Madness', desc: 'Upset delta + leverage bonus + insurance' },
   { id: 'momentum', label: 'Momentum', desc: 'Round base + seed-gap upset bonus' },
   { id: 'accuracy_boldness', label: 'Accuracy + Boldness', desc: 'Round base + uniqueness bonus within league' },
   { id: 'streak_survival', label: 'Streak & Survival', desc: 'Streak bonuses scaling deeper' },

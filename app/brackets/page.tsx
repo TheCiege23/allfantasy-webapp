@@ -3,7 +3,7 @@ import Image from "next/image"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { Trophy, Plus, Users, ChevronRight, Star, Shield, Zap, Crown, ExternalLink, Sparkles, AlertTriangle, Scale } from "lucide-react"
+import { Trophy, Plus, Users, ChevronRight, Star, Shield, Zap, Crown, ExternalLink, Sparkles, AlertTriangle, Scale, Heart } from "lucide-react"
 
 export const dynamic = "force-dynamic"
 
@@ -174,7 +174,7 @@ export default async function BracketsHomePage() {
           <div className="px-5 pt-5 pb-3">
             <div className="flex items-center gap-2 mb-1">
               <Star className="w-4 h-4" style={{ color: '#3b82f6' }} />
-              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: '#3b82f6' }}>FanCred EDGE Scoring</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: '#3b82f6' }}>AF March Madness Scoring</h3>
             </div>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
               Our headline scoring system rewards bold picks and smart strategy.
@@ -234,7 +234,7 @@ export default async function BracketsHomePage() {
             {[
               { step: "1", title: "Create or Join a Pool", desc: "Start your own bracket pool or join a friend's with an invite code. Unlimited members, always free." },
               { step: "2", title: "Fill Out Your Bracket", desc: "Tap any matchup to open the pick wizard. Choose winners round by round. AI analysis helps you make smarter picks." },
-              { step: "3", title: "Compete & Climb", desc: "Track your FanCred EDGE score on the live leaderboard. Earn upset bonuses, leverage multipliers, and bragging rights." },
+              { step: "3", title: "Compete & Climb", desc: "Track your AF March Madness score on the live leaderboard. Earn upset bonuses, leverage multipliers, and bragging rights." },
               { step: "4", title: "Win Your Pool", desc: "The player with the most points at the end of the tournament wins. Global leaderboard rankings included." },
             ].map((item) => (
               <div key={item.step} className="flex items-start gap-3">
@@ -257,42 +257,122 @@ export default async function BracketsHomePage() {
               <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: '#22d3ee' }}>Bracket Preview</h3>
             </div>
             <p className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              Tree-style bracket with AI-powered pick wizard.
+              Full 64-team bracket with 4 regions and AI-powered pick wizard.
             </p>
           </div>
-          <div className="px-5 pb-5 space-y-3">
-            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-              <Image
-                src="/bracket-example-1.png"
-                alt="Full bracket tree view"
-                width={640}
-                height={360}
-                className="w-full h-auto"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
-                <Image
-                  src="/bracket-example-2.png"
-                  alt="Pick wizard popup"
-                  width={300}
-                  height={400}
-                  className="w-full h-auto"
-                />
+          <div className="px-5 pb-5">
+            <div className="rounded-xl p-4 sm:p-6" style={{ background: '#0f1a2e', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <div className="rounded-xl p-3 mb-5 flex items-center gap-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <span className="text-lg">&#9201;</span>
+                <div>
+                  <div className="text-sm font-bold text-white">Brackets open on March 17th</div>
+                  <div className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>Waiting for Selection Sunday</div>
+                </div>
               </div>
-              <div className="flex flex-col justify-center space-y-3 pl-1">
-                <div>
-                  <div className="text-sm font-bold" style={{ color: '#3b82f6' }}>Tap to Pick</div>
-                  <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>Select any matchup and the pick wizard pops up over the bracket.</div>
+
+              <div className="grid grid-cols-[1fr_auto_1fr] gap-x-2 sm:gap-x-4 gap-y-3 items-center">
+                <div className="space-y-1.5">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={`w-${i}`} className="flex gap-0.5">
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    </div>
+                  ))}
+                  <div className="flex justify-center gap-0.5 pt-1">
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                  </div>
+                  <div className="flex justify-center gap-0.5">
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[10px] font-bold tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>W</span>
+                  </div>
+
+                  <div className="mt-3" />
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={`e-${i}`} className="flex gap-0.5">
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    </div>
+                  ))}
+                  <div className="flex justify-center gap-0.5 pt-1">
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                  </div>
+                  <div className="flex justify-center gap-0.5">
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[10px] font-bold tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>E</span>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm font-bold" style={{ color: '#22d3ee' }}>AI Analysis</div>
-                  <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>Win probabilities, key factors, and sourced matchup breakdowns.</div>
+
+                <div className="flex flex-col items-center justify-center gap-1 self-center">
+                  <div className="h-4 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                  <div className="h-4 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                  <div className="w-12 h-12 rounded-xl flex items-center justify-center my-1" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    <Trophy className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.3)' }} />
+                  </div>
+                  <div className="h-4 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                  <div className="h-4 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.06)' }} />
                 </div>
-                <div>
-                  <div className="text-sm font-bold" style={{ color: '#c084fc' }}>Auto-Advance</div>
-                  <div className="text-[11px]" style={{ color: 'rgba(255,255,255,0.35)' }}>Pick a winner and it auto-cycles to the next matchup by seed order.</div>
+
+                <div className="space-y-1.5">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={`s-${i}`} className="flex gap-0.5">
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    </div>
+                  ))}
+                  <div className="flex justify-center gap-0.5 pt-1">
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                  </div>
+                  <div className="flex justify-center gap-0.5">
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[10px] font-bold tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>S</span>
+                  </div>
+
+                  <div className="mt-3" />
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={`mw-${i}`} className="flex gap-0.5">
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                      <div className="h-3 rounded-sm flex-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    </div>
+                  ))}
+                  <div className="flex justify-center gap-0.5 pt-1">
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                    <div className="h-3 w-8 rounded-sm" style={{ background: 'rgba(255,255,255,0.08)' }} />
+                  </div>
+                  <div className="flex justify-center gap-0.5">
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                    <div className="h-3 w-10 rounded-sm" style={{ background: 'rgba(255,255,255,0.1)' }} />
+                  </div>
+                  <div className="text-center">
+                    <span className="text-[10px] font-bold tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>MW</span>
+                  </div>
                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mt-4">
+              <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.1)' }}>
+                <div className="text-sm font-bold" style={{ color: '#3b82f6' }}>Tap to Pick</div>
+                <div className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Select any matchup to open the pick wizard.</div>
+              </div>
+              <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(34,211,238,0.06)', border: '1px solid rgba(34,211,238,0.1)' }}>
+                <div className="text-sm font-bold" style={{ color: '#22d3ee' }}>AI Analysis</div>
+                <div className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Win probabilities and matchup breakdowns.</div>
+              </div>
+              <div className="rounded-xl p-3 text-center" style={{ background: 'rgba(192,132,252,0.06)', border: '1px solid rgba(192,132,252,0.1)' }}>
+                <div className="text-sm font-bold" style={{ color: '#c084fc' }}>Auto-Advance</div>
+                <div className="text-[10px] mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Picks auto-cycle to the next matchup.</div>
               </div>
             </div>
           </div>
@@ -337,7 +417,7 @@ export default async function BracketsHomePage() {
               "Each pool member gets one bracket entry per tournament.",
               "All picks must be submitted before the tournament tips off (First Four excluded).",
               "Picks lock per game at scheduled tip-off time. No changes after lock.",
-              "FanCred EDGE scoring is used for all pools: R64=1, R32=2, S16=5, E8=10, F4=18, CH=30.",
+              "AF March Madness scoring is used for all pools: R64=1, R32=2, S16=5, E8=10, F4=18, CH=30.",
               "Upset Delta Bonus: Correctly picking a lower seed earns bonus points equal to the seed difference.",
               "Leverage Bonus: Going against consensus (>60% ownership) with a correct pick earns a 1.5x multiplier.",
               "Insurance Tokens (if enabled): Protect one pick per round for partial credit if it loses.",
@@ -352,6 +432,30 @@ export default async function BracketsHomePage() {
                 <span className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>{rule}</span>
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.06) 0%, rgba(251,146,60,0.04) 100%)', border: '1px solid rgba(239,68,68,0.12)' }}>
+          <div className="px-5 py-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.12)' }}>
+                <Heart className="w-5 h-5" style={{ color: '#ef4444' }} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-bold mb-1">Support AllFantasy</h3>
+                <p className="text-xs mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  AllFantasy is 100% free. If you enjoy the platform, consider a small donation to help cover server costs, data feeds, and development. Every bit helps keep the lights on.
+                </p>
+                <Link
+                  href="/donate"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all"
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' }}
+                >
+                  <Heart className="w-3.5 h-3.5" />
+                  Support Us
+                </Link>
+              </div>
+            </div>
           </div>
         </div>
 
