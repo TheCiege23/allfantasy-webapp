@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { ArrowLeft, Loader2, Users } from "lucide-react"
 
 function JoinLeagueForm() {
@@ -39,7 +38,7 @@ function JoinLeagueForm() {
           router.push("/verify?error=VERIFICATION_REQUIRED")
           return
         }
-        setError(data.error ?? "Failed to join league")
+        setError(data.error ?? "Failed to join pool")
         return
       }
       router.push(`/brackets/leagues/${data.leagueId}`)
@@ -53,71 +52,78 @@ function JoinLeagueForm() {
   return (
     <>
       {error && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
+        <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
           {error}
         </div>
       )}
 
-      <form
-        onSubmit={handleJoin}
-        className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4"
-      >
+      <form onSubmit={handleJoin} className="space-y-4">
         <div>
-          <label className="text-sm text-white/70">Invite code</label>
+          <label className="text-xs font-semibold" style={{ color: '#fb923c' }}>Invite Code</label>
           <input
-            className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20 uppercase tracking-widest text-center font-mono text-lg"
+            className="mt-2 w-full bg-transparent border-b-2 pb-2 text-2xl outline-none uppercase tracking-[0.3em] text-center font-mono"
+            style={{ borderColor: '#fb923c', color: 'white' }}
             placeholder="ABCD1234"
             value={code}
-            onChange={(e) => setCode(e.target.value)}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
             maxLength={12}
             disabled={loading}
+            autoFocus
           />
+          <p className="text-xs mt-2 text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Enter the invite code your friend shared with you.
+          </p>
         </div>
 
-        <button
-          type="submit"
-          disabled={!code.trim() || loading}
-          className="w-full rounded-xl bg-white text-black px-4 py-3 text-sm font-medium hover:bg-gray-200 disabled:opacity-60 transition-colors"
-        >
-          {loading ? (
-            <span className="inline-flex items-center justify-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Joining...
-            </span>
-          ) : (
-            "Join league"
-          )}
-        </button>
+        <div className="fixed bottom-0 left-0 right-0 p-4 sm:static sm:p-0">
+          <button
+            type="submit"
+            disabled={!code.trim() || loading}
+            className="w-full rounded-xl px-4 py-3.5 text-sm font-bold uppercase tracking-wider text-black disabled:opacity-40 transition"
+            style={{ background: '#fb923c' }}
+          >
+            {loading ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Joining...
+              </span>
+            ) : (
+              "JOIN POOL"
+            )}
+          </button>
+        </div>
       </form>
     </>
   )
 }
 
+function BackButton() {
+  const router = useRouter()
+  return (
+    <button
+      onClick={() => router.back()}
+      className="flex items-center gap-2 text-sm transition"
+      style={{ color: 'rgba(255,255,255,0.5)' }}
+    >
+      <ArrowLeft className="w-4 h-4" />
+    </button>
+  )
+}
+
 export default function JoinLeaguePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
-      <div className="p-6 max-w-md mx-auto space-y-4">
-        <Link
-          href="/brackets"
-          className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Brackets
-        </Link>
+    <div className="min-h-screen text-white" style={{ background: '#0d1117' }}>
+      <div className="p-4 sm:p-6 max-w-md mx-auto space-y-6">
+        <BackButton />
 
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-2">
-            <Users className="h-5 w-5 text-cyan-400" />
+        <div className="text-center space-y-2">
+          <div className="w-12 h-12 mx-auto rounded-xl flex items-center justify-center" style={{ background: 'rgba(251,146,60,0.12)' }}>
+            <Users className="w-6 h-6" style={{ color: '#fb923c' }} />
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold">Join a league</h1>
-            <p className="text-sm text-gray-400 mt-1">
-              Enter the invite code your friend shared with you.
-            </p>
-          </div>
+          <h1 className="text-xl font-bold">Join a Pool</h1>
         </div>
 
-        <Suspense fallback={<div className="text-sm text-gray-400">Loading...</div>}>
+        <Suspense fallback={<div className="text-sm text-center" style={{ color: 'rgba(255,255,255,0.3)' }}>Loading...</div>}>
           <JoinLeagueForm />
         </Suspense>
       </div>

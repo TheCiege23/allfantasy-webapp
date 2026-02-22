@@ -2,22 +2,14 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { ArrowLeft, Loader2, Trophy, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { ArrowLeft, Loader2 } from "lucide-react"
 
 export default function NewBracketLeaguePage() {
   const [name, setName] = useState("")
-  const [season, setSeason] = useState(new Date().getFullYear())
-  const [maxManagers, setMaxManagers] = useState(100)
-  const [isPaidLeague, setIsPaidLeague] = useState(false)
-  const [fancredEntryFee, setFancredEntryFee] = useState(0)
-  const [fancredPaymentReference, setFancredPaymentReference] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showAgeConfirm, setShowAgeConfirm] = useState(false)
   const [ageConfirming, setAgeConfirming] = useState(false)
-  const [ageConfirmed, setAgeConfirmed] = useState(false)
-  const [showVerificationRequired, setShowVerificationRequired] = useState(false)
   const router = useRouter()
 
   async function handleConfirmAge() {
@@ -25,10 +17,9 @@ export default function NewBracketLeaguePage() {
     try {
       const res = await fetch("/api/auth/confirm-age", { method: "POST" })
       if (res.ok) {
-        setAgeConfirmed(true)
         setShowAgeConfirm(false)
         setError(null)
-        setTimeout(() => submitLeague(), 500)
+        setTimeout(() => submitPool(), 500)
       } else {
         setError("Failed to confirm age. Please try again.")
       }
@@ -39,10 +30,9 @@ export default function NewBracketLeaguePage() {
     }
   }
 
-  async function submitLeague() {
+  async function submitPool() {
     setError(null)
     setShowAgeConfirm(false)
-    setShowVerificationRequired(false)
     setLoading(true)
 
     try {
@@ -51,12 +41,9 @@ export default function NewBracketLeaguePage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          season,
+          season: new Date().getFullYear(),
           sport: "ncaam",
-          maxManagers,
-          isPaidLeague,
-          fancredEntryFee,
-          fancredPaymentReference,
+          maxManagers: 100,
         }),
       })
 
@@ -67,10 +54,10 @@ export default function NewBracketLeaguePage() {
           return
         }
         if (data.error === "VERIFICATION_REQUIRED") {
-          setShowVerificationRequired(true)
+          setError("Please verify your email first before creating a pool.")
           return
         }
-        setError(data.error ?? "Failed to create league")
+        setError(data.error ?? "Failed to create pool")
         return
       }
       router.push(`/brackets/leagues/${data.leagueId}`)
@@ -81,194 +68,90 @@ export default function NewBracketLeaguePage() {
     }
   }
 
-  async function createLeague(e: React.FormEvent) {
+  async function createPool(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-    await submitLeague()
+    await submitPool()
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white">
-      <div className="p-6 max-w-xl mx-auto space-y-4">
-        <Link
-          href="/brackets"
-          className="inline-flex items-center gap-2 text-sm text-white/60 hover:text-white transition"
+    <div className="min-h-screen text-white" style={{ background: '#0d1117' }}>
+      <div className="p-4 sm:p-6 max-w-lg mx-auto">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-2 text-sm mb-8 transition"
+          style={{ color: 'rgba(255,255,255,0.5)' }}
         >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Brackets
-        </Link>
+          <ArrowLeft className="w-4 h-4" />
+        </button>
 
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-2">
-            <Trophy className="h-5 w-5 text-cyan-400" />
-          </div>
+        <h1 className="text-xl font-bold text-center mb-8">Name your pool</h1>
+
+        <form onSubmit={createPool} className="space-y-6">
           <div>
-            <h1 className="text-2xl font-semibold">Create a league</h1>
-            <p className="text-sm text-gray-400 mt-1">
-              Set up your bracket pool and invite friends to compete.
-            </p>
-          </div>
-        </div>
-
-        {ageConfirmed && (
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Age confirmed! You can now create your league.
-            </div>
-          </div>
-        )}
-
-        {showAgeConfirm && (
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
-              <div>
-                <div className="text-sm font-medium text-amber-200">Age confirmation required</div>
-                <p className="text-sm text-white/60 mt-1">
-                  You must confirm you are 18 or older to create a bracket league.
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleConfirmAge}
-              disabled={ageConfirming}
-              className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 transition"
-            >
-              {ageConfirming ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Confirming...
-                </span>
-              ) : (
-                "I confirm I am 18 or older"
-              )}
-            </button>
-          </div>
-        )}
-
-        {showVerificationRequired && (
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-4 space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-cyan-400 mt-0.5 shrink-0" />
-              <div>
-                <div className="text-sm font-medium text-cyan-200">Email verification required</div>
-                <p className="text-sm text-white/60 mt-1">
-                  Please verify your email or phone number before creating a league.
-                </p>
-              </div>
-            </div>
-            <Link
-              href="/verify"
-              className="block w-full text-center rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:from-cyan-400 hover:to-purple-500 transition"
-            >
-              Go to verification
-            </Link>
-          </div>
-        )}
-
-        {error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-200">
-            {error}
-          </div>
-        )}
-
-        <form
-          onSubmit={createLeague}
-          className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-4"
-        >
-          <div>
-            <label className="text-sm text-white/70">League name</label>
+            <label className="text-xs font-semibold" style={{ color: '#fb923c' }}>Pool Name</label>
             <input
-              className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
-              placeholder="e.g. Office Pool 2026"
+              className="mt-2 w-full bg-transparent border-b-2 pb-2 text-lg outline-none transition"
+              style={{ borderColor: '#fb923c', color: 'white' }}
+              placeholder="Madness"
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={loading}
+              autoFocus
             />
+            <p className="text-xs mt-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              Don&apos;t worry. You will be able to change this later.
+            </p>
           </div>
 
-          <div>
-            <label className="text-sm text-white/70">Season year</label>
-            <input
-              className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
-              type="number"
-              value={season}
-              onChange={(e) => setSeason(Number(e.target.value))}
-              disabled={loading}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm text-white/70">Max managers (up to 1,000)</label>
-            <input
-              className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
-              type="number"
-              min={2}
-              max={1000}
-              value={maxManagers}
-              onChange={(e) => setMaxManagers(Math.min(1000, Math.max(2, Number(e.target.value) || 2)))}
-              disabled={loading}
-            />
-          </div>
-
-          <label className="flex items-center justify-between rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm">
-            <span className="text-white/80">Paid league via FanCred</span>
-            <input
-              type="checkbox"
-              checked={isPaidLeague}
-              onChange={(e) => setIsPaidLeague(e.target.checked)}
-              disabled={loading}
-            />
-          </label>
-
-          {isPaidLeague && (
-            <>
-              <div>
-                <label className="text-sm text-white/70">FanCred entry fee (USD)</label>
-                <input
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={fancredEntryFee}
-                  onChange={(e) => setFancredEntryFee(Math.max(0, Number(e.target.value) || 0))}
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="text-sm text-white/70">FanCred payment reference (optional)</label>
-                <input
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm outline-none focus:border-white/20"
-                  value={fancredPaymentReference}
-                  onChange={(e) => setFancredPaymentReference(e.target.value)}
-                  disabled={loading}
-                  placeholder="e.g. FC-2026-LEAGUE-001"
-                />
-              </div>
-            </>
+          {showAgeConfirm && (
+            <div className="rounded-xl p-4 space-y-3" style={{ background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.2)' }}>
+              <p className="text-sm" style={{ color: 'rgba(255,255,255,0.7)' }}>
+                You must confirm you are 18 or older to create a bracket pool.
+              </p>
+              <button
+                type="button"
+                onClick={handleConfirmAge}
+                disabled={ageConfirming}
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50 transition"
+                style={{ background: '#fb923c' }}
+              >
+                {ageConfirming ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Confirming...
+                  </span>
+                ) : (
+                  "I confirm I am 18 or older"
+                )}
+              </button>
+            </div>
           )}
 
-          <button
-            type="submit"
-            disabled={!name.trim() || loading}
-            className="w-full rounded-xl bg-white text-black px-4 py-3 text-sm font-medium hover:bg-gray-200 disabled:opacity-60 transition-colors"
-          >
-            {loading ? (
-              <span className="inline-flex items-center justify-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Creating...
-              </span>
-            ) : (
-              "Create league"
-            )}
-          </button>
-        </form>
+          {error && (
+            <div className="rounded-xl p-3 text-sm" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+              {error}
+            </div>
+          )}
 
-        <p className="text-xs text-gray-500 text-center">
-          After creating, you&apos;ll get a join code to share with friends.
-        </p>
+          <div className="fixed bottom-0 left-0 right-0 p-4 sm:static sm:p-0">
+            <button
+              type="submit"
+              disabled={!name.trim() || loading}
+              className="w-full rounded-xl px-4 py-3.5 text-sm font-bold uppercase tracking-wider text-black disabled:opacity-40 transition"
+              style={{ background: '#fb923c' }}
+            >
+              {loading ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Creating...
+                </span>
+              ) : (
+                "NEXT"
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { requireVerifiedSession } from "@/lib/require-verified"
 import { getEntryBracketData } from "@/lib/brackets/getEntryBracketData"
 import { LeagueHomeTabs } from "@/components/bracket/LeagueHomeTabs"
+import { Trophy, Settings, ArrowLeft } from "lucide-react"
 
 export default async function LeagueDetailPage({
   params,
@@ -37,11 +38,11 @@ export default async function LeagueDetailPage({
   const isMember = league.members.some((m: any) => m.userId === userId)
   if (!isMember) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-gray-950 to-gray-900 text-white flex items-center justify-center">
+      <div className="min-h-screen text-white flex items-center justify-center" style={{ background: '#0d1117' }}>
         <div className="text-center space-y-4">
-          <p className="text-white/60">You're not a member of this league.</p>
-          <Link href="/brackets" className="text-indigo-400 hover:underline text-sm">
-            Back to Brackets
+          <p style={{ color: 'rgba(255,255,255,0.4)' }}>You&apos;re not a member of this pool.</p>
+          <Link href="/brackets" style={{ color: '#fb923c' }} className="text-sm hover:underline">
+            Back to March Madness
           </Link>
         </div>
       </div>
@@ -87,27 +88,26 @@ export default async function LeagueDetailPage({
   const paymentConfirmedAt = rules.commissionerPaymentConfirmedAt as string | null
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#0a0e1a] to-[#111827] text-white">
+    <div className="min-h-screen text-white" style={{ background: '#0d1117' }}>
       <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-3">
         <div className="flex items-center gap-3">
           <Link
             href="/brackets"
-            className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white/10 text-sm text-white/60 hover:text-white hover:bg-white/15 transition"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-full transition"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}
           >
-            &larr;
+            <ArrowLeft className="w-4 h-4" />
           </Link>
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-2xl">&#127936;</span>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(251,146,60,0.12)' }}>
+              <Trophy className="w-4 h-4" style={{ color: '#fb923c' }} />
+            </div>
             <h1 className="text-lg sm:text-xl font-bold truncate">
-              {league.tournament.name === "March Madness" ? "March Madness" : league.name}
+              {league.name}
             </h1>
-            <span className="text-2xl">&#127936;</span>
           </div>
-          <button className="p-2 hover:bg-white/10 rounded-full transition">
-            <svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+          <button className="p-2 rounded-full transition" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            <Settings className="w-5 h-5" />
           </button>
         </div>
 

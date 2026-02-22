@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Trophy, ChevronDown, MessageCircle, Pin, Send, X } from "lucide-react"
-import { BracketProView } from "./BracketProView"
+import { Trophy, ChevronDown, MessageCircle, Pin, Send, X, Share2, Copy, Check, Settings } from "lucide-react"
+import { BracketTreeView } from "./BracketTreeView"
 import { PoolStandings } from "./PoolStandings"
 import { GameScores } from "./GameScores"
 import { PoolBrackets } from "./PoolBrackets"
@@ -73,8 +73,7 @@ export function LeagueHomeTabs(props: Props) {
     props.userEntries[0]?.id ?? ""
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [chatOpen, setChatOpen] = useState(true)
-  const [chatMessage, setChatMessage] = useState("")
+  const [inviteOpen, setInviteOpen] = useState(true)
 
   const { data: live } = useBracketLive({
     tournamentId: props.tournamentId,
@@ -90,22 +89,19 @@ export function LeagueHomeTabs(props: Props) {
 
   return (
     <div className="space-y-0 relative pb-16">
-      <div className="flex items-center justify-center gap-0 border-b border-white/10 mb-4">
+      <div className="flex items-center justify-center gap-0 mb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
         {TABS.map((tab) => {
           const isActive = activeTab === tab.id
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`relative px-6 py-3 text-sm font-semibold tracking-wide transition-colors ${
-                isActive
-                  ? "text-white"
-                  : "text-white/40 hover:text-white/60"
-              }`}
+              className="relative px-6 py-3 text-sm font-semibold tracking-wide transition-colors"
+              style={{ color: isActive ? 'white' : 'rgba(255,255,255,0.35)' }}
             >
               {tab.label}
               {isActive && (
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-amber-400 rounded-full" />
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full" style={{ background: '#fb923c' }} />
               )}
             </button>
           )
@@ -123,6 +119,8 @@ export function LeagueHomeTabs(props: Props) {
             games={games}
             settingsOpen={settingsOpen}
             setSettingsOpen={setSettingsOpen}
+            inviteOpen={inviteOpen}
+            setInviteOpen={setInviteOpen}
           />
         )}
         {activeTab === "brackets" && (
@@ -163,6 +161,8 @@ function PoolTab({
   games,
   settingsOpen,
   setSettingsOpen,
+  inviteOpen,
+  setInviteOpen,
   joinCode,
   isPaidLeague,
   paymentConfirmedAt,
@@ -170,6 +170,7 @@ function PoolTab({
   entriesPerUserFree,
   maxEntriesPerUser,
   maxManagers,
+  members,
 }: Props & {
   activeEntryId: string
   setActiveEntryId: (id: string) => void
@@ -178,49 +179,60 @@ function PoolTab({
   games: any[]
   settingsOpen: boolean
   setSettingsOpen: (v: boolean) => void
+  inviteOpen: boolean
+  setInviteOpen: (v: boolean) => void
 }) {
+  const totalPicks = Object.values(activePicks).filter(Boolean).length
+  const totalGames = nodes.filter(n => n.round >= 1).length
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {userEntries.length > 0 ? (
         <div className="space-y-3">
           {userEntries.length > 1 && (
             <div className="flex items-center gap-3">
-              <label className="text-sm text-white/50">Viewing:</label>
+              <label className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Viewing:</label>
               <div className="relative">
                 <select
                   value={activeEntryId}
                   onChange={(e) => setActiveEntryId(e.target.value)}
-                  className="appearance-none rounded-xl border border-white/10 bg-white/5 px-4 py-2 pr-8 text-sm text-white outline-none focus:border-white/20"
+                  className="appearance-none rounded-xl px-4 py-2 pr-8 text-sm text-white outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
                 >
                   {userEntries.map((e) => (
-                    <option key={e.id} value={e.id} className="bg-gray-900">
+                    <option key={e.id} value={e.id} style={{ background: '#0d1117' }}>
                       {e.name}
                     </option>
                   ))}
                 </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none" style={{ color: 'rgba(255,255,255,0.3)' }} />
               </div>
-              <CreateEntryButton leagueId={leagueId} />
             </div>
           )}
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur overflow-hidden">
-            <BracketProView
-              tournamentId={tournamentId}
-              leagueId={leagueId}
-              entryId={activeEntryId}
-              nodes={nodes}
-              initialPicks={activePicks}
-            />
-            <div className="text-center py-2 text-xs text-white/40 font-medium">My Bracket</div>
+          <BracketTreeView
+            tournamentId={tournamentId}
+            leagueId={leagueId}
+            entryId={activeEntryId}
+            nodes={nodes}
+            initialPicks={activePicks}
+            compact
+          />
+          <div className="text-center">
+            <p className="text-sm">
+              Tap to fill out your bracket <span className="font-bold" style={{ color: '#fb923c' }}>{totalPicks}</span> out of <span className="font-bold">{totalGames}</span>
+            </p>
+            <p className="text-[11px] mt-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+              Brackets lock when first round games begin
+            </p>
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur p-8 text-center space-y-4">
-          <Trophy className="h-12 w-12 mx-auto text-yellow-400/60" />
+        <div className="rounded-2xl p-8 text-center space-y-4" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <Trophy className="h-12 w-12 mx-auto" style={{ color: 'rgba(251,146,60,0.5)' }} />
           <div>
-            <h3 className="text-lg font-semibold text-white">Fill Out Your Bracket</h3>
-            <p className="text-sm text-white/50 mt-1">
+            <h3 className="text-lg font-semibold">Fill Out Your Bracket</h3>
+            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
               Create an entry to start picking winners
             </p>
           </div>
@@ -228,9 +240,12 @@ function PoolTab({
         </div>
       )}
 
+      <InviteSection joinCode={joinCode} inviteOpen={inviteOpen} setInviteOpen={setInviteOpen} members={members} />
+
       <button
         onClick={() => setSettingsOpen(!settingsOpen)}
-        className="w-full rounded-2xl border border-white/10 bg-black/20 backdrop-blur px-5 py-3.5 flex items-center justify-center gap-2 text-sm font-semibold text-white hover:bg-white/5 transition"
+        className="w-full rounded-xl px-5 py-3.5 flex items-center justify-center gap-2 text-sm font-semibold transition"
+        style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.7)' }}
       >
         SETTINGS & RULES
         <ChevronDown className={`h-4 w-4 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
@@ -260,6 +275,91 @@ function PoolTab({
   )
 }
 
+function InviteSection({
+  joinCode,
+  inviteOpen,
+  setInviteOpen,
+  members,
+}: {
+  joinCode: string
+  inviteOpen: boolean
+  setInviteOpen: (v: boolean) => void
+  members: Member[]
+}) {
+  const [copied, setCopied] = useState(false)
+  const inviteUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/brackets/join?code=${joinCode}`
+    : `/brackets/join?code=${joinCode}`
+
+  function copyLink() {
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <button
+        onClick={() => setInviteOpen(!inviteOpen)}
+        className="w-full px-4 py-3 flex items-center justify-center gap-2 text-sm font-semibold"
+        style={{ color: 'rgba(255,255,255,0.7)' }}
+      >
+        INVITE TO POOL
+        <ChevronDown className={`h-4 w-4 transition-transform ${inviteOpen ? "rotate-180" : ""}`} />
+      </button>
+
+      {inviteOpen && (
+        <div className="px-4 pb-4 space-y-3">
+          <div className="flex items-center gap-2">
+            {members.slice(0, 5).map((m) => (
+              <div
+                key={m.id}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-[10px] font-bold"
+                style={{ background: 'rgba(251,146,60,0.12)', color: '#fb923c', border: '1px solid rgba(251,146,60,0.2)' }}
+              >
+                {(m.user.displayName || m.user.email || '?').slice(0, 2).toUpperCase()}
+              </div>
+            ))}
+            {members.length > 5 && (
+              <div className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>+{members.length - 5}</div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div
+              className="flex-1 rounded-lg px-3 py-2 text-xs truncate"
+              style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(251,146,60,0.3)', color: 'rgba(255,255,255,0.5)' }}
+            >
+              {inviteUrl}
+            </div>
+            <button
+              onClick={copyLink}
+              className="p-2 rounded-lg transition"
+              style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}
+            >
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </button>
+            <button
+              onClick={() => {
+                if (navigator.share) {
+                  navigator.share({ title: 'Join my March Madness pool!', url: inviteUrl })
+                } else {
+                  copyLink()
+                }
+              }}
+              className="p-2 rounded-lg transition"
+              style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SettingsPanel({
   joinCode,
   isPaidLeague,
@@ -279,43 +379,51 @@ function SettingsPanel({
   maxEntriesPerUser: number
   maxManagers: number
 }) {
-  return (
-    <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
-      <div className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur p-5 space-y-4">
-        <div className="text-sm font-semibold text-white/70">Invite Friends</div>
-        <CopyJoinCode joinCode={joinCode} />
-        <p className="text-xs text-white/30 italic">Picks lock at tip-off for each game.</p>
-      </div>
+  const SCORING = [
+    { round: "Round 1 (32)", pts: 1, total: 32 },
+    { round: "Round 2 (16)", pts: 2, total: 32 },
+    { round: "Sweet 16 (8)", pts: 4, total: 32 },
+    { round: "Elite 8 (4)", pts: 8, total: 32 },
+    { round: "Final Four (2)", pts: 16, total: 32 },
+    { round: "Championship (1)", pts: 32, total: 32 },
+  ]
 
-      <div className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur p-5">
-        <div className="text-sm font-semibold text-white/70 mb-4">League Rules</div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center">
-            <div className="text-lg font-bold text-white">{entriesPerUserFree}</div>
-            <div className="text-[11px] text-white/40">Free Entries</div>
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+        <div className="px-4 py-3 flex items-center gap-4 text-sm" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <div className="flex items-center gap-2" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            <Settings className="w-4 h-4" />
+            {maxEntriesPerUser} Max Bracket{maxEntriesPerUser !== 1 ? 's' : ''}
           </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-white">{maxEntriesPerUser}</div>
-            <div className="text-[11px] text-white/40">Max Entries</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold text-white">{maxManagers}</div>
-            <div className="text-[11px] text-white/40">Capacity</div>
-          </div>
+          <div style={{ color: 'rgba(255,255,255,0.6)' }}>Show Champ Pick</div>
         </div>
+
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+              <th className="text-left px-4 py-2 text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>ROUND (# GAMES)</th>
+              <th className="text-center px-4 py-2 text-xs font-semibold" style={{ color: '#fb923c' }}>PTS PER CORRECT</th>
+              <th className="text-center px-4 py-2 text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.4)' }}>TOTAL POINTS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SCORING.map((s) => (
+              <tr key={s.round} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                <td className="px-4 py-2 text-xs" style={{ color: 'rgba(255,255,255,0.6)' }}>{s.round}</td>
+                <td className="text-center px-4 py-2 text-xs font-bold" style={{ color: '#fb923c' }}>{s.pts}</td>
+                <td className="text-center px-4 py-2 text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{s.total}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {isPaidLeague && (
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-5 space-y-2">
-          <div className="text-sm font-semibold text-emerald-300">Paid League (FanCred)</div>
-          <div className="text-xs text-white/50">
-            Commissioner must confirm payment to unlock paid extra entries.
-          </div>
-          <div className="text-xs text-white/40">
-            Status:{" "}
-            {paymentConfirmedAt
-              ? `Confirmed at ${new Date(paymentConfirmedAt).toLocaleString()}`
-              : "Pending confirmation"}
+        <div className="rounded-xl p-4 space-y-2" style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)' }}>
+          <div className="text-sm font-semibold" style={{ color: '#6ee7b7' }}>Paid League (FanCred)</div>
+          <div className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+            Status: {paymentConfirmedAt ? `Confirmed` : "Pending confirmation"}
           </div>
           {isOwner && !paymentConfirmedAt && <ConfirmPaymentButton leagueId={leagueId} />}
         </div>
@@ -326,10 +434,10 @@ function SettingsPanel({
 
 function GlobalTab() {
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 backdrop-blur p-8 text-center space-y-3">
-      <Trophy className="h-10 w-10 mx-auto text-amber-400/40" />
-      <h3 className="text-sm font-semibold text-white/60">Global Leaderboard</h3>
-      <p className="text-xs text-white/30">
+    <div className="rounded-xl p-8 text-center space-y-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <Trophy className="h-10 w-10 mx-auto" style={{ color: 'rgba(251,146,60,0.3)' }} />
+      <h3 className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>Global Leaderboard</h3>
+      <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
         See how your bracket stacks up against all AllFantasy players. Coming soon.
       </p>
     </div>
@@ -360,7 +468,7 @@ function ChatBar({
         if (data.messages?.length > 0) {
           const last = data.messages[data.messages.length - 1]
           const name = last.user?.displayName || last.user?.email || "Someone"
-          setLatestMessage(`${name} ${last.message?.length > 30 ? last.message.slice(0, 30) + "..." : last.message}`)
+          setLatestMessage(`${name}: ${last.message?.length > 30 ? last.message.slice(0, 30) + "..." : last.message}`)
         }
       }
     } catch {}
@@ -388,74 +496,79 @@ function ChatBar({
     return (
       <div
         onClick={() => { setExpanded(true); fetchMessages() }}
-        className="fixed bottom-0 left-0 right-0 z-30 bg-gray-900/95 backdrop-blur-lg border-t border-white/10 px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-gray-800/95 transition"
+        className="fixed bottom-0 left-0 right-0 z-30 px-4 py-3 flex items-center gap-3 cursor-pointer transition"
+        style={{ background: 'rgba(13,17,23,0.95)', backdropFilter: 'blur(12px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}
       >
         <MessageCircle className="h-5 w-5 text-white flex-shrink-0" />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-semibold text-white">Chat</span>
-          {latestMessage && (
-            <p className="text-xs text-white/40 truncate">{latestMessage}</p>
+          {latestMessage ? (
+            <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.3)' }}>{latestMessage}</p>
+          ) : (
+            <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Be the first to say hi</p>
           )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Pin className="h-4 w-4 text-white/30" />
-          <span className="text-[10px] font-semibold text-white/50 bg-white/10 rounded px-1.5 py-0.5">DM</span>
+          <Pin className="h-4 w-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>DM</span>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-30 bg-gray-900/98 backdrop-blur-lg border-t border-white/10">
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5">
+    <div className="fixed bottom-0 left-0 right-0 z-30" style={{ background: 'rgba(13,17,23,0.98)', backdropFilter: 'blur(12px)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
         <span className="text-sm font-semibold text-white flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
           Chat
         </span>
-        <button onClick={() => setExpanded(false)} className="p-1 hover:bg-white/10 rounded-lg transition">
-          <X className="h-4 w-4 text-white/50" />
+        <button onClick={() => setExpanded(false)} className="p-1 rounded-lg transition" style={{ color: 'rgba(255,255,255,0.4)' }}>
+          <X className="h-4 w-4" />
         </button>
       </div>
 
       <div className="max-h-48 overflow-y-auto px-4 py-2 space-y-2">
         {messages.length === 0 && (
-          <p className="text-xs text-white/30 text-center py-4">No messages yet. Start the conversation!</p>
+          <p className="text-xs text-center py-4" style={{ color: 'rgba(255,255,255,0.2)' }}>No messages yet. Start the conversation!</p>
         )}
         {messages.map((m: any) => {
           const isMe = m.user?.id === currentUserId || m.userId === currentUserId
           return (
             <div key={m.id} className={`flex gap-2 ${isMe ? "justify-end" : ""}`}>
               {!isMe && (
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style={{ background: 'rgba(251,146,60,0.2)' }}>
                   {(m.user?.displayName || m.user?.email || "?").slice(0, 2).toUpperCase()}
                 </div>
               )}
-              <div className={`rounded-xl px-3 py-1.5 max-w-[70%] ${isMe ? "bg-cyan-500/20 text-white" : "bg-white/5 text-white/80"}`}>
+              <div className="rounded-xl px-3 py-1.5 max-w-[70%]" style={{ background: isMe ? 'rgba(251,146,60,0.1)' : 'rgba(255,255,255,0.04)' }}>
                 {!isMe && (
-                  <div className="text-[10px] font-semibold text-white/50 mb-0.5">
+                  <div className="text-[10px] font-semibold mb-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
                     {m.user?.displayName || m.user?.email || "Unknown"}
                   </div>
                 )}
-                <div className="text-xs">{m.message}</div>
+                <div className="text-xs" style={{ color: 'rgba(255,255,255,0.8)' }}>{m.message}</div>
               </div>
             </div>
           )
         })}
       </div>
 
-      <form onSubmit={sendMessage} className="px-4 py-2 flex items-center gap-2 border-t border-white/5">
+      <form onSubmit={sendMessage} className="px-4 py-2 flex items-center gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Type a message..."
-          className="flex-1 bg-white/5 rounded-xl border border-white/10 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
+          className="flex-1 rounded-xl px-3 py-2 text-sm text-white outline-none"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
         />
         <button
           type="submit"
           disabled={!input.trim() || sending}
-          className="p-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 disabled:opacity-40 transition"
+          className="p-2 rounded-xl disabled:opacity-40 transition"
+          style={{ background: 'rgba(251,146,60,0.15)', color: '#fb923c' }}
         >
-          <Send className="h-4 w-4 text-cyan-400" />
+          <Send className="h-4 w-4" />
         </button>
       </form>
     </div>
