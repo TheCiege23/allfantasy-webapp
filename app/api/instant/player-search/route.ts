@@ -52,10 +52,12 @@ export async function GET(req: NextRequest) {
         name: p.player.name,
         position: p.player.position,
         team: p.player.maybeTeam || p.player.team || '',
-        age: p.player.age,
+        age: p.player.maybeAge ?? p.player.age ?? 0,
         value: p.value,
         rank: p.overallRank,
         trend: p.trend30Day,
+        espnId: p.player.espnId || null,
+        sleeperId: p.player.sleeperId || null,
       }))
 
     return NextResponse.json(results)
