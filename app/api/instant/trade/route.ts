@@ -183,7 +183,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
       )
     }
 
-    const { tradeText, leagueSize: passedLeagueSize, tePremium, eventId, fbp, fbc } = await req.json()
+    const { tradeText, leagueSize: passedLeagueSize, tePremium, isSuperFlex, eventId, fbp, fbc } = await req.json()
 
     if (!tradeText || typeof tradeText !== 'string' || tradeText.trim().length < 5) {
       return NextResponse.json({ error: 'Please enter a trade to analyze.' }, { status: 400 })
@@ -200,7 +200,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
 
     const fcPlayers = await fetchFantasyCalcValues({
       isDynasty: true,
-      numQbs: 1,
+      numQbs: isSuperFlex ? 2 : 1,
       numTeams: leagueSize,
       ppr: 1,
     })
@@ -215,7 +215,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
 
     const ctx: ValuationContext = {
       asOfDate: new Date().toISOString().slice(0, 10),
-      isSuperFlex: false,
+      isSuperFlex: !!isSuperFlex,
       fantasyCalcPlayers: fcPlayers,
       numTeams: leagueSize,
     }
@@ -331,6 +331,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
     }
 
     const gptContract = buildGptInputContract('INSTANT', drivers)
+    const sfContext = isSuperFlex ? `\n\nLeague Format: Superflex (SF) — QBs are significantly more valuable in SF leagues (often 2-3x 1QB value). Factor this into your analysis; highlight QB premium for any QBs involved.` : ''
     const tepContext = tePremium ? `\n\nLeague Format: TEP (Tight End Premium) — TE values are boosted ~15%. Factor this into your analysis; mention TEP advantage for any TEs involved.` : ''
     let aiNarrative: { bullets: Array<{ text: string; driverId: string }>; sensitivity: { text: string; driverId: string } } | null = null
 
@@ -347,7 +348,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
             },
             {
               role: 'user',
-              content: buildGptUserPrompt(gptContract) + tepContext,
+              content: buildGptUserPrompt(gptContract) + sfContext + tepContext,
             },
           ],
           temperature: 0.2,
@@ -416,7 +417,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
         const negResult = await openaiChatJson({
           messages: [
             { role: 'system', content: NEGOTIATION_GPT_SYSTEM_PROMPT },
-            { role: 'user', content: buildNegotiationGptUserPrompt(negContract) + tepContext },
+            { role: 'user', content: buildNegotiationGptUserPrompt(negContract) + sfContext + tepContext },
           ],
           temperature: 0.3,
           maxTokens: 500,
@@ -498,6 +499,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
       detectedLeagueSize: detectedLeagueSize ?? null,
       leagueSize,
       tePremium: !!tePremium,
+      isSuperFlex: !!isSuperFlex,
       values: {
         youGive: sideAAssets.map(a => ({
           name: a.name,
