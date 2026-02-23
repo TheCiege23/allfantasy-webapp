@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Loader2, Copy, Sparkles, X, Search, TrendingUp, TrendingDown, Minus, ChevronRight } from 'lucide-react'
@@ -18,12 +18,16 @@ type PlayerAsset = {
   value: number
   rank: number
   trend: number
+  espnId?: string | null
+  sleeperId?: string | null
 }
 
 type PickAsset = {
   label: string
   year: number
   round: number
+  pickNumber?: number
+  tier?: string
 }
 
 type TradeResult = {
@@ -47,22 +51,87 @@ type TradeResult = {
 
 const LEAGUE_SIZES = [8, 10, 12, 14, 16, 32]
 
-const PICK_OPTIONS = [
-  { label: '2025 1st', year: 2025, round: 1 },
-  { label: '2025 2nd', year: 2025, round: 2 },
-  { label: '2025 3rd', year: 2025, round: 3 },
-  { label: '2026 1st', year: 2026, round: 1 },
-  { label: '2026 2nd', year: 2026, round: 2 },
-  { label: '2026 3rd', year: 2026, round: 3 },
-  { label: '2027 1st', year: 2027, round: 1 },
-  { label: '2027 2nd', year: 2027, round: 2 },
-]
+const NFL_TEAMS = new Set([
+  'ARI','ATL','BAL','BUF','CAR','CHI','CIN','CLE','DAL','DEN','DET','GB',
+  'HOU','IND','JAX','KC','LAC','LAR','LV','MIA','MIN','NE','NO','NYG',
+  'NYJ','PHI','PIT','SEA','SF','TB','TEN','WAS',
+])
+
+function getPlayerHeadshotUrl(player: PlayerAsset): string | null {
+  if (player.espnId) return `https://a.espncdn.com/combiner/i?img=/i/headshots/nfl/players/full/${player.espnId}.png&w=96&h=70&cb=1`
+  if (player.sleeperId) return `https://sleepercdn.com/content/nfl/players/thumb/${player.sleeperId}.jpg`
+  return null
+}
+
+function getTeamLogoUrl(team: string): string | null {
+  if (!team) return null
+  if (NFL_TEAMS.has(team.toUpperCase())) return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/${team.toLowerCase()}.png&h=40&w=40`
+  return null
+}
+
+const posColor = (pos: string) => {
+  switch (pos) {
+    case 'QB': return '#ef4444'
+    case 'RB': return '#22d3ee'
+    case 'WR': return '#a855f7'
+    case 'TE': return '#f59e0b'
+    default: return 'var(--muted2)'
+  }
+}
+
+function PlayerHeadshot({ player, size = 32 }: { player: PlayerAsset; size?: number }) {
+  const [error, setError] = useState(false)
+  const url = getPlayerHeadshotUrl(player)
+
+  if (!url || error) {
+    return (
+      <div
+        className="rounded-full flex items-center justify-center shrink-0"
+        style={{ width: size, height: size, background: posColor(player.position) + '25' }}
+      >
+        <span className="text-[9px] font-bold" style={{ color: posColor(player.position) }}>{player.position}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative shrink-0 rounded-full overflow-hidden" style={{ width: size, height: size, background: 'var(--panel2)' }}>
+      <img
+        src={url}
+        alt={player.name}
+        width={size}
+        height={size}
+        className="object-cover w-full h-full"
+        onError={() => setError(true)}
+      />
+    </div>
+  )
+}
+
+function TeamLogo({ team, size = 16 }: { team: string; size?: number }) {
+  const [error, setError] = useState(false)
+  const url = getTeamLogoUrl(team)
+
+  if (!url || error || !team) return null
+
+  return (
+    <img
+      src={url}
+      alt={team}
+      width={size}
+      height={size}
+      className="object-contain shrink-0"
+      onError={() => setError(true)}
+    />
+  )
+}
 
 function PlayerSearch({ onSelect }: { onSelect: (p: PlayerAsset) => void }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<PlayerAsset[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [highlightIdx, setHighlightIdx] = useState(-1)
   const ref = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<NodeJS.Timeout>()
 
@@ -82,6 +151,7 @@ function PlayerSearch({ onSelect }: { onSelect: (p: PlayerAsset) => void }) {
       const data = await res.json()
       setResults(data)
       setIsOpen(true)
+      setHighlightIdx(-1)
     } catch { setResults([]) }
     setLoading(false)
   }, [])
@@ -92,14 +162,9 @@ function PlayerSearch({ onSelect }: { onSelect: (p: PlayerAsset) => void }) {
     debounceRef.current = setTimeout(() => searchPlayers(val), 250)
   }
 
-  const posColor = (pos: string) => {
-    switch (pos) {
-      case 'QB': return '#ef4444'
-      case 'RB': return '#22d3ee'
-      case 'WR': return '#a855f7'
-      case 'TE': return '#f59e0b'
-      default: return 'var(--muted2)'
-    }
+  const selectAndClear = (p: PlayerAsset) => {
+    onSelect(p)
+    setQuery(''); setIsOpen(false); setResults([]); setHighlightIdx(-1)
   }
 
   return (
@@ -112,14 +177,21 @@ function PlayerSearch({ onSelect }: { onSelect: (p: PlayerAsset) => void }) {
           onChange={(e) => handleChange(e.target.value)}
           onFocus={() => { if (results.length > 0) setIsOpen(true) }}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && query.trim().length >= 2) {
+            if (e.key === 'ArrowDown') {
               e.preventDefault()
-              if (results.length > 0) {
-                onSelect(results[0])
+              setHighlightIdx(prev => Math.min(prev + 1, results.length - 1))
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault()
+              setHighlightIdx(prev => Math.max(prev - 1, -1))
+            } else if (e.key === 'Enter' && query.trim().length >= 2) {
+              e.preventDefault()
+              if (highlightIdx >= 0 && highlightIdx < results.length) {
+                selectAndClear(results[highlightIdx])
+              } else if (results.length > 0) {
+                selectAndClear(results[0])
               } else {
-                onSelect({ name: query.trim(), position: '??', team: '', age: 0, value: 0, rank: 0, trend: 0 })
+                selectAndClear({ name: query.trim(), position: '??', team: '', age: 0, value: 0, rank: 0, trend: 0 })
               }
-              setQuery(''); setIsOpen(false); setResults([])
             }
           }}
           placeholder="Search players..."
@@ -140,13 +212,17 @@ function PlayerSearch({ onSelect }: { onSelect: (p: PlayerAsset) => void }) {
             {results.map((p, i) => (
               <button
                 key={i}
-                onClick={() => { onSelect(p); setQuery(''); setIsOpen(false); setResults([]) }}
-                className="w-full flex items-center justify-between px-3 py-2 text-xs hover:bg-cyan-500/10 transition-colors"
+                onClick={() => selectAndClear(p)}
+                className={`w-full flex items-center justify-between px-3 py-2 text-xs transition-colors ${i === highlightIdx ? 'bg-cyan-500/15' : 'hover:bg-cyan-500/10'}`}
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
+                  <PlayerHeadshot player={p} size={28} />
                   <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: posColor(p.position) + '20', color: posColor(p.position) }}>{p.position}</span>
                   <span className="font-medium" style={{ color: 'var(--text)' }}>{p.name}</span>
-                  <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>{p.team}</span>
+                  <div className="flex items-center gap-1">
+                    <TeamLogo team={p.team} size={14} />
+                    <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>{p.team}</span>
+                  </div>
                 </div>
                 <span className="font-mono text-[10px] font-semibold" style={{ color: 'var(--accent-cyan-strong)' }}>{p.value.toLocaleString()}</span>
               </button>
@@ -164,7 +240,9 @@ function AssetCard({ asset, onRemove, type }: { asset: PlayerAsset | PickAsset; 
     return (
       <div className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: 'var(--panel2)', border: '1px solid var(--border)' }}>
         <div className="flex items-center gap-2">
-          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold" style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>PICK</span>
+          <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: 'rgba(168,85,247,0.15)' }}>
+            <span className="text-[9px] font-bold" style={{ color: '#a855f7' }}>📋</span>
+          </div>
           <span className="text-xs font-medium" style={{ color: 'var(--text)' }}>{pick.label}</span>
         </div>
         <button onClick={onRemove} className="p-0.5 rounded hover:bg-red-500/20 transition-colors"><X className="w-3 h-3" style={{ color: 'var(--muted2)' }} /></button>
@@ -173,18 +251,24 @@ function AssetCard({ asset, onRemove, type }: { asset: PlayerAsset | PickAsset; 
   }
 
   const player = asset as PlayerAsset
-  const posColor = player.position === 'QB' ? '#ef4444' : player.position === 'RB' ? '#22d3ee' : player.position === 'WR' ? '#a855f7' : '#f59e0b'
+  const pc = posColor(player.position)
 
   return (
     <div className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: 'var(--panel2)', border: '1px solid var(--border)' }}>
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0" style={{ background: posColor + '20', color: posColor }}>{player.position}</span>
+      <div className="flex items-center gap-2.5 min-w-0">
+        <PlayerHeadshot player={player} size={32} />
         <div className="min-w-0">
-          <div className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>{player.name}</div>
-          <div className="flex items-center gap-1.5 text-[10px]" style={{ color: 'var(--muted2)' }}>
+          <div className="flex items-center gap-1.5">
+            <span className="px-1 py-0.5 rounded text-[8px] font-bold shrink-0" style={{ background: pc + '20', color: pc }}>{player.position}</span>
+            <span className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>{player.name}</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] mt-0.5" style={{ color: 'var(--muted2)' }}>
+            <TeamLogo team={player.team} size={12} />
             <span>{player.team}</span>
-            <span>·</span>
-            <span>{player.age?.toFixed(1)} y.o.</span>
+            {player.age > 0 && <>
+              <span>·</span>
+              <span>{player.age?.toFixed(1)} y.o.</span>
+            </>}
           </div>
         </div>
       </div>
@@ -204,8 +288,10 @@ function AssetCard({ asset, onRemove, type }: { asset: PlayerAsset | PickAsset; 
   )
 }
 
-function PickSelector({ onSelect }: { onSelect: (pick: PickAsset) => void }) {
+function PickSelector({ onSelect, leagueSize }: { onSelect: (pick: PickAsset) => void; leagueSize: number }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [mode, setMode] = useState<'tiered' | 'specific'>('tiered')
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -215,6 +301,54 @@ function PickSelector({ onSelect }: { onSelect: (pick: PickAsset) => void }) {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  const years = [2025, 2026, 2027]
+  const rounds = [1, 2, 3]
+  const roundLabels: Record<number, string> = { 1: '1st', 2: '2nd', 3: '3rd' }
+  const tiers = ['Early', 'Mid', 'Late']
+
+  const tieredPicks = useMemo(() => {
+    const picks: PickAsset[] = []
+    for (const year of years) {
+      for (const round of rounds) {
+        for (const tier of tiers) {
+          picks.push({
+            label: `${year} ${tier} ${roundLabels[round]}`,
+            year,
+            round,
+            tier: tier.toLowerCase(),
+          })
+        }
+      }
+    }
+    return picks
+  }, [])
+
+  const specificPicks = useMemo(() => {
+    const picks: PickAsset[] = []
+    for (const year of years) {
+      for (const round of rounds) {
+        for (let pick = 1; pick <= leagueSize; pick++) {
+          const pickStr = pick.toString().padStart(2, '0')
+          picks.push({
+            label: `${year} ${round}.${pickStr}`,
+            year,
+            round,
+            pickNumber: pick,
+          })
+        }
+      }
+    }
+    return picks
+  }, [leagueSize])
+
+  const allPicks = mode === 'tiered' ? tieredPicks : specificPicks
+
+  const filteredPicks = query.trim().length > 0
+    ? allPicks.filter(p => p.label.toLowerCase().includes(query.toLowerCase()))
+    : allPicks
+
+  const displayPicks = filteredPicks.slice(0, 20)
 
   return (
     <div ref={ref} className="relative">
@@ -231,19 +365,55 @@ function PickSelector({ onSelect }: { onSelect: (pick: PickAsset) => void }) {
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
-            className="absolute z-50 right-0 mt-1 rounded-lg shadow-xl overflow-hidden min-w-[120px]"
-            style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}
+            className="absolute z-50 right-0 mt-1 rounded-xl shadow-xl overflow-hidden"
+            style={{ background: 'var(--panel)', border: '1px solid var(--border)', width: '240px' }}
           >
-            {PICK_OPTIONS.map((p, i) => (
-              <button
-                key={i}
-                onClick={() => { onSelect(p); setIsOpen(false) }}
-                className="w-full px-3 py-1.5 text-[11px] text-left hover:bg-cyan-500/10 transition-colors"
-                style={{ color: 'var(--text)' }}
-              >
-                {p.label}
-              </button>
-            ))}
+            <div className="p-2 space-y-2" style={{ borderBottom: '1px solid var(--border)' }}>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { setMode('tiered'); setQuery('') }}
+                  className="flex-1 text-[10px] py-1 rounded-md font-medium transition-all"
+                  style={mode === 'tiered' ? { background: 'rgba(168,85,247,0.2)', color: '#a855f7' } : { color: 'var(--muted2)' }}
+                >
+                  Tiered
+                </button>
+                <button
+                  onClick={() => { setMode('specific'); setQuery('') }}
+                  className="flex-1 text-[10px] py-1 rounded-md font-medium transition-all"
+                  style={mode === 'specific' ? { background: 'rgba(168,85,247,0.2)', color: '#a855f7' } : { color: 'var(--muted2)' }}
+                >
+                  Specific
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-md px-2 py-1" style={{ background: 'var(--panel2)', border: '1px solid var(--border)' }}>
+                <Search className="w-3 h-3 shrink-0" style={{ color: 'var(--muted2)' }} />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={mode === 'tiered' ? 'e.g. 2026 early 1st' : 'e.g. 2026 1.01'}
+                  className="w-full bg-transparent text-[10px] outline-none"
+                  style={{ color: 'var(--text)' }}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="max-h-[200px] overflow-y-auto">
+              {displayPicks.map((p, i) => (
+                <button
+                  key={i}
+                  onClick={() => { onSelect(p); setIsOpen(false); setQuery('') }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] text-left hover:bg-purple-500/10 transition-colors"
+                  style={{ color: 'var(--text)' }}
+                >
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[8px]" style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7' }}>📋</span>
+                  <span>{p.label}</span>
+                </button>
+              ))}
+              {displayPicks.length === 0 && (
+                <div className="px-3 py-4 text-center text-[10px]" style={{ color: 'var(--muted2)' }}>No picks match</div>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -393,7 +563,7 @@ export default function InstantTradeAnalyzer() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#ef4444' }}>Team 1 gives</div>
-            <PickSelector onSelect={(p) => setTeamAPicks(prev => [...prev, p])} />
+            <PickSelector onSelect={(p) => setTeamAPicks(prev => [...prev, p])} leagueSize={leagueSize} />
           </div>
           <PlayerSearch onSelect={(p) => setTeamAPlayers(prev => [...prev, p])} />
           <div className="space-y-1.5 min-h-[44px]">
@@ -420,7 +590,7 @@ export default function InstantTradeAnalyzer() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#22d3ee' }}>Team 2 gives</div>
-            <PickSelector onSelect={(p) => setTeamBPicks(prev => [...prev, p])} />
+            <PickSelector onSelect={(p) => setTeamBPicks(prev => [...prev, p])} leagueSize={leagueSize} />
           </div>
           <PlayerSearch onSelect={(p) => setTeamBPlayers(prev => [...prev, p])} />
           <div className="space-y-1.5 min-h-[44px]">
@@ -476,18 +646,16 @@ export default function InstantTradeAnalyzer() {
       <div className="flex flex-wrap gap-3 mb-4">
         <div>
           <div className="text-[10px] font-medium mb-1.5" style={{ color: 'var(--muted2)' }}>League Size</div>
-          <div className="flex gap-1 flex-wrap">
+          <select
+            value={leagueSize}
+            onChange={(e) => { setLeagueSize(Number(e.target.value)); track('trade_refine_used', { league_size: Number(e.target.value) }) }}
+            className="rounded-lg px-2.5 py-1 text-[11px] outline-none min-h-[28px] font-semibold"
+            style={{ background: 'var(--panel2)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          >
             {LEAGUE_SIZES.map((n) => (
-              <button
-                key={n}
-                onClick={() => { setLeagueSize(n); track('trade_refine_used', { league_size: n }) }}
-                className={`px-2.5 py-1 text-[11px] rounded-lg font-semibold transition-all min-h-[28px] ${leagueSize === n ? 'bg-cyan-400 text-black' : ''}`}
-                style={leagueSize !== n ? { background: 'var(--subtle-bg)', color: 'var(--muted)' } : undefined}
-              >
-                {n}
-              </button>
+              <option key={n} value={n}>{n}-team</option>
             ))}
-          </div>
+          </select>
         </div>
 
         <div>
