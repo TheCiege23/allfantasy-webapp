@@ -25,8 +25,8 @@ const THEME_WHY_TEMPLATES: Record<NegotiationTheme, (d: AcceptDriver) => string>
   MARKET: (d) => {
     const pct = Math.round(Math.abs(d.evidence.raw ?? 0))
     return d.direction === 'DOWN'
-      ? `Market consensus favors them by ~${pct}%, so they'll see this as a bargain.`
-      : `They'd be giving up ~${pct}% more market value than they get back.`
+      ? `They'd be giving up ~${pct}% more market value than they get back.`
+      : `Market consensus favors them by ~${pct}%, so they'll see this as a bargain.`
   },
   MANAGER_BIAS: (d) => {
     const note = d.evidence.note || ''

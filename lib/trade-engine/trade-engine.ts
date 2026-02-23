@@ -1131,12 +1131,14 @@ const BULLET_TEMPLATES: Record<string, (d: AcceptDriver, ctx: BulletContext) => 
       return `Directly upgrades your opponent's weakest starter slot (+${Math.abs(ppg).toFixed(1)} PPG), so they're more likely to engage.`
     return `Doesn't address opponent's weakest starter slots, reducing appeal.`
   },
-  ar_market_mismatch: (d, _ctx) => {
-    const oppPct = d.evidence.raw ?? 0
+  ar_market_mismatch: (d, ctx) => {
+    const oppPct = Math.round(Math.abs(d.evidence.raw ?? 0))
     if (d.strength === 'WEAK') return null
     if (d.direction === 'UP')
-      return `Market values show they'd be giving up ~${Math.round(Math.abs(oppPct))}% more than they get, which usually kills acceptance.`
-    return `Market values favor the opponent by ~${Math.round(Math.abs(oppPct))}%, making them more open to the deal.`
+      return `Market values favor the opponent by ~${oppPct}%, making them more open to the deal.`
+    if (oppPct <= 12)
+      return `Market values show they'd be giving up ~${oppPct}% more than they get, which could slow acceptance.`
+    return `Market values show they'd be giving up ~${oppPct}% more than they get, which may hurt acceptance.`
   },
   ar_deal_shape: (d, _ctx) => {
     const pieces = Math.abs(d.evidence.raw ?? 0)

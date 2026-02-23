@@ -417,7 +417,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
         const negResult = await openaiChatJson({
           messages: [
             { role: 'system', content: NEGOTIATION_GPT_SYSTEM_PROMPT },
-            { role: 'user', content: buildNegotiationGptUserPrompt(negContract) + sfContext + tepContext },
+            { role: 'user', content: buildNegotiationGptUserPrompt(negContract) + `\n\nTrade Context: ${valuationSummary.youGive} → ${valuationSummary.youGet}` + sfContext + tepContext },
           ],
           temperature: 0.3,
           maxTokens: 500,
