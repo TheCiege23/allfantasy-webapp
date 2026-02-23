@@ -167,7 +167,7 @@ function HomeContent() {
       />
 
       {/* ── HERO SECTION ── full viewport height */}
-      <section className="relative min-h-screen flex flex-col justify-center px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24 py-16 md:py-0">
+      <section className="relative flex flex-col justify-center px-5 sm:px-8 md:px-12 lg:px-16 xl:px-24 pt-28 pb-16">
 
         {/* AF Shield background watermark */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
@@ -207,35 +207,47 @@ function HomeContent() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="relative z-10 max-w-7xl mx-auto w-full grid lg:grid-cols-2 gap-8 lg:gap-16 items-center"
+          className="relative z-10 max-w-5xl mx-auto w-full flex flex-col items-center gap-8"
         >
-          {/* Left: Headline + Form */}
-          <div className="text-center lg:text-left space-y-6 lg:space-y-8">
-            <div className="space-y-3 lg:space-y-4">
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1]">
-                <span className="block bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--hero-from), var(--hero-via), var(--hero-to))' }}>
-                  Stop guessing in fantasy football.
-                </span>
-                <span className="block mt-1 bg-[length:200%_auto] animate-gradient-x bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--heading-from), var(--heading-to), var(--heading-from))' }}>
-                  Let AI decide.
-                </span>
-              </h1>
-              <p className="text-xl sm:text-2xl lg:text-3xl font-semibold leading-tight max-w-lg mx-auto lg:mx-0" style={{ color: 'var(--text)' }}>
-                Smarter drafts, unbeatable trades, hidden waiver gems.
-              </p>
-            </div>
-
-            <p className="text-base lg:text-lg leading-relaxed max-w-md mx-auto lg:mx-0 opacity-90" style={{ color: 'var(--muted)' }}>
+          {/* Hero text + Robot King */}
+          <div className="text-center space-y-4 flex flex-col items-center">
+            <img
+              src="/af-robot-king.png"
+              alt="AF Robot King"
+              className="w-36 sm:w-44 md:w-52 object-contain select-none"
+              draggable={false}
+            />
+            <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.1]">
+              <span className="block bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--hero-from), var(--hero-via), var(--hero-to))' }}>
+                Stop guessing in fantasy football.
+              </span>
+              <span className="block mt-1 bg-[length:200%_auto] animate-gradient-x bg-clip-text text-transparent" style={{ backgroundImage: 'linear-gradient(to right, var(--heading-from), var(--heading-to), var(--heading-from))' }}>
+                Let AI decide.
+              </span>
+            </h1>
+            <p className="text-xl sm:text-2xl lg:text-3xl font-semibold leading-tight max-w-2xl" style={{ color: 'var(--text)' }}>
+              Smarter drafts, unbeatable trades, hidden waiver gems.
+            </p>
+            <p className="text-base lg:text-lg leading-relaxed max-w-lg opacity-90" style={{ color: 'var(--muted)' }}>
               AI built for <strong style={{ color: 'var(--accent-cyan-strong)' }}>real players</strong> — dynasty, redraft, best ball. NFL now, more sports 2026.
             </p>
+          </div>
 
-            {/* Inline Early Access Form */}
-            <div className="mt-6 lg:mt-8 max-w-md mx-auto lg:mx-0">
-              <EarlyAccessForm />
-            </div>
+          {/* Trade Calculator - full width */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="relative group w-full"
+          >
+            <InstantTradeAnalyzer />
+            <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
+          </motion.div>
 
-            {/* Secondary CTAs */}
-            <div className="flex flex-wrap justify-center lg:justify-start gap-4 mt-6">
+          {/* Early Access + CTAs below calculator */}
+          <div className="flex flex-col items-center gap-6 w-full max-w-md">
+            <EarlyAccessForm />
+            <div className="flex flex-wrap justify-center gap-4">
               <Link
                 href="/af-legacy"
                 className="group flex items-center gap-2 px-6 py-3 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.97]"
@@ -254,23 +266,6 @@ function HomeContent() {
               </Link>
             </div>
           </div>
-
-          {/* Right: Robot King + Trade Analyzer */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="relative group flex flex-col items-center"
-          >
-            <img
-              src="/af-robot-king.png"
-              alt="AF Robot King"
-              className="w-48 sm:w-56 md:w-64 object-contain select-none -mb-4"
-              draggable={false}
-            />
-            <InstantTradeAnalyzer />
-            <div className="absolute inset-0 rounded-3xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style={{ background: 'linear-gradient(to bottom right, rgba(34,211,238,0.08), rgba(168,85,247,0.08))' }} />
-          </motion.div>
         </motion.div>
       </section>
 
