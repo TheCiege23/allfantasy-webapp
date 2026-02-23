@@ -183,7 +183,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
       )
     }
 
-    const { tradeText, leagueSize: passedLeagueSize, eventId, fbp, fbc } = await req.json()
+    const { tradeText, leagueSize: passedLeagueSize, tePremium, eventId, fbp, fbc } = await req.json()
 
     if (!tradeText || typeof tradeText !== 'string' || tradeText.trim().length < 5) {
       return NextResponse.json({ error: 'Please enter a trade to analyze.' }, { status: 400 })
@@ -220,12 +220,37 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
       numTeams: leagueSize,
     }
 
-    const [sideAPlayerValues, sideBPlayerValues, sideAPickValues, sideBPickValues] = await Promise.all([
+    const [sideAPlayerValuesRaw, sideBPlayerValuesRaw, sideAPickValues, sideBPickValues] = await Promise.all([
       Promise.all(parsed.sideA.players.map(name => pricePlayer(name, ctx))),
       Promise.all(parsed.sideB.players.map(name => pricePlayer(name, ctx))),
       Promise.all(parsed.sideA.picks.map(p => pricePick(p, ctx))),
       Promise.all(parsed.sideB.picks.map(p => pricePick(p, ctx))),
     ])
+
+    const applyTepBoost = (assets: PricedAsset[]): PricedAsset[] => {
+      if (!tePremium) return assets
+      const TEP_MULTIPLIER = 1.15
+      return assets.map(a => {
+        if (a.position?.toUpperCase() === 'TE') {
+          const boostedValue = Math.round(a.value * TEP_MULTIPLIER)
+          return {
+            ...a,
+            value: boostedValue,
+            assetValue: {
+              ...a.assetValue,
+              marketValue: Math.round(a.assetValue.marketValue * TEP_MULTIPLIER),
+              impactValue: Math.round(a.assetValue.impactValue * TEP_MULTIPLIER),
+              vorpValue: Math.round(a.assetValue.vorpValue * TEP_MULTIPLIER),
+              volatility: a.assetValue.volatility,
+            },
+          }
+        }
+        return a
+      })
+    }
+
+    const sideAPlayerValues = applyTepBoost(sideAPlayerValuesRaw)
+    const sideBPlayerValues = applyTepBoost(sideBPlayerValuesRaw)
 
     const sideAAssets = [...sideAPlayerValues, ...sideAPickValues]
     const sideBAssets = [...sideBPlayerValues, ...sideBPickValues]
@@ -306,6 +331,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
     }
 
     const gptContract = buildGptInputContract('INSTANT', drivers)
+    const tepContext = tePremium ? `\n\nLeague Format: TEP (Tight End Premium) — TE values are boosted ~15%. Factor this into your analysis; mention TEP advantage for any TEs involved.` : ''
     let aiNarrative: { bullets: Array<{ text: string; driverId: string }>; sensitivity: { text: string; driverId: string } } | null = null
 
     const skipCheck = shouldSkipGpt(gptContract)
@@ -321,7 +347,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
             },
             {
               role: 'user',
-              content: buildGptUserPrompt(gptContract),
+              content: buildGptUserPrompt(gptContract) + tepContext,
             },
           ],
           temperature: 0.2,
@@ -390,7 +416,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
         const negResult = await openaiChatJson({
           messages: [
             { role: 'system', content: NEGOTIATION_GPT_SYSTEM_PROMPT },
-            { role: 'user', content: buildNegotiationGptUserPrompt(negContract) },
+            { role: 'user', content: buildNegotiationGptUserPrompt(negContract) + tepContext },
           ],
           temperature: 0.3,
           maxTokens: 500,
@@ -471,6 +497,7 @@ export const POST = withApiUsage({ endpoint: "/api/instant/trade", tool: "Instan
       negotiationToolkit,
       detectedLeagueSize: detectedLeagueSize ?? null,
       leagueSize,
+      tePremium: !!tePremium,
       values: {
         youGive: sideAAssets.map(a => ({
           name: a.name,

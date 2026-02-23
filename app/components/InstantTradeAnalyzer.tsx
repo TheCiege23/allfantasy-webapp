@@ -259,6 +259,7 @@ export default function InstantTradeAnalyzer() {
   const [leagueSize, setLeagueSize] = useState(12)
   const [scoring, setScoring] = useState<'ppr' | 'half' | 'standard' | 'superflex'>('ppr')
   const [isDynasty, setIsDynasty] = useState(true)
+  const [tePremium, setTePremium] = useState(false)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<TradeResult | null>(null)
   const [error, setError] = useState('')
@@ -289,7 +290,7 @@ export default function InstantTradeAnalyzer() {
 
     const tradeText = buildTradeText()
     const eventId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
-    track('trade_analysis_started', { league_size: leagueSize, scoring, dynasty: isDynasty })
+    track('trade_analysis_started', { league_size: leagueSize, scoring, dynasty: isDynasty, tePremium })
 
     const getCookie = (name: string) =>
       document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))?.[2]
@@ -303,6 +304,7 @@ export default function InstantTradeAnalyzer() {
           leagueSize,
           scoring,
           isDynasty,
+          tePremium,
           eventId,
           fbp: getCookie('_fbp'),
           fbc: getCookie('_fbc'),
@@ -312,7 +314,7 @@ export default function InstantTradeAnalyzer() {
       const data = await res.json()
       if (res.ok) {
         setResult(data)
-        track('trade_analysis_completed', { league_size: leagueSize, scoring, dynasty: isDynasty, verdict: data.verdict, confidence: data.confidence })
+        track('trade_analysis_completed', { league_size: leagueSize, scoring, dynasty: isDynasty, tePremium, verdict: data.verdict, confidence: data.confidence })
         ;(window as any).fbq?.('track', 'ViewContent', { content_name: 'Trade Analysis', content_category: 'Fantasy Football' }, { eventID: eventId })
       } else {
         setError(data?.error || 'Analysis failed')
@@ -332,7 +334,7 @@ export default function InstantTradeAnalyzer() {
 
   const copyAnalysis = () => {
     if (!result) return
-    const text = `${result.verdict}\n\n${result.bullets.join('\n')}\n\nLeague: ${leagueSize}-team ${isDynasty ? 'Dynasty' : 'Redraft'} ${scoring.toUpperCase()}`
+    const text = `${result.verdict}\n\n${result.bullets.join('\n')}\n\nLeague: ${leagueSize}-team ${isDynasty ? 'Dynasty' : 'Redraft'} ${scoring.toUpperCase()}${tePremium ? ' TEP' : ''}`
     navigator.clipboard.writeText(text)
     toast.success('Analysis copied to clipboard')
   }
@@ -503,10 +505,14 @@ export default function InstantTradeAnalyzer() {
           </select>
         </div>
 
-        <div className="flex items-end">
+        <div className="flex items-end gap-4">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={isDynasty} onChange={(e) => setIsDynasty(e.target.checked)} className="w-4 h-4 accent-cyan-400" />
             <span className="text-[11px] font-medium" style={{ color: 'var(--text)' }}>Dynasty</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer" title="Tight End Premium — boosts TE value in analysis">
+            <input type="checkbox" checked={tePremium} onChange={(e) => setTePremium(e.target.checked)} className="w-4 h-4 accent-cyan-400" />
+            <span className="text-[11px] font-medium" style={{ color: 'var(--text)' }}>TEP</span>
           </label>
         </div>
       </div>
@@ -605,7 +611,7 @@ export default function InstantTradeAnalyzer() {
                 <span className={`w-1.5 h-1.5 rounded-full ${result.confidence === 'HIGH' ? 'bg-emerald-400' : result.confidence === 'MEDIUM' ? 'bg-amber-400' : 'bg-red-400'}`} />
                 <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>{result.confidence} confidence</span>
               </div>
-              <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>{result.leagueSize || leagueSize}-team {scoring.toUpperCase()} {isDynasty ? 'dynasty' : 'redraft'}</span>
+              <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>{result.leagueSize || leagueSize}-team {scoring.toUpperCase()}{tePremium ? ' TEP' : ''} {isDynasty ? 'dynasty' : 'redraft'}</span>
             </div>
 
             <div className="flex gap-2 pt-2" style={{ borderTop: '1px solid var(--border)' }}>
