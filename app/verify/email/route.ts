@@ -30,19 +30,26 @@ export async function GET(req: Request) {
 
   const now = new Date()
 
-  await (prisma as any).appUser.updateMany({
-    where: { id: row.userId },
-    data: { emailVerified: now },
-  })
+  try {
+    await (prisma as any).$transaction(async (tx: any) => {
+      await tx.appUser.updateMany({
+        where: { id: row.userId },
+        data: { emailVerified: now },
+      })
 
-  await (prisma as any).userProfile.updateMany({
-    where: { userId: row.userId },
-    data: { emailVerifiedAt: now },
-  }).catch(() => {})
+      await tx.userProfile.updateMany({
+        where: { userId: row.userId },
+        data: { emailVerifiedAt: now },
+      })
 
-  await (prisma as any).emailVerifyToken.delete({
-    where: { tokenHash },
-  }).catch(() => {})
+      await tx.emailVerifyToken.delete({
+        where: { tokenHash },
+      })
+    })
+  } catch (txErr) {
+    console.error("[verify/email] Transaction failed:", txErr)
+    return redirectTo(req, "/verify?error=INVALID_LINK")
+  }
 
   return redirectTo(req, "/verify?verified=email")
 }
