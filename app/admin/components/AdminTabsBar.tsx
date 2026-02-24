@@ -13,7 +13,7 @@ export function AdminTabsBar(props: {
       className="sticky top-0 z-30 -mx-3 px-3 py-2 backdrop-blur lg:hidden"
       style={{ background: "color-mix(in srgb, var(--bg) 80%, transparent)" }}
     >
-      <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+      <div className="flex gap-2 overflow-x-auto py-1 pb-2" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent" }}>
         {props.items.map((it) => {
           const active = props.tab === it.key
           return (

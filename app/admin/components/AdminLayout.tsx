@@ -395,7 +395,7 @@ export default function AdminLayout({
         collapsed ? "lg:grid-cols-[80px_1fr]" : "lg:grid-cols-[280px_1fr]",
       ].join(" ")}>
         <aside className="hidden lg:block">
-          <div className="sticky top-24 space-y-4">
+          <div className="sticky top-24 max-h-[calc(100vh-7rem)] overflow-y-auto overflow-x-hidden scrollbar-thin space-y-4 pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(255,255,255,0.15) transparent" }}>
             <div className="rounded-2xl bg-gradient-to-b from-white/[0.03] to-transparent border border-white/[0.06] p-3 backdrop-blur-sm">
               <div className="mb-4 flex items-center justify-between px-2">
                 <span className="text-[10px] font-semibold text-white/30 uppercase tracking-[0.2em]">
