@@ -52,6 +52,7 @@ function ResetPasswordContent() {
           WEAK_PASSWORD: "Password must be at least 8 characters with a letter and number.",
           INVALID_OR_USED_TOKEN: "This reset link is invalid or has already been used.",
           EXPIRED_TOKEN: "This reset link has expired. Please request a new one.",
+          RESET_FAILED: "Something went wrong saving your password. Please try again.",
         }
         setError(errorMap[data.error] || data.error || "Something went wrong.")
       } else {

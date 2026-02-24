@@ -3,7 +3,9 @@ export function getBaseUrl(): string | null {
   if (url) return url.replace(/\/$/, "")
   const vercel = process.env.VERCEL_URL
   if (vercel) return `https://${vercel.replace(/\/$/, "")}`
+  const replitDomains = process.env.REPLIT_DOMAINS
+  if (replitDomains) return `https://${replitDomains.split(",")[0].trim()}`
   const replit = process.env.REPLIT_DEV_DOMAIN
   if (replit) return `https://${replit.replace(/\/$/, "")}`
-  return null
+  return "https://allfantasy.ai"
 }

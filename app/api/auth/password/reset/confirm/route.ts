@@ -34,14 +34,21 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(newPassword, 12)
 
-  await (prisma as any).appUser.update({
-    where: { id: row.userId },
-    data: { passwordHash },
-  })
+  try {
+    await (prisma as any).$transaction(async (tx: any) => {
+      await tx.appUser.update({
+        where: { id: row.userId },
+        data: { passwordHash },
+      })
 
-  await (prisma as any).passwordResetToken.delete({
-    where: { tokenHash },
-  }).catch(() => {})
+      await tx.passwordResetToken.delete({
+        where: { tokenHash },
+      })
+    })
+  } catch (txErr) {
+    console.error("[password/reset/confirm] Transaction failed:", txErr)
+    return NextResponse.json({ error: "RESET_FAILED" }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }
