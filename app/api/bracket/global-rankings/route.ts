@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { scoreEntry, type ScoringMode, type PickResult, type LeaguePickDistribution } from "@/lib/brackets/scoring"
+import { scoreEntry, type ScoringMode, type PickResult, type LeaguePickDistribution, type BonusFlags, bonusFlagsFromRules, scoringConfigKey } from "@/lib/brackets/scoring"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10))
     const limit = Math.min(100, Math.max(10, parseInt(searchParams.get("limit") || "50", 10)))
     const filterMode = searchParams.get("scoringMode")
+    const filterConfig = searchParams.get("scoringConfig")
 
     if (!tournamentId) {
       return NextResponse.json({ error: "tournamentId is required" }, { status: 400 })
@@ -64,7 +65,21 @@ export async function GET(request: NextRequest) {
     const totalDecidedGames = decidedNodeIds.size
 
     let leagueWhere: any = { tournamentId }
-    if (filterMode) {
+    if (filterConfig) {
+      const allLeagues = await prisma.bracketLeague.findMany({
+        where: { tournamentId },
+        select: { id: true, scoringRules: true },
+      })
+      const matchingIds = allLeagues
+        .filter((l: any) => {
+          const rules = (l.scoringRules || {}) as any
+          const mode = (rules.scoringMode || rules.mode || "fancred_edge") as ScoringMode
+          const flags = bonusFlagsFromRules(rules)
+          return scoringConfigKey(mode, flags) === filterConfig
+        })
+        .map((l: any) => l.id)
+      leagueWhere = { id: { in: matchingIds } }
+    } else if (filterMode) {
       const allLeagues = await prisma.bracketLeague.findMany({
         where: { tournamentId },
         select: { id: true, scoringRules: true },
@@ -187,8 +202,10 @@ export async function GET(request: NextRequest) {
       })
 
       const leagueDist = leagueDistributions.get(entry.league.id) || {}
-      const insuranceNodeId = rules.insuranceEnabled ? (entry.insuredNodeId || null) : null
-      const { total: totalPoints } = scoreEntry(entryMode, pickResults, leagueDist, insuranceNodeId)
+      const flags = bonusFlagsFromRules(rules)
+      const insuranceNodeId = flags.insuranceEnabled ? (entry.insuredNodeId || null) : null
+      const { total: totalPoints } = scoreEntry(entryMode, pickResults, leagueDist, insuranceNodeId, flags)
+      const configKey = scoringConfigKey(entryMode, flags)
 
       const accuracy = totalDecided > 0 ? Math.round((correctPicks / totalDecided) * 1000) / 10 : 0
       const riskIndex = totalPicksMade > 0 ? Math.round((underdogPicks / totalPicksMade) * 100) : 0
@@ -201,6 +218,7 @@ export async function GET(request: NextRequest) {
         avatarUrl: entry.user.avatarUrl,
         leagueName: entry.league.name,
         scoringMode: entryMode,
+        scoringConfig: configKey,
         totalPoints,
         correctPicks,
         totalDecided,
@@ -221,6 +239,14 @@ export async function GET(request: NextRequest) {
         : 100
     })
 
+    const configCounts: Record<string, number> = {}
+    for (const r of ranked) {
+      configCounts[r.scoringConfig] = (configCounts[r.scoringConfig] || 0) + 1
+    }
+    const scoringConfigs = Object.entries(configCounts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([key, count]) => ({ key, count }))
+
     const start = (page - 1) * limit
     const paged = ranked.slice(start, start + limit)
 
@@ -231,6 +257,7 @@ export async function GET(request: NextRequest) {
         rankings: paged,
         totalEntries,
         totalDecidedGames,
+        scoringConfigs,
         page,
         totalPages: Math.ceil(totalEntries / limit),
       },

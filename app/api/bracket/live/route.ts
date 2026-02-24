@@ -179,13 +179,18 @@ export async function GET(request: NextRequest) {
           }
         })
 
+        const bonusFlags = {
+          upsetDeltaEnabled: rules.upsetDeltaEnabled !== false,
+          leverageBonusEnabled: rules.leverageBonusEnabled !== false,
+          insuranceEnabled: rules.insuranceEnabled === true,
+        }
+
         let totalPoints = 0
         let details: any = null
         switch (scoringMode) {
           case "fancred_edge": {
-            const insuranceEnabled = rules.insuranceEnabled === true
-            const entryInsuredNodeId = insuranceEnabled ? (entry.insuredNodeId || null) : null
-            const result = scoreFanCredEdge(pickResults, leagueDistribution, entryInsuredNodeId)
+            const entryInsuredNodeId = bonusFlags.insuranceEnabled ? (entry.insuredNodeId || null) : null
+            const result = scoreFanCredEdge(pickResults, leagueDistribution, entryInsuredNodeId, bonusFlags)
             totalPoints = result.total
             details = result
             break

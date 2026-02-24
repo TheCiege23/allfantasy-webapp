@@ -1,13 +1,49 @@
 export type ScoringMode = "fancred_edge" | "momentum" | "accuracy_boldness" | "streak_survival"
 
+export type BonusFlags = {
+  upsetDeltaEnabled?: boolean
+  leverageBonusEnabled?: boolean
+  insuranceEnabled?: boolean
+}
+
 export type ScoringRules = {
   mode: ScoringMode
   maxEntriesPerUser?: number
   isPaidLeague?: boolean
   insuranceEnabled?: boolean
   insurancePerEntry?: number
+  upsetDeltaEnabled?: boolean
+  leverageBonusEnabled?: boolean
   allowCopyBracket?: boolean
   pickVisibility?: "visible" | "hidden_until_lock"
+}
+
+export function scoringConfigKey(mode: ScoringMode, flags: BonusFlags): string {
+  const parts = [mode]
+  if (flags.upsetDeltaEnabled) parts.push("upset")
+  if (flags.leverageBonusEnabled) parts.push("leverage")
+  if (flags.insuranceEnabled) parts.push("insurance")
+  return parts.join("+")
+}
+
+export function parseScoringConfigKey(key: string): { mode: ScoringMode; flags: BonusFlags } {
+  const parts = key.split("+")
+  return {
+    mode: parts[0] as ScoringMode,
+    flags: {
+      upsetDeltaEnabled: parts.includes("upset"),
+      leverageBonusEnabled: parts.includes("leverage"),
+      insuranceEnabled: parts.includes("insurance"),
+    },
+  }
+}
+
+export function bonusFlagsFromRules(rules: any): BonusFlags {
+  return {
+    upsetDeltaEnabled: rules.upsetDeltaEnabled !== false,
+    leverageBonusEnabled: rules.leverageBonusEnabled !== false,
+    insuranceEnabled: rules.insuranceEnabled === true,
+  }
 }
 
 export type PickResult = {
@@ -50,7 +86,8 @@ export function edgePointsForRound(round: number): number {
 export function scoreFanCredEdge(
   picks: PickResult[],
   leagueDistribution: LeaguePickDistribution,
-  insuranceNodeId?: string | null
+  insuranceNodeId?: string | null,
+  flags?: BonusFlags
 ): {
   total: number
   breakdown: Array<{
@@ -62,6 +99,10 @@ export function scoreFanCredEdge(
     total: number
   }>
 } {
+  const enableUpset = flags?.upsetDeltaEnabled !== false
+  const enableLeverage = flags?.leverageBonusEnabled !== false
+  const enableInsurance = flags?.insuranceEnabled !== false
+
   const breakdown: Array<{
     nodeId: string
     base: number
@@ -73,7 +114,7 @@ export function scoreFanCredEdge(
   let total = 0
 
   for (const pick of picks) {
-    const isInsured = insuranceNodeId === pick.nodeId
+    const isInsured = enableInsurance && insuranceNodeId === pick.nodeId
 
     if (pick.isCorrect !== true) {
       if (isInsured && pick.isCorrect === false) {
@@ -104,6 +145,7 @@ export function scoreFanCredEdge(
 
     let upsetDelta = 0
     if (
+      enableUpset &&
       pick.pickedSeed != null &&
       pick.opponentSeed != null &&
       pick.pickedSeed > pick.opponentSeed
@@ -112,13 +154,15 @@ export function scoreFanCredEdge(
     }
 
     let leverageBonus = 0
-    const nodeDist = leagueDistribution[pick.nodeId]
-    if (nodeDist && pick.pickedTeamName) {
-      const totalPickers = Object.values(nodeDist).reduce((a, b) => a + b, 0)
-      const thisPick = nodeDist[pick.pickedTeamName] ?? 0
-      if (totalPickers > 0) {
-        const pickPct = thisPick / totalPickers
-        leverageBonus = Math.min(6, Math.round(base * (1 - pickPct) * 10) / 10)
+    if (enableLeverage) {
+      const nodeDist = leagueDistribution[pick.nodeId]
+      if (nodeDist && pick.pickedTeamName) {
+        const totalPickers = Object.values(nodeDist).reduce((a, b) => a + b, 0)
+        const thisPick = nodeDist[pick.pickedTeamName] ?? 0
+        if (totalPickers > 0) {
+          const pickPct = thisPick / totalPickers
+          leverageBonus = Math.min(6, Math.round(base * (1 - pickPct) * 10) / 10)
+        }
       }
     }
 
@@ -257,11 +301,12 @@ export function scoreEntry(
   mode: ScoringMode,
   picks: PickResult[],
   leagueDistribution?: LeaguePickDistribution,
-  insuranceNodeId?: string | null
+  insuranceNodeId?: string | null,
+  flags?: BonusFlags
 ): { total: number; details: any } {
   switch (mode) {
     case "fancred_edge": {
-      const result = scoreFanCredEdge(picks, leagueDistribution || {}, insuranceNodeId)
+      const result = scoreFanCredEdge(picks, leagueDistribution || {}, insuranceNodeId, flags)
       return { total: result.total, details: result }
     }
     case "momentum":

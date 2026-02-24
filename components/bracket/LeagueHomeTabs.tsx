@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect, useRef } from "react"
-import { Trophy, ChevronDown, MessageCircle, Pin, Send, X, Share2, Copy, Check, Settings } from "lucide-react"
+import { Trophy, ChevronDown, MessageCircle, Pin, Send, X, Share2, Copy, Check, Settings, Zap, Crown, Shield } from "lucide-react"
 import { BracketTreeView } from "./BracketTreeView"
 import { PoolStandings } from "./PoolStandings"
 import { GameScores } from "./GameScores"
@@ -56,7 +56,7 @@ type Props = {
   joinCode: string
   maxManagers: number
   scoringMode?: string
-  scoringRules?: { insuranceEnabled?: boolean; [key: string]: any }
+  scoringRules?: { insuranceEnabled?: boolean; upsetDeltaEnabled?: boolean; leverageBonusEnabled?: boolean; [key: string]: any }
 }
 
 type TabId = "pool" | "brackets" | "live" | "feed" | "global" | "public"
@@ -77,6 +77,12 @@ export function LeagueHomeTabs(props: Props) {
   )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(true)
+
+  const isCommissioner = useMemo(() => {
+    if (props.isOwner) return true
+    const member = props.members.find(m => m.userId === props.currentUserId)
+    return member?.role === "CO_COMMISSIONER"
+  }, [props.isOwner, props.members, props.currentUserId])
 
   const { data: live } = useBracketLive({
     tournamentId: props.tournamentId,
@@ -232,7 +238,7 @@ function PoolTab({
             nodes={nodes}
             initialPicks={activePicks}
             compact
-            insuranceEnabled={scoringMode === 'fancred_edge' && scoringRules?.insuranceEnabled === true}
+            insuranceEnabled={scoringRules?.insuranceEnabled === true}
             initialInsuredNodeId={userEntries.find(e => e.id === activeEntryId)?.insuredNodeId}
           />
           <div className="text-center">
@@ -275,6 +281,9 @@ function PoolTab({
           leagueId={leagueId}
           maxManagers={maxManagers}
           scoringMode={normalizeScoringMode(scoringMode)}
+          scoringRules={scoringRules}
+          members={members}
+          currentUserId={currentUserId}
         />
       )}
 
@@ -449,19 +458,32 @@ function SettingsPanel({
   leagueId,
   maxManagers,
   scoringMode: initialScoringMode,
+  scoringRules,
+  members,
+  currentUserId,
 }: {
   joinCode: string
   isOwner: boolean
   leagueId: string
   maxManagers: number
   scoringMode: ScoringMode
+  scoringRules?: { insuranceEnabled?: boolean; upsetDeltaEnabled?: boolean; leverageBonusEnabled?: boolean; [key: string]: any }
+  members?: Member[]
+  currentUserId?: string
 }) {
   const [scoringMode, setScoringMode] = useState<ScoringMode>(initialScoringMode)
   const [saving, setSaving] = useState(false)
 
+  const canEdit = useMemo(() => {
+    if (isOwner) return true
+    if (!members || !currentUserId) return false
+    const member = members.find(m => m.userId === currentUserId)
+    return member?.role === "CO_COMMISSIONER"
+  }, [isOwner, members, currentUserId])
+
   async function updateScoringMode(mode: ScoringMode) {
     setScoringMode(mode)
-    if (!isOwner) return
+    if (!canEdit) return
     setSaving(true)
     try {
       await fetch(`/api/bracket/leagues/${leagueId}/settings`, {
@@ -494,13 +516,13 @@ function SettingsPanel({
             {SCORING_MODES.map(m => (
               <button
                 key={m.id}
-                onClick={() => isOwner && updateScoringMode(m.id)}
+                onClick={() => canEdit && updateScoringMode(m.id)}
                 className="flex-1 rounded-lg py-2 px-2 text-center transition-all"
                 style={{
                   background: scoringMode === m.id ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.02)',
                   border: `1px solid ${scoringMode === m.id ? 'rgba(251,146,60,0.3)' : 'rgba(255,255,255,0.06)'}`,
-                  cursor: isOwner ? 'pointer' : 'default',
-                  opacity: !isOwner && scoringMode !== m.id ? 0.4 : 1,
+                  cursor: canEdit ? 'pointer' : 'default',
+                  opacity: !canEdit && scoringMode !== m.id ? 0.4 : 1,
                 }}
               >
                 <div className="text-[10px] font-bold" style={{ color: scoringMode === m.id ? '#fb923c' : 'rgba(255,255,255,0.6)' }}>
@@ -533,11 +555,6 @@ function SettingsPanel({
           </tbody>
         </table>
 
-        {scoringMode === 'fancred_edge' && (
-          <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
-            Upset Delta: +min(8, seed diff) when underdog wins. Leverage: +base x (1 - league pick %) capped at +6. Insurance Token: protect 1 pick per bracket (if enabled).
-          </div>
-        )}
         {scoringMode === 'momentum' && (
           <div className="px-4 py-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)', borderTop: '1px solid rgba(255,255,255,0.03)' }}>
             Upset bonus scales with seed gap and round depth. Rewards correctly picking upsets deeper in the tournament.
@@ -555,6 +572,53 @@ function SettingsPanel({
         )}
       </div>
 
+      {scoringMode === 'fancred_edge' && (
+        <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="text-[10px] font-semibold uppercase tracking-wider px-4 py-2" style={{ color: 'rgba(255,255,255,0.3)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            Scoring Bonuses
+          </div>
+
+          <BonusToggleCard
+            icon={<Zap className="w-4 h-4" style={{ color: '#a78bfa' }} />}
+            label="Upset Delta Bonus"
+            description="Earn bonus points for correctly picking upsets. The bigger the seed difference, the bigger the bonus."
+            accentColor="#a78bfa"
+            bgColor="rgba(167,139,250,0.06)"
+            borderColor="rgba(167,139,250,0.15)"
+            field="upsetDeltaEnabled"
+            isOwner={canEdit}
+            leagueId={leagueId}
+            initialValue={scoringRules?.upsetDeltaEnabled !== false}
+          />
+
+          <BonusToggleCard
+            icon={<Crown className="w-4 h-4" style={{ color: '#fb923c' }} />}
+            label="Leverage Bonus"
+            description="Going against the consensus with a correct pick earns you a leverage multiplier."
+            accentColor="#fb923c"
+            bgColor="rgba(251,146,60,0.06)"
+            borderColor="rgba(251,146,60,0.15)"
+            field="leverageBonusEnabled"
+            isOwner={canEdit}
+            leagueId={leagueId}
+            initialValue={scoringRules?.leverageBonusEnabled !== false}
+          />
+
+          <BonusToggleCard
+            icon={<Shield className="w-4 h-4" style={{ color: '#34d399' }} />}
+            label="Insurance Token"
+            description="Protect one pick per round. If your insured pick loses, you keep partial points."
+            accentColor="#34d399"
+            bgColor="rgba(52,211,153,0.06)"
+            borderColor="rgba(52,211,153,0.15)"
+            field="insuranceEnabled"
+            isOwner={canEdit}
+            leagueId={leagueId}
+            initialValue={scoringRules?.insuranceEnabled === true}
+          />
+        </div>
+      )}
+
       <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="text-[10px] font-semibold uppercase tracking-wider px-4 py-2" style={{ color: 'rgba(255,255,255,0.3)', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
           Entry Controls
@@ -563,7 +627,7 @@ function SettingsPanel({
           label="Allow Copy Bracket"
           description="Let members copy existing brackets"
           field="allowCopyBracket"
-          isOwner={isOwner}
+          isOwner={canEdit}
           leagueId={leagueId}
           initialValue={true}
         />
@@ -571,21 +635,11 @@ function SettingsPanel({
           label="Hide Picks Until Lock"
           description="Other members' picks hidden until tournament locks"
           field="pickVisibility"
-          isOwner={isOwner}
+          isOwner={canEdit}
           leagueId={leagueId}
           initialValue={false}
           valueMap={{ true: "hidden_until_lock", false: "visible" }}
         />
-        {scoringMode === 'fancred_edge' && (
-          <EntryControlRow
-            label="Insurance Token"
-            description="Each bracket gets 1 pick protected from damage"
-            field="insuranceEnabled"
-            isOwner={isOwner}
-            leagueId={leagueId}
-            initialValue={false}
-          />
-        )}
       </div>
 
       <a
@@ -604,6 +658,88 @@ function SettingsPanel({
       </a>
 
       <DonateSection />
+    </div>
+  )
+}
+
+function BonusToggleCard({
+  icon,
+  label,
+  description,
+  accentColor,
+  bgColor,
+  borderColor,
+  field,
+  isOwner,
+  leagueId,
+  initialValue,
+}: {
+  icon: React.ReactNode
+  label: string
+  description: string
+  accentColor: string
+  bgColor: string
+  borderColor: string
+  field: string
+  isOwner: boolean
+  leagueId: string
+  initialValue: boolean
+}) {
+  const [enabled, setEnabled] = useState(initialValue)
+  const [saving, setSaving] = useState(false)
+
+  async function toggle() {
+    if (!isOwner) return
+    const newVal = !enabled
+    setEnabled(newVal)
+    setSaving(true)
+    try {
+      await fetch(`/api/bracket/leagues/${leagueId}/settings`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ [field]: newVal }),
+      })
+    } catch {}
+    setSaving(false)
+  }
+
+  return (
+    <div
+      className="px-4 py-3 flex items-start gap-3 transition-all"
+      style={{
+        borderBottom: `1px solid ${borderColor}`,
+        background: enabled ? bgColor : 'transparent',
+      }}
+    >
+      <div className="mt-0.5 flex-shrink-0">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold" style={{ color: enabled ? accentColor : 'rgba(255,255,255,0.5)' }}>
+            {label}
+          </span>
+          {saving && <span className="text-[9px]" style={{ color: '#fb923c' }}>(saving...)</span>}
+        </div>
+        <p className="text-[10px] mt-0.5 leading-relaxed" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          {description}
+        </p>
+      </div>
+      <button
+        onClick={toggle}
+        disabled={!isOwner}
+        className="w-10 h-5 rounded-full relative transition-colors flex-shrink-0 mt-0.5"
+        style={{
+          background: enabled ? `${accentColor}40` : 'rgba(255,255,255,0.08)',
+          cursor: isOwner ? 'pointer' : 'default',
+        }}
+      >
+        <div
+          className="absolute top-0.5 w-4 h-4 rounded-full transition-all"
+          style={{
+            left: enabled ? '22px' : '2px',
+            background: enabled ? accentColor : 'rgba(255,255,255,0.3)',
+          }}
+        />
+      </button>
     </div>
   )
 }
@@ -832,28 +968,50 @@ function formatFeedTime(d: Date): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+function configKeyLabel(key: string): string {
+  const parts = key.split("+")
+  const mode = parts[0]
+  const modeLabel = SCORING_MODES.find(m => m.id === mode)?.label || mode
+  const bonuses = parts.slice(1)
+  if (bonuses.length === 0) return `${modeLabel} (Base)`
+  const bonusLabels = bonuses.map(b => {
+    if (b === "upset") return "Upset"
+    if (b === "leverage") return "Leverage"
+    if (b === "insurance") return "Insurance"
+    return b
+  })
+  return `${modeLabel} + ${bonusLabels.join(" + ")}`
+}
+
 function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; currentUserId: string }) {
   const [rankings, setRankings] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [totalEntries, setTotalEntries] = useState(0)
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
+  const [scoringConfigs, setScoringConfigs] = useState<{ key: string; count: number }[]>([])
+  const [activeConfig, setActiveConfig] = useState<string>("")
 
-  async function fetchRankings(p: number) {
+  async function fetchRankings(p: number, config: string) {
     setLoading(true)
     try {
-      const res = await fetch(`/api/bracket/global-rankings?tournamentId=${tournamentId}&page=${p}&limit=50`)
+      let url = `/api/bracket/global-rankings?tournamentId=${tournamentId}&page=${p}&limit=50`
+      if (config) url += `&scoringConfig=${encodeURIComponent(config)}`
+      const res = await fetch(url)
       if (res.ok) {
         const data = await res.json()
         setRankings(data.rankings ?? [])
         setTotalEntries(data.totalEntries ?? 0)
         setTotalPages(data.totalPages ?? 0)
+        if (data.scoringConfigs && !config) {
+          setScoringConfigs(data.scoringConfigs)
+        }
       }
     } catch {}
     setLoading(false)
   }
 
-  useEffect(() => { fetchRankings(page) }, [tournamentId, page])
+  useEffect(() => { fetchRankings(page, activeConfig) }, [tournamentId, page, activeConfig])
 
   if (loading) {
     return (
@@ -885,6 +1043,36 @@ function GlobalTab({ tournamentId, currentUserId }: { tournamentId: string; curr
           {totalEntries.toLocaleString()} brackets
         </div>
       </div>
+
+      {scoringConfigs.length > 1 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1 px-1">
+          <button
+            onClick={() => { setActiveConfig(""); setPage(1) }}
+            className="px-3 py-1.5 rounded-lg text-[10px] font-semibold whitespace-nowrap transition-all flex-shrink-0"
+            style={{
+              background: !activeConfig ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${!activeConfig ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}`,
+              color: !activeConfig ? '#fb923c' : 'rgba(255,255,255,0.4)',
+            }}
+          >
+            All
+          </button>
+          {scoringConfigs.map(cfg => (
+            <button
+              key={cfg.key}
+              onClick={() => { setActiveConfig(cfg.key); setPage(1) }}
+              className="px-3 py-1.5 rounded-lg text-[10px] font-semibold whitespace-nowrap transition-all flex-shrink-0"
+              style={{
+                background: activeConfig === cfg.key ? 'rgba(251,146,60,0.12)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${activeConfig === cfg.key ? 'rgba(251,146,60,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                color: activeConfig === cfg.key ? '#fb923c' : 'rgba(255,255,255,0.4)',
+              }}
+            >
+              {configKeyLabel(cfg.key)} ({cfg.count})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center px-3 py-2 text-[9px] font-semibold uppercase tracking-wider" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.3)' }}>

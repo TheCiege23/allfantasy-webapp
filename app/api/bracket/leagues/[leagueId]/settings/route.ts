@@ -25,8 +25,19 @@ export async function PATCH(
       return NextResponse.json({ error: "League not found" }, { status: 404 })
     }
 
-    if (league.ownerId !== session.user.id) {
-      return NextResponse.json({ error: "Only the pool owner can update settings" }, { status: 403 })
+    const isOwner = league.ownerId === session.user.id
+
+    let isCoCommissioner = false
+    if (!isOwner) {
+      const membership = await (prisma as any).bracketLeagueMember.findUnique({
+        where: { leagueId_userId: { leagueId, userId: session.user.id } },
+        select: { role: true },
+      })
+      isCoCommissioner = membership?.role === "CO_COMMISSIONER"
+    }
+
+    if (!isOwner && !isCoCommissioner) {
+      return NextResponse.json({ error: "Only the commissioner or co-commissioner can update settings" }, { status: 403 })
     }
 
     const currentRules = (league.scoringRules || {}) as Record<string, any>
@@ -40,6 +51,8 @@ export async function PATCH(
       "pickVisibility",
       "insuranceEnabled",
       "insurancePerEntry",
+      "upsetDeltaEnabled",
+      "leverageBonusEnabled",
     ]
 
     const updatedRules = { ...currentRules }
