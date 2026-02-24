@@ -38,13 +38,13 @@ const LEGACY_TOOL_KEYS = [
 ];
 
 const TIME_PERIODS = [
-  { key: "1h", label: "1 Hour", hours: 1 },
-  { key: "5h", label: "5 Hours", hours: 5 },
-  { key: "7h", label: "7 Hours", hours: 7 },
-  { key: "12h", label: "12 Hours", hours: 12 },
-  { key: "15h", label: "15 Hours", hours: 15 },
   { key: "24h", label: "24 Hours", hours: 24 },
+  { key: "48h", label: "48 Hours", hours: 48 },
+  { key: "72h", label: "72 Hours", hours: 72 },
   { key: "7d", label: "7 Days", hours: 168 },
+  { key: "14d", label: "14 Days", hours: 336 },
+  { key: "30d", label: "30 Days", hours: 720 },
+  { key: "all", label: "All Time", hours: 0 },
 ] as const;
 
 function getToolLabel(toolKey: string): string {
@@ -88,12 +88,12 @@ export const GET = withApiUsage({ endpoint: "/api/admin/legacy-usage", tool: "Ad
 
   try {
     const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 168 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 720 * 60 * 60 * 1000);
 
     const events = await prisma.analyticsEvent.findMany({
       where: {
         toolKey: { in: LEGACY_TOOL_KEYS },
-        createdAt: { gte: sevenDaysAgo },
+        createdAt: { gte: thirtyDaysAgo },
       },
       select: {
         toolKey: true,
@@ -139,8 +139,8 @@ export const GET = withApiUsage({ endpoint: "/api/admin/legacy-usage", tool: "Ad
     }> = {};
 
     for (const tp of TIME_PERIODS) {
-      const cutoff = new Date(now.getTime() - tp.hours * 60 * 60 * 1000);
-      const periodEvents = events.filter(e => e.createdAt >= cutoff);
+      const cutoff = tp.hours > 0 ? new Date(now.getTime() - tp.hours * 60 * 60 * 1000) : null;
+      const periodEvents = cutoff ? events.filter(e => e.createdAt >= cutoff) : allTimeEvents;
 
       const toolBreakdown: Record<string, { uses: number; uniqueUsers: Set<string> }> = {};
       for (const key of LEGACY_TOOL_KEYS) {
@@ -163,7 +163,7 @@ export const GET = withApiUsage({ endpoint: "/api/admin/legacy-usage", tool: "Ad
 
       for (const ukey of uniqueUsers) {
         const firstSeen = firstSeenMap.get(ukey);
-        if (firstSeen && firstSeen >= cutoff) {
+        if (firstSeen && cutoff && firstSeen >= cutoff) {
           newUsers.add(ukey);
         } else {
           repeatUsers.add(ukey);
