@@ -719,45 +719,103 @@ export default function InstantTradeAnalyzer() {
 
         {result && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-6 space-y-4">
-            <div className={`p-4 sm:p-5 rounded-xl border text-center ${
-              result.lean === 'You' ? 'border-emerald-500/30 bg-emerald-500/10' : result.lean === 'Even' ? 'border-amber-500/30 bg-amber-500/10' : 'border-red-500/30 bg-red-500/10'
-            }`}>
-              <div className="text-4xl mb-2">{result.lean === 'You' ? '🔥' : result.lean === 'Even' ? '⚖️' : '❌'}</div>
-              <div className="text-xl sm:text-2xl font-black tracking-tight" style={{ color: 'var(--text)' }}>{result.verdict}</div>
-              <div className="flex items-center justify-center gap-2 mt-2">
-                <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                  result.confidence === 'HIGH' ? 'bg-emerald-500 text-black' : result.confidence === 'MEDIUM' ? 'bg-amber-500 text-black' : 'bg-red-500 text-white'
-                }`}>{result.confidence} CONFIDENCE</div>
-              </div>
-            </div>
+            {(() => {
+              const team1Names = [...teamAPlayers.map(p => p.name), ...teamAPicks.map(p => p.label)]
+              const team2Names = [...teamBPlayers.map(p => p.name), ...teamBPicks.map(p => p.label)]
+              const team1Side = team1Names.length === 0 ? 'Team 1' : team1Names.length <= 2 ? team1Names.join(' & ') : `${team1Names[0]} side`
+              const team2Side = team2Names.length === 0 ? 'Team 2' : team2Names.length <= 2 ? team2Names.join(' & ') : `${team2Names[0]} side`
+              const favorsTeam1 = result.lean === 'Them'
+              const favorsTeam2 = result.lean === 'You'
+              const isEven = result.lean === 'Even'
+              const winnerLabel = isEven ? 'Even Trade' : favorsTeam2 ? `Favors ${team2Side}` : `Favors ${team1Side}`
+              const valueDiff = result.values ? Math.abs(result.values.youGiveTotal - result.values.youGetTotal) : 0
+              const pctDiff = result.values ? result.values.percentDiff : 0
+
+              return (
+                <div className={`relative overflow-hidden rounded-xl border ${
+                  isEven ? 'border-amber-500/30' : favorsTeam2 ? 'border-emerald-500/30' : 'border-red-500/30'
+                }`} style={{ background: 'var(--panel2)' }}>
+                  <div className={`absolute inset-0 opacity-10 ${
+                    isEven ? 'bg-gradient-to-br from-amber-500/30 to-transparent' : favorsTeam2 ? 'bg-gradient-to-br from-emerald-500/30 to-transparent' : 'bg-gradient-to-br from-red-500/30 to-transparent'
+                  }`} />
+                  <div className="relative p-4 sm:p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{isEven ? '⚖️' : favorsTeam2 ? '🔥' : '⚠️'}</span>
+                        <div>
+                          <div className="text-lg sm:text-xl font-black tracking-tight" style={{ color: 'var(--text)' }}>{result.verdict}</div>
+                          <div className="text-[11px] font-semibold" style={{ color: isEven ? '#f59e0b' : favorsTeam2 ? '#22d3ee' : '#ef4444' }}>
+                            {winnerLabel}
+                          </div>
+                        </div>
+                      </div>
+                      <div className={`px-3 py-1.5 rounded-full text-[10px] font-bold ${
+                        result.confidence === 'HIGH' ? 'bg-emerald-500 text-black' : result.confidence === 'MEDIUM' ? 'bg-amber-500 text-black' : 'bg-red-500 text-white'
+                      }`}>{result.confidence}</div>
+                    </div>
+
+                    {!isEven && valueDiff > 0 && (
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg mb-1" style={{ background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#ef4444' }}>Team 1</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#22d3ee' }}>Team 2</span>
+                          </div>
+                          <div className="flex rounded-full overflow-hidden h-3" style={{ background: 'var(--subtle-bg)' }}>
+                            <motion.div
+                              className="h-full"
+                              style={{ background: favorsTeam1 ? 'linear-gradient(to right, #ef4444, #f97316)' : '#ef444480' }}
+                              initial={{ width: 0 }}
+                              animate={{ width: result.values ? `${(result.values.youGiveTotal / (result.values.youGiveTotal + result.values.youGetTotal)) * 100}%` : '50%' }}
+                              transition={{ duration: 0.8 }}
+                            />
+                            <motion.div
+                              className="h-full"
+                              style={{ background: favorsTeam2 ? 'linear-gradient(to right, #06b6d4, #22d3ee)' : '#22d3ee80' }}
+                              initial={{ width: 0 }}
+                              animate={{ width: result.values ? `${(result.values.youGetTotal / (result.values.youGiveTotal + result.values.youGetTotal)) * 100}%` : '50%' }}
+                              transition={{ duration: 0.8 }}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-[10px] font-mono font-bold" style={{ color: '#ef4444' }}>{result.values?.youGiveTotal.toLocaleString()}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{
+                              color: isEven ? '#f59e0b' : favorsTeam2 ? '#22d3ee' : '#ef4444',
+                              background: isEven ? 'rgba(245,158,11,0.1)' : favorsTeam2 ? 'rgba(34,211,238,0.1)' : 'rgba(239,68,68,0.1)',
+                            }}>
+                              {pctDiff > 0 ? `${Math.abs(pctDiff).toFixed(1)}% gap` : 'Close'}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold" style={{ color: '#22d3ee' }}>{result.values?.youGetTotal.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
 
             {result.values && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 rounded-xl bg-red-500/5" style={{ border: '1px solid var(--border)' }}>
-                  <div className="text-[10px] font-medium mb-2" style={{ color: '#ef4444', opacity: 0.8 }}>YOU GIVE</div>
+                  <div className="text-[10px] font-medium mb-2" style={{ color: '#ef4444', opacity: 0.8 }}>TEAM 1 GIVES</div>
                   {result.values.youGive.map((a, i) => (
                     <div key={i} className="flex items-center justify-between text-xs py-0.5">
                       <span className="truncate mr-1" style={{ color: 'var(--muted)' }}>{a.name}</span>
                       <span className="shrink-0 font-mono" style={{ color: 'var(--muted2)' }}>{a.value.toLocaleString()}</span>
                     </div>
                   ))}
-                  <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${(result.values.youGiveTotal / (result.values.youGiveTotal + result.values.youGetTotal)) * 100}%` }} className="h-full bg-red-500 rounded-full" transition={{ duration: 0.8 }} />
-                  </div>
-                  <div className="text-right font-bold text-xs mt-1" style={{ color: '#ef4444', opacity: 0.85 }}>{result.values.youGiveTotal.toLocaleString()}</div>
+                  <div className="text-right font-bold text-xs mt-2" style={{ color: '#ef4444', opacity: 0.85 }}>{result.values.youGiveTotal.toLocaleString()}</div>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-500/5" style={{ border: '1px solid var(--border)' }}>
-                  <div className="text-[10px] font-medium mb-2" style={{ color: '#22d3ee', opacity: 0.8 }}>YOU GET</div>
+                  <div className="text-[10px] font-medium mb-2" style={{ color: '#22d3ee', opacity: 0.8 }}>TEAM 2 GIVES</div>
                   {result.values.youGet.map((a, i) => (
                     <div key={i} className="flex items-center justify-between text-xs py-0.5">
                       <span className="truncate mr-1" style={{ color: 'var(--muted)' }}>{a.name}</span>
                       <span className="shrink-0 font-mono" style={{ color: 'var(--muted2)' }}>{a.value.toLocaleString()}</span>
                     </div>
                   ))}
-                  <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--subtle-bg)' }}>
-                    <motion.div initial={{ width: 0 }} animate={{ width: `${(result.values.youGetTotal / (result.values.youGiveTotal + result.values.youGetTotal)) * 100}%` }} className="h-full bg-cyan-400 rounded-full" transition={{ duration: 0.8 }} />
-                  </div>
-                  <div className="text-right font-bold text-xs mt-1" style={{ color: '#22d3ee', opacity: 0.85 }}>{result.values.youGetTotal.toLocaleString()}</div>
+                  <div className="text-right font-bold text-xs mt-2" style={{ color: '#22d3ee', opacity: 0.85 }}>{result.values.youGetTotal.toLocaleString()}</div>
                 </div>
               </div>
             )}
