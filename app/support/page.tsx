@@ -1,18 +1,11 @@
 'use client'
 
-import { useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Heart, ArrowLeft, Server, Brain, Zap, Shield, Users, BarChart3, Loader2 } from 'lucide-react'
+import { Heart, ArrowLeft, Server, Brain, Zap, Shield, Users, BarChart3, ExternalLink } from 'lucide-react'
 import { ModeToggle } from '@/components/theme/ModeToggle'
 
-const PRESETS = [
-  { label: '$3', cents: 300 },
-  { label: '$5', cents: 500 },
-  { label: '$10', cents: 1000 },
-  { label: '$25', cents: 2500 },
-  { label: '$50', cents: 5000 },
-]
+const DONATE_URL = 'https://buy.stripe.com/8x2dR97g99vh7Va9dl7ok01'
 
 const FUND_ITEMS = [
   {
@@ -54,51 +47,6 @@ const FUND_ITEMS = [
 ]
 
 export default function SupportPage() {
-  const [selectedCents, setSelectedCents] = useState(500)
-  const [customAmount, setCustomAmount] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  const effectiveCents = customAmount
-    ? Math.round(parseFloat(customAmount) * 100)
-    : selectedCents
-
-  const displayAmount = customAmount
-    ? `$${customAmount}`
-    : `$${(selectedCents / 100).toFixed(0)}`
-
-  async function handleDonate() {
-    if (!effectiveCents || effectiveCents < 100) {
-      setError('Minimum donation is $1')
-      return
-    }
-    if (effectiveCents > 50000) {
-      setError('Maximum donation is $500')
-      return
-    }
-
-    setLoading(true)
-    setError('')
-
-    try {
-      const res = await fetch('/api/donate', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ amountCents: effectiveCents }),
-      })
-      const data = await res.json()
-      if (data.url) {
-        window.location.href = data.url
-      } else {
-        setError(data.error || 'Something went wrong')
-      }
-    } catch {
-      setError('Network error — please try again')
-    }
-
-    setLoading(false)
-  }
-
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
       <div className="max-w-4xl mx-auto px-5 py-8">
@@ -163,58 +111,20 @@ export default function SupportPage() {
             className="max-w-md mx-auto p-6 rounded-2xl space-y-5"
             style={{ background: 'var(--panel)', border: '1px solid var(--border)' }}
           >
-            <div className="text-center">
+            <div className="text-center space-y-1">
               <h2 className="text-lg font-bold" style={{ color: 'var(--text)' }}>Make a Donation</h2>
-              <p className="text-[11px] mt-1" style={{ color: 'var(--muted2)' }}>One-time contribution · No account needed</p>
+              <p className="text-[11px]" style={{ color: 'var(--muted2)' }}>One-time contribution · No account needed</p>
             </div>
 
-            <div className="flex flex-wrap gap-2 justify-center">
-              {PRESETS.map((p) => (
-                <button
-                  key={p.cents}
-                  onClick={() => { setSelectedCents(p.cents); setCustomAmount(''); setError('') }}
-                  className="px-4 py-2.5 rounded-xl text-sm font-bold transition active:scale-95"
-                  style={{
-                    background: !customAmount && selectedCents === p.cents ? 'rgba(34,211,238,0.12)' : 'var(--subtle-bg)',
-                    border: `1px solid ${!customAmount && selectedCents === p.cents ? 'rgba(34,211,238,0.3)' : 'var(--border)'}`,
-                    color: !customAmount && selectedCents === p.cents ? '#22d3ee' : 'var(--muted)',
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            <div>
-              <input
-                type="number"
-                min="1"
-                max="500"
-                step="0.01"
-                value={customAmount}
-                onChange={(e) => { setCustomAmount(e.target.value); setError('') }}
-                placeholder="Custom amount ($)"
-                className="w-full rounded-xl px-4 py-3 text-sm outline-none"
-                style={{ background: 'var(--subtle-bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
-              />
-            </div>
-
-            {error && (
-              <p className="text-xs text-center" style={{ color: '#ef4444' }}>{error}</p>
-            )}
-
-            <button
-              onClick={handleDonate}
-              disabled={loading}
-              className="w-full rounded-xl py-3.5 text-sm font-bold transition active:scale-[0.97] disabled:opacity-50 flex items-center justify-center gap-2"
+            <a
+              href={DONATE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full rounded-xl py-3.5 text-sm font-bold transition active:scale-[0.97] flex items-center justify-center gap-2"
               style={{ background: 'linear-gradient(to right, #ef4444, #f97316)', color: 'white' }}
             >
-              {loading ? (
-                <><Loader2 className="w-4 h-4 animate-spin" /> Processing...</>
-              ) : (
-                <><Heart className="w-4 h-4" /> Donate {displayAmount}</>
-              )}
-            </button>
+              <Heart className="w-4 h-4" /> Donate Now <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </a>
 
             <div className="flex items-center justify-center gap-3">
               <img src="https://cdn.brandfolder.io/KGT2DTA4/at/8vbr53pc5rw" alt="Stripe" className="h-5 opacity-40" />
