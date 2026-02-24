@@ -1,11 +1,10 @@
 'use client'
 
 import Link from 'next/link'
+import Script from 'next/script'
 import { motion } from 'framer-motion'
-import { Heart, ArrowLeft, Server, Brain, Zap, Shield, Users, BarChart3, ExternalLink } from 'lucide-react'
+import { Heart, ArrowLeft, Server, Brain, Zap, Shield, Users, BarChart3 } from 'lucide-react'
 import { ModeToggle } from '@/components/theme/ModeToggle'
-
-const DONATE_URL = 'https://buy.stripe.com/8x2dR97g99vh7Va9dl7ok01'
 
 const FUND_ITEMS = [
   {
@@ -116,19 +115,16 @@ export default function SupportPage() {
               <p className="text-[11px]" style={{ color: 'var(--muted2)' }}>One-time contribution · No account needed</p>
             </div>
 
-            <a
-              href={DONATE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full rounded-xl py-3.5 text-sm font-bold transition active:scale-[0.97] flex items-center justify-center gap-2"
-              style={{ background: 'linear-gradient(to right, #ef4444, #f97316)', color: 'white' }}
-            >
-              <Heart className="w-4 h-4" /> Donate Now <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-            </a>
-
-            <div className="flex items-center justify-center gap-3">
-              <img src="https://cdn.brandfolder.io/KGT2DTA4/at/8vbr53pc5rw" alt="Stripe" className="h-5 opacity-40" />
-              <span className="text-[10px]" style={{ color: 'var(--muted2)' }}>Secure payments via Stripe</span>
+            <div className="flex justify-center">
+              <Script
+                src="https://js.stripe.com/v3/buy-button.js"
+                strategy="lazyOnload"
+              />
+              {/* @ts-ignore - Stripe custom element */}
+              <stripe-buy-button
+                buy-button-id="buy_btn_1T4BX5Ht5tjM1ovR3uEg9EKf"
+                publishable-key="pk_live_51ReIO1Ht5tjM1ovRLN9joFcoVDcFvVsyNFZ76y5mgNaYSvdCQ9Q4nfZBmSjvzFjIUErouWwaHLSwv9NBiyRVko6m00JfnOdY1Q"
+              />
             </div>
           </motion.div>
 
