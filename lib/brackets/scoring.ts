@@ -19,7 +19,7 @@ export type ScoringRules = {
 }
 
 export function scoringConfigKey(mode: ScoringMode, flags: BonusFlags): string {
-  const parts = [mode]
+  const parts: string[] = [mode]
   if (flags.upsetDeltaEnabled) parts.push("upset")
   if (flags.leverageBonusEnabled) parts.push("leverage")
   if (flags.insuranceEnabled) parts.push("insurance")
