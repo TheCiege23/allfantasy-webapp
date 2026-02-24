@@ -116,6 +116,15 @@ export async function POST(req: Request) {
       return created
     })
 
+    if (method === "PHONE") {
+      return NextResponse.json({
+        ok: true,
+        userId: user.id,
+        verificationMethod: "PHONE",
+        message: "Account created. Please sign in and verify your phone number.",
+      })
+    }
+
     const rawToken = makeToken(32)
     const tokenHash = sha256Hex(rawToken)
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60)
@@ -172,6 +181,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       userId: user.id,
+      verificationMethod: "EMAIL",
       message: "Account created. Please check your email to verify.",
     })
   } catch (err: any) {

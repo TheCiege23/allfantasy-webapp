@@ -97,7 +97,11 @@ export default function SignupPage() {
         return
       }
 
-      router.push("/dashboard")
+      if (data.verificationMethod === "PHONE") {
+        router.push("/verify?error=VERIFICATION_REQUIRED&method=phone")
+      } else {
+        router.push("/dashboard")
+      }
     } catch {
       setError("Something went wrong. Please try again.")
     }
@@ -105,6 +109,7 @@ export default function SignupPage() {
   }
 
   if (success) {
+    const isPhone = verificationMethod === "PHONE"
     return (
       <div className="relative min-h-screen bg-neutral-950 text-white flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl text-center space-y-4">
@@ -112,13 +117,26 @@ export default function SignupPage() {
             <CheckCircle2 className="h-6 w-6 text-emerald-400" />
           </div>
           <h1 className="text-xl font-semibold">Account created!</h1>
-          <p className="text-sm text-white/60">
-            We sent a verification link to <span className="text-white/90 font-medium">{email}</span>.
-            Click the link to verify your email, then sign in.
-          </p>
-          <p className="text-xs text-white/40">
-            The link expires in 1 hour. Check your spam folder if you don't see it.
-          </p>
+          {isPhone ? (
+            <>
+              <p className="text-sm text-white/60">
+                Sign in to verify your phone number <span className="text-white/90 font-medium">{phone}</span> and complete setup.
+              </p>
+              <p className="text-xs text-white/40">
+                You'll receive a verification code via SMS after signing in.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-white/60">
+                We sent a verification link to <span className="text-white/90 font-medium">{email}</span>.
+                Click the link to verify your email, then sign in.
+              </p>
+              <p className="text-xs text-white/40">
+                The link expires in 1 hour. Check your spam folder if you don't see it.
+              </p>
+            </>
+          )}
           <Link
             href="/login"
             className="mt-4 inline-block rounded-xl bg-white text-black px-6 py-2.5 text-sm font-medium hover:bg-gray-200 transition"
@@ -223,7 +241,7 @@ export default function SignupPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-white/60 mb-1">Phone (optional)</label>
+            <label className="block text-xs text-white/60 mb-1">Phone {verificationMethod === "PHONE" ? "*" : "(optional)"}</label>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -307,7 +325,11 @@ export default function SignupPage() {
               Phone
             </button>
           </div>
-          <p className="text-xs text-white/40">Use /verify after signup to complete email or phone verification.</p>
+          <p className="text-xs text-white/40">
+            {verificationMethod === "PHONE"
+              ? "We'll send a code to your phone number after you sign in."
+              : "We'll send a verification link to your email."}
+          </p>
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
@@ -326,7 +348,7 @@ export default function SignupPage() {
 
         <button
           type="submit"
-          disabled={loading || !username.trim() || !email.trim() || !password || !ageConfirmed}
+          disabled={loading || !username.trim() || !email.trim() || !password || !ageConfirmed || (verificationMethod === "PHONE" && !phone.trim())}
           className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-purple-600 px-4 py-3 text-sm font-semibold text-white hover:from-cyan-400 hover:to-purple-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
           {loading ? (

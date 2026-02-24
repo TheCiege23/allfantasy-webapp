@@ -12,7 +12,8 @@ function VerifyContent() {
   const error = searchParams?.get("error")
   const verified = searchParams?.get("verified")
 
-  const [tab, setTab] = useState<"email" | "phone">("email")
+  const methodParam = searchParams?.get("method")
+  const [tab, setTab] = useState<"email" | "phone">(methodParam === "phone" ? "phone" : "email")
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<"sent" | "error" | "already" | "login_required" | "rate_limited" | null>(null)
   const [countdown, setCountdown] = useState(3)
