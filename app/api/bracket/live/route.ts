@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
         let championPick: string | null = null
         let maxPossible = 0
 
-        const pickResults: PickResult[] = entry.picks.map((pick) => {
+        const pickResults: PickResult[] = entry.picks.map((pick: { nodeId: string; pickedTeamName: string | null; isCorrect: boolean | null }) => {
           const round = nodeRoundMap.get(pick.nodeId) ?? 0
           if (pick.isCorrect === true) {
             correctPicks++
