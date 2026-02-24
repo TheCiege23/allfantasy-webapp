@@ -14,6 +14,7 @@ import AIIssueBacklog from "./components/AIIssueBacklog";
 import AdminShareRewards from "./components/AdminShareRewards";
 import AdminCalibration from "./components/AdminCalibration";
 import AdminModelDrift from "./components/AdminModelDrift";
+import AdminUsers from "./components/AdminUsers";
 import { UsageAnalyticsPanel } from "@/components/admin/UsageAnalyticsPanel";
 import { verifyAdminSessionCookie } from "@/lib/adminSession";
 
@@ -70,6 +71,7 @@ function parseTab(tab?: string | string[]): AdminTab {
     "share_rewards",
     "calibration",
     "model_drift",
+    "users",
   ];
   return allowed.includes(t as AdminTab) ? (t as AdminTab) : "overview";
 }
@@ -111,6 +113,7 @@ export default async function AdminPage({
       {tab === "share_rewards" && <AdminShareRewards />}
       {tab === "calibration" && <AdminCalibration />}
       {tab === "model_drift" && <AdminModelDrift />}
+      {tab === "users" && <AdminUsers />}
     </AdminLayout>
   );
 }

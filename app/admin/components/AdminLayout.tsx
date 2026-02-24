@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import { AdminTabsBar } from "./AdminTabsBar";
 
-export type AdminTab = "overview" | "signups" | "questionnaire" | "ideas" | "feedback" | "email" | "blog" | "tools" | "analytics" | "ai_issues" | "share_rewards" | "calibration" | "model_drift";
+export type AdminTab = "overview" | "signups" | "questionnaire" | "ideas" | "feedback" | "email" | "blog" | "tools" | "analytics" | "ai_issues" | "share_rewards" | "calibration" | "model_drift" | "users";
 
 const TAB_SUMMARY: Record<AdminTab, { title: string; description: string; focus: string }> = {
   overview: {
@@ -95,6 +95,11 @@ const TAB_SUMMARY: Record<AdminTab, { title: string; description: string; focus:
     description: "Monitoring for feature and outcome drift in production.",
     focus: "Address critical segments first.",
   },
+  users: {
+    title: "Users",
+    description: "Registered user accounts, password resets, and account management.",
+    focus: "Send reset links, verify accounts, and manage user data.",
+  },
 };
 
 const NAV: Array<{
@@ -117,6 +122,7 @@ const NAV: Array<{
   { tab: "share_rewards", label: "Share Rewards", icon: Gift, desc: "Token tracking", color: "from-purple-500 to-pink-600", glow: "purple" },
   { tab: "calibration", label: "Calibration", icon: Target, desc: "Trade engine health", color: "from-sky-500 to-blue-600", glow: "sky" },
   { tab: "model_drift", label: "Model Drift", icon: Shield, desc: "Drift & monitoring", color: "from-red-500 to-orange-600", glow: "red" },
+  { tab: "users", label: "Users", icon: Users, desc: "Account management", color: "from-indigo-500 to-purple-600", glow: "indigo" },
   { tab: "tools", label: "Tools", icon: Wrench, desc: "Usage & AI activity", color: "from-fuchsia-500 to-purple-600", glow: "fuchsia" },
 ];
 
