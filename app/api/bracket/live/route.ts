@@ -92,7 +92,7 @@ export async function GET(request: NextRequest) {
         select: { scoringRules: true },
       })
       const rules = (league?.scoringRules || {}) as any
-      scoringMode = rules.mode || "momentum"
+      scoringMode = rules.scoringMode || rules.mode || "momentum"
 
       const entries = await prisma.bracketEntry.findMany({
         where: { leagueId },
@@ -209,6 +209,14 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        const roundPoints: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+        if (details?.breakdown) {
+          for (const b of details.breakdown) {
+            const r = nodeRoundMap.get(b.nodeId) ?? 0
+            if (r >= 1 && r <= 6) roundPoints[r] += b.total
+          }
+        }
+
         return {
           entryId: entry.id,
           entryName: entry.name,
@@ -219,6 +227,7 @@ export async function GET(request: NextRequest) {
           correctPicks,
           totalPicks,
           roundCorrect,
+          roundPoints,
           championPick,
           maxPossible,
           insuredNodeId: entry.insuredNodeId || null,

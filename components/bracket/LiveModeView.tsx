@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Activity, Radio, AlertTriangle, Clock, Trophy, TrendingUp, Zap } from "lucide-react"
+import { Activity, Radio, AlertTriangle, Clock, Trophy, TrendingUp, Zap, ChevronDown, ChevronUp, Shield } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 type Game = {
@@ -28,6 +28,8 @@ type StandingEntry = {
   championPick?: string | null
   maxPossible?: number
   insuredNodeId?: string | null
+  roundCorrect?: Record<number, number>
+  roundPoints?: Record<number, number>
   scoringDetails?: {
     total: number
     breakdown?: Array<{
@@ -67,8 +69,18 @@ function formatGameTime(dateStr: string | null) {
   }
 }
 
+const ROUND_LABELS = [
+  { round: 1, label: "R64" },
+  { round: 2, label: "R32" },
+  { round: 3, label: "S16" },
+  { round: 4, label: "E8" },
+  { round: 5, label: "F4" },
+  { round: 6, label: "CH" },
+]
+
 export function LiveModeView({ games, standings, currentUserId, playByPlaySupported = false, scoringMode }: Props) {
   const [filter, setFilter] = useState<"all" | "live" | "final" | "upcoming">("all")
+  const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
 
   const liveGames = useMemo(() => games.filter(g => g.status === "in_progress"), [games])
   const finalGames = useMemo(() => games.filter(g => g.status === "final"), [games])
@@ -82,8 +94,6 @@ export function LiveModeView({ games, standings, currentUserId, playByPlaySuppor
       default: return [...liveGames, ...upcomingGames, ...finalGames]
     }
   }, [filter, liveGames, finalGames, upcomingGames, games])
-
-  const topStandings = standings.slice(0, 5)
 
   return (
     <div className="space-y-4">
@@ -157,60 +167,129 @@ export function LiveModeView({ games, standings, currentUserId, playByPlaySuppor
         <PlayByPlayFeed games={liveGames} />
       )}
 
-      {topStandings.length > 0 && (
+      {standings.length > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-            <Trophy className="h-3.5 w-3.5" style={{ color: '#fb923c' }} />
-            <span className="text-[11px] font-bold" style={{ color: 'rgba(255,255,255,0.6)' }}>LIVE LEADERBOARD</span>
+          <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div className="flex items-center gap-2">
+              <Trophy className="h-3.5 w-3.5" style={{ color: '#fb923c' }} />
+              <span className="text-[11px] font-bold" style={{ color: 'rgba(255,255,255,0.6)' }}>LIVE LEADERBOARD</span>
+            </div>
+            <span className="text-[9px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{standings.length} entries</span>
           </div>
-          {topStandings.map((s, i) => {
+          {standings.map((s, i) => {
             const isMe = s.userId === currentUserId
+            const isExpanded = expandedEntry === s.entryId
             const bd = s.scoringDetails?.breakdown || []
             const totalUpset = bd.reduce((sum: number, b: any) => sum + (b.upsetDelta || 0), 0)
             const totalLeverage = bd.reduce((sum: number, b: any) => sum + (b.leverageBonus || 0), 0)
             const hasInsured = bd.some((b: any) => b.insured)
             const insuredPts = bd.filter((b: any) => b.insured && b.total > 0).reduce((sum: number, b: any) => sum + b.total, 0)
             const isEdge = scoringMode === "fancred_edge"
+            const roundPoints = s.roundPoints ?? {}
+            const roundCorrect = s.roundCorrect ?? {}
             return (
-              <motion.div
+              <div
                 key={s.entryId}
-                layout
-                className="flex items-center gap-3 px-3 py-2"
+                className="cursor-pointer transition-colors"
                 style={{ borderBottom: '1px solid rgba(255,255,255,0.03)', background: isMe ? 'rgba(251,146,60,0.04)' : 'transparent' }}
+                onClick={() => setExpandedEntry(isExpanded ? null : s.entryId)}
               >
-                <span className="text-[11px] font-bold w-5 text-center" style={{ color: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'rgba(255,255,255,0.3)' }}>
-                  {i + 1}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-white truncate">
-                    {s.displayName || s.entryName}
-                    {isMe && <span className="text-[9px] ml-1" style={{ color: '#fb923c' }}>(You)</span>}
+                <div className="flex items-center gap-3 px-3 py-2">
+                  <span className="text-[11px] font-bold w-5 text-center" style={{ color: i === 0 ? '#fbbf24' : i === 1 ? '#94a3b8' : i === 2 ? '#cd7f32' : 'rgba(255,255,255,0.3)' }}>
+                    {i + 1}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-white truncate">
+                      {s.displayName || s.entryName}
+                      {isMe && <span className="text-[9px] ml-1" style={{ color: '#fb923c' }}>(You)</span>}
+                    </div>
+                    {isEdge && !isExpanded && (totalUpset > 0 || totalLeverage > 0 || hasInsured) && (
+                      <div className="flex gap-2 mt-0.5">
+                        {totalUpset > 0 && (
+                          <span className="text-[9px] tabular-nums" style={{ color: '#a78bfa' }}>
+                            <Zap className="inline h-2.5 w-2.5 mr-0.5" />+{Math.round(totalUpset * 10) / 10}
+                          </span>
+                        )}
+                        {totalLeverage > 0 && (
+                          <span className="text-[9px] tabular-nums" style={{ color: '#fbbf24' }}>
+                            +{Math.round(totalLeverage * 10) / 10}
+                          </span>
+                        )}
+                        {hasInsured && (
+                          <span className="text-[9px]" style={{ color: '#34d399' }}>
+                            <Shield className="inline h-2.5 w-2.5" />
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  {isEdge && (totalUpset > 0 || totalLeverage > 0 || hasInsured) && (
-                    <div className="flex gap-2 mt-0.5">
-                      {totalUpset > 0 && (
-                        <span className="text-[9px] tabular-nums" style={{ color: '#a78bfa' }}>
-                          <Zap className="inline h-2.5 w-2.5 mr-0.5" />+{Math.round(totalUpset * 10) / 10} upset
-                        </span>
+                  <div className="text-right flex items-center gap-1.5">
+                    <div>
+                      <div className="text-xs font-bold tabular-nums" style={{ color: '#fb923c' }}>{s.totalPoints}</div>
+                      <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{s.correctPicks}/{s.totalPicks}</div>
+                    </div>
+                    {isExpanded
+                      ? <ChevronUp className="w-3 h-3 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                      : <ChevronDown className="w-3 h-3 flex-shrink-0" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                    }
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="px-3 pb-2" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                    <div className="ml-8 mt-1.5">
+                      <div className="grid gap-0" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+                        {ROUND_LABELS.map((rl) => (
+                          <div key={`h-${rl.round}`} className="text-center text-[8px] font-bold" style={{ color: 'rgba(255,255,255,0.25)' }}>
+                            {rl.label}
+                          </div>
+                        ))}
+                        {ROUND_LABELS.map((rl) => {
+                          const rPts = roundPoints[rl.round] ?? 0
+                          const rCorr = roundCorrect[rl.round] ?? 0
+                          return (
+                            <div key={`p-${rl.round}`} className="text-center">
+                              <div className="text-[11px] font-bold tabular-nums" style={{ color: rPts > 0 ? '#fb923c' : 'rgba(255,255,255,0.1)' }}>
+                                {rPts > 0 ? rPts : '-'}
+                              </div>
+                              <div className="text-[8px] tabular-nums" style={{ color: rCorr > 0 ? 'rgba(34,197,94,0.6)' : 'rgba(255,255,255,0.1)' }}>
+                                {rCorr > 0 ? `${rCorr}W` : '-'}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+
+                      {isEdge && (totalUpset > 0 || totalLeverage > 0 || hasInsured) && (
+                        <div className="flex flex-wrap gap-2 mt-1.5 pt-1.5" style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                          {totalUpset > 0 && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(167,139,250,0.1)', color: '#a78bfa' }}>
+                              <Zap className="inline h-2.5 w-2.5 mr-0.5" />+{Math.round(totalUpset * 10) / 10} upset
+                            </span>
+                          )}
+                          {totalLeverage > 0 && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(251,191,36,0.1)', color: '#fbbf24' }}>
+                              +{Math.round(totalLeverage * 10) / 10} leverage
+                            </span>
+                          )}
+                          {hasInsured && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(52,211,153,0.1)', color: '#34d399' }}>
+                              <Shield className="inline h-2.5 w-2.5 mr-0.5" />{insuredPts > 0 ? `+${insuredPts} insured` : 'Insured'}
+                            </span>
+                          )}
+                        </div>
                       )}
-                      {totalLeverage > 0 && (
-                        <span className="text-[9px] tabular-nums" style={{ color: '#fbbf24' }}>
-                          +{Math.round(totalLeverage * 10) / 10} leverage
-                        </span>
-                      )}
-                      {hasInsured && (
-                        <span className="text-[9px]" style={{ color: '#34d399' }}>
-                          {insuredPts > 0 ? `+${insuredPts} insured` : '🛡️'}
-                        </span>
+
+                      {s.championPick && (
+                        <div className="flex items-center gap-1 mt-1.5 text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                          <Trophy className="h-2.5 w-2.5" style={{ color: '#fbbf24' }} />
+                          Champion: {s.championPick}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-                <div className="text-right">
-                  <div className="text-xs font-bold tabular-nums" style={{ color: '#fb923c' }}>{s.totalPoints}</div>
-                  <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.25)' }}>{s.correctPicks}/{s.totalPicks}</div>
-                </div>
-              </motion.div>
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>
