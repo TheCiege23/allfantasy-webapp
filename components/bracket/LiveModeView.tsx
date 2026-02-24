@@ -27,7 +27,18 @@ type StandingEntry = {
   totalPicks: number
   championPick?: string | null
   maxPossible?: number
-  scoringDetails?: any
+  insuredNodeId?: string | null
+  scoringDetails?: {
+    total: number
+    breakdown?: Array<{
+      nodeId: string
+      base: number
+      upsetDelta?: number
+      leverageBonus?: number
+      insured?: boolean
+      total: number
+    }>
+  }
 }
 
 type Props = {
@@ -154,6 +165,12 @@ export function LiveModeView({ games, standings, currentUserId, playByPlaySuppor
           </div>
           {topStandings.map((s, i) => {
             const isMe = s.userId === currentUserId
+            const bd = s.scoringDetails?.breakdown || []
+            const totalUpset = bd.reduce((sum: number, b: any) => sum + (b.upsetDelta || 0), 0)
+            const totalLeverage = bd.reduce((sum: number, b: any) => sum + (b.leverageBonus || 0), 0)
+            const hasInsured = bd.some((b: any) => b.insured)
+            const insuredPts = bd.filter((b: any) => b.insured && b.total > 0).reduce((sum: number, b: any) => sum + b.total, 0)
+            const isEdge = scoringMode === "fancred_edge"
             return (
               <motion.div
                 key={s.entryId}
@@ -169,6 +186,25 @@ export function LiveModeView({ games, standings, currentUserId, playByPlaySuppor
                     {s.displayName || s.entryName}
                     {isMe && <span className="text-[9px] ml-1" style={{ color: '#fb923c' }}>(You)</span>}
                   </div>
+                  {isEdge && (totalUpset > 0 || totalLeverage > 0 || hasInsured) && (
+                    <div className="flex gap-2 mt-0.5">
+                      {totalUpset > 0 && (
+                        <span className="text-[9px] tabular-nums" style={{ color: '#a78bfa' }}>
+                          <Zap className="inline h-2.5 w-2.5 mr-0.5" />+{Math.round(totalUpset * 10) / 10} upset
+                        </span>
+                      )}
+                      {totalLeverage > 0 && (
+                        <span className="text-[9px] tabular-nums" style={{ color: '#fbbf24' }}>
+                          +{Math.round(totalLeverage * 10) / 10} leverage
+                        </span>
+                      )}
+                      {hasInsured && (
+                        <span className="text-[9px]" style={{ color: '#34d399' }}>
+                          {insuredPts > 0 ? `+${insuredPts} insured` : '🛡️'}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className="text-xs font-bold tabular-nums" style={{ color: '#fb923c' }}>{s.totalPoints}</div>

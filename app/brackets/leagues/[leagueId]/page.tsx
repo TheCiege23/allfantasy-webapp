@@ -129,6 +129,7 @@ export default async function LeagueDetailPage({
           joinCode={league.joinCode}
           maxManagers={league.maxManagers}
           scoringMode={scoringMode}
+          scoringRules={rules}
         />
       </div>
     </div>

@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
           picks: true,
         },
         orderBy: { createdAt: "asc" },
-      })
+      }) as Array<any>
 
       const nodeRoundMap = new Map<string, number>()
       for (const n of nodes) nodeRoundMap.set(n.id, n.round)
@@ -154,9 +154,18 @@ export async function GET(request: NextRequest) {
           const node = nodes.find((n) => n.id === pick.nodeId)
           const gameForNode = node?.sportsGameId ? gameMap.get(node.sportsGameId) : null
           let actualWinnerSeed: number | null = null
+          let opponentSeed: number | null = null
           if (gameForNode && gameForNode.status === "final" && gameForNode.homeScore != null && gameForNode.awayScore != null) {
             const winner = gameForNode.homeScore > gameForNode.awayScore ? node?.homeTeamName : node?.awayTeamName
+            const loser = gameForNode.homeScore > gameForNode.awayScore ? node?.awayTeamName : node?.homeTeamName
             actualWinnerSeed = winner ? (seedMapLocal.get(winner) ?? null) : null
+            opponentSeed = loser ? (seedMapLocal.get(loser) ?? null) : null
+          } else if (node) {
+            const pickedTeam = pick.pickedTeamName
+            if (pickedTeam) {
+              const opponent = pickedTeam === node.homeTeamName ? node.awayTeamName : node.homeTeamName
+              opponentSeed = opponent ? (seedMapLocal.get(opponent) ?? null) : null
+            }
           }
 
           return {
@@ -166,6 +175,7 @@ export async function GET(request: NextRequest) {
             isCorrect: pick.isCorrect,
             pickedSeed: pick.pickedTeamName ? (seedMapLocal.get(pick.pickedTeamName) ?? null) : null,
             actualWinnerSeed,
+            opponentSeed,
           }
         })
 
@@ -173,7 +183,9 @@ export async function GET(request: NextRequest) {
         let details: any = null
         switch (scoringMode) {
           case "fancred_edge": {
-            const result = scoreFanCredEdge(pickResults, leagueDistribution)
+            const insuranceEnabled = rules.insuranceEnabled === true
+            const entryInsuredNodeId = insuranceEnabled ? (entry.insuredNodeId || null) : null
+            const result = scoreFanCredEdge(pickResults, leagueDistribution, entryInsuredNodeId)
             totalPoints = result.total
             details = result
             break
@@ -209,6 +221,7 @@ export async function GET(request: NextRequest) {
           roundCorrect,
           championPick,
           maxPossible,
+          insuredNodeId: entry.insuredNodeId || null,
           scoringDetails: details,
         }
       })

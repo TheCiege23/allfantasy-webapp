@@ -2355,12 +2355,13 @@ model BracketLeagueMember {
 }
 
 model BracketEntry {
-  id           String   @id @default(uuid())
-  leagueId     String
-  userId       String
-  name         String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(uuid())
+  leagueId       String
+  userId         String
+  name           String
+  insuredNodeId  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   league       BracketLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   user         AppUser       @relation(fields: [userId], references: [id], onDelete: Cascade)

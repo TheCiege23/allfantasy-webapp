@@ -17,6 +17,7 @@ export type PickResult = {
   isCorrect: boolean | null
   pickedSeed: number | null
   actualWinnerSeed: number | null
+  opponentSeed: number | null
 }
 
 export type LeaguePickDistribution = Record<string, Record<string, number>>
@@ -75,14 +76,27 @@ export function scoreFanCredEdge(
     const isInsured = insuranceNodeId === pick.nodeId
 
     if (pick.isCorrect !== true) {
-      breakdown.push({
-        nodeId: pick.nodeId,
-        base: 0,
-        upsetDelta: 0,
-        leverageBonus: 0,
-        insured: isInsured,
-        total: 0,
-      })
+      if (isInsured && pick.isCorrect === false) {
+        const partialBase = Math.ceil(edgePointsForRound(pick.round) * 0.5)
+        total += partialBase
+        breakdown.push({
+          nodeId: pick.nodeId,
+          base: partialBase,
+          upsetDelta: 0,
+          leverageBonus: 0,
+          insured: true,
+          total: partialBase,
+        })
+      } else {
+        breakdown.push({
+          nodeId: pick.nodeId,
+          base: 0,
+          upsetDelta: 0,
+          leverageBonus: 0,
+          insured: isInsured,
+          total: 0,
+        })
+      }
       continue
     }
 
@@ -91,10 +105,10 @@ export function scoreFanCredEdge(
     let upsetDelta = 0
     if (
       pick.pickedSeed != null &&
-      pick.actualWinnerSeed != null &&
-      pick.pickedSeed > pick.actualWinnerSeed
+      pick.opponentSeed != null &&
+      pick.pickedSeed > pick.opponentSeed
     ) {
-      upsetDelta = Math.min(8, pick.pickedSeed - pick.actualWinnerSeed)
+      upsetDelta = Math.min(8, pick.pickedSeed - pick.opponentSeed)
     }
 
     let leverageBonus = 0
@@ -141,13 +155,11 @@ export function scoreMomentum(picks: PickResult[]): {
     let upsetBonus = 0
     if (
       pick.pickedSeed != null &&
-      pick.actualWinnerSeed != null &&
-      pick.pickedSeed > 8
+      pick.opponentSeed != null &&
+      pick.pickedSeed > pick.opponentSeed
     ) {
-      const seedGap = Math.abs((pick.actualWinnerSeed || 0) - (pick.pickedSeed || 0))
-      if (pick.pickedSeed > (pick.actualWinnerSeed ?? pick.pickedSeed)) {
-        upsetBonus = Math.floor(seedGap * (1 + pick.round * 0.5))
-      }
+      const seedGap = pick.pickedSeed - pick.opponentSeed
+      upsetBonus = Math.floor(seedGap * (1 + pick.round * 0.5))
     }
 
     const pts = base + upsetBonus

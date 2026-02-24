@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useCallback, useRef, useEffect } from "react"
-import { Trophy, Sparkles, Zap, Info, Check, X, ZoomIn, ZoomOut, Maximize2, Clock } from "lucide-react"
+import { Trophy, Sparkles, Zap, Info, Check, X, ZoomIn, ZoomOut, Maximize2, Clock, Shield } from "lucide-react"
 import { useBracketLive } from "@/lib/hooks/useBracketLive"
 import { MatchupCardOverlay } from "./MatchupCardOverlay"
 
@@ -38,6 +38,8 @@ type Props = {
   initialPicks: Record<string, string | null>
   readOnly?: boolean
   compact?: boolean
+  insuranceEnabled?: boolean
+  initialInsuredNodeId?: string | null
 }
 
 const ALL_REGIONS = ["West", "East", "South", "Midwest"]
@@ -194,6 +196,9 @@ function MiniCell({
   highlightedTeam,
   onHoverTeam,
   onMatchupClick,
+  isInsured,
+  onToggleInsurance,
+  insuranceEnabled,
   x,
   y,
 }: {
@@ -208,6 +213,9 @@ function MiniCell({
   highlightedTeam?: string | null
   onHoverTeam?: (team: string | null) => void
   onMatchupClick?: (node: Node) => void
+  isInsured?: boolean
+  onToggleInsurance?: (nodeId: string) => void
+  insuranceEnabled?: boolean
   x: number
   y: number
 }) {
@@ -354,6 +362,30 @@ function MiniCell({
     >
       <TeamRow name={homeName} seed={homeSeed} isPicked={homePicked} side="home" correct={homeCorrect} wrong={homeWrong} isUpset={homeIsUpsetPick} />
       <TeamRow name={awayName} seed={awaySeed} isPicked={awayPicked} side="away" correct={awayCorrect} wrong={awayWrong} isUpset={awayIsUpsetPick} />
+      {insuranceEnabled && hasPick && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleInsurance?.(node.id) }}
+          title={isInsured ? "Remove insurance" : "Insure this pick"}
+          style={{
+            position: 'absolute',
+            top: 1,
+            right: 1,
+            width: 14,
+            height: 14,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: 3,
+            background: isInsured ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${isInsured ? 'rgba(52,211,153,0.4)' : 'rgba(255,255,255,0.08)'}`,
+            cursor: 'pointer',
+            fontSize: 8,
+            zIndex: 5,
+          }}
+        >
+          <Shield style={{ width: 8, height: 8, color: isInsured ? '#34d399' : 'rgba(255,255,255,0.25)' }} />
+        </button>
+      )}
     </div>
   )
 }
@@ -368,7 +400,7 @@ const STRATEGY_TIPS = [
   "First Four play-in games don't count for bracket scoring — focus on Round 1 and beyond.",
 ]
 
-export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initialPicks, readOnly, compact }: Props) {
+export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initialPicks, readOnly, compact, insuranceEnabled, initialInsuredNodeId }: Props) {
   const { data: live } = useBracketLive({ tournamentId, leagueId, enabled: true, intervalMs: 15000 })
 
   const [picks, setPicks] = useState<Record<string, string | null>>(initialPicks)
@@ -377,6 +409,8 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
   const [autoFilling, setAutoFilling] = useState(false)
   const [highlightedTeam, setHighlightedTeam] = useState<string | null>(null)
   const [selectedNode, setSelectedNode] = useState<string | null>(null)
+  const [insuredNodeId, setInsuredNodeId] = useState<string | null>(initialInsuredNodeId || null)
+  const [savingInsurance, setSavingInsurance] = useState(false)
 
   const [zoom, setZoom] = useState(0.55)
   const [panX, setPanX] = useState(0)
@@ -457,6 +491,24 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
     setSavingNode(null)
     if (!res.ok) setPicks((p) => ({ ...p, [node.id]: prev }))
   }, [picks, nodesWithLive, entryId, readOnly])
+
+  const toggleInsurance = useCallback(async (nodeId: string) => {
+    if (readOnly || savingInsurance || !insuranceEnabled) return
+    const newNodeId = insuredNodeId === nodeId ? null : nodeId
+    setSavingInsurance(true)
+    setInsuredNodeId(newNodeId)
+    try {
+      const res = await fetch(`/api/bracket/entries/${entryId}/insurance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ nodeId: newNodeId }),
+      })
+      if (!res.ok) setInsuredNodeId(insuredNodeId)
+    } catch {
+      setInsuredNodeId(insuredNodeId)
+    }
+    setSavingInsurance(false)
+  }, [entryId, insuredNodeId, readOnly, savingInsurance, insuranceEnabled])
 
   const handleMatchupClick = useCallback((node: Node) => {
     if (!isPanning) setSelectedNode(node.id)
@@ -615,6 +667,9 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
             highlightedTeam={highlightedTeam}
             onHoverTeam={setHighlightedTeam}
             onMatchupClick={handleMatchupClick}
+            isInsured={insuredNodeId === roundNodes[i].id}
+            onToggleInsurance={toggleInsurance}
+            insuranceEnabled={insuranceEnabled}
             x={x}
             y={y}
           />
@@ -887,6 +942,9 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   highlightedTeam={highlightedTeam}
                   onHoverTeam={setHighlightedTeam}
                   onMatchupClick={handleMatchupClick}
+                  isInsured={insuredNodeId === n.id}
+                  onToggleInsurance={toggleInsurance}
+                  insuranceEnabled={insuranceEnabled}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={i === 0 ? ff0Y : ff1Y}
                 />
@@ -907,6 +965,9 @@ export function BracketTreeView({ tournamentId, leagueId, entryId, nodes, initia
                   highlightedTeam={highlightedTeam}
                   onHoverTeam={setHighlightedTeam}
                   onMatchupClick={handleMatchupClick}
+                  isInsured={insuredNodeId === n.id}
+                  onToggleInsurance={toggleInsurance}
+                  insuranceEnabled={insuranceEnabled}
                   x={centerX + (CENTER_W - CW) / 2}
                   y={champY}
                 />

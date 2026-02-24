@@ -24,6 +24,7 @@ type Entry = {
   userId: string
   name: string
   createdAt: string
+  insuredNodeId?: string | null
   user: { id: string; displayName: string | null; email: string }
 }
 
@@ -55,6 +56,7 @@ type Props = {
   joinCode: string
   maxManagers: number
   scoringMode?: string
+  scoringRules?: { insuranceEnabled?: boolean; [key: string]: any }
 }
 
 type TabId = "pool" | "brackets" | "live" | "feed" | "global" | "public"
@@ -183,6 +185,7 @@ function PoolTab({
   maxManagers,
   members,
   scoringMode,
+  scoringRules,
 }: Props & {
   activeEntryId: string
   setActiveEntryId: (id: string) => void
@@ -229,6 +232,8 @@ function PoolTab({
             nodes={nodes}
             initialPicks={activePicks}
             compact
+            insuranceEnabled={scoringMode === 'fancred_edge' && scoringRules?.insuranceEnabled === true}
+            initialInsuredNodeId={userEntries.find(e => e.id === activeEntryId)?.insuredNodeId}
           />
           <div className="text-center">
             <p className="text-sm">
