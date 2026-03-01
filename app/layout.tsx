@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     canonical: 'https://allfantasy.ai/',
   },
   openGraph: {
-    title: 'AllFantasy \u2014 Your League\'s Secret Weapon',
+    title: "AllFantasy \u2014 Your League's Secret Weapon",
     description: 'AI that actually understands modern fantasy. Join the waitlist.',
     url: 'https://allfantasy.ai/',
     siteName: 'AllFantasy',
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'AllFantasy \u2014 Your League\'s Secret Weapon',
+    title: "AllFantasy \u2014 Your League's Secret Weapon",
     description: 'AI that actually understands modern fantasy. Join the waitlist.',
   },
   icons: {
@@ -54,12 +54,20 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || 'G-LY788DCM6K'
+  const gaMeasurementId = process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID || '';
+  const metaPixelId = process.env.NEXT_PUBLIC_META_PIXEL_ID || '';
+  const fbAppId = process.env.NEXT_PUBLIC_FB_APP_ID || '1790659191546539';
+
+  if (!gaMeasurementId) {
+    console.warn('[AllFantasy] Missing NEXT_PUBLIC_GA_MEASUREMENT_ID');
+  }
+  if (!metaPixelId) {
+    console.warn('[AllFantasy] Missing NEXT_PUBLIC_META_PIXEL_ID');
+  }
 
   return (
     <html lang="en" className={`${inter.variable}`} suppressHydrationWarning>
       <head>
-
         <Script id="af-init-mode" strategy="beforeInteractive">
           {`
             try {
@@ -74,20 +82,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }
           `}
         </Script>
-        <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
-          strategy="afterInteractive"
-        />
-        <Script id="google-gtag" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            window.gtag = window.gtag || function(){window.dataLayer.push(arguments);};
-            var gtag = window.gtag;
-            gtag('js', new Date());
-            gtag('config', '${gaMeasurementId}', { send_page_view: true });
-            gtag('config', 'AW-17768764414');
-          `}
-        </Script>
+
+        {gaMeasurementId && (
+          <>
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}`}
+              strategy="afterInteractive"
+            />
+            <Script id="google-gtag" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){window.dataLayer.push(arguments);}
+                window.gtag = window.gtag || gtag;
+                gtag('js', new Date());
+                gtag('config', '${gaMeasurementId}', { send_page_view: true });
+                gtag('config', 'AW-17768764414');
+              `}
+            </Script>
+          </>
+        )}
 
         <Script id="analytics-healthcheck" strategy="afterInteractive">
           {`
@@ -135,28 +148,49 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             })();
           `}
         </Script>
-        <Script id="meta-pixel" strategy="afterInteractive">
-          {`
-            !function(f,b,e,v,n,t,s)
-            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-            n.queue=[];t=b.createElement(e);t.async=!0;
-            t.src=v;s=b.getElementsByTagName(e)[0];
-            s.parentNode.insertBefore(t,s)}(window, document,'script',
-            'https://connect.facebook.net/en_US/fbevents.js');
-            fbq('init', '${process.env.NEXT_PUBLIC_META_PIXEL_ID}');
-            fbq('track', 'PageView');
-          `}
-        </Script>
+
+        {metaPixelId && (
+          <Script id="meta-pixel" strategy="afterInteractive">
+            {`
+              !function(f,b,e,v,n,t,s)
+              {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+              n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+              if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+              n.queue=[];t=b.createElement(e);t.async=!0;
+              t.src=v;s=b.getElementsByTagName(e)[0];
+              s.parentNode.insertBefore(t,s)}(window, document,'script',
+              'https://connect.facebook.net/en_US/fbevents.js');
+              fbq('init', '${metaPixelId}');
+              fbq('track', 'PageView');
+            `}
+          </Script>
+        )}
       </head>
-      <body className={`${inter.variable} antialiased min-h-screen`} style={{ background: "var(--bg)", color: "var(--text)" }}>
+
+      <body
+        className={`${inter.variable} antialiased min-h-screen`}
+        style={{ background: 'var(--bg)', color: 'var(--text)' }}
+      >
+        {metaPixelId && (
+          <noscript>
+            <img
+              height="1"
+              width="1"
+              style={{ display: 'none' }}
+              src={`https://www.facebook.com/tr?id=${metaPixelId}&ev=PageView&noscript=1`}
+              alt=""
+            />
+          </noscript>
+        )}
+
         <div id="fb-root"></div>
+
         <Script
-          src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v25.0&appId=1790659191546539"
+          src={`https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v25.0&appId=${fbAppId}`}
           strategy="afterInteractive"
           crossOrigin="anonymous"
         />
+
         <ThemeProvider>
           {children}
           <Toaster position="top-center" richColors closeButton />
