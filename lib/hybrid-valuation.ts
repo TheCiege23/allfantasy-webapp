@@ -55,6 +55,33 @@ const AGE_VOLATILITY_CURVE: Record<string, { peakAge: number; decayRate: number 
   TE: { peakAge: 27, decayRate: 0.02 },
 }
 
+let _fcPlayersCache: FantasyCalcPlayer[] | null = null;
+let _fcPlayersCacheKey: string = '';
+
+async function getFantasyCalcPlayers(ctx: ValuationContext): Promise<FantasyCalcPlayer[]> {
+  if (ctx.fantasyCalcPlayers) return ctx.fantasyCalcPlayers;
+
+  const cacheKey = `${ctx.isSuperFlex}-${ctx.numTeams ?? 12}`;
+  if (_fcPlayersCache && _fcPlayersCacheKey === cacheKey) {
+    return _fcPlayersCache;
+  }
+
+  try {
+    const players = await fetchFantasyCalcValues({
+      isDynasty: true,
+      numQbs: ctx.isSuperFlex ? 2 : 1,
+      numTeams: ctx.numTeams ?? 12,
+      ppr: 1,
+    });
+    _fcPlayersCache = players;
+    _fcPlayersCacheKey = cacheKey;
+    return players;
+  } catch (e) {
+    console.error('[hybrid-valuation] Failed to fetch FantasyCalc values:', e);
+    return [];
+  }
+}
+
 function clampVal(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
 }
@@ -65,7 +92,8 @@ function computePlayerVolatility(
   age: number | null,
   analyticsData?: PlayerAnalytics | null
 ): number {
-  let vol = POSITION_VOLATILITY_DEFAULTS[position.toUpperCase()] ?? 0.20;
+  const posKey = position.toUpperCase();
+  let vol = POSITION_VOLATILITY_DEFAULTS[posKey] ?? 0.20;
 
   if (fcPlayer?.maybeMovingStandardDeviationPerc != null) {
     const stdPct = Math.abs(fcPlayer.maybeMovingStandardDeviationPerc);
@@ -78,10 +106,11 @@ function computePlayerVolatility(
   }
 
   if (age != null) {
-    const curve = AGE_VOLATILITY_CURVE[position.toUpperCase()];
+    const curve = AGE_VOLATILITY_CURVE[posKey];
     if (curve) {
       const yearsFromPeak = Math.max(0, age - curve.peakAge);
-      vol += yearsFromPeak * curve.decayRate;
+      const agePenalty = Math.min(yearsFromPeak * curve.decayRate, 0.20);
+      vol += agePenalty;
     }
   }
 
@@ -150,7 +179,7 @@ function computeVorp(
 
 export function compositeScore(av: AssetValue): number {
   const riskPenalty = av.volatility * 0.25 * (av.impactValue + av.vorpValue);
-  return Math.round(av.impactValue + av.vorpValue - riskPenalty);
+  return Math.max(0, Math.round(av.impactValue + av.vorpValue - riskPenalty));
 }
 
 export function compositeTotal(assets: PricedAsset[]): number {
@@ -223,29 +252,19 @@ export async function pricePlayer(
   name: string,
   ctx: ValuationContext
 ): Promise<PricedAsset> {
-  let fcPlayers = ctx.fantasyCalcPlayers;
-  if (!fcPlayers) {
-    try {
-      fcPlayers = await fetchFantasyCalcValues({
-        isDynasty: true,
-        numQbs: ctx.isSuperFlex ? 2 : 1,
-        numTeams: ctx.numTeams ?? 12,
-        ppr: 1
-      });
-    } catch (e) {
-      fcPlayers = [];
-    }
-  }
+  const fcPlayers = await getFantasyCalcPlayers(ctx);
 
   const fcPlayer = findPlayerByName(fcPlayers, name);
   const overridePos = ctx.playerPositionOverrides?.[name.toLowerCase().trim()];
-  const position = overridePos || fcPlayer?.player.position || 'WR';
+  const position = overridePos || fcPlayer?.player.position || 'UNKNOWN';
   const age = fcPlayer?.player.maybeAge ?? null;
 
   let analyticsData: PlayerAnalytics | null = null;
   try {
     analyticsData = await getPlayerAnalytics(name);
-  } catch {}
+  } catch (e) {
+    console.warn(`[hybrid-valuation] Could not fetch analytics for "${name}":`, e);
+  }
 
   const historicalResult = getHistoricalPlayerValue(name, ctx.asOfDate, ctx.isSuperFlex);
   if (historicalResult.value !== null) {
@@ -282,12 +301,17 @@ export async function pricePlayer(
 
   const idpKickerFallback = getIdpKickerFallbackValue(name, position);
   if (idpKickerFallback > 0) {
-    const vol = analyticsData ? computePlayerVolatility(null, position, age, analyticsData) : 0.45;
+    const vol = computePlayerVolatility(null, position, age, analyticsData);
     return {
       name,
       type: 'player',
       value: idpKickerFallback,
-      assetValue: { marketValue: idpKickerFallback, impactValue: Math.round(idpKickerFallback * 0.6), vorpValue: Math.round(idpKickerFallback * 0.3), volatility: vol },
+      assetValue: {
+        marketValue: idpKickerFallback,
+        impactValue: Math.round(idpKickerFallback * 0.6),
+        vorpValue: Math.round(idpKickerFallback * 0.3),
+        volatility: vol,
+      },
       source: 'unknown',
       position,
     };
@@ -306,12 +330,14 @@ export async function pricePlayer(
     };
   }
 
+  console.warn(`[hybrid-valuation] No value found for player: "${name}"`);
   return {
     name,
     type: 'player',
     value: 0,
     assetValue: { marketValue: 0, impactValue: 0, vorpValue: 0, volatility: 0.50 },
-    source: 'unknown'
+    source: 'unknown',
+    position,
   };
 }
 
@@ -399,19 +425,9 @@ export async function priceAssets(
     picksFromCurve: number;
   };
 }> {
-  let fcPlayers = ctx.fantasyCalcPlayers;
-  if (!fcPlayers && assets.players.length > 0) {
-    try {
-      fcPlayers = await fetchFantasyCalcValues({
-        isDynasty: true,
-        numQbs: ctx.isSuperFlex ? 2 : 1,
-        numTeams: ctx.numTeams ?? 12,
-        ppr: 1
-      });
-    } catch (e) {
-      fcPlayers = [];
-    }
-  }
+  const fcPlayers = assets.players.length > 0
+    ? await getFantasyCalcPlayers(ctx)
+    : (ctx.fantasyCalcPlayers ?? []);
 
   const ctxWithFc: ValuationContext = { ...ctx, fantasyCalcPlayers: fcPlayers };
 
