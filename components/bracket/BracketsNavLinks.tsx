@@ -18,21 +18,14 @@ export function BracketsNavLinks() {
       <Link
         href="/brackets"
         className={[
-          "px-3 py-2 rounded-xl text-sm font-medium transition",
-          active("/brackets") ? "bg-white/15 text-white" : "text-gray-300 hover:bg-white/10 hover:text-white",
+          "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition shadow",
+          active("/brackets")
+            ? "bg-gradient-to-r from-purple-600 to-indigo-600 text-white"
+            : "bg-gradient-to-r from-purple-600/80 to-indigo-600/80 text-white hover:opacity-95",
         ].join(" ")}
       >
-        Brackets
+        <span>🏀</span> Bracket Challenge {isMarch && <span className="text-[11px] bg-orange-500 px-2 py-0.5 rounded-full">LIVE</span>}
       </Link>
-
-      {isMarch && (
-        <Link
-          href="/brackets"
-          className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow hover:opacity-95 transition"
-        >
-          <span>🏀</span> Bracket Challenge <span className="text-[11px] bg-orange-500 px-2 py-0.5 rounded-full">LIVE</span>
-        </Link>
-      )}
 
       <Link
         href="/support"
