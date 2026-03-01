@@ -386,16 +386,21 @@ function buildCountersAdaptiveNamedTop3(args: {
   const addList = formatCandidateList(myAddOptions)
   const askList = formatCandidateList(myAskOptions)
 
+  let adjustedAcceptProb = acceptProb
+  let adjustedFairness = fairnessScore
+
   if (acceptProb < 0.55) {
     if (addList.length) {
+      adjustedAcceptProb = clamp(adjustedAcceptProb + 0.12, 0, 1)
+      adjustedFairness = clamp(adjustedFairness - 3, 0, 100)
       counters.push({
         label: wantStability ? 'Win-Now Accept Boost (Top 3)' : wantCeiling ? 'Rebuild Accept Boost (Top 3)' : 'Accept Boost (Top 3)',
         changes: [
           { addToB: `Add one of: ${addList.join(' / ')}` },
           ldiByPos ? { note: `LDI hot position: ${topHot}. Add-options pulled from your bench to match league demand.` } : null,
         ].filter(Boolean),
-        acceptProb: clamp(acceptProb + 0.12, 0, 1),
-        fairnessScore: clamp(fairnessScore - 3, 0, 100),
+        acceptProb: adjustedAcceptProb,
+        fairnessScore: adjustedFairness,
         whyTheyAccept: ['Real bench pieces reduce negotiation friction and increase perceived value.'],
         whyItHelpsYou: wantStability
           ? ['You move volatility off your bench without touching core starters.']
@@ -407,14 +412,16 @@ function buildCountersAdaptiveNamedTop3(args: {
         },
       })
     } else {
+      adjustedAcceptProb = clamp(adjustedAcceptProb + 0.11, 0, 1)
+      adjustedFairness = clamp(adjustedFairness - 2, 0, 100)
       counters.push({
         label: 'Accept Boost (Pick-Based)',
         changes: [
           { addToB: 'Add a late 2nd (or upgrade 3rd \u2192 2nd) instead of losing a core player.' },
           ldiByPos ? { note: `LDI suggests ${topHot} is hot \u2014 picks substitute when bench options are thin.` } : null,
         ].filter(Boolean),
-        acceptProb: clamp(acceptProb + 0.11, 0, 1),
-        fairnessScore: clamp(fairnessScore - 2, 0, 100),
+        acceptProb: adjustedAcceptProb,
+        fairnessScore: adjustedFairness,
         whyTheyAccept: ['Picks feel like guaranteed future value.'],
         whyItHelpsYou: ['Keeps your weekly lineup intact while raising acceptance.'],
       })
@@ -422,14 +429,16 @@ function buildCountersAdaptiveNamedTop3(args: {
   }
 
   if (askList.length) {
+    adjustedAcceptProb = clamp(adjustedAcceptProb + 0.05, 0, 1)
+    adjustedFairness = clamp(adjustedFairness + 1, 0, 100)
     counters.push({
       label: wantStability ? 'Ask Back Stability (Top 3)' : wantCeiling ? 'Ask Back Ceiling (Top 3)' : 'Ask Back Value (Top 3)',
       changes: [
         { askFromThem: `Counter by asking for one of: ${askList.join(' / ')}` },
         ldiByPos ? { note: `Ask-options pulled from their bench in league-demanded position (${topHot}).` } : null,
       ].filter(Boolean),
-      acceptProb: clamp(acceptProb + 0.05, 0, 1),
-      fairnessScore: clamp(fairnessScore + 1, 0, 100),
+      acceptProb: adjustedAcceptProb,
+      fairnessScore: adjustedFairness,
       whyTheyAccept: ['Bench concessions are easier than moving starters.'],
       whyItHelpsYou: wantStability
         ? ['Adds floor without paying extra picks.']
@@ -443,13 +452,15 @@ function buildCountersAdaptiveNamedTop3(args: {
   }
 
   const partnerIsRebuild = teamBDirection === 'REBUILD'
+  adjustedAcceptProb = clamp(adjustedAcceptProb + 0.04, 0, 1)
+  adjustedFairness = clamp(adjustedFairness - 1, 0, 100)
   counters.push({
     label: partnerIsRebuild ? 'Partner Rebuild Angle' : 'Partner Win-Now Angle',
     changes: partnerIsRebuild
       ? [{ addPick: 'If they hesitate, swap your add-on for a future pick (2nd/3rd) \u2014 rebuilders respond better to picks.' }]
       : [{ addToB: 'If they hesitate, swap pick talk for a usable startable depth piece \u2014 contenders want points now.' }],
-    acceptProb: clamp(acceptProb + 0.04, 0, 1),
-    fairnessScore: clamp(fairnessScore - 1, 0, 100),
+    acceptProb: adjustedAcceptProb,
+    fairnessScore: adjustedFairness,
     whyTheyAccept: [partnerIsRebuild ? 'Matches rebuild incentives: future value.' : 'Matches contender incentives: points now.'],
     whyItHelpsYou: ['You increase acceptance by speaking their roster language.'],
   })
