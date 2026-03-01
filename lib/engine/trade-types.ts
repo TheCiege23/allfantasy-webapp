@@ -41,6 +41,7 @@ export interface TradeLeagueContext {
     vetoType?: 'none' | 'commissioner' | 'league_vote'
     tradeDeadlineWeek?: number
     faabTradable?: boolean
+    faabBudget?: number
   }
 }
 

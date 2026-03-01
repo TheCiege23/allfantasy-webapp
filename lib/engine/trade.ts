@@ -567,10 +567,14 @@ function devySideValue(devyPlayers: TradePlayerAsset[], teamDirection?: string) 
   return { total, mult }
 }
 
-function faabValue(assets: Asset[]) {
+function faabValue(assets: Asset[], leagueFaabBudget: number = 100) {
+  const budget = leagueFaabBudget > 0 ? leagueFaabBudget : 100
   let total = 0
   for (const a of assets) {
-    if (a.type === 'faab') total += clamp(a.faab.amount / 10, 0, 25)
+    if (a.type === 'faab' && a.faab.amount > 0) {
+      const pctOfBudget = clamp(a.faab.amount / budget, 0, 1)
+      total += Math.round(pctOfBudget * 25)
+    }
   }
   return total
 }
@@ -855,8 +859,9 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const devyA = devySideValue(splitA.devyPlayers, teamA.direction)
   const devyB = devySideValue(splitB.devyPlayers, teamB.direction)
 
-  const faabA = faabValue(req.assetsA)
-  const faabB = faabValue(req.assetsB)
+  const leagueFaabBudget = req.leagueContext?.trade?.faabBudget ?? 100
+  const faabA = faabValue(req.assetsA, leagueFaabBudget)
+  const faabB = faabValue(req.assetsB, leagueFaabBudget)
 
   const vA = pricedA.total + devyA.total + faabA
   const vB = pricedB.total + devyB.total + faabB
