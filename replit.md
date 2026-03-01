@@ -25,7 +25,7 @@ The design is mobile-first, featuring a persistent Bottom Tab Bar, contextual AI
 The core architecture is based on a `One Engine API` that integrates a One Scoring Core, One Narrative System, and One Monitoring System. Key features include:
 -   **Authentication System:** Password-based signup, email/phone verification, login, and optional Sleeper account linking.
 -   **Universal Trade Engine:** A deterministic `runTradeAnalysis()` pipeline with a 2-Stage Trade Analysis (Deterministic Intelligence Layer and Peer Review Layer for explanation).
--   **AI-Powered Analysis:** Instant Trade Check, Personalized AI Chat (Chimmy), AI Trade Evaluator with deterministic tiers and veto layer, Deterministic Waiver AI, and a Goal-Driven AI Trade Proposal Generator.
+-   **AI-Powered Analysis:** Instant Trade Check, Personalized AI Chat (Chimmy) with 3-Brain Architecture (GPT-4o narrative + Grok real-time trends + DeepSeek quantitative modeling), AI Trade Evaluator with deterministic tiers and veto layer, Deterministic Waiver AI, and a Goal-Driven AI Trade Proposal Generator.
 -   **Adaptive Consensus + Context Rankings:** Multi-dimensional player ranking system with a League Demand Index and an Adaptive Rankings v2 Engine.
 -   **League Rankings V2 (Team-Level):** Two-layer team ranking system (Power Rankings and Dynasty Outlook) with five core scores, AI Coach Box, and Win Window projection.
 -   **Monte Carlo Simulation Engine:** Performs matchup, season, and championship delta simulations.
@@ -58,7 +58,8 @@ The core architecture is based on a `One Engine API` that integrates a One Scori
 
 ## External Dependencies
 -   **OpenAI**: General AI analysis.
--   **Grok**: Social media post generation and AI tools.
+-   **Grok**: Social media post generation, real-time trend intelligence, and AI tools.
+-   **DeepSeek**: Quantitative fantasy sports modeling engine (via `lib/deepseek-client.ts`).
 -   **PostgreSQL**: Primary database.
 -   **Sleeper API**: User league data and trending player information.
 -   **Rolling Insights Sports API**: Primary NFL sports data (depth charts, team stats).
