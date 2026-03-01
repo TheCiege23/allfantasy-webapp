@@ -235,6 +235,25 @@ function computeFairnessScore(vA: number, vB: number): {
   return { fairnessDeltaPct, fairnessScore };
 }
 
+export function computeTradeMomentum(
+  fairnessScore: number,
+  acceptanceFinal: number,
+  starterDeltaPts: number,
+  needsFitScore: number
+): { direction: 'positive' | 'negative' | 'neutral'; score: number } {
+  const signals = [
+    fairnessScore >= 50 ? 1 : -1,
+    acceptanceFinal >= 0.50 ? 1 : -1,
+    starterDeltaPts > 0 ? 1 : starterDeltaPts < 0 ? -1 : 0,
+    needsFitScore >= 50 ? 1 : -1,
+  ];
+
+  const score = signals.reduce((a, b) => a + b, 0);
+  const direction = score > 1 ? 'positive' : score < -1 ? 'negative' : 'neutral';
+
+  return { direction, score };
+}
+
 function computeVerdict(
   fairnessScore: number,
   acceptanceFinal: number
@@ -1002,6 +1021,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   })
 
   const { verdict, confidence: verdictConfidence } = computeVerdict(fairnessScore, acceptance.final)
+  const momentum = computeTradeMomentum(fairnessScore, acceptance.final, starterDeltaPtsA, needsFitScore)
 
   const counters = buildCountersAdaptiveNamedTop3({
     fairnessScore,
@@ -1071,6 +1091,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   return {
     verdict,
     verdictConfidence,
+    momentum,
     fairness: {
       score: fairnessScore,
       delta: Math.round(delta),

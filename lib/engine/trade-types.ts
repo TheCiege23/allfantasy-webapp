@@ -182,6 +182,10 @@ export interface TradeEngineRequest {
 export interface TradeEngineResponse {
   verdict: 'accept' | 'reject' | 'counter'
   verdictConfidence: 'high' | 'medium' | 'low'
+  momentum: {
+    direction: 'positive' | 'negative' | 'neutral'
+    score: number
+  }
   fairness: {
     score: number
     delta: number
