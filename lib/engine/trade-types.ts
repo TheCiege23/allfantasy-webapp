@@ -191,6 +191,7 @@ export interface TradeEngineResponse {
     delta: number
     confidence: TradeConfidenceState
     drivers: { key: string; delta: number; note: string }[]
+    explanations: string[]
   }
 
   leagueAdjusted: {

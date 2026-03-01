@@ -235,6 +235,39 @@ function computeFairnessScore(vA: number, vB: number): {
   return { fairnessDeltaPct, fairnessScore };
 }
 
+export function explainFairnessScore(
+  fairnessScore: number,
+  vA: number,
+  vB: number,
+  leagueAdjDelta: number,
+  starterDeltaPts: number
+): string[] {
+  const explanations: string[] = [];
+
+  const delta = vA - vB;
+  if (Math.abs(delta) < 200) {
+    explanations.push('Trade values are roughly even in raw market value');
+  } else if (delta > 0) {
+    explanations.push(`You are receiving ~${Math.abs(Math.round(delta))} more in market value`);
+  } else {
+    explanations.push(`You are giving up ~${Math.abs(Math.round(delta))} more in market value`);
+  }
+
+  if (leagueAdjDelta > 3) {
+    explanations.push('Your league scoring format favors the assets you are receiving');
+  } else if (leagueAdjDelta < -3) {
+    explanations.push('Your league scoring format favors the assets you are giving up');
+  }
+
+  if (starterDeltaPts > 3) {
+    explanations.push('This trade improves your starting lineup immediately');
+  } else if (starterDeltaPts < -3) {
+    explanations.push('This trade weakens your starting lineup in the short term');
+  }
+
+  return explanations;
+}
+
 export function computeTradeMomentum(
   fairnessScore: number,
   acceptanceFinal: number,
@@ -1100,6 +1133,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
         .slice()
         .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
         .slice(0, 6),
+      explanations: explainFairnessScore(fairnessScore, vA, vB, leagueAdj.delta, starterDeltaPtsA),
     },
     leagueAdjusted: {
       delta: leagueAdj.delta,
