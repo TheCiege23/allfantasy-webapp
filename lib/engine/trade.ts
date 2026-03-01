@@ -158,10 +158,16 @@ function inferTeamDirection(team: TeamContext): TeamContext {
     nflCount >= 12 ? ('MODERATE' as const) : ('LEARNING' as const)
 
   let direction: TeamContext['direction'] = 'MIDDLE'
-  if (devyCount >= 6) direction = 'REBUILD'
-  if (avgAge <= 24 && devyCount >= 3) direction = 'REBUILD'
-  if (avgAge >= 27 && devyCount <= 1) direction = 'CONTEND'
-  if (avgAge >= 28) direction = 'FRAGILE_CONTEND'
+
+  if (devyCount >= 6) {
+    direction = 'REBUILD'
+  } else if (avgAge <= 24 && devyCount >= 3) {
+    direction = 'REBUILD'
+  } else if (avgAge >= 28 && devyCount <= 1) {
+    direction = 'FRAGILE_CONTEND'
+  } else if (avgAge >= 27 && devyCount <= 1) {
+    direction = 'CONTEND'
+  }
 
   return { ...team, direction, directionConfidence }
 }
