@@ -1139,6 +1139,18 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   }
 }
 
+const ANALYTICS_BATCH_LIMIT = 60;
+
+function buildAnalyticsBatch(allPlayerNames: string[]): string[] {
+  if (allPlayerNames.length > ANALYTICS_BATCH_LIMIT) {
+    console.warn(
+      `[trade-engine] Analytics batch truncated: ${allPlayerNames.length} players → ${ANALYTICS_BATCH_LIMIT}. ` +
+      `Players excluded: ${allPlayerNames.slice(ANALYTICS_BATCH_LIMIT).join(', ')}`
+    );
+  }
+  return allPlayerNames.slice(0, ANALYTICS_BATCH_LIMIT);
+}
+
 async function buildPlayerAnalyticsForTrade(
   tradeAssets: Asset[],
   rosters: TradePlayerAsset[]
@@ -1161,7 +1173,7 @@ async function buildPlayerAnalyticsForTrade(
 
     if (playerNames.size === 0) return {}
 
-    const namesArr = Array.from(playerNames).slice(0, 60)
+    const namesArr = buildAnalyticsBatch(Array.from(playerNames))
     const analyticsMap = await getPlayerAnalyticsBatch(namesArr)
 
     const result: Record<string, any> = {}
