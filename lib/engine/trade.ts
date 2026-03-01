@@ -235,6 +235,30 @@ function computeFairnessScore(vA: number, vB: number): {
   return { fairnessDeltaPct, fairnessScore };
 }
 
+function computeVerdict(
+  fairnessScore: number,
+  acceptanceFinal: number
+): { verdict: 'accept' | 'reject' | 'counter'; confidence: 'high' | 'medium' | 'low' } {
+  if (fairnessScore >= 58 && acceptanceFinal >= 0.52) {
+    return { verdict: 'accept', confidence: 'high' };
+  }
+
+  if (fairnessScore >= 54 && acceptanceFinal >= 0.48) {
+    return { verdict: 'accept', confidence: 'medium' };
+  }
+
+  if (fairnessScore <= 40) {
+    return { verdict: 'reject', confidence: 'high' };
+  }
+
+  if (fairnessScore <= 44 && acceptanceFinal < 0.40) {
+    return { verdict: 'reject', confidence: 'medium' };
+  }
+
+  const counterConfidence = fairnessScore >= 50 ? 'medium' : 'low';
+  return { verdict: 'counter', confidence: counterConfidence };
+}
+
 function sortHotPositions(ldiByPos: Record<string, number> | undefined) {
   if (!ldiByPos) return []
   return Object.entries(ldiByPos)
@@ -960,10 +984,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
     offeredPlayersToPartner: offeredToPartner,
   })
 
-  const verdict: TradeEngineResponse['verdict'] =
-    fairnessScore >= 58 && acceptance.final >= 0.52 ? 'accept'
-      : fairnessScore <= 44 ? 'reject'
-        : 'counter'
+  const { verdict, confidence: verdictConfidence } = computeVerdict(fairnessScore, acceptance.final)
 
   const counters = buildCountersAdaptiveNamedTop3({
     fairnessScore,
@@ -1032,6 +1053,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
 
   return {
     verdict,
+    verdictConfidence,
     fairness: {
       score: fairnessScore,
       delta: Math.round(delta),

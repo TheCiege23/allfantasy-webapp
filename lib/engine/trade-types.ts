@@ -180,6 +180,7 @@ export interface TradeEngineRequest {
 
 export interface TradeEngineResponse {
   verdict: 'accept' | 'reject' | 'counter'
+  verdictConfidence: 'high' | 'medium' | 'low'
   fairness: {
     score: number
     delta: number
