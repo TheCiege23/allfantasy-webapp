@@ -275,7 +275,7 @@ model UserEvent {
   eventType String
   metadata  Json?
   createdAt DateTime @default(now())
-  user      LegacyUser @relation(fields: [userId], references: [id])
+  user      LegacyUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([eventType])

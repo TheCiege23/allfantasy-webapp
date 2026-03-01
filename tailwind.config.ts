@@ -19,13 +19,13 @@ const config: Config = {
           800: '#12121a',
           700: '#1a1a25',
           600: '#252535',
-        }
+        },
       },
       animation: {
         'glow-pulse': 'glow-pulse 4s ease-in-out infinite',
         'float': 'float 6s ease-in-out infinite',
         'gradient-shift': 'gradient-shift 8s ease infinite',
-        'gradient-x': 'gradient-x 3s ease infinite',
+        'gradient-x': 'gradient-shift 3s ease infinite',
       },
       keyframes: {
         'glow-pulse': {
@@ -37,10 +37,6 @@ const config: Config = {
           '50%': { transform: 'translateY(-10px)' },
         },
         'gradient-shift': {
-          '0%, 100%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-        },
-        'gradient-x': {
           '0%, 100%': { backgroundPosition: '0% 50%' },
           '50%': { backgroundPosition: '100% 50%' },
         },
