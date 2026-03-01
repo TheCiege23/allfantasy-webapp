@@ -99,6 +99,53 @@ const TradeRequestSchema = z.object({
   league_id: d.leagueId || d.league_id,
 }))
 
+const CONFIDENCE_DRIFT_THRESHOLD = 25
+
+function triangulateConfidence(
+  serverScore: number,
+  gptScore: number | null,
+  quantScore: number | null
+): {
+  finalScore: number
+  overrideApplied: boolean
+  auditLog: string[]
+} {
+  const auditLog: string[] = []
+  const scores: number[] = [serverScore]
+
+  if (gptScore != null) scores.push(gptScore)
+  if (quantScore != null) scores.push(quantScore)
+
+  const maxDrift = Math.max(...scores) - Math.min(...scores)
+
+  if (maxDrift > CONFIDENCE_DRIFT_THRESHOLD) {
+    auditLog.push(
+      `Confidence drift detected: ${maxDrift.toFixed(1)} pts across models. ` +
+      `Scores: server=${serverScore}, gpt=${gptScore ?? 'N/A'}, quant=${quantScore ?? 'N/A'}. ` +
+      `Server score applied.`
+    )
+    return { finalScore: serverScore, overrideApplied: true, auditLog }
+  }
+
+  const weights = { server: 0.40, quant: 0.35, gpt: 0.25 }
+  let weighted = serverScore * weights.server
+  let weightUsed = weights.server
+
+  if (quantScore != null) {
+    weighted += quantScore * weights.quant
+    weightUsed += weights.quant
+  }
+  if (gptScore != null) {
+    weighted += gptScore * weights.gpt
+    weightUsed += weights.gpt
+  }
+
+  const finalScore = Math.max(0, Math.min(100, Math.round(weighted / weightUsed)))
+  auditLog.push(`Triangulated confidence: ${finalScore} (drift: ${maxDrift.toFixed(1)} pts, models: ${scores.length})`)
+
+  return { finalScore, overrideApplied: false, auditLog }
+}
+
 const DEEPSEEK_TRADE_SYSTEM = `You are a quantitative fantasy sports trade analysis engine.
 Analyze trade fairness using statistical modeling.
 Always respond in valid JSON only. No markdown outside JSON.
@@ -1015,6 +1062,55 @@ Net delta: ${teamANetValue}
 Fairness score: ${fairnessScore}/100
     `.trim()
 
+    const [dsResult, grokResult] = await Promise.allSettled([
+      deepseekQuantAnalysis(
+        `${DEEPSEEK_TRADE_SYSTEM}\n\nAnalyze this trade:\n${tradeContextForAI}`
+      ).catch((e: any) => {
+        console.warn('[TradeEval] DeepSeek failed:', e?.message)
+        return { json: null, raw: '', error: e?.message }
+      }),
+
+      xaiChatJson({
+        messages: [
+          { role: 'system', content: GROK_TRADE_SYSTEM },
+          { role: 'user', content: `Analyze player signals for this trade:\n${tradeContextForAI}` },
+        ],
+        tools: [{ type: 'web_search', user_location_country: 'US' }],
+        temperature: 0.3,
+        maxTokens: 400,
+      }).catch((e: any) => {
+        console.warn('[TradeEval] Grok failed:', e?.message)
+        return null
+      }),
+    ])
+
+    if (dsResult.status === 'fulfilled' && dsResult.value?.json) {
+      deepseekQuantResult = dsResult.value.json
+      aiProviders.deepseek = 'ok'
+    } else {
+      aiProviders.deepseek = 'error'
+      const reason = dsResult.status === 'rejected' ? dsResult.reason : (dsResult.status === 'fulfilled' ? dsResult.value?.error : undefined)
+      if (reason) console.warn('[TradeEval] DeepSeek result:', reason)
+    }
+
+    if (grokResult.status === 'fulfilled' && grokResult.value) {
+      const gVal = grokResult.value
+      if (gVal.ok) {
+        const grokText = parseTextFromXaiChatCompletion(gVal.json) ?? ''
+        const grokParsed = parseJsonSafe(grokText)
+        if (grokParsed) {
+          grokTrendResult = grokParsed
+          aiProviders.grok = 'ok'
+        } else {
+          aiProviders.grok = 'error'
+        }
+      } else {
+        aiProviders.grok = 'error'
+      }
+    } else {
+      aiProviders.grok = 'error'
+    }
+
     const gptPayload: Record<string, any> = {
       trade: structuredPayload.trade,
       vetoStatus: structuredPayload.vetoStatus,
@@ -1032,63 +1128,33 @@ Fairness score: ${fairnessScore}/100
       }),
     }
 
-    const aiCalls: Promise<any>[] = []
-
     if (skipGpt !== 'ok') {
       console.warn(`[trade-evaluator] Skipping GPT: ${skipGpt}`)
-      aiCalls.push(Promise.resolve(null))
     } else {
       const systemPrompt = STRUCTURED_TRADE_EVAL_SYSTEM_PROMPT + '\n\n' + GPT_NARRATIVE_SYSTEM_PROMPT
       const narrativePrompt = gptContract ? buildGptUserPrompt(gptContract) : ''
-      const userPayloadStr = narrativePrompt + '\n\n' + JSON.stringify(gptPayload) + '\n\n' + NEGOTIATION_USER_INSTRUCTION
 
-      aiCalls.push(
-        openaiChatJson({
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPayloadStr },
-          ],
-          temperature: 0.2,
-          maxTokens: 6000,
-        })
-      )
-    }
+      const enrichedPayloadStr = `${narrativePrompt}\n\n${JSON.stringify(gptPayload)}\n\n` +
+        `QUANTITATIVE ANALYSIS (DeepSeek):\n${deepseekQuantResult ? JSON.stringify(deepseekQuantResult, null, 2) : 'Unavailable'}\n\n` +
+        `REAL-TIME SIGNALS (Grok):\n${grokTrendResult ? JSON.stringify(grokTrendResult, null, 2) : 'Unavailable'}\n\n` +
+        `Synthesize all data into Chimmy's trade recommendation.\n\n${NEGOTIATION_USER_INSTRUCTION}`
 
-    aiCalls.push(
-      deepseekQuantAnalysis(
-        `${DEEPSEEK_TRADE_SYSTEM}\n\nAnalyze this trade:\n${tradeContextForAI}`
-      ).catch((e: any) => {
-        console.warn('[TradeEval] DeepSeek failed:', e?.message)
-        return { json: null, raw: '', error: e?.message }
-      })
-    )
-
-    aiCalls.push(
-      xaiChatJson({
+      const result = await openaiChatJson({
         messages: [
-          { role: 'system', content: GROK_TRADE_SYSTEM },
-          { role: 'user', content: `Analyze player signals for this trade:\n${tradeContextForAI}` },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: enrichedPayloadStr },
         ],
-        tools: [{ type: 'web_search', user_location_country: 'US' }],
-        temperature: 0.3,
-        maxTokens: 400,
-      }).catch((e: any) => {
-        console.warn('[TradeEval] Grok failed:', e?.message)
-        return null
+        temperature: 0.2,
+        maxTokens: 6000,
       })
-    )
 
-    const [openaiResult, dsResult, grokResult] = await Promise.allSettled(aiCalls)
-
-    if (openaiResult.status === 'fulfilled' && openaiResult.value) {
-      const result = openaiResult.value
       if (result.ok === false) {
         console.error('Trade evaluator OpenAI error:', {
           status: result.status,
           details: result.details?.slice(0, 500),
         })
         aiProviders.openai = 'error'
-      } else if (result.ok) {
+      } else {
         aiProviders.openai = 'ok'
         parsed = parseJsonContentFromChatCompletion(result.json)
 
@@ -1119,31 +1185,17 @@ Fairness score: ${fairnessScore}/100
       }
     }
 
-    if (dsResult.status === 'fulfilled' && dsResult.value?.json) {
-      deepseekQuantResult = dsResult.value.json
-      aiProviders.deepseek = 'ok'
-    } else {
-      aiProviders.deepseek = 'error'
-      const reason = dsResult.status === 'rejected' ? dsResult.reason : dsResult.value?.error
-      if (reason) console.warn('[TradeEval] DeepSeek result:', reason)
+    if (parsed && grokTrendResult?.injuryAlerts?.length) {
+      parsed.riskFlags = [
+        ...(parsed.riskFlags ?? []),
+        ...grokTrendResult.injuryAlerts.slice(0, 2),
+      ]
     }
-
-    if (grokResult.status === 'fulfilled' && grokResult.value) {
-      const gVal = grokResult.value
-      if (gVal.ok) {
-        const grokText = parseTextFromXaiChatCompletion(gVal.json) ?? ''
-        const grokParsed = parseJsonSafe(grokText)
-        if (grokParsed) {
-          grokTrendResult = grokParsed
-          aiProviders.grok = 'ok'
-        } else {
-          aiProviders.grok = 'error'
-        }
-      } else {
-        aiProviders.grok = 'error'
-      }
-    } else {
-      aiProviders.grok = 'error'
+    if (parsed && deepseekQuantResult?.quantReasoning && !parsed.keyInsight) {
+      parsed.keyInsight = deepseekQuantResult.quantReasoning
+    }
+    if (parsed && grokTrendResult?.playerSignals?.length) {
+      parsed.playerSignals = grokTrendResult.playerSignals
     }
 
     if (!parsed) {
@@ -1228,7 +1280,15 @@ Fairness score: ${fairnessScore}/100
         ...(dualModeGrades && { dualModeGrades }),
         tradeInsights,
         valuationReport: structuredPayload.valuationReport,
-        serverConfidence: { score: computedConfidenceScore, factors: confidenceInputs },
+        serverConfidence: {
+          score: computedConfidenceScore,
+          factors: confidenceInputs,
+          triangulated: triangulateConfidence(
+            computedConfidenceScore,
+            parsed?.confidence?.score ?? null,
+            deepseekQuantResult?.confidencePct ?? null
+          ),
+        },
         acceptProbability: acceptProbData,
         ...(partialCanonicalMeta && { canonicalContext: partialCanonicalMeta }),
         ...(deepseekQuantResult && { quantAnalysis: deepseekQuantResult }),
@@ -1349,16 +1409,22 @@ Fairness score: ${fairnessScore}/100
       evalData.negotiation = safeNegotiation ?? { dmMessages: [], counters: [], sweeteners: [], redLines: [] }
     }
 
-    const gptConfidence = evalData.confidence.score
-    const scoreDrift = Math.abs(gptConfidence - computedConfidenceScore)
-    if (scoreDrift > 25) {
-      console.warn(`[TradeEval] Confidence drift: GPT=${gptConfidence}, Server=${computedConfidenceScore}, drift=${scoreDrift}`)
-      evalData.confidence.score = computedConfidenceScore
-      evalData.confidence.drivers.push(`[server_override: GPT scored ${gptConfidence}, adjusted to ${computedConfidenceScore} based on data completeness]`)
-      if (computedConfidenceScore >= 70) evalData.confidence.rating = 'HIGH'
-      else if (computedConfidenceScore >= 40) evalData.confidence.rating = 'MEDIUM'
-      else evalData.confidence.rating = 'LEARNING'
+    const gptConfidence = evalData.confidence?.score ?? null
+    const quantConfidence = deepseekQuantResult?.confidencePct ?? null
+    const triangulated = triangulateConfidence(computedConfidenceScore, gptConfidence, quantConfidence)
+    if (!evalData.confidence) {
+      evalData.confidence = { score: triangulated.finalScore, rating: 'LEARNING', drivers: [] }
     }
+    if (!Array.isArray(evalData.confidence.drivers)) {
+      evalData.confidence.drivers = []
+    }
+    evalData.confidence.score = triangulated.finalScore
+    if (triangulated.overrideApplied) {
+      evalData.confidence.drivers.push(...triangulated.auditLog)
+    }
+    if (triangulated.finalScore >= 70) evalData.confidence.rating = 'HIGH'
+    else if (triangulated.finalScore >= 40) evalData.confidence.rating = 'MEDIUM'
+    else evalData.confidence.rating = 'LEARNING'
 
     logTradeOfferEvent({
       leagueId: data.league_id ?? null,
@@ -1431,7 +1497,11 @@ Fairness score: ${fairnessScore}/100
       ...(dualModeGrades && { dualModeGrades }),
       tradeInsights,
       valuationReport: structuredPayload.valuationReport,
-      serverConfidence: { score: computedConfidenceScore, factors: confidenceInputs },
+      serverConfidence: {
+        score: computedConfidenceScore,
+        factors: confidenceInputs,
+        triangulated,
+      },
       acceptProbability: acceptProbData,
       ...(negotiationToolkit && { negotiationToolkit }),
       ...(canonicalContextMeta && { canonicalContext: canonicalContextMeta }),
