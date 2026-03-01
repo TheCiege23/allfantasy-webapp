@@ -1064,6 +1064,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       riskAverse: partnerProfile.riskAverse,
       pickHoarder: partnerProfile.pickHoarder,
       studChaser: partnerProfile.studChaser,
+      tradeHistory: partnerProfile.tradeHistory,
     } : undefined,
   })
 

@@ -106,6 +106,7 @@ export interface MarketContext {
       riskAverse?: boolean
       pickHoarder?: boolean
       studChaser?: boolean
+      tradeHistory?: Array<{ timestamp: number; traits: string[] }>
     }
   >
   liquidity?: {

@@ -44,6 +44,7 @@ export interface AcceptanceInput {
     riskAverse?: boolean;
     pickHoarder?: boolean;
     studChaser?: boolean;
+    tradeHistory?: Array<{ timestamp: number; traits: string[] }>;
   };
 }
 
@@ -73,6 +74,10 @@ const DEVY_MAX_BONUS_PER_PLAYER = 0.08;
 
 const CONFIDENCE_HIGH     = 10;
 const CONFIDENCE_MODERATE = 6;
+
+const RECENCY_HALF_LIFE_MS = 30 * 24 * 60 * 60 * 1000;
+const RECENCY_TRAIT_THRESHOLD = 1.0;
+const RECENCY_STRONG_THRESHOLD = 2.5;
 
 function sigmoid(z: number): number {
   return 1 / (1 + Math.exp(-z));
@@ -120,6 +125,24 @@ function getConfidenceTier(tradeCount: number): 'HIGH' | 'MODERATE' | 'LEARNING'
   if (tradeCount >= CONFIDENCE_HIGH)     return 'HIGH';
   if (tradeCount >= CONFIDENCE_MODERATE) return 'MODERATE';
   return 'LEARNING';
+}
+
+function applyTradeRecencyDecay(
+  trades: Array<{ timestamp: number; traits: string[] }>,
+  currentTimestamp: number
+): Record<string, number> {
+  const weights: Record<string, number> = {};
+
+  for (const trade of trades) {
+    const age = Math.max(0, currentTimestamp - trade.timestamp);
+    const decay = Math.exp(-0.693 * age / RECENCY_HALF_LIFE_MS);
+
+    for (const trait of trade.traits) {
+      weights[trait] = (weights[trait] ?? 0) + decay;
+    }
+  }
+
+  return weights;
 }
 
 function computeLDIBoost(
@@ -174,28 +197,40 @@ function computeManagerDelta(
   };
   const scale = confidenceScale[confidence];
 
+  const recencyWeights = profile.tradeHistory?.length
+    ? applyTradeRecencyDecay(profile.tradeHistory, Date.now())
+    : {};
+
+  const traitMap: Record<string, { flag: boolean | undefined; baseDelta: number; key: string; note: string }> = {
+    futureFocused: { flag: profile.futureFocused, baseDelta: MGR_FUTURE_FOCUSED, key: 'mgr_future', note: 'Manager prefers future-focused trades' },
+    riskAverse:    { flag: profile.riskAverse,    baseDelta: MGR_RISK_AVERSE,    key: 'mgr_risk',   note: 'Manager avoids risky assets' },
+    pickHoarder:   { flag: profile.pickHoarder,   baseDelta: MGR_PICK_HOARDER,   key: 'mgr_picks',  note: 'Manager values picks highly' },
+    studChaser:    { flag: profile.studChaser,     baseDelta: MGR_STUD_CHASER,    key: 'mgr_stud',   note: 'Manager chases proven studs' },
+  };
+
   let delta = 0;
   const drivers: AcceptanceDriver[] = [];
 
-  if (profile.futureFocused) {
-    const d = MGR_FUTURE_FOCUSED * scale;
+  for (const [trait, cfg] of Object.entries(traitMap)) {
+    const recencyWeight = recencyWeights[trait] ?? 0;
+    const hasRecencySignal = recencyWeight >= RECENCY_TRAIT_THRESHOLD;
+    const hasStrongRecency = recencyWeight >= RECENCY_STRONG_THRESHOLD;
+
+    if (!cfg.flag && !hasRecencySignal) continue;
+
+    let multiplier = 1.0;
+    let source = 'profile';
+    if (!cfg.flag) {
+      multiplier = 0.7;
+      source = 'recent trades';
+    } else if (hasStrongRecency) {
+      multiplier = Math.min(1.5, 1.0 + (recencyWeight - RECENCY_TRAIT_THRESHOLD) * 0.2);
+      source = 'profile + recent trades';
+    }
+
+    const d = cfg.baseDelta * scale * multiplier;
     delta += d;
-    drivers.push({ key: 'mgr_future', delta: d, note: 'Manager prefers future-focused trades' });
-  }
-  if (profile.riskAverse) {
-    const d = MGR_RISK_AVERSE * scale;
-    delta += d;
-    drivers.push({ key: 'mgr_risk', delta: d, note: 'Manager avoids risky assets' });
-  }
-  if (profile.pickHoarder) {
-    const d = MGR_PICK_HOARDER * scale;
-    delta += d;
-    drivers.push({ key: 'mgr_picks', delta: d, note: 'Manager values picks highly' });
-  }
-  if (profile.studChaser) {
-    const d = MGR_STUD_CHASER * scale;
-    delta += d;
-    drivers.push({ key: 'mgr_stud', delta: d, note: 'Manager chases proven studs' });
+    drivers.push({ key: cfg.key, delta: d, note: `${cfg.note} (${source})` });
   }
 
   return { delta, drivers };
