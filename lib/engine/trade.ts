@@ -663,7 +663,7 @@ function startersFromRoster(args: {
 
   const impactOf = (p: TradePlayerAsset) => impactMap[p.name]?.impact ?? 0
   const volOf = (p: TradePlayerAsset) => impactMap[p.name]?.vol ?? 0
-  const scoreOf = (p: TradePlayerAsset) => impactOf(p) - pref.volWeight * volOf(p)
+  const scoreOf = (p: TradePlayerAsset) => Math.max(0, impactOf(p) - pref.volWeight * volOf(p))
 
   const byPos = (pos: string) =>
     roster
