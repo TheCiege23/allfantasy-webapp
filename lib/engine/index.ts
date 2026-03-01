@@ -103,7 +103,7 @@ export {
 
 export { computeLiquidity, computeLiquidity as computeEngineLiquidity } from './liquidity'
 
-export { computeAcceptanceProbability as computeEngineAcceptance } from './acceptance'
+export { computeAcceptanceProbability as computeEngineAcceptance, explainAcceptanceProbability } from './acceptance'
 
 export { buildContextFromSleeper, buildContextFromExisting } from './context-builder'
 
