@@ -42,6 +42,20 @@ function uniq(arr: string[]) {
   return out
 }
 
+function computeBaseStdDev(req: TradeEngineRequest): number {
+  let stdDev = 22;
+
+  const scoring = req.leagueContext?.scoring;
+  if (!scoring) return stdDev;
+
+  if ((scoring.ppr ?? 0) >= 1.0) stdDev += 2;
+  if (scoring.qbFormat === 'superflex') stdDev += 3;
+  if (scoring.tep?.enabled && (scoring.tep.premiumPprBonus ?? 0) > 0) stdDev += 1;
+  if ((scoring.ppCarry ?? 0) > 0) stdDev += 1;
+
+  return clamp(stdDev, 15, 35);
+}
+
 function buildLeagueProjections(args: {
   numTeams: number
   teamAImpactPre: number
@@ -50,11 +64,12 @@ function buildLeagueProjections(args: {
   teamBImpactPost: number
   teamAVol: number
   teamBVol: number
+  req: TradeEngineRequest
 }): {
   teamA: { oddsBefore: number; oddsAfter: number; delta: number }
   teamB: { oddsBefore: number; oddsAfter: number; delta: number }
 } {
-  const { numTeams, teamAImpactPre, teamBImpactPre, teamAImpactPost, teamBImpactPost, teamAVol, teamBVol } = args
+  const { numTeams, teamAImpactPre, teamBImpactPre, teamAImpactPost, teamBImpactPost, teamAVol, teamBVol, req } = args
 
   const allKnown = [teamAImpactPre, teamBImpactPre].filter(v => v > 0)
   const avgImpact = allKnown.length > 0
@@ -67,7 +82,7 @@ function buildLeagueProjections(args: {
     return base + diff * 15
   }
 
-  const baseStdDev = 22
+  const baseStdDev = computeBaseStdDev(req)
 
   const teams: TeamProjection[] = []
   for (let i = 0; i < numTeams; i++) {
@@ -972,6 +987,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
         teamBImpactPost: startersPostB.totalImpact,
         teamAVol: startersPostA.avgVol,
         teamBVol: startersPostB.avgVol,
+        req,
       })
 
       const champReasons: string[] = []
