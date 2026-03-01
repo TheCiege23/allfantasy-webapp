@@ -196,6 +196,24 @@ function computeRisk(req: TradeEngineRequest, assetsA: Asset[], assetsB: Asset[]
   }
 }
 
+function computeFairnessScore(vA: number, vB: number): {
+  fairnessDeltaPct: number;
+  fairnessScore: number;
+} {
+  const total = vA + vB;
+
+  if (total === 0) {
+    console.warn('[trade-engine] Both sides have $0 value — returning neutral fairness');
+    return { fairnessDeltaPct: 0, fairnessScore: 50 };
+  }
+
+  const delta = vA - vB;
+  const fairnessDeltaPct = (delta / total) * 100;
+  const fairnessScore = clamp(Math.round(50 + fairnessDeltaPct * 1.5), 0, 100);
+
+  return { fairnessDeltaPct, fairnessScore };
+}
+
 function sortHotPositions(ldiByPos: Record<string, number> | undefined) {
   if (!ldiByPos) return []
   return Object.entries(ldiByPos)
@@ -798,10 +816,8 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const vA = pricedA.total + devyA.total + faabA
   const vB = pricedB.total + devyB.total + faabB
 
-  const total = vA + vB || 1
+  const { fairnessDeltaPct, fairnessScore } = computeFairnessScore(vA, vB)
   const delta = vA - vB
-  const fairnessDeltaPct = (delta / total) * 100
-  const fairnessScore = clamp(Math.round(50 + fairnessDeltaPct * 1.5), 0, 100)
 
   const fairnessConfidence =
     leagueContextUsed && (req.marketContext?.partnerTendencies || req.marketContext?.ldiByPos)
