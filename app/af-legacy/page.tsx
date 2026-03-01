@@ -7896,17 +7896,16 @@ function AFLegacyContent() {
                               <div className="text-xs font-semibold text-white/70 uppercase tracking-wider mb-3">Acceptance Drivers</div>
                               <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                                 {inlineTradeResult.acceptanceBuckets.map((b: any) => {
-                                  const d = Number(b.delta) || 0
+                                  const d = Number(b.rawDelta) || 0
                                   return (
                                   <div key={b.key || b.label} className="rounded-lg bg-black/30 border border-white/5 px-3 py-2">
                                     <div className="text-[10px] text-white/40 uppercase tracking-wider">{b.label || '—'}</div>
                                     <div className="flex items-baseline gap-1 mt-0.5">
-                                      <span className="text-lg font-bold text-white">{b.value ?? '—'}</span>
+                                      <span className="text-lg font-bold text-white">{b.score ?? '—'}</span>
                                       <span className={`text-[10px] font-medium ${d > 0 ? 'text-emerald-400' : d < 0 ? 'text-rose-400' : 'text-white/30'}`}>
                                         {d > 0 ? '+' : ''}{(d * 100).toFixed(0)}%
                                       </span>
                                     </div>
-                                    <div className="text-[9px] text-white/35 mt-0.5 line-clamp-2">{b.note || ''}</div>
                                   </div>
                                   )
                                 })}
@@ -11066,11 +11065,11 @@ function AFLegacyContent() {
                                   <div className="text-xs font-semibold text-white/60 uppercase tracking-wider mb-3">Acceptance Drivers</div>
                                   <div className="grid grid-cols-5 gap-1.5">
                                     {inlineTradeResult.acceptanceBuckets.map((b: any) => {
-                                      const d = Number(b.delta) || 0
+                                      const d = Number(b.rawDelta) || 0
                                       return (
                                       <div key={b.key || b.label} className="text-center">
                                         <div className="text-[9px] text-white/40 uppercase truncate">{b.label || '—'}</div>
-                                        <div className="text-base font-bold text-white">{b.value ?? '—'}</div>
+                                        <div className="text-base font-bold text-white">{b.score ?? '—'}</div>
                                         <div className={`text-[9px] ${d > 0 ? 'text-emerald-400' : d < 0 ? 'text-rose-400' : 'text-white/30'}`}>
                                           {d > 0 ? '+' : ''}{(d * 100).toFixed(0)}%
                                         </div>

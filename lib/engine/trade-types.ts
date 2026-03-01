@@ -214,15 +214,21 @@ export interface TradeEngineResponse {
   acceptanceProbability: {
     base: number
     final: number
+    z: number
     confidence: TradeConfidenceState
     buckets: Array<{
       key: string
       label: string
-      value: number
-      delta: number
-      note: string
+      score: number
+      rawDelta: number
     }>
     drivers: { key: string; delta: number; note: string }[]
+    diagnostics?: {
+      ldiBoostRaw: number
+      managerDeltaRaw: number
+      devyDeltaRaw: number
+      inputsValid: boolean
+    }
   }
 
   counters: Array<{

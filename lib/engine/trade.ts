@@ -1038,19 +1038,33 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
   const starterDeltaPtsA = clamp(Math.round(netStarterImpactA / 75), -12, 12)
   const starterDeltaPtsB = clamp(Math.round(netStarterImpactB / 75), -12, 12)
 
-  const partnerRosterId = 'B'
   const offeredToPartner: TradePlayerAsset[] = req.assetsB
     .filter(a => a.type === 'player')
     .map(a => (a as any).player)
 
+  const partnerTendencies = req.marketContext?.partnerTendencies
+  const firstPartnerKey = partnerTendencies ? Object.keys(partnerTendencies)[0] : undefined
+  const partnerProfile = firstPartnerKey ? partnerTendencies![firstPartnerKey] : undefined
+
   const acceptance = computeAcceptanceProbability({
-    req,
     fairnessScore,
     needsFitScore,
     volatilityDelta,
-    marketContext: req.marketContext,
-    partnerRosterId,
-    offeredPlayersToPartner: offeredToPartner,
+    tradeCount: partnerProfile?.sampleSize ?? 0,
+    ldi: req.marketContext?.ldiByPos,
+    offeredPlayers: offeredToPartner.map(p => ({
+      position: p.pos ?? '',
+      isDevy: p.devyEligible ?? false,
+      draftProjectionScore: p.draftProjectionScore,
+      breakoutAge: p.breakoutAge,
+      injurySeverityScore: p.injurySeverityScore,
+    })),
+    managerProfile: partnerProfile ? {
+      futureFocused: partnerProfile.futureFocused,
+      riskAverse: partnerProfile.riskAverse,
+      pickHoarder: partnerProfile.pickHoarder,
+      studChaser: partnerProfile.studChaser,
+    } : undefined,
   })
 
   const { verdict, confidence: verdictConfidence } = computeVerdict(fairnessScore, acceptance.final)

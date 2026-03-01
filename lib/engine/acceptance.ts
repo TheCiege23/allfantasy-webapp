@@ -1,172 +1,416 @@
-import type { MarketContext, TradeEngineRequest, TradePlayerAsset } from './trade-types'
-import { enrichDevy } from './devy'
-
-function clamp01(x: number) {
-  return Math.max(0.01, Math.min(0.99, x))
-}
-
-function sigmoid(z: number) {
-  return 1 / (1 + Math.exp(-z))
-}
-
 export interface AcceptanceBucket {
-  key: string
-  label: string
-  value: number
-  delta: number
-  note: string
+  key: string;
+  label: string;
+  score: number;
+  rawDelta: number;
 }
 
-export function computeAcceptanceProbability(args: {
-  req: TradeEngineRequest
-  fairnessScore: number
-  needsFitScore: number
-  volatilityDelta: number
-  marketContext?: MarketContext
-  partnerRosterId?: string
-  offeredPlayersToPartner?: TradePlayerAsset[]
-}) {
-  const { fairnessScore, needsFitScore, volatilityDelta, marketContext, partnerRosterId, offeredPlayersToPartner } = args
+export interface AcceptanceDriver {
+  key: string;
+  delta: number;
+  note: string;
+}
 
-  const drivers: { key: string; delta: number; note: string }[] = []
+export interface AcceptanceOutput {
+  base: number;
+  final: number;
+  z: number;
+  confidence: 'HIGH' | 'MODERATE' | 'LEARNING';
+  buckets: AcceptanceBucket[];
+  drivers: AcceptanceDriver[];
+  diagnostics?: {
+    ldiBoostRaw: number;
+    managerDeltaRaw: number;
+    devyDeltaRaw: number;
+    inputsValid: boolean;
+  };
+}
 
-  const fairnessNorm = (fairnessScore - 50) / 50
-  const needsNorm = (needsFitScore - 50) / 50
-  const volNorm = (volatilityDelta - 50) / 50
+export interface AcceptanceInput {
+  fairnessScore: number;
+  needsFitScore: number;
+  volatilityDelta: number;
+  tradeCount?: number;
+  ldi?: Record<string, number>;
+  offeredPlayers?: Array<{
+    position: string;
+    isDevy?: boolean;
+    draftProjectionScore?: number;
+    breakoutAge?: number;
+    injurySeverityScore?: number;
+  }>;
+  managerProfile?: {
+    futureFocused?: boolean;
+    riskAverse?: boolean;
+    pickHoarder?: boolean;
+    studChaser?: boolean;
+  };
+}
 
-  const partner = partnerRosterId ? marketContext?.partnerTendencies?.[partnerRosterId] : undefined
-  const partnerSample = partner?.sampleSize ?? 0
+const W_FAIRNESS  = 0.9;
+const W_NEEDS     = 0.7;
+const W_VOL       = -0.6;
 
-  let z =
-    0.9 * fairnessNorm +
-    0.7 * needsNorm -
-    0.6 * volNorm
+const LDI_HIGH_THRESHOLD = 65;
+const LDI_LOW_THRESHOLD  = 40;
+const LDI_HIGH_DELTA     = 0.04;
+const LDI_LOW_DELTA      = -0.02;
+const LDI_MAX_BOOST      = 0.15;
+const LDI_MIN_BOOST      = -0.10;
 
-  drivers.push({ key: 'fairness', delta: 0.9 * fairnessNorm, note: 'More fair trades are accepted more often.' })
-  drivers.push({ key: 'needs_fit', delta: 0.7 * needsNorm, note: 'If it helps their lineup/needs, acceptance rises.' })
-  drivers.push({ key: 'volatility', delta: -0.6 * volNorm, note: 'High volatility packages reduce acceptance.' })
+const MGR_FUTURE_FOCUSED = 0.05;
+const MGR_RISK_AVERSE    = -0.05;
+const MGR_PICK_HOARDER   = 0.04;
+const MGR_STUD_CHASER    = 0.03;
 
-  let ldiBoost = 0
-  const ldi = marketContext?.ldiByPos
-  if (ldi) {
-    for (const p of offeredPlayersToPartner ?? []) {
-      const pos = (p.pos || '').toUpperCase()
-      const ldiPos = ldi[pos] ?? ldi[pos === 'DST' ? 'DEF' : pos] ?? null
-      if (ldiPos != null && ldiPos >= 65) ldiBoost += 0.04
-      if (ldiPos != null && ldiPos <= 40) ldiBoost -= 0.02
-    }
-    if (ldiBoost !== 0) {
-      z += ldiBoost
-      drivers.push({ key: 'ldi_alignment', delta: ldiBoost, note: 'Offering positions this league overpays for boosts acceptance.' })
+const DEVY_PROJECTION_THRESHOLD = 85;
+const DEVY_BREAKOUT_AGE_MAX     = 20;
+const DEVY_INJURY_THRESHOLD     = 70;
+const DEVY_PROJECTION_DELTA     = 0.06;
+const DEVY_BREAKOUT_DELTA       = 0.03;
+const DEVY_INJURY_DELTA         = -0.07;
+const DEVY_MAX_BONUS_PER_PLAYER = 0.08;
+
+const CONFIDENCE_HIGH     = 10;
+const CONFIDENCE_MODERATE = 6;
+
+function sigmoid(z: number): number {
+  return 1 / (1 + Math.exp(-z));
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalize(score: number): number {
+  const raw = (score - 50) / 50;
+  return clamp(raw, -1, 1);
+}
+
+function validateInputs(input: AcceptanceInput): boolean {
+  const { fairnessScore, needsFitScore, volatilityDelta } = input;
+
+  if (
+    typeof fairnessScore !== 'number' || isNaN(fairnessScore) ||
+    typeof needsFitScore !== 'number' || isNaN(needsFitScore) ||
+    typeof volatilityDelta !== 'number' || isNaN(volatilityDelta)
+  ) {
+    console.error('[acceptance] Invalid inputs:', { fairnessScore, needsFitScore, volatilityDelta });
+    return false;
+  }
+
+  return true;
+}
+
+function applyConfidenceCalibration(
+  base: number,
+  confidence: 'HIGH' | 'MODERATE' | 'LEARNING'
+): number {
+  switch (confidence) {
+    case 'HIGH':
+      return base;
+    case 'MODERATE':
+      return base + (0.50 - base) * 0.15;
+    case 'LEARNING':
+      return base + (0.50 - base) * 0.35;
+  }
+}
+
+function getConfidenceTier(tradeCount: number): 'HIGH' | 'MODERATE' | 'LEARNING' {
+  if (tradeCount >= CONFIDENCE_HIGH)     return 'HIGH';
+  if (tradeCount >= CONFIDENCE_MODERATE) return 'MODERATE';
+  return 'LEARNING';
+}
+
+function computeLDIBoost(
+  offeredPlayers: AcceptanceInput['offeredPlayers'],
+  ldi: Record<string, number>
+): { boost: number; drivers: AcceptanceDriver[] } {
+  if (!offeredPlayers?.length || !ldi) return { boost: 0, drivers: [] };
+
+  let raw = 0;
+  const drivers: AcceptanceDriver[] = [];
+
+  for (const player of offeredPlayers) {
+    if (player.isDevy) continue;
+    const posLdi = ldi[player.position?.toUpperCase()] ?? 50;
+
+    if (posLdi >= LDI_HIGH_THRESHOLD) {
+      raw += LDI_HIGH_DELTA;
+      drivers.push({
+        key: `ldi_high_${player.position}`,
+        delta: LDI_HIGH_DELTA,
+        note: `High league demand for ${player.position} (LDI: ${posLdi})`,
+      });
+    } else if (posLdi <= LDI_LOW_THRESHOLD) {
+      raw += LDI_LOW_DELTA;
+      drivers.push({
+        key: `ldi_low_${player.position}`,
+        delta: LDI_LOW_DELTA,
+        note: `Low league demand for ${player.position} (LDI: ${posLdi})`,
+      });
     }
   }
 
-  let managerDelta = 0
-  if (partner && partnerSample >= 6) {
-    if (partner.futureFocused) {
-      managerDelta += 0.05
-      drivers.push({ key: 'partner_future_focused', delta: 0.05, note: 'This manager historically prefers future assets.' })
-    }
-    if (partner.riskAverse) {
-      managerDelta -= 0.05
-      drivers.push({ key: 'partner_risk_averse', delta: -0.05, note: 'This manager historically avoids risky packages.' })
-    }
-    if (partner.pickHoarder) {
-      managerDelta += 0.04
-      drivers.push({ key: 'partner_pick_bias', delta: 0.04, note: 'This manager tends to trade for picks.' })
-    }
-    if (partner.studChaser) {
-      managerDelta += 0.03
-      drivers.push({ key: 'partner_stud_bias', delta: 0.03, note: 'This manager tends to consolidate into elite players.' })
-    }
-    z += managerDelta
+  const boost = clamp(raw, LDI_MIN_BOOST, LDI_MAX_BOOST);
+
+  if (raw !== boost) {
+    console.warn(`[acceptance] LDI boost clamped: raw=${raw.toFixed(3)}, clamped=${boost.toFixed(3)}`);
   }
 
-  let devyDelta = 0
-  for (const raw of offeredPlayersToPartner ?? []) {
-    const p = enrichDevy(raw)
-    if (p.league === 'NCAA' && p.devyEligible && !p.graduatedToNFL) {
-      if ((p.draftProjectionScore ?? 50) >= 85) devyDelta += 0.06
-      if ((p.breakoutAge ?? 99) <= 20) devyDelta += 0.03
-      if ((p.injurySeverityScore ?? 0) > 70) devyDelta -= 0.07
+  return { boost, drivers };
+}
+
+function computeManagerDelta(
+  profile: AcceptanceInput['managerProfile'],
+  confidence: 'HIGH' | 'MODERATE' | 'LEARNING'
+): { delta: number; drivers: AcceptanceDriver[] } {
+  if (!profile) return { delta: 0, drivers: [] };
+
+  const confidenceScale: Record<string, number> = {
+    HIGH: 1.0,
+    MODERATE: 0.5,
+    LEARNING: 0.0,
+  };
+  const scale = confidenceScale[confidence];
+
+  let delta = 0;
+  const drivers: AcceptanceDriver[] = [];
+
+  if (profile.futureFocused) {
+    const d = MGR_FUTURE_FOCUSED * scale;
+    delta += d;
+    drivers.push({ key: 'mgr_future', delta: d, note: 'Manager prefers future-focused trades' });
+  }
+  if (profile.riskAverse) {
+    const d = MGR_RISK_AVERSE * scale;
+    delta += d;
+    drivers.push({ key: 'mgr_risk', delta: d, note: 'Manager avoids risky assets' });
+  }
+  if (profile.pickHoarder) {
+    const d = MGR_PICK_HOARDER * scale;
+    delta += d;
+    drivers.push({ key: 'mgr_picks', delta: d, note: 'Manager values picks highly' });
+  }
+  if (profile.studChaser) {
+    const d = MGR_STUD_CHASER * scale;
+    delta += d;
+    drivers.push({ key: 'mgr_stud', delta: d, note: 'Manager chases proven studs' });
+  }
+
+  return { delta, drivers };
+}
+
+function computeDevyDelta(
+  offeredPlayers: AcceptanceInput['offeredPlayers']
+): { delta: number; drivers: AcceptanceDriver[] } {
+  const devyPlayers = offeredPlayers?.filter(p => p.isDevy) ?? [];
+  if (!devyPlayers.length) return { delta: 0, drivers: [] };
+
+  let delta = 0;
+  const drivers: AcceptanceDriver[] = [];
+
+  for (const player of devyPlayers) {
+    let playerBonus = 0;
+    const playerDrivers: AcceptanceDriver[] = [];
+
+    if ((player.draftProjectionScore ?? 0) >= DEVY_PROJECTION_THRESHOLD) {
+      playerBonus += DEVY_PROJECTION_DELTA;
+      playerDrivers.push({
+        key: 'devy_projection',
+        delta: DEVY_PROJECTION_DELTA,
+        note: `High draft projection score (${player.draftProjectionScore})`,
+      });
     }
+
+    if ((player.breakoutAge ?? 99) <= DEVY_BREAKOUT_AGE_MAX) {
+      playerBonus += DEVY_BREAKOUT_DELTA;
+      playerDrivers.push({
+        key: 'devy_breakout',
+        delta: DEVY_BREAKOUT_DELTA,
+        note: `Early breakout age (${player.breakoutAge})`,
+      });
+    }
+
+    if ((player.injurySeverityScore ?? 0) > DEVY_INJURY_THRESHOLD) {
+      playerBonus += DEVY_INJURY_DELTA;
+      playerDrivers.push({
+        key: 'devy_injury',
+        delta: DEVY_INJURY_DELTA,
+        note: `High injury severity (${player.injurySeverityScore})`,
+      });
+    }
+
+    const cappedBonus = clamp(playerBonus, -0.10, DEVY_MAX_BONUS_PER_PLAYER);
+    delta += cappedBonus;
+    drivers.push(...playerDrivers);
   }
-  if (devyDelta !== 0) {
-    z += devyDelta
-    drivers.push({ key: 'devy_signal', delta: devyDelta, note: 'High-end Devy profiles increase acceptance for future-minded builds.' })
-  }
 
-  const base = clamp01(sigmoid(z))
+  return { delta, drivers };
+}
 
-  const confidence: 'HIGH' | 'MODERATE' | 'LEARNING' =
-    partnerSample >= 10 ? 'HIGH' : partnerSample >= 6 ? 'MODERATE' : 'LEARNING'
+function buildBuckets(
+  fairnessNorm: number,
+  needsNorm: number,
+  volNorm: number,
+  ldiBoost: number,
+  managerDelta: number,
+  devyDelta: number
+): AcceptanceBucket[] {
+  const toScore = (contribution: number): number =>
+    clamp(Math.round(50 + contribution * 50), 0, 100);
 
-  const buckets: AcceptanceBucket[] = [
+  return [
     {
       key: 'fairness',
-      label: 'Fairness',
-      value: fairnessScore,
-      delta: +(0.9 * fairnessNorm).toFixed(3),
-      note: fairnessScore >= 55
-        ? 'Trade is value-balanced — boosts acceptance.'
-        : fairnessScore >= 45
-          ? 'Marginal value gap — neutral effect.'
-          : 'Significant value gap — reduces acceptance.',
+      label: 'Trade Fairness',
+      score: toScore(W_FAIRNESS * fairnessNorm),
+      rawDelta: W_FAIRNESS * fairnessNorm,
     },
     {
-      key: 'teamFit',
-      label: 'Team Fit',
-      value: needsFitScore,
-      delta: +(0.7 * needsNorm).toFixed(3),
-      note: needsFitScore >= 55
-        ? 'Trade addresses roster needs — boosts acceptance.'
-        : needsFitScore >= 45
-          ? 'Minimal roster impact — neutral.'
-          : 'Trade does not address lineup needs.',
+      key: 'needs_fit',
+      label: 'Team Needs Fit',
+      score: toScore(W_NEEDS * needsNorm),
+      rawDelta: W_NEEDS * needsNorm,
     },
     {
-      key: 'managerProfile',
-      label: 'Manager Profile',
-      value: partnerSample >= 6 ? Math.round(50 + managerDelta * 100) : 50,
-      delta: +managerDelta.toFixed(3),
-      note: partnerSample >= 6
-        ? `Based on ${partnerSample} historical trades from this manager.`
-        : 'No trade history available — using market baseline.',
+      key: 'volatility',
+      label: 'Risk Profile',
+      score: toScore(W_VOL * volNorm),
+      rawDelta: W_VOL * volNorm,
     },
     {
-      key: 'marketDemand',
-      label: 'Market Demand (LDI)',
-      value: ldi ? Math.round(50 + ldiBoost * 200) : 50,
-      delta: +ldiBoost.toFixed(3),
-      note: !ldi
-        ? 'No in-league trades yet — using market baseline.'
-        : ldiBoost > 0
-          ? 'Offering high-demand positions lifts acceptance.'
-          : ldiBoost < 0
-            ? 'Offering low-demand positions reduces acceptance.'
-            : 'Offered positions at neutral league demand.',
+      key: 'ldi',
+      label: 'League Demand',
+      score: toScore(ldiBoost * 3),
+      rawDelta: ldiBoost,
     },
     {
-      key: 'riskVolatility',
-      label: 'Risk / Volatility',
-      value: Math.round(100 - volatilityDelta),
-      delta: +(-0.6 * volNorm).toFixed(3),
-      note: volatilityDelta <= 45
-        ? 'Low-volatility package — stable assets boost acceptance.'
-        : volatilityDelta >= 55
-          ? 'High-volatility package — risky assets reduce acceptance.'
-          : 'Normal volatility — no major impact.',
+      key: 'manager',
+      label: 'Manager Tendencies',
+      score: toScore(managerDelta * 5),
+      rawDelta: managerDelta,
     },
-  ]
+    {
+      key: 'devy',
+      label: 'Devy Signals',
+      score: toScore(devyDelta * 5),
+      rawDelta: devyDelta,
+    },
+  ];
+}
+
+export function computeAcceptanceProbability(
+  input: AcceptanceInput
+): AcceptanceOutput {
+  const inputsValid = validateInputs(input);
+
+  if (!inputsValid) {
+    return {
+      base: 0.50,
+      final: 0.50,
+      z: 0,
+      confidence: 'LEARNING',
+      buckets: [],
+      drivers: [],
+      diagnostics: {
+        ldiBoostRaw: 0,
+        managerDeltaRaw: 0,
+        devyDeltaRaw: 0,
+        inputsValid: false,
+      },
+    };
+  }
+
+  const {
+    fairnessScore,
+    needsFitScore,
+    volatilityDelta,
+    tradeCount = 0,
+    ldi = {},
+    offeredPlayers = [],
+    managerProfile,
+  } = input;
+
+  const fairnessNorm = normalize(fairnessScore);
+  const needsNorm    = normalize(needsFitScore);
+  const volNorm      = normalize(volatilityDelta);
+
+  const confidence = getConfidenceTier(tradeCount);
+
+  const { boost: ldiBoost, drivers: ldiDrivers }       = computeLDIBoost(offeredPlayers, ldi);
+  const { delta: managerDelta, drivers: managerDrivers } = computeManagerDelta(managerProfile, confidence);
+  const { delta: devyDelta, drivers: devyDrivers }       = computeDevyDelta(offeredPlayers);
+
+  const z =
+    W_FAIRNESS * fairnessNorm +
+    W_NEEDS    * needsNorm +
+    W_VOL      * volNorm +
+    ldiBoost +
+    managerDelta +
+    devyDelta;
+
+  if (process.env.NODE_ENV === 'development') {
+    console.debug('[acceptance] z breakdown:', {
+      fairness:  (W_FAIRNESS * fairnessNorm).toFixed(3),
+      needs:     (W_NEEDS * needsNorm).toFixed(3),
+      vol:       (W_VOL * volNorm).toFixed(3),
+      ldi:       ldiBoost.toFixed(3),
+      manager:   managerDelta.toFixed(3),
+      devy:      devyDelta.toFixed(3),
+      total_z:   z.toFixed(3),
+    });
+  }
+
+  const base = clamp(sigmoid(z), 0.01, 0.99);
+  const final = clamp(applyConfidenceCalibration(base, confidence), 0.01, 0.99);
+
+  const allDrivers: AcceptanceDriver[] = [
+    {
+      key: 'fairness',
+      delta: W_FAIRNESS * fairnessNorm,
+      note: `Fairness score: ${fairnessScore}/100`,
+    },
+    {
+      key: 'needs_fit',
+      delta: W_NEEDS * needsNorm,
+      note: `Needs fit score: ${needsFitScore}/100`,
+    },
+    {
+      key: 'volatility',
+      delta: W_VOL * volNorm,
+      note: `Volatility delta: ${volatilityDelta}/100`,
+    },
+    ...ldiDrivers,
+    ...managerDrivers,
+    ...devyDrivers,
+  ];
+
+  const topDrivers = [...allDrivers]
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 6);
+
+  const buckets = buildBuckets(
+    fairnessNorm,
+    needsNorm,
+    volNorm,
+    ldiBoost,
+    managerDelta,
+    devyDelta
+  );
 
   return {
     base,
-    final: base,
+    final,
+    z,
     confidence,
     buckets,
-    drivers: drivers
-      .slice()
-      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-      .slice(0, 6),
-  }
+    drivers: topDrivers,
+    diagnostics: {
+      ldiBoostRaw: ldiBoost,
+      managerDeltaRaw: managerDelta,
+      devyDeltaRaw: devyDelta,
+      inputsValid: true,
+    },
+  };
 }
