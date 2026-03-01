@@ -1059,6 +1059,7 @@ export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEn
       breakoutAge: p.breakoutAge,
       injurySeverityScore: p.injurySeverityScore,
     })),
+    isSuperFlex,
     managerProfile: partnerProfile ? {
       futureFocused: partnerProfile.futureFocused,
       riskAverse: partnerProfile.riskAverse,

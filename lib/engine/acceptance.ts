@@ -39,6 +39,7 @@ export interface AcceptanceInput {
     breakoutAge?: number;
     injurySeverityScore?: number;
   }>;
+  isSuperFlex?: boolean;
   managerProfile?: {
     futureFocused?: boolean;
     riskAverse?: boolean;
@@ -58,6 +59,14 @@ const LDI_HIGH_DELTA     = 0.04;
 const LDI_LOW_DELTA      = -0.02;
 const LDI_MAX_BOOST      = 0.15;
 const LDI_MIN_BOOST      = -0.10;
+
+const POSITION_LDI_WEIGHT: Record<string, number> = {
+  QB: 0.8,
+  QB_SF: 1.4,
+  RB: 1.2,
+  WR: 1.0,
+  TE: 1.1,
+};
 
 const MGR_FUTURE_FOCUSED = 0.05;
 const MGR_RISK_AVERSE    = -0.05;
@@ -145,9 +154,15 @@ function applyTradeRecencyDecay(
   return weights;
 }
 
+function getPositionLdiWeight(position: string, isSuperFlex: boolean): number {
+  if (position === 'QB' && isSuperFlex) return POSITION_LDI_WEIGHT['QB_SF'];
+  return POSITION_LDI_WEIGHT[position] ?? 1.0;
+}
+
 function computeLDIBoost(
   offeredPlayers: AcceptanceInput['offeredPlayers'],
-  ldi: Record<string, number>
+  ldi: Record<string, number>,
+  isSuperFlex: boolean
 ): { boost: number; drivers: AcceptanceDriver[] } {
   if (!offeredPlayers?.length || !ldi) return { boost: 0, drivers: [] };
 
@@ -156,21 +171,25 @@ function computeLDIBoost(
 
   for (const player of offeredPlayers) {
     if (player.isDevy) continue;
-    const posLdi = ldi[player.position?.toUpperCase()] ?? 50;
+    const pos = player.position?.toUpperCase() ?? '';
+    const posLdi = ldi[pos] ?? 50;
+    const posWeight = getPositionLdiWeight(pos, isSuperFlex);
 
     if (posLdi >= LDI_HIGH_THRESHOLD) {
-      raw += LDI_HIGH_DELTA;
+      const weightedDelta = LDI_HIGH_DELTA * posWeight;
+      raw += weightedDelta;
       drivers.push({
         key: `ldi_high_${player.position}`,
-        delta: LDI_HIGH_DELTA,
-        note: `High league demand for ${player.position} (LDI: ${posLdi})`,
+        delta: weightedDelta,
+        note: `High league demand for ${player.position} (LDI: ${posLdi}, weight: ${posWeight.toFixed(1)}x)`,
       });
     } else if (posLdi <= LDI_LOW_THRESHOLD) {
-      raw += LDI_LOW_DELTA;
+      const weightedDelta = LDI_LOW_DELTA * posWeight;
+      raw += weightedDelta;
       drivers.push({
         key: `ldi_low_${player.position}`,
-        delta: LDI_LOW_DELTA,
-        note: `Low league demand for ${player.position} (LDI: ${posLdi})`,
+        delta: weightedDelta,
+        note: `Low league demand for ${player.position} (LDI: ${posLdi}, weight: ${posWeight.toFixed(1)}x)`,
       });
     }
   }
@@ -364,6 +383,7 @@ export function computeAcceptanceProbability(
     tradeCount = 0,
     ldi = {},
     offeredPlayers = [],
+    isSuperFlex = false,
     managerProfile,
   } = input;
 
@@ -373,7 +393,7 @@ export function computeAcceptanceProbability(
 
   const confidence = getConfidenceTier(tradeCount);
 
-  const { boost: ldiBoost, drivers: ldiDrivers }       = computeLDIBoost(offeredPlayers, ldi);
+  const { boost: ldiBoost, drivers: ldiDrivers }       = computeLDIBoost(offeredPlayers, ldi, isSuperFlex);
   const { delta: managerDelta, drivers: managerDrivers } = computeManagerDelta(managerProfile, confidence);
   const { delta: devyDelta, drivers: devyDrivers }       = computeDevyDelta(offeredPlayers);
 
