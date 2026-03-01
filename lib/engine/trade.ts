@@ -748,25 +748,26 @@ function computeNeedsFitFromRosterConfig(args: {
   }
   if (cfg.superflex) need.QB += 0.5
 
-  let suppliedNeed = 0
+  const totalNeeds = Object.values(need).reduce((a, b) => a + b, 0)
+  if (totalNeeds === 0) return 50
+
+  let score = 0
   let suppliedCount = 0
   for (const a of assetsPartnerReceives) {
     if (a.type !== 'player') continue
     const pos = String(a.player.pos || '').toUpperCase()
     if (!(pos in need)) continue
     suppliedCount++
-    suppliedNeed += need[pos] > 0 ? 1 : 0.25
+    if (need[pos] > 0) {
+      score += 30
+    } else {
+      score += 10
+    }
   }
 
-  let score = 50
-  if (suppliedCount > 0) {
-    const ratio = suppliedNeed / suppliedCount
-    score += Math.round((ratio - 0.25) * (35 / 0.75))
-  } else {
-    score -= 8
-  }
+  if (suppliedCount === 0) return clamp(50 - 8, 0, 100)
 
-  return clamp(score, 0, 100)
+  return clamp(Math.round((score / 100) * 100), 0, 100)
 }
 
 export async function runTradeAnalysis(req: TradeEngineRequest): Promise<TradeEngineResponse> {
