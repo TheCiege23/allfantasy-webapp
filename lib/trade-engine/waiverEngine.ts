@@ -1,177 +1,379 @@
-// lib/trade-engine/waiverEngine.ts
-// Waiver priority scoring using trade engine intelligence
+export type TeamDirection = 'CONTEND' | 'REBUILD' | 'MIDDLE' | 'FRAGILE_CONTEND';
 
-import { Asset, ManagerProfile, LeagueSettings } from './types'
+export type WaiverRecommendation = 'Strong Add' | 'Add' | 'Monitor' | 'Skip';
 
-export type WaiverPriority = {
-  playerId: string
-  playerName: string
-  position: string
-  priorityScore: number
-  needScore: number
-  replacementDelta: number
-  timingFactor: number
-  recommendation: 'Strong Add' | 'Add' | 'Monitor' | 'Skip'
-  reasoning: string[]
+export interface WaiverCandidate {
+  name: string;
+  position: string;
+  value: number;
+  age?: number;
+  isInjured?: boolean;
+  injurySeverity?: number;
 }
 
-export type WaiverContext = {
-  settings: LeagueSettings
-  userProfile: ManagerProfile
-  userAssets: Asset[]
-  availablePlayers: Array<{
-    id: string
-    name: string
-    pos: string
-    value: number
-    age?: number
-  }>
+export interface RosterPlayer {
+  name: string;
+  position: string;
+  value: number;
+  isCornerstone?: boolean;
+  isStarter?: boolean;
 }
 
-function computeNeedScore(pos: string, profile: ManagerProfile): number {
-  if (profile.needs.includes(pos)) return 30
-  if (profile.surplus.includes(pos)) return -10
-  return 10
+export interface WaiverContext {
+  teamDirection: TeamDirection;
+  rosterNeeds: string[];
+  rosterSurplus: string[];
+  leagueScarcity?: Record<string, number>;
+  isSuperFlex?: boolean;
+  isTEP?: boolean;
+  currentWeek?: number;
+  totalWeeks?: number;
+  faabBudget?: number;
+  leagueFaabBudget?: number;
+}
+
+export interface WaiverResult {
+  candidate: WaiverCandidate;
+  drop?: RosterPlayer;
+  priorityScore: number;
+  recommendation: WaiverRecommendation;
+  breakdown: {
+    needScore: number;
+    replacementDelta: number;
+    timingFactor: number;
+    scarcityBonus: number;
+    injuryBonus: number;
+  };
+  reason: string;
+}
+
+const CORNERSTONE_THRESHOLD = 4000;
+
+const RECOMMENDATION_THRESHOLDS = {
+  strongAdd: 50,
+  add: 30,
+  monitor: 15,
+};
+
+function getSeasonUrgencyMultiplier(week: number, totalWeeks: number): number {
+  const progress = week / totalWeeks;
+  if (progress >= 0.85) return 1.3;
+  if (progress >= 0.65) return 1.1;
+  return 1.0;
+}
+
+function computeNeedScore(
+  position: string,
+  context: WaiverContext
+): number {
+  const pos = position.toUpperCase();
+  const needsUpper = context.rosterNeeds.map(p => p.toUpperCase());
+  const surplusUpper = context.rosterSurplus.map(p => p.toUpperCase());
+  const isNeed    = needsUpper.includes(pos);
+  const isSurplus = surplusUpper.includes(pos);
+
+  let base = isNeed ? 30 : isSurplus ? -10 : 10;
+
+  const scarcity = context.leagueScarcity?.[pos] ?? context.leagueScarcity?.[position] ?? 50;
+  if (scarcity >= 70 && isSurplus) {
+    base = Math.max(base, 5);
+  }
+
+  if (pos === 'TE' && context.isTEP) {
+    base += 10;
+  }
+
+  if (pos === 'QB' && context.isSuperFlex) {
+    base += 8;
+  }
+
+  return base;
 }
 
 function computeReplacementDelta(
-  playerValue: number,
-  pos: string,
-  assets: Asset[]
+  candidate: WaiverCandidate,
+  roster: RosterPlayer[]
 ): number {
-  const samePos = assets.filter(a => a.pos === pos && a.type === 'PLAYER')
-  if (samePos.length === 0) return playerValue * 0.5
+  const samePosition = roster.filter(
+    p => p.position.toUpperCase() === candidate.position.toUpperCase()
+  );
+  const starters = samePosition.filter(p => p.isStarter);
 
-  const worstStarter = samePos
-    .filter(a => a.slot === 'Starter')
-    .sort((a, b) => a.value - b.value)[0]
+  if (samePosition.length === 0) {
+    return candidate.value * 0.65;
+  }
 
-  if (!worstStarter) return playerValue * 0.3
+  if (starters.length === 0) {
+    return candidate.value * 0.45;
+  }
 
-  const delta = playerValue - worstStarter.value
-  return Math.max(0, delta * 0.4)
+  const worstStarterValue = Math.min(...starters.map(p => p.value));
+  return Math.max(0, (candidate.value - worstStarterValue) * 0.4);
 }
 
 function computeTimingFactor(
-  contenderTier: ManagerProfile['contenderTier'],
-  playerAge: number | undefined,
-  playerValue: number
-): number {
-  const age = playerAge ?? 25
+  candidate: WaiverCandidate,
+  context: WaiverContext
+): { score: number; injuryBonus: number } {
+  const { teamDirection } = context;
+  const age = candidate.age ?? 25;
+  const value = candidate.value;
+  const isHighValue = value >= 3000;
+  const isYoung = age <= 24;
+  const isOld = age >= 28;
 
-  if (contenderTier === 'contender') {
-    if (age <= 24) return 5
-    if (playerValue >= 3000) return 15
-    return 10
+  let injuryBonus = 0;
+  if (candidate.isInjured) {
+    injuryBonus = -5;
+  } else if ((candidate.injurySeverity ?? 0) > 70) {
+    injuryBonus = +15;
   }
 
-  if (contenderTier === 'rebuild') {
-    if (age <= 24) return 20
-    if (age >= 28) return -5
-    return 5
+  let score: number;
+
+  switch (teamDirection) {
+    case 'CONTEND':
+      score = isHighValue ? 15 : isYoung ? 5 : 10;
+      break;
+
+    case 'FRAGILE_CONTEND':
+      score = isHighValue ? 20 : isOld ? 8 : isYoung ? 5 : 12;
+      break;
+
+    case 'REBUILD':
+      score = isYoung ? 20 : isOld ? -5 : 5;
+      break;
+
+    case 'MIDDLE':
+    default:
+      score = 10;
+      break;
   }
 
-  return 10
+  return { score, injuryBonus };
 }
 
-export function scoreWaiverPriorities(ctx: WaiverContext): WaiverPriority[] {
-  const { userProfile, userAssets, availablePlayers } = ctx
+function computeScarcityBonus(
+  position: string,
+  context: WaiverContext
+): number {
+  const scarcity = context.leagueScarcity?.[position] ?? 50;
+  if (scarcity >= 80) return 10;
+  if (scarcity >= 65) return 5;
+  return 0;
+}
 
-  const priorities: WaiverPriority[] = []
+function getRecommendation(
+  score: number,
+  context: WaiverContext
+): WaiverRecommendation {
+  const week = context.currentWeek ?? 1;
+  const total = context.totalWeeks ?? 17;
+  const urgency = getSeasonUrgencyMultiplier(week, total);
 
-  for (const player of availablePlayers) {
-    const needScore = computeNeedScore(player.pos, userProfile)
-    const replacementDelta = computeReplacementDelta(player.value, player.pos, userAssets)
-    const timingFactor = computeTimingFactor(userProfile.contenderTier, player.age, player.value)
+  const thresholds = {
+    strongAdd: RECOMMENDATION_THRESHOLDS.strongAdd / urgency,
+    add:       RECOMMENDATION_THRESHOLDS.add / urgency,
+    monitor:   RECOMMENDATION_THRESHOLDS.monitor / urgency,
+  };
 
-    const priorityScore = needScore + replacementDelta + timingFactor
-    const reasoning: string[] = []
+  if (score >= thresholds.strongAdd) return 'Strong Add';
+  if (score >= thresholds.add)       return 'Add';
+  if (score >= thresholds.monitor)   return 'Monitor';
+  return 'Skip';
+}
 
-    if (needScore >= 20) reasoning.push(`Fills ${player.pos} need`)
-    if (replacementDelta >= 10) reasoning.push(`Upgrades over current ${player.pos}`)
-    if (timingFactor >= 15) reasoning.push(`Fits ${userProfile.contenderTier} timeline`)
+function buildReason(
+  candidate: WaiverCandidate,
+  breakdown: WaiverResult['breakdown'],
+  recommendation: WaiverRecommendation,
+  context: WaiverContext
+): string {
+  const parts: string[] = [];
 
-    let recommendation: WaiverPriority['recommendation']
-    if (priorityScore >= 50) recommendation = 'Strong Add'
-    else if (priorityScore >= 30) recommendation = 'Add'
-    else if (priorityScore >= 15) recommendation = 'Monitor'
-    else recommendation = 'Skip'
+  if (breakdown.needScore >= 25) {
+    parts.push(`${candidate.position} is a roster need`);
+  } else if (breakdown.needScore <= -5) {
+    parts.push(`${candidate.position} is a surplus position`);
+  }
 
-    priorities.push({
-      playerId: player.id,
-      playerName: player.name,
-      position: player.pos,
-      priorityScore,
+  if (breakdown.replacementDelta > 500) {
+    parts.push(`significant upgrade over current ${candidate.position} options`);
+  } else if (breakdown.replacementDelta > 200) {
+    parts.push(`moderate upgrade at ${candidate.position}`);
+  }
+
+  if (context.teamDirection === 'REBUILD' && (candidate.age ?? 99) <= 24) {
+    parts.push('fits rebuild timeline as young asset');
+  }
+
+  if (context.teamDirection === 'FRAGILE_CONTEND' && candidate.value >= 3000) {
+    parts.push('high-impact add for contention window');
+  }
+
+  if (breakdown.injuryBonus > 0) {
+    parts.push('injury context increases urgency');
+  }
+
+  if (breakdown.scarcityBonus > 0) {
+    parts.push(`${candidate.position} is scarce in your league`);
+  }
+
+  return parts.length > 0
+    ? `${recommendation}: ${parts.join(', ')}.`
+    : `${recommendation} based on overall scoring.`;
+}
+
+export function scoreWaiverPriorities(
+  candidates: WaiverCandidate[],
+  roster: RosterPlayer[],
+  context: WaiverContext
+): WaiverResult[] {
+  const results: WaiverResult[] = [];
+
+  for (const candidate of candidates) {
+    const needScore        = computeNeedScore(candidate.position, context);
+    const replacementDelta = computeReplacementDelta(candidate, roster);
+    const { score: timingFactor, injuryBonus } = computeTimingFactor(candidate, context);
+    const scarcityBonus    = computeScarcityBonus(candidate.position, context);
+
+    const priorityScore = needScore + replacementDelta + timingFactor + injuryBonus + scarcityBonus;
+
+    const breakdown = {
       needScore,
       replacementDelta,
       timingFactor,
+      scarcityBonus,
+      injuryBonus,
+    };
+
+    const recommendation = getRecommendation(priorityScore, context);
+
+    results.push({
+      candidate,
+      priorityScore: Math.round(priorityScore),
       recommendation,
-      reasoning,
-    })
+      breakdown,
+      reason: buildReason(candidate, breakdown, recommendation, context),
+    });
   }
 
-  return priorities.sort((a, b) => b.priorityScore - a.priorityScore)
+  return results.sort((a, b) => b.priorityScore - a.priorityScore);
 }
 
-// ============================================
-// SIMPLIFIED WAIVER ENGINE (SNAPSHOT-BASED)
-// ============================================
+function meetsUpgradeThreshold(
+  candidateValue: number,
+  dropValue: number
+): boolean {
+  const delta = candidateValue - dropValue;
+  if (delta <= 0) return false;
 
-import { LeagueIntelSnapshot } from './types'
-
-export type WaiverSuggestion = {
-  add: Asset
-  drop?: Asset
-  reason: string[]
-  score: number
+  const relativePct = delta / Math.max(dropValue, 1);
+  return delta >= 250 || relativePct >= 0.08;
 }
 
-export function runWaiverEngine(params: {
-  snapshot: LeagueIntelSnapshot
-  userRosterId: number
-  waiverPool: Asset[]
-}): WaiverSuggestion[] {
-  const { snapshot, userRosterId, waiverPool } = params
-  const profile = snapshot.profilesByRosterId[userRosterId]
-  const rosterAssets = snapshot.assetsByRosterId[userRosterId] || []
+function computeUpgradeBonus(delta: number): number {
+  if (delta <= 0) return 0;
+  return Math.min(25, Math.round(Math.log2(delta / 100 + 1) * 6));
+}
 
-  if (!profile) return []
+function selectTopCandidates(
+  available: WaiverCandidate[],
+  rosterNeeds: string[],
+  totalLimit = 60
+): WaiverCandidate[] {
+  const positions = ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'];
+  const perPositionLimit = Math.floor(totalLimit / positions.length);
+  const selected: WaiverCandidate[] = [];
 
-  const needs = new Set(profile.needs)
-  const candidates = waiverPool
-    .filter(a => a.type === 'PLAYER')
-    .sort((a, b) => (b.value || 0) - (a.value || 0))
-    .slice(0, 60)
-
-  const drops = rosterAssets
-    .filter(a => a.type === 'PLAYER' && !a.isCornerstone)
-    .sort((a, b) => (a.value || 0) - (b.value || 0))
-
-  const out: WaiverSuggestion[] = []
-  for (const add of candidates) {
-    let score = 50
-    const pos = (add.pos || '').toUpperCase()
-    if (needs.has(pos)) score += 25
-    if (profile.contenderTier === 'contender') score += 10
-    if (profile.contenderTier === 'rebuild' && (add.age ?? 30) <= 25) score += 10
-
-    const drop = drops.find(d => (d.pos || '').toUpperCase() === pos) || drops[0]
-    if (!drop) continue
-
-    const delta = (add.value || 0) - (drop.value || 0)
-    if (delta < 250) continue
-    score += Math.min(25, Math.floor(delta / 300))
-
-    out.push({
-      add,
-      drop,
-      score,
-      reason: [
-        `Upgrade of ~${delta} value at ${pos}.`,
-        profile.contenderTier === 'contender' ? 'Win-now bias applied.' : 'Roster-building bias applied.',
-      ],
-    })
+  for (const pos of positions) {
+    const posPlayers = available
+      .filter(p => p.position.toUpperCase() === pos.toUpperCase())
+      .sort((a, b) => b.value - a.value)
+      .slice(0, perPositionLimit);
+    selected.push(...posPlayers);
   }
 
-  return out.sort((a, b) => b.score - a.score).slice(0, 15)
+  const selectedNames = new Set(selected.map(p => p.name));
+  const remaining = available
+    .filter(p => !selectedNames.has(p.name))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, totalLimit - selected.length);
+
+  return [...selected, ...remaining];
+}
+
+export function runWaiverEngine(
+  available: WaiverCandidate[],
+  roster: RosterPlayer[],
+  context: WaiverContext
+): WaiverResult[] {
+  const droppable = roster
+    .filter(p => !p.isCornerstone && p.value < CORNERSTONE_THRESHOLD)
+    .sort((a, b) => a.value - b.value);
+
+  if (droppable.length === 0) {
+    console.warn('[waiverEngine] No droppable players found on roster');
+    return [];
+  }
+
+  const topCandidates = selectTopCandidates(available, context.rosterNeeds);
+
+  const suggestions: WaiverResult[] = [];
+
+  for (const candidate of topCandidates) {
+    const dropTarget = droppable.find(
+      p => p.position.toUpperCase() === candidate.position.toUpperCase()
+    ) ?? droppable[0];
+
+    if (!meetsUpgradeThreshold(candidate.value, dropTarget.value)) continue;
+
+    const delta = candidate.value - dropTarget.value;
+    const candidatePosUpper = candidate.position.toUpperCase();
+    const isNeed = context.rosterNeeds.map(p => p.toUpperCase()).includes(candidatePosUpper);
+    const isYoung = (candidate.age ?? 99) <= 24;
+    const isContender =
+      context.teamDirection === 'CONTEND' ||
+      context.teamDirection === 'FRAGILE_CONTEND';
+    const isRebuild = context.teamDirection === 'REBUILD';
+
+    let score = 0;
+
+    score += Math.min(40, Math.round((delta / 5000) * 40));
+
+    if (isNeed) score += 25;
+
+    if (isContender && candidate.value >= 3000) score += 10;
+    if (isRebuild && isYoung)                   score += 10;
+
+    score += computeUpgradeBonus(delta);
+
+    const scarcityBonus = computeScarcityBonus(candidate.position, context);
+    score += scarcityBonus;
+
+    const injuryBonus = (candidate.injurySeverity ?? 0) > 70 ? 12 : 0;
+    score += injuryBonus;
+
+    const recommendation = getRecommendation(score, context);
+    const breakdown = {
+      needScore: isNeed ? 25 : 0,
+      replacementDelta: delta,
+      timingFactor: isContender ? 10 : isRebuild ? (isYoung ? 10 : 0) : 0,
+      scarcityBonus,
+      injuryBonus,
+    };
+
+    suggestions.push({
+      candidate,
+      drop: dropTarget,
+      priorityScore: Math.round(score),
+      recommendation,
+      breakdown,
+      reason: buildReason(candidate, breakdown, recommendation, context),
+    });
+  }
+
+  return suggestions
+    .sort((a, b) => b.priorityScore - a.priorityScore)
+    .slice(0, 15);
 }
