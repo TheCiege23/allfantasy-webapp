@@ -571,7 +571,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const startMs = Date.now()
 
   const session = await getServerSession(authOptions as any)
-  const userId = (session?.user as any)?.id ?? null
+  const userId = (session as any)?.user?.id ?? null
 
   let message = ''
   let imageFile: File | null = null
